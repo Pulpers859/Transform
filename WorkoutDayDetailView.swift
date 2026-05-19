@@ -35,6 +35,7 @@ struct WorkoutDayDetailView: View {
             }
             .padding()
         }
+        .workoutTabBarClearance()
         .navigationTitle("Day \(day.dayNumber)")
         .navigationBarTitleDisplayMode(.inline)
         .sheet(item: $exerciseForWeightLogging) { exercise in

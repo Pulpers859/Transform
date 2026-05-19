@@ -38,6 +38,7 @@ struct WorkoutView: View {
                 }
                 .padding()
             }
+            .workoutTabBarClearance()
             .navigationTitle("Workout")
             .alert("Generation Error", isPresented: $showError) {
                 Button("OK", role: .cancel) {}

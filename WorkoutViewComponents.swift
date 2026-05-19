@@ -68,12 +68,34 @@ struct TrainingDayCard: View {
 
     private func isDirectCoreExercise(_ exercise: WorkoutExercise) -> Bool {
         let combined = "\(exercise.exerciseName) \(exercise.muscleTarget)".lowercased()
+        let exclusionKeywords = [
+            "farmer", "carry", "walk", "suitcase", "yoke"
+        ]
+        if exclusionKeywords.contains(where: combined.contains) {
+            return false
+        }
+
         let keywords = [
             "core", "abs", "abdominal", "oblique", "serratus", "crunch",
             "plank", "pallof", "rollout", "dead bug", "hollow",
             "leg raise", "knee raise", "ab wheel"
         ]
         return keywords.contains { combined.contains($0) }
+    }
+}
+
+private struct WorkoutTabBarClearanceModifier: ViewModifier {
+    func body(content: Content) -> some View {
+        content.safeAreaInset(edge: .bottom) {
+            Color.clear
+                .frame(height: 104)
+        }
+    }
+}
+
+extension View {
+    func workoutTabBarClearance() -> some View {
+        modifier(WorkoutTabBarClearanceModifier())
     }
 }
 
@@ -162,6 +184,7 @@ struct RestDayDetailView: View {
             }
             .padding()
         }
+        .workoutTabBarClearance()
         .navigationTitle("Recovery Day")
         .navigationBarTitleDisplayMode(.inline)
     }

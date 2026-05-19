@@ -110,7 +110,8 @@ extension ClaudeService {
                         rawTempo: exercise.tempo,
                         exerciseName: cleanedName,
                         muscleTarget: cleanedTarget,
-                        weekNumber: weekNumber
+                        weekNumber: weekNumber,
+                        reps: cleanedReps
                     )
                     let cleanedRestSeconds = polishedExerciseRestSeconds(
                         rawRestSeconds: exercise.restSeconds,

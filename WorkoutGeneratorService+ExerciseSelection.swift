@@ -567,7 +567,11 @@ extension ClaudeService {
             muscleTarget: muscleTarget
         )
 
-        if metadata.primaryAreas.contains(where: { stimulusAreaAliases(for: $0).contains(where: { $0 == "Core/Abs" || $0 == "Abs" || $0 == "Lower Abs" || $0 == "Anterior Core" || $0 == "Obliques" }) }) {
+        if isDirectCoreHypertrophyMovement(
+            exerciseName: exerciseName,
+            muscleTarget: muscleTarget,
+            reps: ""
+        ) {
             return .core
         }
         if metadata.fatigueCost >= 3 {

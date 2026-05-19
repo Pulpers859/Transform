@@ -178,16 +178,28 @@ extension ClaudeService {
           vertical pressing.
         - Rest and tempo must match exercise role. Do not lazily assign one identical rest period
           or one identical tempo to every movement in a mixed session.
+        - Tempo is only for rep-based lifts where eccentric/concentric cadence matters. For
+          carries, distance- or time-based work, and similar bracing/isometric drills, leave
+          tempo empty instead of inventing a fake 4-part prescription.
+        - Loaded carries can support trunk stiffness and grip, but they do not replace a true
+          direct-core slot when the blueprint is asking for dedicated core work.
+        - On broad Lower or Legs sessions that are not explicitly glute- or hamstring-focused,
+          keep real quad stimulus in the plan and avoid piling up multiple glute/posterior-chain
+          patterns that all solve the same problem.
+        - Do not write posture language with fake certainty. Frame pelvic-tilt and posture work
+          as improving setup, bracing, hip control, and tolerance rather than claiming you are
+          "fixing" a diagnosis.
         - Any injury or postural note from the analysis must be addressed explicitly in the
           warm-up/mobility guidance of the relevant day.
         - Session Notes must match the actual session. Do not mention pressing, pulling, or hinge
           prep if that lift family is not meaningfully present that day.
 
         Example of a GOOD Session Note (do not copy verbatim, match the style):
-        "Today's focus is posterior chain — your analysis flagged weak glute engagement and an
-         anterior pelvic tilt, so we're leading with hinge-pattern work and priming glutes first.
-         Warm-up: 5 min bike, then hip 90/90 openers and glute bridges 2x10 before your first
-         working set of Romanian Deadlifts. Keep ribs stacked over pelvis on every rep."
+        "Today's focus is posterior chain — your analysis flagged weak glute engagement and a
+         hip-position issue, so we're leading with hinge-pattern work and glute/bracing prep to
+         improve your setup first. Warm-up: 5 min bike, then hip 90/90 openers and glute bridges
+         2x10 before your first working set of Romanian Deadlifts. Keep ribs stacked over pelvis
+         on every rep."
 
         Example of a BAD Session Note (never write like this):
         "Training session. Progressive overload. Warm-up: light cardio. Mobility: stretch."
@@ -275,6 +287,17 @@ extension ClaudeService {
           vertical pressing.
         - Rest and tempo must match exercise role. Do not lazily assign one identical rest period
           or one identical tempo to every movement in a mixed session.
+        - Tempo is only for rep-based lifts where eccentric/concentric cadence matters. For
+          carries, distance- or time-based work, and similar bracing/isometric drills, leave
+          tempo empty instead of inventing a fake 4-part prescription.
+        - Loaded carries can support trunk stiffness and grip, but they do not replace a true
+          direct-core slot when the blueprint is asking for dedicated core work.
+        - On broad Lower or Legs sessions that are not explicitly glute- or hamstring-focused,
+          keep real quad stimulus in the plan and avoid piling up multiple glute/posterior-chain
+          patterns that all solve the same problem.
+        - Do not write posture language with fake certainty. Frame pelvic-tilt and posture work
+          as improving setup, bracing, hip control, and tolerance rather than claiming you are
+          "fixing" a diagnosis.
         - Postural/injury notes from the analysis continue to drive warm-up and mobility choices.
         - Session Notes must match the actual session. Do not mention pressing, pulling, or hinge
           prep if that lift family is not meaningfully present that day.
@@ -465,12 +488,12 @@ extension ClaudeService {
             "sets": integerProp(minimum: 1, maximum: 8),
             "reps": stringProp("Rep prescription, e.g., '8-10' or 'AMRAP'."),
             // EvidenceProfile.md TEMPO-001 [confidence: low]
-            "tempo": stringProp("Explicit 4-part tempo prescription, e.g., '3-1-1-0' or '2-0-X-1'."),
+            "tempo": stringProp("Optional. Use an explicit 4-part tempo for rep-based lifts when cadence matters, e.g., '3-1-1-0' or '2-0-X-1'. Omit or leave empty for carries, distance-based work, and similar drills where a 4-part tempo is not meaningful."),
             "restSeconds": integerProp(minimum: 30, maximum: 240),
             "notes": stringProp("2-4 sentences: form cue + phase-appropriate progression cue + 'why this is here for you' sentence tied to the body analysis."),
             "muscleTarget": stringProp("Primary muscle target.")
         ]
-        let required: [String] = ["exerciseName", "sets", "reps", "tempo", "restSeconds", "notes", "muscleTarget"]
+        let required: [String] = ["exerciseName", "sets", "reps", "restSeconds", "notes", "muscleTarget"]
         let schema: [String: Any] = [
             "type": "object",
             "properties": properties,

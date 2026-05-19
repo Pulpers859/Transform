@@ -1,0 +1,147 @@
+warning: in the working copy of 'WorkoutDayDetailView.swift', CRLF will be replaced by LF the next time Git touches it
+warning: in the working copy of 'WorkoutGeneratorService+ExerciseSelection.swift', CRLF will be replaced by LF the next time Git touches it
+warning: in the working copy of 'WorkoutGeneratorService+FallbackCore.swift', CRLF will be replaced by LF the next time Git touches it
+warning: in the working copy of 'WorkoutGeneratorService+FocusCoachingContext.swift', CRLF will be replaced by LF the next time Git touches it
+warning: in the working copy of 'WorkoutGeneratorService+MetadataProfiles.swift', CRLF will be replaced by LF the next time Git touches it
+warning: in the working copy of 'WorkoutGeneratorService+ParsingValidation.swift', CRLF will be replaced by LF the next time Git touches it
+warning: in the working copy of 'WorkoutGeneratorService+Requests.swift', CRLF will be replaced by LF the next time Git touches it
+warning: in the working copy of 'WorkoutView.swift', CRLF will be replaced by LF the next time Git touches it
+warning: in the working copy of 'WorkoutViewComponents.swift', CRLF will be replaced by LF the next time Git touches it
+[1mdiff --git a/WorkoutDayDetailView.swift b/WorkoutDayDetailView.swift[m
+[1mindex 9ca1bd9..8aa2231 100644[m
+[1m--- a/WorkoutDayDetailView.swift[m
+[1m+++ b/WorkoutDayDetailView.swift[m
+[36m@@ -35,6 +35,7 @@[m [mstruct WorkoutDayDetailView: View {[m
+             }[m
+             .padding()[m
+         }[m
+[32m+[m[32m        .workoutTabBarClearance()[m
+         .navigationTitle("Day \(day.dayNumber)")[m
+         .navigationBarTitleDisplayMode(.inline)[m
+         .sheet(item: $exerciseForWeightLogging) { exercise in[m
+[1mdiff --git a/WorkoutGeneratorService+ExerciseSelection.swift b/WorkoutGeneratorService+ExerciseSelection.swift[m
+[1mindex 93b36dd..8142a97 100644[m
+[1m--- a/WorkoutGeneratorService+ExerciseSelection.swift[m
+[1m+++ b/WorkoutGeneratorService+ExerciseSelection.swift[m
+[36m@@ -567,7 +567,11 @@[m [mextension ClaudeService {[m
+             muscleTarget: muscleTarget[m
+         )[m
+ [m
+[31m-        if metadata.primaryAreas.contains(where: { stimulusAreaAliases(for: $0).contains(where: { $0 == "Core/Abs" || $0 == "Abs" || $0 == "Lower Abs" || $0 == "Anterior Core" || $0 == "Obliques" }) }) {[m
+[32m+[m[32m        if isDirectCoreHypertrophyMovement([m
+[32m+[m[32m            exerciseName: exerciseName,[m
+[32m+[m[32m            muscleTarget: muscleTarget,[m
+[32m+[m[32m            reps: ""[m
+[32m+[m[32m        ) {[m
+             return .core[m
+         }[m
+         if metadata.fatigueCost >= 3 {[m
+[1mdiff --git a/WorkoutGeneratorService+FallbackCore.swift b/WorkoutGeneratorService+FallbackCore.swift[m
+[1mindex 1180ee2..177bcf4 100644[m
+[1m--- a/WorkoutGeneratorService+FallbackCore.swift[m
+[1m+++ b/WorkoutGeneratorService+FallbackCore.swift[m
+[36m@@ -441,11 +441,22 @@[m [mextension ClaudeService {[m
+         )[m
+ [m
+         let mapped = arranged.enumerated().map { index, item in[m
+[31m-            WorkoutExerciseResponse([m
+[32m+[m[32m            let reps = proceduralRepRange([m
+[32m+[m[32m                for: weekNumber,[m
+[32m+[m[32m                exerciseName: item.name,[m
+[32m+[m[32m                muscleTarget: item.target[m
+[32m+[m[32m            )[m
+[32m+[m
+[32m+[m[32m            return WorkoutExerciseResponse([m
+                 exerciseName: item.name,[m
+                 sets: proceduralSets(for: weekNumber, exerciseName: item.name, muscleTarget: item.target),[m
+[31m-                reps: proceduralRepRange(for: weekNumber, exerciseName: item.name, muscleTarget: item.target),[m
+[31m-                tempo: proceduralTempo(for: weekNumber, exerciseName: item.name, muscleTarget: item.target),[m
+[32m+[m[32m                reps: reps,[m
+[32m+[m[32m                tempo: proceduralTempo([m
+[32m+[m[32m                    for: weekNumber,[m
+[32m+[m[32m                    exerciseName: item.name,[m
+[32m+[m[32m                    muscleTarget: item.target,[m
+[32m+[m[32m                    reps: reps[m
+[32m+[m[32m                ),[m
+                 restSeconds: proceduralRestSeconds(for: item.name, muscleTarget: item.target),[m
+                 notes: proceduralExerciseNotes([m
+                     weekNumber: weekNumber,[m
+[36m@@ -651,7 +662,20 @@[m [mextension ClaudeService {[m
+     }[m
+ [m
+     // EvidenceProfile.md TEMPO-001 [confidence: low][m
+[31m-    func proceduralTempo(for weekNumber: Int, exerciseName: String, muscleTarget: String) -> String {[m
+[32m+[m[32m    func proceduralTempo([m
+[32m+[m[32m        for weekNumber: Int,[m
+[32m+[m[32m        exerciseName: String,[m
+[32m+[m[32m        muscleTarget: String,[m
+[32m+[m[32m        reps: String[m
+[32m+[m[32m    ) -> String {[m
+[32m+[m[32m        guard requiresExplicitTempo([m
+[32m+[m[32m            exerciseName: exerciseName,[m
+[32m+[m[32m            muscleTarget: muscleTarget,[m
+[32m+[m[32m            reps: reps[m
+[32m+[m[32m        ) else {[m
+[32m+[m[32m            return ""[m
+[32m+[m[32m        }[m
+[32m+[m
+         let nameText = normalizedPriorityText(exerciseName)[m
+         switch proceduralExerciseRole(for: exerciseName, muscleTarget: muscleTarget) {[m
+         case .anchor:[m
+[36m@@ -686,12 +710,26 @@[m [mextension ClaudeService {[m
+         rawTempo: String,[m
+         exerciseName: String,[m
+         muscleTarget: String,[m
+[31m-        weekNumber: Int[m
+[32m+[m[32m        weekNumber: Int,[m
+[32m+[m[32m        reps: String[m
+     ) -> String {[m
+[32m+[m[32m        guard requiresExplicitTempo([m
+[32m+[m[32m            exerciseName: exerciseName,[m
+[32m+[m[32m            muscleTarget: muscleTarget,[m
+[32m+[m[32m            reps: reps[m
+[32m+[m[32m        ) else {[m
+[32m+[m[32m            return ""[m
+[32m+[m[32m        }[m
+[32m+[m
+         if let normalized = normalizedTempo(rawTempo) {[m
+             return normalized[m
+         }[m
+[31m-        return proceduralTempo(for: weekNumber, exerciseName: exerciseName, muscleTarget: muscleTarget)[m
+[32m+[m[32m        return proceduralTempo([m
+[32m+[m[32m            for: weekNumber,[m
+[32m+[m[32m            exerciseName: exerciseName,[m
+[32m+[m[32m            muscleTarget: muscleTarget,[m
+[32m+[m[32m            reps: reps[m
+[32m+[m[32m        )[m
+     }[m
+ [m
+     func normalizedTempo(_ rawTempo: String) -> String? {[m
+[1mdiff --git a/WorkoutGeneratorService+FocusCoachingContext.swift b/WorkoutGeneratorService+FocusCoachingContext.swift[m
+[1mindex 676d0e0..ec29437 100644[m
+[1m--- a/WorkoutGeneratorService+FocusCoachingContext.swift[m
+[1m+++ b/WorkoutGeneratorService+FocusCoachingContext.swift[m
+[36m@@ -41,6 +41,15 @@[m [mextension ClaudeService {[m
+             || containsAny(combinedText, keywords: priorityCoverageKeywords(for: focusArea))[m
+         guard touchesFocus else { return .none }[m
+ [m
+[32m+[m[32m        let coreFocusAliases = Set([m
+[32m+[m[32m            ["Core/Abs", "Abs", "Lower Abs", "Anterior Core", "Obliques", "Serratus"][m
+[32m+[m[32m                .map(normalizedPriorityText)[m
+[32m+[m[32m        )[m
+[32m+[m[32m        if metadata.movementPattern == "Carry",[m
+[32m+[m[32m           !focusAliases.isDisjoint(with: coreFocusAliases) {[m
+[32m+[m[32m            return .support[m
+[32m+[m[32m        }[m
+[32m+[m
+         if containsAny(combinedText, keywords: ["y raise", "trap 3", "scaption", "external rotation", "pull apart", "wall slide"]) {[m
+             return .support[m
+         }[m
+[36m@@ -299,16 +308,18 @@[m [mextension ClaudeService {[m
+         // notes with templated cues whenever they didn't match keyword heuristics — that[m
+         // was the "generic AI slop" users were seeing.[m
+         if isEmptyOrTooShortInsight(trimmed) {[m
+[31m-            return proceduralExerciseNotes([m
+[32m+[m[32m            return evidenceTunedCoachingLanguage([m
+[32m+[m[32m                proceduralExerciseNotes([m
+ 

@@ -325,8 +325,15 @@ extension ClaudeService {
             )
         }
 
-        let normalizedTempos = Set(day.exercises.map { normalizedTempo($0.tempo) ?? $0.tempo })
-        if normalizedTempos.count == 1 {
+        let tempoApplicableExercises = day.exercises.filter {
+            requiresExplicitTempo(
+                exerciseName: $0.exerciseName,
+                muscleTarget: $0.muscleTarget,
+                reps: $0.reps
+            )
+        }
+        let normalizedTempos = Set(tempoApplicableExercises.map { normalizedTempo($0.tempo) ?? $0.tempo })
+        if tempoApplicableExercises.count >= 2 && normalizedTempos.count == 1 {
             issues.append(
                 "Day \(day.dayNumber) uses one identical tempo prescription across mixed exercise roles. Tempo should be role-aware, not copy-pasted."
             )
@@ -367,10 +374,8 @@ extension ClaudeService {
             return !supportsStyle && !supportsFocus && !supportsCompanion
         }
 
-        guard !driftExercises.isEmpty else { return [] }
-
         var issues: [String] = []
-        if day.exercises.count >= 6 {
+        if !driftExercises.isEmpty, day.exercises.count >= 6 {
             let driftNames = driftExercises.prefix(2).map(\.exerciseName).joined(separator: ", ")
             issues.append(
                 "Day \(day.dayNumber) includes low-value filler that does not clearly support the \(expectedCanonical) theme or the planned priorities (\(driftNames)). Trim the noise and keep the session more disciplined."
@@ -380,6 +385,69 @@ extension ClaudeService {
         if expectedCanonical == "Lower" && day.exercises.count >= 7 {
             issues.append(
                 "Day \(day.dayNumber) is too crowded for a fatigue-managed Lower session. In a shift-work recomposition block, prefer fewer high-value lower-body movements over extra filler."
+            )
+        }
+
+        issues.append(contentsOf: validateLowerSessionBalance(
+            on: day,
+            expectedStyle: expectedCanonical,
+            focusArea: focusArea
+        ))
+
+        return issues
+    }
+
+    func validateLowerSessionBalance(
+        on day: WorkoutDayResponse,
+        expectedStyle: String,
+        focusArea: String?
+    ) -> [String] {
+        guard expectedStyle == "Lower" || expectedStyle == "Legs" else { return [] }
+
+        let normalizedFocus = normalizedPriorityText(focusArea ?? "")
+        let explicitPosteriorBias = containsAny(
+            normalizedFocus,
+            keywords: ["glute", "hamstring", "posterior chain"]
+        )
+        let explicitQuadBias = containsAny(normalizedFocus, keywords: ["quad"])
+        let metadataByExercise = day.exercises.map { exerciseMetadata(for: $0) }
+
+        let kneeDominantAnchorCount = metadataByExercise.filter { metadata in
+            ["Squat", "Press", "Extension"].contains(metadata.movementPattern)
+        }.count
+        let unilateralLowerCount = metadataByExercise.filter { metadata in
+            ["Split Squat", "Lunge"].contains(metadata.movementPattern)
+        }.count
+        let hipDominantCount = metadataByExercise.filter { metadata in
+            ["Hinge", "Hip Thrust", "Glute"].contains(metadata.movementPattern)
+        }.count
+        let gluteSkewCount = metadataByExercise.filter { metadata in
+            let primary = Set(metadata.primaryAreas.map(normalizedPriorityText))
+            let secondary = Set(metadata.secondaryAreas.map(normalizedPriorityText))
+            return primary.contains(normalizedPriorityText("Glutes"))
+                || primary.contains(normalizedPriorityText("Posterior Chain"))
+                || primary.contains(normalizedPriorityText("Quads/Glutes"))
+                || secondary.contains(normalizedPriorityText("Glutes"))
+                || ["Hinge", "Hip Thrust", "Glute", "Split Squat", "Lunge"].contains(metadata.movementPattern)
+        }.count
+
+        var issues: [String] = []
+
+        if !explicitPosteriorBias && gluteSkewCount >= 4 && kneeDominantAnchorCount == 0 && day.exercises.count >= 6 {
+            issues.append(
+                "Day \(day.dayNumber) reads as a broad lower-body session, but it leans too heavily on glute/posterior-chain patterns without a clear knee-dominant quad anchor. Add or swap in a clearer squat/press/extension slot."
+            )
+        }
+
+        if !explicitPosteriorBias && hipDominantCount >= 2 && unilateralLowerCount >= 2 {
+            issues.append(
+                "Day \(day.dayNumber) stacks too many glute- and hip-dominant lower-body patterns in one session. Trim one redundant posterior-chain accessory and reallocate that slot to a clearer quad or direct-core stimulus."
+            )
+        }
+
+        if explicitQuadBias && kneeDominantAnchorCount == 0 {
+            issues.append(
+                "Day \(day.dayNumber) is supposed to emphasize quads, but it never includes a clear knee-dominant quad anchor."
             )
         }
 
@@ -481,6 +549,94 @@ extension ClaudeService {
                 muscleTarget: muscleTarget
             )
         )
+    }
+
+    func usesDistanceOrDurationPrescription(_ reps: String) -> Bool {
+        let normalized = normalizedPriorityText(reps)
+        return containsAny(
+            normalized,
+            keywords: [
+                "yard", "yards", "meter", "meters", "metre", "metres",
+                "mile", "miles", "foot", "feet", "ft", "seconds", "second",
+                "secs", "sec", "minutes", "minute", "mins", "min"
+            ]
+        )
+    }
+
+    func requiresExplicitTempo(
+        exerciseName: String,
+        muscleTarget: String,
+        reps: String
+    ) -> Bool {
+        let metadata = exerciseMetadata(
+            forExerciseName: exerciseName,
+            muscleTarget: muscleTarget
+        )
+
+        if metadata.movementPattern == "Carry" {
+            return false
+        }
+
+        if usesDistanceOrDurationPrescription(reps) {
+            return false
+        }
+
+        return true
+    }
+
+    func isDirectCoreHypertrophyMovement(
+        exerciseName: String,
+        muscleTarget: String,
+        reps: String
+    ) -> Bool {
+        let metadata = exerciseMetadata(
+            forExerciseName: exerciseName,
+            muscleTarget: muscleTarget
+        )
+        guard metadata.movementPattern != "Carry" else { return false }
+
+        let directCorePatterns: Set<String> = [
+            "Core", "Spinal Flexion", "Leg Raise", "Anti-Extension", "Anti-Rotation"
+        ]
+        if directCorePatterns.contains(metadata.movementPattern) {
+            return true
+        }
+
+        let coreAliases = Set(
+            ["Core/Abs", "Abs", "Lower Abs", "Anterior Core", "Obliques", "Serratus"]
+                .map(normalizedPriorityText)
+        )
+        let primaryAliases = Set(
+            metadata.primaryAreas
+                .flatMap { stimulusAreaAliases(for: $0) }
+                .map(normalizedPriorityText)
+        )
+
+        return !coreAliases.isDisjoint(with: primaryAliases) && !usesDistanceOrDurationPrescription(reps)
+    }
+
+    func evidenceTunedCoachingLanguage(_ text: String) -> String {
+        var cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty else { return cleaned }
+
+        let replacements: [(pattern: String, replacement: String)] = [
+            (#"(?i)\bAPT correction\b"#, "pelvic-position and bracing work"),
+            (#"(?i)\banterior pelvic tilt correction\b"#, "pelvic-position and bracing work"),
+            (#"(?i)\bfix(?:ing)? your anterior pelvic tilt\b"#, "improve pelvic control and exercise position"),
+            (#"(?i)\bcorrect(?:ing|ion)? your anterior pelvic tilt\b"#, "improve pelvic control and exercise position"),
+            (#"(?i)\bcontributing to your anterior pelvic tilt\b"#, "that may be contributing to your hip-position and setup challenges"),
+            (#"(?i)\bas important as the lifting\b"#, "supports the lifting quality")
+        ]
+
+        for replacement in replacements {
+            cleaned = cleaned.replacingOccurrences(
+                of: replacement.pattern,
+                with: replacement.replacement,
+                options: .regularExpression
+            )
+        }
+
+        return cleaned
     }
 
     var exerciseMetadataCatalog: [String: ExerciseMetadata] {
@@ -1074,10 +1230,12 @@ extension ClaudeService {
             let warmup = warmupCue(for: style, primaryLift: primaryLift)
             let mobility = mobilityCue(for: style)
             let phase = phaseSentence(for: weekNumber)
-            return "\(style) session. \(phase) Warm-up: \(warmup) Mobility/activation: \(mobility)"
+            return evidenceTunedCoachingLanguage(
+                "\(style) session. \(phase) Warm-up: \(warmup) Mobility/activation: \(mobility)"
+            )
         }
 
-        return trimmed
+        return evidenceTunedCoachingLanguage(trimmed)
     }
 
     /// Only true when the note is genuinely missing content — empty, or so short it can't

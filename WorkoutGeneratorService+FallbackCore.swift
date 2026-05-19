@@ -441,11 +441,22 @@ extension ClaudeService {
         )
 
         let mapped = arranged.enumerated().map { index, item in
-            WorkoutExerciseResponse(
+            let reps = proceduralRepRange(
+                for: weekNumber,
+                exerciseName: item.name,
+                muscleTarget: item.target
+            )
+
+            return WorkoutExerciseResponse(
                 exerciseName: item.name,
                 sets: proceduralSets(for: weekNumber, exerciseName: item.name, muscleTarget: item.target),
-                reps: proceduralRepRange(for: weekNumber, exerciseName: item.name, muscleTarget: item.target),
-                tempo: proceduralTempo(for: weekNumber, exerciseName: item.name, muscleTarget: item.target),
+                reps: reps,
+                tempo: proceduralTempo(
+                    for: weekNumber,
+                    exerciseName: item.name,
+                    muscleTarget: item.target,
+                    reps: reps
+                ),
                 restSeconds: proceduralRestSeconds(for: item.name, muscleTarget: item.target),
                 notes: proceduralExerciseNotes(
                     weekNumber: weekNumber,
@@ -651,7 +662,20 @@ extension ClaudeService {
     }
 
     // EvidenceProfile.md TEMPO-001 [confidence: low]
-    func proceduralTempo(for weekNumber: Int, exerciseName: String, muscleTarget: String) -> String {
+    func proceduralTempo(
+        for weekNumber: Int,
+        exerciseName: String,
+        muscleTarget: String,
+        reps: String
+    ) -> String {
+        guard requiresExplicitTempo(
+            exerciseName: exerciseName,
+            muscleTarget: muscleTarget,
+            reps: reps
+        ) else {
+            return ""
+        }
+
         let nameText = normalizedPriorityText(exerciseName)
         switch proceduralExerciseRole(for: exerciseName, muscleTarget: muscleTarget) {
         case .anchor:
@@ -686,12 +710,26 @@ extension ClaudeService {
         rawTempo: String,
         exerciseName: String,
         muscleTarget: String,
-        weekNumber: Int
+        weekNumber: Int,
+        reps: String
     ) -> String {
+        guard requiresExplicitTempo(
+            exerciseName: exerciseName,
+            muscleTarget: muscleTarget,
+            reps: reps
+        ) else {
+            return ""
+        }
+
         if let normalized = normalizedTempo(rawTempo) {
             return normalized
         }
-        return proceduralTempo(for: weekNumber, exerciseName: exerciseName, muscleTarget: muscleTarget)
+        return proceduralTempo(
+            for: weekNumber,
+            exerciseName: exerciseName,
+            muscleTarget: muscleTarget,
+            reps: reps
+        )
     }
 
     func normalizedTempo(_ rawTempo: String) -> String? {

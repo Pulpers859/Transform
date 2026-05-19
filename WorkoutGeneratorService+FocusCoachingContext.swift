@@ -41,6 +41,15 @@ extension ClaudeService {
             || containsAny(combinedText, keywords: priorityCoverageKeywords(for: focusArea))
         guard touchesFocus else { return .none }
 
+        let coreFocusAliases = Set(
+            ["Core/Abs", "Abs", "Lower Abs", "Anterior Core", "Obliques", "Serratus"]
+                .map(normalizedPriorityText)
+        )
+        if metadata.movementPattern == "Carry",
+           !focusAliases.isDisjoint(with: coreFocusAliases) {
+            return .support
+        }
+
         if containsAny(combinedText, keywords: ["y raise", "trap 3", "scaption", "external rotation", "pull apart", "wall slide"]) {
             return .support
         }
@@ -299,16 +308,18 @@ extension ClaudeService {
         // notes with templated cues whenever they didn't match keyword heuristics — that
         // was the "generic AI slop" users were seeing.
         if isEmptyOrTooShortInsight(trimmed) {
-            return proceduralExerciseNotes(
+            return evidenceTunedCoachingLanguage(
+                proceduralExerciseNotes(
                 weekNumber: weekNumber,
                 exerciseName: exerciseName,
                 muscleTarget: muscleTarget,
                 index: exerciseIndex,
                 focus: ""
+                )
             )
         }
 
-        return trimmed
+        return evidenceTunedCoachingLanguage(trimmed)
     }
 
     func isEmptyOrTooShortInsight(_ notes: String) -> Bool {
