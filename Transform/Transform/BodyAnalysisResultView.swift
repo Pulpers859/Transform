@@ -83,6 +83,7 @@ struct BodyAnalysisResultView: View {
 
 struct AnalysisResultContent: View {
     let result: BodyAnalysisResult
+    @State private var showContextDetails = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -119,9 +120,12 @@ struct AnalysisResultContent: View {
 
             if let inputContext = result.inputContext {
                 SectionCard(title: "Context Used", icon: "text.badge.checkmark") {
-                    Text(inputContext.coachingContextSummary)
-                        .font(.body)
-                        .foregroundStyle(.secondary)
+                    CompactContextCard(
+                        intro: "The analysis used your saved profile, check-in, and recent progress context.",
+                        summaryItems: inputContext.compactSummaryItems,
+                        detailSections: inputContext.detailSections,
+                        isExpanded: $showContextDetails
+                    )
                 }
             }
 
@@ -347,6 +351,61 @@ struct BulletList: View {
                 HStack(alignment: .top, spacing: 8) {
                     Text("\u{2022}").foregroundStyle(.orange)
                     Text(item).font(.subheadline)
+                }
+            }
+        }
+    }
+}
+
+struct CompactContextCard: View {
+    let intro: String
+    let summaryItems: [String]
+    let detailSections: [AnalysisContextSection]
+    @Binding var isExpanded: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(intro)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            if !summaryItems.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(summaryItems, id: \.self) { item in
+                        HStack(alignment: .top, spacing: 8) {
+                            Image(systemName: "circle.fill")
+                                .font(.system(size: 6))
+                                .foregroundStyle(.orange)
+                                .padding(.top, 6)
+                            Text(item)
+                                .font(.subheadline)
+                                .foregroundStyle(.primary)
+                        }
+                    }
+                }
+            }
+
+            if !detailSections.isEmpty {
+                DisclosureGroup(isExpanded: $isExpanded) {
+                    VStack(alignment: .leading, spacing: 12) {
+                        ForEach(Array(detailSections.enumerated()), id: \.offset) { _, section in
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text(section.title)
+                                    .font(.caption.bold())
+                                    .foregroundStyle(.orange)
+                                ForEach(section.items, id: \.self) { item in
+                                    Text("• \(item)")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+                    }
+                    .padding(.top, 8)
+                } label: {
+                    Text(isExpanded ? "Hide details" : "Show details")
+                        .font(.caption.bold())
+                        .foregroundStyle(.orange)
                 }
             }
         }

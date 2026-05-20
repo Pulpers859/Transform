@@ -238,6 +238,28 @@ struct AnalysisInputContext: Codable {
         }
         return parts.joined(separator: "\n")
     }
+
+    var compactSummaryItems: [String] {
+        var items = profile.compactSummaryItems
+        if let checkIn {
+            items.append(contentsOf: checkIn.compactSummaryItems)
+        }
+        if let progress {
+            items.append(contentsOf: progress.compactSummaryItems)
+        }
+        return Array(items.prefix(4))
+    }
+
+    var detailSections: [AnalysisContextSection] {
+        var sections = [AnalysisContextSection(title: "Profile", items: profile.detailSummaryItems)]
+        if let checkIn, !checkIn.detailSummaryItems.isEmpty {
+            sections.append(AnalysisContextSection(title: "Current Check-In", items: checkIn.detailSummaryItems))
+        }
+        if let progress, !progress.detailSummaryItems.isEmpty {
+            sections.append(AnalysisContextSection(title: "Progress Since Prior Analysis", items: progress.detailSummaryItems))
+        }
+        return sections
+    }
 }
 
 extension AnalysisInputContext {
@@ -310,6 +332,21 @@ struct AnalysisProfileSnapshot: Codable {
             .joined(separator: "\n")
         return rendered.isEmpty ? "Profile context: (none provided)" : "Profile context:\n\(rendered)"
     }
+
+    var compactSummaryItems: [String] {
+        [
+            compactLine(label: "Goal", value: primaryGoal),
+            compactLine(label: "Training", value: trainingFrequency),
+            compactLine(label: "Recovery", value: averageSleep),
+            compactLine(label: "Equipment", value: equipmentAccess)
+        ].compactMap { $0 }
+    }
+
+    var detailSummaryItems: [String] {
+        lines.compactMap { label, value in
+            compactLine(label: label, value: value)
+        }
+    }
 }
 
 struct AnalysisCheckInSnapshot: Codable {
@@ -360,6 +397,21 @@ struct AnalysisCheckInSnapshot: Codable {
             .joined(separator: "\n")
         return rendered.isEmpty ? "Current check-in: (none provided)" : "Current check-in:\n\(rendered)"
     }
+
+    var compactSummaryItems: [String] {
+        [
+            compactLine(label: "Training", value: trainingContext),
+            compactLine(label: "Bodyweight", value: bodyweightTrend),
+            compactLine(label: "Recovery", value: recoverySleep),
+            compactLine(label: "Pain", value: sorenessPain)
+        ].compactMap { $0 }
+    }
+
+    var detailSummaryItems: [String] {
+        lines.compactMap { label, value in
+            compactLine(label: label, value: value)
+        }
+    }
 }
 
 struct AnalysisProgressSnapshot: Codable {
@@ -405,6 +457,37 @@ struct AnalysisProgressSnapshot: Codable {
         - Data quality notes: \(dataQualityNotes)
         """
     }
+
+    var compactSummaryItems: [String] {
+        var items: [String] = []
+        if !previousPriorityAreas.isEmpty {
+            items.append("Previous priorities: \(previousPriorityAreas.joined(separator: ", ").truncatedForAnalysisUI(70))")
+        }
+        items.append("Bodyweight trend: \(bodyweightTrend.truncatedForAnalysisUI(95))")
+        items.append("Nutrition adherence: \(nutritionAdherence.truncatedForAnalysisUI(95))")
+        return items
+    }
+
+    var detailSummaryItems: [String] {
+        let prioritySummary = previousPriorityAreas.isEmpty
+            ? "(none recorded)"
+            : previousPriorityAreas.joined(separator: ", ")
+        let leverage = previousTopLeverageChange.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        return [
+            "Previous priority areas: \(prioritySummary)",
+            "Previous highest-leverage change: \(leverage.isEmpty ? "(none recorded)" : leverage)",
+            "Bodyweight trend: \(bodyweightTrend)",
+            "Nutrition adherence: \(nutritionAdherence)",
+            "Workout/performance signal: \(performanceSignals)",
+            "Data quality notes: \(dataQualityNotes)"
+        ]
+    }
+}
+
+struct AnalysisContextSection {
+    let title: String
+    let items: [String]
 }
 
 struct AnalysisLoggedWeightPoint {
@@ -674,6 +757,20 @@ private extension Sequence where Element == String {
             }
         }
         return ordered
+    }
+}
+
+private func compactLine(label: String, value: String, limit: Int = 80) -> String? {
+    let cleaned = value.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !cleaned.isEmpty else { return nil }
+    return "\(label): \(cleaned.truncatedForAnalysisUI(limit))"
+}
+
+private extension String {
+    func truncatedForAnalysisUI(_ limit: Int) -> String {
+        guard count > limit else { return self }
+        let truncated = prefix(max(0, limit - 1)).trimmingCharacters(in: .whitespacesAndNewlines)
+        return "\(truncated)…"
     }
 }
 

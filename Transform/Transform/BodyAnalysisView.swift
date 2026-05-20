@@ -24,6 +24,7 @@ struct BodyAnalysisView: View {
     @State private var showDeleteConfirm = false
     @State private var sessionToDelete: BodyAnalysisSession?
     @State private var analysisTask: Task<Void, Never>?
+    @State private var showProgressContextDetails = false
     @AppStorage(AppSettingsKeys.analysisCheckInTrainingContext) private var analysisCheckInTrainingContext = Config.defaultAnalysisCheckInTrainingContext
     @AppStorage(AppSettingsKeys.analysisCheckInBodyweightTrend) private var analysisCheckInBodyweightTrend = Config.defaultAnalysisCheckInBodyweightTrend
     @AppStorage(AppSettingsKeys.analysisCheckInRecoverySleep) private var analysisCheckInRecoverySleep = Config.defaultAnalysisCheckInRecoverySleep
@@ -386,18 +387,29 @@ struct BodyAnalysisView: View {
     }
 
     func progressContextCard(snapshot: AnalysisProgressSnapshot) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
+        SectionCardLike {
             Label("Auto Progress Context", systemImage: "arrow.trianglehead.2.clockwise")
                 .font(.headline)
                 .foregroundStyle(.orange)
 
-            Text("Transform will automatically inject this retrospective summary from your saved data into the next analysis.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            CompactContextCard(
+                intro: "Transform will use recent app data from since your last analysis instead of treating the new photos like an isolated snapshot.",
+                summaryItems: snapshot.compactSummaryItems,
+                detailSections: [
+                    AnalysisContextSection(
+                        title: "Progress Summary",
+                        items: snapshot.detailSummaryItems
+                    )
+                ],
+                isExpanded: $showProgressContextDetails
+            )
+        }
+    }
 
-            Text(snapshot.summaryDescription)
-                .font(.subheadline)
-                .foregroundStyle(.primary)
+    @ViewBuilder
+    func SectionCardLike<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            content()
         }
         .padding()
         .background(Color(.secondarySystemBackground))
