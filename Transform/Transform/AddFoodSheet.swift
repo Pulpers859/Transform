@@ -353,7 +353,7 @@ struct AddFoodSheet: View {
                             .disabled(aiDescription.isEmpty || isEstimating || !canUseAI)
 
                             if !canUseAI {
-                                Text("Add a local API key through Secrets.plist or a local Config.swift edit to enable AI macro estimates.")
+                                Text(Config.anthropicKeyInlineHelpText)
                                     .font(.caption2)
                                     .foregroundStyle(.red)
                             }

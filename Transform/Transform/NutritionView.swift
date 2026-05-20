@@ -357,7 +357,7 @@ struct NutritionView: View {
             .disabled(isGeneratingNutrition || !canUseAI || latestAnalysis == nil)
 
             if !canUseAI {
-                Text("Add a local API key through Secrets.plist or a local Config.swift edit to enable AI nutrition planning.")
+                Text(Config.anthropicKeyInlineHelpText)
                     .font(.caption2)
                     .foregroundStyle(.red)
             }

@@ -48,6 +48,12 @@ struct ContentView: View {
                     title: "Storage Warning",
                     message: startupWarning
                 )
+            } else if !didShowStartupWarning, let apiKeyWarning = Config.anthropicKeyStartupAlertMessage {
+                didShowStartupWarning = true
+                appAlert = AppAlertContent(
+                    title: "API Key Setup",
+                    message: apiKeyWarning
+                )
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .persistenceSaveFailed)) { notification in

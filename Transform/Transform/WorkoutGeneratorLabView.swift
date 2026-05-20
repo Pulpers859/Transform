@@ -229,7 +229,7 @@ struct WorkoutGeneratorLabView: View {
             if selectedMode == .liveAI {
                 warningBanner(text: liveAICreditWarning, color: .orange)
                 if !canUseAI {
-                    warningBanner(text: "No Anthropic API key is configured, so Live AI mode is unavailable.", color: .red)
+                    warningBanner(text: Config.anthropicKeyInlineHelpText, color: .red)
                 }
             }
         }

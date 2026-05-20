@@ -1,10 +1,6 @@
 import Foundation
 
 enum Config {
-    // Keep this blank in git. If you want the blunt-force local-only route, you can
-    // paste your key here on your Mac and never commit that change.
-    static let bundledAnthropicAPIKey = ""
-
     static let defaultAnalysisAge = "30"
     static let defaultAnalysisSex = "Male"
     static let defaultAnalysisBuild = "Mesomorph build"
@@ -32,12 +28,22 @@ enum Config {
     static let defaultFatTargetG = 65.0
     static let defaultBodyWeightGoalLbs = 185.0
 
-    static var anthropicAPIKey: String {
-        APIKeyProvider.anthropicKey ?? bundledAnthropicAPIKey
-    }
+    static var anthropicAPIKey: String { anthropicKeyStatus.apiKey ?? "" }
 
     static var hasAnthropicKey: Bool {
-        !anthropicAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        anthropicKeyStatus.isConfigured
+    }
+
+    static var anthropicKeyStatus: AnthropicAPIKeyStatus {
+        APIKeyProvider.anthropicKeyStatus
+    }
+
+    static var anthropicKeyInlineHelpText: String {
+        anthropicKeyStatus.inlineHelpText
+    }
+
+    static var anthropicKeyStartupAlertMessage: String? {
+        anthropicKeyStatus.startupAlertMessage
     }
 
     // Anthropic snapshot IDs from the official models docs. Snapshot IDs are more stable
@@ -277,46 +283,113 @@ enum AppSettingsStore {
     }
 }
 
+enum AnthropicAPIKeyStatus: Equatable {
+    case configured(String)
+    case missingSecretsFile(expectedBundlePath: String)
+    case unreadableSecretsFile(expectedBundlePath: String)
+    case missingKey(expectedBundlePath: String)
+    case placeholderValue(expectedBundlePath: String)
+
+    var apiKey: String? {
+        switch self {
+        case .configured(let key):
+            return key
+        default:
+            return nil
+        }
+    }
+
+    var isConfigured: Bool {
+        apiKey != nil
+    }
+
+    var inlineHelpText: String {
+        switch self {
+        case .configured:
+            return ""
+        case .missingSecretsFile:
+            return "AI is unavailable. Transform looked for a bundled Secrets.plist and did not find one."
+        case .unreadableSecretsFile:
+            return "AI is unavailable. Transform found Secrets.plist but could not read it as a valid property list."
+        case .missingKey:
+            return "AI is unavailable. Secrets.plist is bundled, but ANTHROPIC_API_KEY is missing or empty."
+        case .placeholderValue:
+            return "AI is unavailable. Secrets.plist still contains the placeholder key instead of your real ANTHROPIC_API_KEY."
+        }
+    }
+
+    var startupAlertMessage: String? {
+        guard !isConfigured else { return nil }
+        return """
+        \(inlineHelpText)
+
+        Supported setup:
+        1. Create a local file named Secrets.plist beside Transform.xcodeproj.
+        2. Add ANTHROPIC_API_KEY with your real key.
+        3. Make sure that file is added to the Transform app target so it is copied into the app bundle.
+
+        Exact bundled path checked at runtime:
+        \(expectedBundlePath)
+        """
+    }
+
+    var requestFailureMessage: String {
+        startupAlertMessage ?? inlineHelpText
+    }
+
+    private var expectedBundlePath: String {
+        switch self {
+        case .configured:
+            return APIKeyProvider.expectedBundleSecretsPath
+        case .missingSecretsFile(let path),
+             .unreadableSecretsFile(let path),
+             .missingKey(let path),
+             .placeholderValue(let path):
+            return path
+        }
+    }
+}
+
 enum APIKeyProvider {
-    private static let envKey = "ANTHROPIC_API_KEY"
     private static let plistKey = "ANTHROPIC_API_KEY"
     private static let secretsPlistName = "Secrets"
-
-    static var anthropicKey: String? {
-        if let env = cleanedSecret(ProcessInfo.processInfo.environment[envKey]) {
-            return env
-        }
-
-        if let url = Bundle.main.url(forResource: secretsPlistName, withExtension: "plist"),
-           let data = try? Data(contentsOf: url),
-           let object = try? PropertyListSerialization.propertyList(from: data, format: nil),
-           let dictionary = object as? [String: Any],
-           let secret = cleanedSecret(dictionary[plistKey] as? String) {
-            return secret
-        }
-
-        if let plistValue = cleanedSecret(Bundle.main.object(forInfoDictionaryKey: plistKey) as? String) {
-            return plistValue
-        }
-
-        return nil
+    static var expectedBundleSecretsPath: String {
+        (Bundle.main.bundlePath as NSString).appendingPathComponent("\(secretsPlistName).plist")
     }
 
-    private static func cleanedSecret(_ rawValue: String?) -> String? {
-        guard let rawValue else { return nil }
+    static var anthropicKeyStatus: AnthropicAPIKeyStatus {
+        let expectedPath = expectedBundleSecretsPath
+
+        guard let url = Bundle.main.url(forResource: secretsPlistName, withExtension: "plist") else {
+            return .missingSecretsFile(expectedBundlePath: expectedPath)
+        }
+
+        guard let data = try? Data(contentsOf: url),
+              let object = try? PropertyListSerialization.propertyList(from: data, format: nil),
+              let dictionary = object as? [String: Any] else {
+            return .unreadableSecretsFile(expectedBundlePath: expectedPath)
+        }
+
+        guard let rawValue = dictionary[plistKey] as? String else {
+            return .missingKey(expectedBundlePath: expectedPath)
+        }
+
         let cleaned = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !cleaned.isEmpty else { return nil }
-        guard !cleaned.hasPrefix("$("), !cleaned.hasSuffix(")") else {
-            return nil
+        guard !cleaned.isEmpty else {
+            return .missingKey(expectedBundlePath: expectedPath)
         }
-        guard cleaned.lowercased() != "your_api_key_here" else {
-            return nil
+
+        guard !placeholderValues.contains(cleaned.lowercased()) else {
+            return .placeholderValue(expectedBundlePath: expectedPath)
         }
-        guard cleaned.lowercased() != "sk-ant-your-real-key-goes-here" else {
-            return nil
-        }
-        return cleaned
+
+        return .configured(cleaned)
     }
+
+    private static let placeholderValues: Set<String> = [
+        "your_api_key_here",
+        "sk-ant-your-real-key-goes-here"
+    ]
 }
 
 enum GeneratedContentSource: String, CaseIterable {
