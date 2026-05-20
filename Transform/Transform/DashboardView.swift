@@ -106,7 +106,6 @@ struct DashboardView: View {
                         VStack(spacing: 16) {
                             todayRingsCard
                             weightCard
-                            dataSafetyCard
                             weekCalorieChart
                             bottomPadding
                         }
@@ -478,19 +477,6 @@ struct DashboardView: View {
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
-        }
-        .padding(16)
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 16))
-    }
-
-    var dataSafetyCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            sectionLabel("Data Safety")
-
-            Text("Your app data is stored locally and should persist across normal app updates. Export backups regularly so you can restore if a reinstall/device reset ever occurs.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
         }
         .padding(16)
         .background(Color(.secondarySystemBackground))

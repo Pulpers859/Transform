@@ -357,7 +357,7 @@ struct NutritionView: View {
             .disabled(isGeneratingNutrition || !canUseAI || latestAnalysis == nil)
 
             if !canUseAI {
-                Text("Add your API key in Config to enable AI nutrition planning.")
+                Text("Add a local API key through Secrets.plist or a local Config.swift edit to enable AI nutrition planning.")
                     .font(.caption2)
                     .foregroundStyle(.red)
             }
@@ -783,4 +783,3 @@ struct NutritionProtocolBuildResult {
     let followupWeeks: [NutritionWeekResponse]
     let partialGenerationWarning: String?
 }
-

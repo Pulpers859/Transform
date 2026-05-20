@@ -1,8 +1,8 @@
 import Foundation
 
 enum Config {
-    // Leave this blank for normal use. Local secrets should come from an untracked
-    // Xcode config / plist on your own machine rather than being hardcoded in git.
+    // Keep this blank in git. If you want the blunt-force local-only route, you can
+    // paste your key here on your Mac and never commit that change.
     static let bundledAnthropicAPIKey = ""
 
     static let defaultAnalysisAge = "30"
@@ -287,16 +287,16 @@ enum APIKeyProvider {
             return env
         }
 
-        if let plistValue = cleanedSecret(Bundle.main.object(forInfoDictionaryKey: plistKey) as? String) {
-            return plistValue
-        }
-
         if let url = Bundle.main.url(forResource: secretsPlistName, withExtension: "plist"),
            let data = try? Data(contentsOf: url),
            let object = try? PropertyListSerialization.propertyList(from: data, format: nil),
            let dictionary = object as? [String: Any],
            let secret = cleanedSecret(dictionary[plistKey] as? String) {
             return secret
+        }
+
+        if let plistValue = cleanedSecret(Bundle.main.object(forInfoDictionaryKey: plistKey) as? String) {
+            return plistValue
         }
 
         return nil

@@ -130,7 +130,7 @@ final class AnthropicClient {
 
         let apiKey = Config.anthropicAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !apiKey.isEmpty else {
-            throw ClaudeError.apiError("Missing API key. Provide ANTHROPIC_API_KEY through a local Secrets.xcconfig, Secrets.plist, or environment variable.")
+            throw ClaudeError.apiError("Missing API key. Add a local Secrets.plist with ANTHROPIC_API_KEY or set bundledAnthropicAPIKey locally in Config.swift.")
         }
 
         let encodedBody = try JSONSerialization.data(withJSONObject: body)

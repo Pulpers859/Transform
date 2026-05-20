@@ -130,7 +130,7 @@ struct WorkoutView: View {
 
                     generateWeekOneButton(result: result)
                     if !canUseAI {
-                        Text("Set your API key in Config to enable workout generation.")
+                        Text("Add a local API key through Secrets.plist or a local Config.swift edit to enable workout generation.")
                             .font(.caption2)
                             .foregroundStyle(.red)
                     }

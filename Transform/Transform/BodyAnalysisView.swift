@@ -100,7 +100,7 @@ struct BodyAnalysisView: View {
                     if !photos.isEmpty {
                         analyzeButton
                         if !canUseAI {
-                            Text("Set your API key in Config to run AI analysis.")
+                            Text("Add a local API key through Secrets.plist or a local Config.swift edit to run AI analysis.")
                                 .font(.caption2)
                                 .foregroundStyle(.red)
                         }
