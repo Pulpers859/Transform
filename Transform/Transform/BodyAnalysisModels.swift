@@ -239,6 +239,33 @@ struct AnalysisInputContext: Codable {
         return parts.joined(separator: "\n")
     }
 
+    var generationSummary: String {
+        var sections: [String] = []
+
+        let profileItems = profile.generationSummaryItems
+        if !profileItems.isEmpty {
+            sections.append("Profile:\n" + profileItems.map { "- \($0)" }.joined(separator: "\n"))
+        }
+
+        if let checkIn {
+            let checkInItems = checkIn.generationSummaryItems
+            if !checkInItems.isEmpty {
+                sections.append("Current check-in:\n" + checkInItems.map { "- \($0)" }.joined(separator: "\n"))
+            }
+        }
+
+        if let progress {
+            let progressItems = progress.generationSummaryItems
+            if !progressItems.isEmpty {
+                sections.append("Progress since prior analysis:\n" + progressItems.map { "- \($0)" }.joined(separator: "\n"))
+            }
+        }
+
+        let summary = sections.joined(separator: "\n\n").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !summary.isEmpty else { return "(none saved with this analysis)" }
+        return summary.truncatedForAnalysisUI(1400)
+    }
+
     var compactSummaryItems: [String] {
         var items = profile.compactSummaryItems
         if let checkIn {
@@ -342,6 +369,15 @@ struct AnalysisProfileSnapshot: Codable {
         ].compactMap { $0 }
     }
 
+    var generationSummaryItems: [String] {
+        [
+            compactLine(label: "Goal", value: primaryGoal, limit: 70),
+            compactLine(label: "Training frequency", value: trainingFrequency, limit: 55),
+            compactLine(label: "Recovery baseline", value: averageSleep, limit: 55),
+            compactLine(label: "Equipment", value: equipmentAccess, limit: 60)
+        ].compactMap { $0 }
+    }
+
     var detailSummaryItems: [String] {
         lines.compactMap { label, value in
             compactLine(label: label, value: value)
@@ -407,6 +443,15 @@ struct AnalysisCheckInSnapshot: Codable {
         ].compactMap { $0 }
     }
 
+    var generationSummaryItems: [String] {
+        [
+            compactLine(label: "Current training", value: trainingContext, limit: 75),
+            compactLine(label: "Bodyweight/visual trend", value: bodyweightTrend, limit: 70),
+            compactLine(label: "Recovery this week", value: recoverySleep, limit: 65),
+            compactLine(label: "Pain/soreness flags", value: sorenessPain, limit: 65)
+        ].compactMap { $0 }
+    }
+
     var detailSummaryItems: [String] {
         lines.compactMap { label, value in
             compactLine(label: label, value: value)
@@ -465,6 +510,29 @@ struct AnalysisProgressSnapshot: Codable {
         }
         items.append("Bodyweight trend: \(bodyweightTrend.truncatedForAnalysisUI(95))")
         items.append("Nutrition adherence: \(nutritionAdherence.truncatedForAnalysisUI(95))")
+        return items
+    }
+
+    var generationSummaryItems: [String] {
+        var items: [String] = []
+        if !previousPriorityAreas.isEmpty {
+            items.append("Previous priorities: \(previousPriorityAreas.joined(separator: ", ").truncatedForAnalysisUI(65))")
+        }
+
+        let leverage = previousTopLeverageChange.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !leverage.isEmpty {
+            items.append("Previous top change: \(leverage.truncatedForAnalysisUI(75))")
+        }
+
+        items.append("Bodyweight trend: \(bodyweightTrend.truncatedForAnalysisUI(75))")
+        items.append("Nutrition adherence: \(nutritionAdherence.truncatedForAnalysisUI(75))")
+        items.append("Performance signal: \(performanceSignals.truncatedForAnalysisUI(90))")
+
+        let quality = dataQualityNotes.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !quality.isEmpty {
+            items.append("Data quality: \(quality.truncatedForAnalysisUI(70))")
+        }
+
         return items
     }
 

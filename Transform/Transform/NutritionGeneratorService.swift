@@ -804,7 +804,7 @@ extension ClaudeService {
     private func nutritionAnalysisContext(from analysis: BodyAnalysisResult) -> String {
         let priority = analysis.programmingPriorityAreas.joined(separator: ", ")
         let dietRecs = analysis.dietRecommendations.joined(separator: " | ")
-        let inputContextSummary = analysis.inputContext?.coachingContextSummary
+        let inputContextSummary = analysis.inputContext?.generationSummary
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let regions: String
         if analysis.regionBreakdown.isEmpty {
