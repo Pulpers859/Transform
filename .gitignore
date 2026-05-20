@@ -5,6 +5,8 @@ build/
 *.xcworkspace/xcuserdata/
 *.xcodeproj/xcuserdata/
 *.xcuserstate
+Secrets.xcconfig
+Secrets.plist
 
 # SwiftPM
 .build/

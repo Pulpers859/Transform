@@ -422,6 +422,15 @@ struct AddExerciseWeightSheet: View {
         guard let weight = parsedWeight else { return }
 
         let trimmedNotes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
+        let performanceLog = ExercisePerformanceLog(
+            loggedAt: loggedAt,
+            exerciseName: exercise.exerciseName,
+            weightLbs: weight,
+            repsCompleted: parsedReps,
+            notes: trimmedNotes,
+            muscleTarget: exercise.muscleTarget
+        )
+        modelContext.insert(performanceLog)
 
         if let weightSummary {
             weightSummary.applyLog(

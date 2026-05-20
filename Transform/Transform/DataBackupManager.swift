@@ -35,6 +35,7 @@ struct TransformBackupPayload: Codable {
     let analyses: [AnalysisSnapshot]
     let workouts: [WorkoutProgramSnapshot]
     let exerciseWeights: [ExerciseWeightSnapshot]?
+    let exercisePerformanceLogs: [ExercisePerformanceLogSnapshot]?
 
     init(
         version: Int,
@@ -46,7 +47,8 @@ struct TransformBackupPayload: Codable {
         savedNutritionProtocols: [SavedNutritionProtocolSnapshot]?,
         analyses: [AnalysisSnapshot],
         workouts: [WorkoutProgramSnapshot],
-        exerciseWeights: [ExerciseWeightSnapshot]?
+        exerciseWeights: [ExerciseWeightSnapshot]?,
+        exercisePerformanceLogs: [ExercisePerformanceLogSnapshot]?
     ) {
         self.version = version
         self.exportedAt = exportedAt
@@ -58,6 +60,7 @@ struct TransformBackupPayload: Codable {
         self.analyses = analyses
         self.workouts = workouts
         self.exerciseWeights = exerciseWeights
+        self.exercisePerformanceLogs = exercisePerformanceLogs
     }
 }
 
@@ -192,6 +195,16 @@ struct ExerciseWeightSnapshot: Codable {
     let bestLoggedAt: Date?
     let bestRepsCompleted: Int?
     let bestNotes: String?
+}
+
+struct ExercisePerformanceLogSnapshot: Codable {
+    let loggedAt: Date
+    let exerciseName: String
+    let weightLbs: Double
+    let repsCompleted: Int?
+    let notes: String
+    let muscleTarget: String
+    let canonicalExerciseKey: String?
 }
 
 private extension WeightSnapshot {
@@ -571,6 +584,46 @@ private extension ExerciseWeightSnapshot {
     }
 }
 
+private extension ExercisePerformanceLogSnapshot {
+    var resolvedCanonicalKey: String {
+        let recomputed = ExerciseWeightEntry.canonicalLookupKey(exerciseName)
+        if !recomputed.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return recomputed
+        }
+        return canonicalExerciseKey ?? recomputed
+    }
+
+    init(_ entry: ExercisePerformanceLog) {
+        self.init(
+            loggedAt: entry.loggedAt,
+            exerciseName: entry.exerciseName,
+            weightLbs: entry.weightLbs,
+            repsCompleted: entry.repsCompleted,
+            notes: entry.notes,
+            muscleTarget: entry.muscleTarget,
+            canonicalExerciseKey: entry.canonicalExerciseKey
+        )
+    }
+
+    var dedupeKey: String {
+        let repText = repsCompleted.map(String.init) ?? "nil"
+        return "\(resolvedCanonicalKey)-\(loggedAt.timeIntervalSince1970)-\(weightLbs)-\(repText)-\(notes)"
+    }
+
+    func makeModel() -> ExercisePerformanceLog {
+        let entry = ExercisePerformanceLog(
+            loggedAt: loggedAt,
+            exerciseName: exerciseName,
+            weightLbs: weightLbs,
+            repsCompleted: repsCompleted,
+            notes: notes,
+            muscleTarget: muscleTarget
+        )
+        entry.canonicalExerciseKey = resolvedCanonicalKey
+        return entry
+    }
+}
+
 private extension LegacyNutritionSnapshot {
     func makeNutritionSnapshot() -> NutritionSnapshot {
         NutritionSnapshot(
@@ -590,8 +643,8 @@ private extension LegacyNutritionSnapshot {
 final class DataBackupManager {
     static let shared = DataBackupManager()
     private init() {}
-    let currentBackupVersion = 3
-    private let supportedBackupVersions: Set<Int> = [1, 2, 3]
+    let currentBackupVersion = 4
+    private let supportedBackupVersions: Set<Int> = [1, 2, 3, 4]
 
     func exportDocument(using modelContext: ModelContext) throws -> BackupDocument {
         let payload = try buildPayload(using: modelContext)
@@ -653,6 +706,7 @@ final class DataBackupManager {
         let analyses = try modelContext.fetch(FetchDescriptor<BodyAnalysisSession>())
         let workouts = try modelContext.fetch(FetchDescriptor<WorkoutProgram>())
         let exerciseWeights = try modelContext.fetch(FetchDescriptor<ExerciseWeightEntry>())
+        let exercisePerformanceLogs = try modelContext.fetch(FetchDescriptor<ExercisePerformanceLog>())
 
         return TransformBackupPayload(
             version: currentBackupVersion,
@@ -664,7 +718,8 @@ final class DataBackupManager {
             savedNutritionProtocols: savedNutritionProtocols.map(SavedNutritionProtocolSnapshot.init),
             analyses: analyses.map(AnalysisSnapshot.init),
             workouts: workouts.map(WorkoutProgramSnapshot.init),
-            exerciseWeights: exerciseWeights.map(ExerciseWeightSnapshot.init)
+            exerciseWeights: exerciseWeights.map(ExerciseWeightSnapshot.init),
+            exercisePerformanceLogs: exercisePerformanceLogs.map(ExercisePerformanceLogSnapshot.init)
         )
     }
 
@@ -677,6 +732,7 @@ final class DataBackupManager {
         let existingAnalyses = try modelContext.fetch(FetchDescriptor<BodyAnalysisSession>())
         let existingWorkouts = try modelContext.fetch(FetchDescriptor<WorkoutProgram>())
         var existingExerciseWeights = try modelContext.fetch(FetchDescriptor<ExerciseWeightEntry>())
+        let existingExercisePerformanceLogs = try modelContext.fetch(FetchDescriptor<ExercisePerformanceLog>())
 
         var weightKeys = Set(existingWeights.map { WeightSnapshot($0).dedupeKey })
         var measurementKeys = Set(existingMeasurements.map { MeasurementSnapshot($0).dedupeKey })
@@ -688,6 +744,7 @@ final class DataBackupManager {
         var analysisKeys = Set(existingAnalyses.map { AnalysisSnapshot($0).dedupeKey })
         var workoutKeys = Set(existingWorkouts.map { $0.id.uuidString })
         var exerciseWeightKeys = Set(existingExerciseWeights.map { ExerciseWeightSnapshot($0).dedupeKey })
+        var exercisePerformanceLogKeys = Set(existingExercisePerformanceLogs.map { ExercisePerformanceLogSnapshot($0).dedupeKey })
 
         for item in payload.weights {
             let key = item.dedupeKey
@@ -755,6 +812,13 @@ final class DataBackupManager {
             exerciseWeightKeys.insert(key)
         }
 
+        for item in payload.exercisePerformanceLogs ?? [] {
+            let key = item.dedupeKey
+            guard !exercisePerformanceLogKeys.contains(key) else { continue }
+            modelContext.insert(item.makeModel())
+            exercisePerformanceLogKeys.insert(key)
+        }
+
         _ = try ExerciseWeightStore.normalizeAndConsolidate(in: modelContext)
     }
 
@@ -769,7 +833,8 @@ final class DataBackupManager {
             savedNutritionProtocols: nil,
             analyses: legacy.analyses,
             workouts: legacy.workouts,
-            exerciseWeights: []
+            exerciseWeights: [],
+            exercisePerformanceLogs: []
         )
     }
 

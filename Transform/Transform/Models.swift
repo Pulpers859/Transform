@@ -220,6 +220,12 @@ private extension BodyAnalysisSession {
 
         return BodyAnalysisResult(
             overallAssessment: analysisResult,
+            trainingAssessment: "",
+            nutritionAssessment: "",
+            recoveryRiskAssessment: "",
+            adherenceAssessment: "",
+            analysisLimitations: "",
+            inputContext: nil,
             regionBreakdown: [],
             topLeverageChange: "",
             priorityMuscles: legacyPriorityMuscles,

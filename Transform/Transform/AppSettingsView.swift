@@ -11,6 +11,11 @@ struct AppSettingsView: View {
     @AppStorage(AppSettingsKeys.analysisCurrentWeight) private var analysisCurrentWeight = Config.defaultAnalysisCurrentWeight
     @AppStorage(AppSettingsKeys.analysisOccupation) private var analysisOccupation = Config.defaultAnalysisOccupation
     @AppStorage(AppSettingsKeys.analysisTrainingFrequency) private var analysisTrainingFrequency = Config.defaultAnalysisTrainingFrequency
+    @AppStorage(AppSettingsKeys.analysisTrainingAge) private var analysisTrainingAge = Config.defaultAnalysisTrainingAge
+    @AppStorage(AppSettingsKeys.analysisEquipmentAccess) private var analysisEquipmentAccess = Config.defaultAnalysisEquipmentAccess
+    @AppStorage(AppSettingsKeys.analysisAverageSleep) private var analysisAverageSleep = Config.defaultAnalysisAverageSleep
+    @AppStorage(AppSettingsKeys.analysisPainHistory) private var analysisPainHistory = Config.defaultAnalysisPainHistory
+    @AppStorage(AppSettingsKeys.analysisActivityLevel) private var analysisActivityLevel = Config.defaultAnalysisActivityLevel
     @AppStorage(AppSettingsKeys.analysisPrimaryGoal) private var analysisPrimaryGoal = Config.defaultAnalysisPrimaryGoal
     @AppStorage(AppSettingsKeys.analysisLifestyleConstraints) private var analysisLifestyleConstraints = Config.defaultAnalysisLifestyleConstraints
 
@@ -24,7 +29,7 @@ struct AppSettingsView: View {
         NavigationStack {
             Form {
                 Section("Body Analysis Profile") {
-                    Text("These fields shape the Claude body-analysis prompt. Leave a field blank only if you truly want that detail treated as unknown.")
+                    Text("These fields shape the body-analysis prompt and make the assessment smarter than photos alone. Leave a field blank only if you truly want that detail treated as unknown.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
 
@@ -35,6 +40,11 @@ struct AppSettingsView: View {
                     settingsField("Current Weight", text: $analysisCurrentWeight)
                     settingsField("Occupation", text: $analysisOccupation)
                     settingsField("Training Frequency", text: $analysisTrainingFrequency)
+                    settingsField("Training Age / Experience", text: $analysisTrainingAge, axis: .vertical)
+                    settingsField("Equipment Access", text: $analysisEquipmentAccess, axis: .vertical)
+                    settingsField("Average Sleep / Recovery", text: $analysisAverageSleep, axis: .vertical)
+                    settingsField("Pain / Injury Context", text: $analysisPainHistory, axis: .vertical)
+                    settingsField("Activity Level", text: $analysisActivityLevel, axis: .vertical)
                     settingsField("Primary Goal", text: $analysisPrimaryGoal, axis: .vertical)
                     settingsField("Lifestyle Constraints", text: $analysisLifestyleConstraints, axis: .vertical)
                 }
@@ -108,6 +118,11 @@ struct AppSettingsView: View {
         analysisCurrentWeight = Config.defaultAnalysisCurrentWeight
         analysisOccupation = Config.defaultAnalysisOccupation
         analysisTrainingFrequency = Config.defaultAnalysisTrainingFrequency
+        analysisTrainingAge = Config.defaultAnalysisTrainingAge
+        analysisEquipmentAccess = Config.defaultAnalysisEquipmentAccess
+        analysisAverageSleep = Config.defaultAnalysisAverageSleep
+        analysisPainHistory = Config.defaultAnalysisPainHistory
+        analysisActivityLevel = Config.defaultAnalysisActivityLevel
         analysisPrimaryGoal = Config.defaultAnalysisPrimaryGoal
         analysisLifestyleConstraints = Config.defaultAnalysisLifestyleConstraints
 

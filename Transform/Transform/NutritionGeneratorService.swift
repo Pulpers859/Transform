@@ -802,8 +802,10 @@ extension ClaudeService {
     // MARK: - Context
 
     private func nutritionAnalysisContext(from analysis: BodyAnalysisResult) -> String {
-        let priority = analysis.priorityMuscles.joined(separator: ", ")
+        let priority = analysis.programmingPriorityAreas.joined(separator: ", ")
         let dietRecs = analysis.dietRecommendations.joined(separator: " | ")
+        let inputContextSummary = analysis.inputContext?.coachingContextSummary
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let regions: String
         if analysis.regionBreakdown.isEmpty {
             regions = "(none provided)"
@@ -822,6 +824,9 @@ extension ClaudeService {
         Top leverage change: \(analysis.topLeverageChange.nTrimmedOr("(not provided)"))
 
         Priority muscles (drive protein prioritization and leucine timing): \(priority.isEmpty ? "(none)" : priority)
+
+        User profile, check-in, and progress context:
+        \(inputContextSummary.isEmpty ? "(none saved with this analysis)" : inputContextSummary)
 
         Region breakdown:
         \(regions)

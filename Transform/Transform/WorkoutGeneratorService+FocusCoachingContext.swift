@@ -578,6 +578,7 @@ extension ClaudeService {
         let priority = analysis.programmingPriorityAreas.joined(separator: ", ")
         let workoutRecs = analysis.workoutRecommendations.joined(separator: " | ")
         let dietRecs = analysis.dietRecommendations.joined(separator: " | ")
+        let inputContextSummary = analysis.inputContext?.coachingContextSummary.trimmedOr(default: "") ?? ""
 
         // Region breakdown — rich, per-region signal the AI can tie exercises to.
         let regions: String
@@ -610,6 +611,9 @@ extension ClaudeService {
         Top leverage change: \(analysis.topLeverageChange.trimmedOr(default: "(not provided)"))
 
         Priority muscles (these drive weekly volume allocation): \(priority.isEmpty ? "(none)" : priority)
+
+        User profile and current check-in context:
+        \(inputContextSummary.isEmpty ? "(none saved with this analysis)" : inputContextSummary)
 
         Region breakdown:
         \(regions)

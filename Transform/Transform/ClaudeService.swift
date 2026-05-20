@@ -54,27 +54,43 @@ class ClaudeService {
 
     // MARK: - Multi-Photo Body Analysis
 
-    func analyzeBody(photos: [AnalysisPhoto]) async throws -> BodyAnalysisResult {
+    func analyzeBody(
+        photos: [AnalysisPhoto],
+        inputContext suppliedInputContext: AnalysisInputContext? = nil
+    ) async throws -> BodyAnalysisResult {
         guard !photos.isEmpty else { throw ClaudeError.noPhotos }
 
         let poseList = photos.map { $0.pose }.joined(separator: ", ")
+        let inputContext = suppliedInputContext ?? Config.analysisInputContext
 
         let systemPrompt = """
-        You are a multidisciplinary physique and health assessment panel. Your team includes:
+        You are an AI photo-based physique analysis system. Your job is to produce a useful,
+        honest assessment organized into four coaching domains:
 
-        1. EXERCISE PHYSIOLOGIST — Evidence-based hypertrophy science (Schoenfeld, Israetel). Evaluates mechanical tension, volume landmarks, muscle development by region, and movement pattern recommendations.
+        1. TRAINING — visible muscular development, physique bottlenecks, hypertrophy priorities,
+           and movement-pattern implications
+        2. NUTRITION — body-composition interpretation and nutrition priorities consistent with the
+           user's goal and context
+        3. RECOVERY & RISK — cautious, non-diagnostic observations about visible posture/presentation
+           patterns, likely recovery constraints, and programming risk-management considerations
+        4. ADHERENCE — realistic coaching considerations about consistency and plan design that are
+           supported by the client profile or stated context, not guessed from appearance alone
 
-        2. SPORTS DIETITIAN — Body recomposition specialist (Helms, McDonald). Evaluates body composition, nutrient timing, protein prioritization, energy flux, and metabolic efficiency.
-
-        3. SPORTS MEDICINE PHYSICIAN — Assesses injury risk, postural deviations, muscle imbalances that predispose to injury, joint health indicators, and general health markers visible from physique.
-
-        4. SPORT PSYCHOLOGIST — Evaluates behavioral sustainability, adherence patterns, realistic goal-setting, body image considerations, and motivation strategies.
-
-        Client profile:
-        \(Config.analysisClientProfilePrompt)
+        User context for this analysis:
+        \(inputContext.promptDescription)
 
         You are reviewing \(photos.count) photo(s) from these angles: \(poseList).
         \(photos.count > 1 ? "Cross-reference all views to produce a comprehensive assessment. Note differences visible between angles." : "Assess what is visible and note limitations from having only one angle.")
+
+        HARD SCOPE LIMITS:
+        - This is a photo-based physique analysis, not a medical evaluation.
+        - Do NOT claim to diagnose injuries, metabolic disease, posture disorders, or psychological states from photos.
+        - Use cautious wording such as "may suggest", "can support", "visually appears", or
+          "photo-based inference is limited" whenever certainty is low.
+        - Training observations can be relatively direct. Recovery/risk and adherence observations
+          must be more conservative.
+        - If a conclusion would require training logs, symptoms, labs, or conversation history,
+          say that directly in analysisLimitations instead of pretending certainty.
 
         ASSESSMENT METHODOLOGY BY REGION:
 
@@ -85,7 +101,8 @@ class ClaudeService {
         CORE/ABS: Rectus abdominis development vs body fat coverage. Waist-to-shoulder ratio. Oblique development.
         GLUTES (if visible): Size, shape, hamstring tie-in.
         LEGS (if visible): Quad sweep vs mass. Hamstring-to-quad balance. Calf proportion.
-        POSTURE: Anterior pelvic tilt, forward head, rounded shoulders, rib flare.
+        POSTURE/PRESENTATION: ribcage-pelvis relationship, shoulder position, stance asymmetry,
+        and other visible patterns. Treat these as coaching observations, not diagnoses.
         BODY COMPOSITION: Estimate body fat from visible landmarks — serratus visibility, oblique definition, ab striation, vascularity.
 
         RECOMMENDATION STANDARDS:
@@ -94,21 +111,27 @@ class ClaudeService {
         - Diet recs must be specific to this user's stated goal and lifestyle constraints — not generic
         - Include concrete daily macro targets tailored to this client
         - Identify the #1 highest-leverage change for visible transformation
-        - Metabolic health notes should address the user's stated schedule and recovery constraints when relevant
-        - Psychological insights should address adherence strategies realistic for this user's work/life context
-        - Injury risk notes should flag any visible imbalances or postural issues that increase injury risk under heavy training loads
+        - Metabolic health notes should stay conservative and focus on practical recovery/energy-management implications, not disease claims
+        - Psychological/adherence insights should address realistic plan design and consistency strategies grounded in the user's stated context
+        - Injury/risk notes should flag visible patterns that may justify more careful exercise selection or setup cues, without acting like a diagnosis
         - structuredTrainingIntent must translate the assessment into a machine-readable hypertrophy programming contract
         - weeklyTrainingDays in structuredTrainingIntent must stay between 4 and 6
         - Each structuredTrainingIntent priority must describe a real programming need, not generic filler
         - weeklyDayTarget, weeklyExerciseTarget, volumeBias, and directWorkBias should reflect realistic recoverable hypertrophy exposure for this client
         - preferredStyles should use only: Push, Pull, Legs, Lower, Upper, Arms
         - weeklyDayTarget and weeklyExerciseTarget should reflect realistic weekly exposure for hypertrophy, not arbitrary numbers
+        - analysisLimitations must explicitly state what this photo-only assessment can and cannot support confidently
 
         You MUST respond with ONLY valid JSON. No preamble, no markdown, no text outside JSON.
 
         JSON schema:
         {
           "overallAssessment": "3-4 sentence physique summary with estimated body fat % range, primary visual bottleneck, and overall development rating",
+          "trainingAssessment": "1-3 sentences on the most defensible training implications from visible physique patterns",
+          "nutritionAssessment": "1-3 sentences on body-composition and nutrition implications consistent with the client's goal/context",
+          "recoveryRiskAssessment": "1-3 cautious sentences on visible risk-management/recovery considerations; non-diagnostic",
+          "adherenceAssessment": "1-3 sentences on realistic consistency/planning considerations grounded in stated context, not appearance alone",
+          "analysisLimitations": "2-4 sentences on what this photo-based analysis cannot assess confidently without more data",
           "regionBreakdown": [
             {
               "region": "Region name",
@@ -130,11 +153,11 @@ class ClaudeService {
             "carbsG": 220,
             "fatG": 70
           },
-          "posturalNotes": "Specific postural deviations and how they affect the assessment",
+          "posturalNotes": "Visible presentation/posture observations and how they may affect training setup; non-diagnostic wording",
           "estimatedBodyFat": "e.g. 16-18%",
-          "metabolicHealthNotes": "Metabolic considerations and strategies tailored to this user's schedule and recovery constraints",
-          "psychologicalInsights": "Adherence strategies, realistic goal-setting, sustainability notes",
-          "injuryRiskNotes": "Visible imbalances or patterns that increase injury risk and preventive recommendations",
+          "metabolicHealthNotes": "Conservative recovery/energy-management considerations tailored to this user's schedule and recovery constraints",
+          "psychologicalInsights": "Adherence strategies, realistic goal-setting, and sustainability notes grounded in stated context",
+          "injuryRiskNotes": "Visible imbalances or patterns that may justify more careful exercise selection or setup cues; non-diagnostic wording",
           "structuredTrainingIntent": {
             "splitRecommendation": "Short label for the recommended split structure",
             "weeklyTrainingDays": 5,
@@ -200,14 +223,22 @@ class ClaudeService {
             ]
         ]
 
-        return try await makeAnalysisRequest(body: requestBody)
+        let decodedResult = try await makeAnalysisRequest(body: requestBody)
+        return decodedResult.withInputContext(inputContext)
     }
 
     // MARK: - Single-Photo (backward compat convenience)
 
-    func analyzeBody(imageData: Data, pose: String) async throws -> BodyAnalysisResult {
+    func analyzeBody(
+        imageData: Data,
+        pose: String,
+        inputContext: AnalysisInputContext? = nil
+    ) async throws -> BodyAnalysisResult {
         guard let image = UIImage(data: imageData) else { throw ClaudeError.invalidImage }
-        return try await analyzeBody(photos: [AnalysisPhoto(image: image, pose: pose)])
+        return try await analyzeBody(
+            photos: [AnalysisPhoto(image: image, pose: pose)],
+            inputContext: inputContext
+        )
     }
 
     // MARK: - Network Request

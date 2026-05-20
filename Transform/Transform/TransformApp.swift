@@ -37,7 +37,8 @@ struct StartupConfiguration {
             WorkoutProgram.self,
             WorkoutDay.self,
             WorkoutExercise.self,
-            ExerciseWeightEntry.self
+            ExerciseWeightEntry.self,
+            ExercisePerformanceLog.self
         ])
 
         let diskConfig = ModelConfiguration(

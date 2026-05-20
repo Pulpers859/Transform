@@ -4,6 +4,10 @@ import SwiftData
 struct BodyAnalysisView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \BodyAnalysisSession.date, order: .reverse) private var sessions: [BodyAnalysisSession]
+    @Query(sort: \WeightEntry.date, order: .reverse) private var weightEntries: [WeightEntry]
+    @Query(sort: \NutritionEntry.date, order: .reverse) private var nutritionEntries: [NutritionEntry]
+    @Query(sort: \ExerciseWeightEntry.loggedAt, order: .reverse) private var exerciseWeightEntries: [ExerciseWeightEntry]
+    @Query(sort: \ExercisePerformanceLog.loggedAt, order: .reverse) private var exercisePerformanceLogs: [ExercisePerformanceLog]
 
     // Multi-photo state
     @State private var photos: [AnalysisPhoto] = []
@@ -20,6 +24,12 @@ struct BodyAnalysisView: View {
     @State private var showDeleteConfirm = false
     @State private var sessionToDelete: BodyAnalysisSession?
     @State private var analysisTask: Task<Void, Never>?
+    @AppStorage(AppSettingsKeys.analysisCheckInTrainingContext) private var analysisCheckInTrainingContext = Config.defaultAnalysisCheckInTrainingContext
+    @AppStorage(AppSettingsKeys.analysisCheckInBodyweightTrend) private var analysisCheckInBodyweightTrend = Config.defaultAnalysisCheckInBodyweightTrend
+    @AppStorage(AppSettingsKeys.analysisCheckInRecoverySleep) private var analysisCheckInRecoverySleep = Config.defaultAnalysisCheckInRecoverySleep
+    @AppStorage(AppSettingsKeys.analysisCheckInStressSchedule) private var analysisCheckInStressSchedule = Config.defaultAnalysisCheckInStressSchedule
+    @AppStorage(AppSettingsKeys.analysisCheckInSorenessPain) private var analysisCheckInSorenessPain = Config.defaultAnalysisCheckInSorenessPain
+    @AppStorage(AppSettingsKeys.analysisCheckInNutritionAdherence) private var analysisCheckInNutritionAdherence = Config.defaultAnalysisCheckInNutritionAdherence
 
     let poses = ["Front", "Back", "Side (Left)", "Side (Right)"]
 
@@ -32,11 +42,61 @@ struct BodyAnalysisView: View {
         Config.hasAnthropicKey
     }
 
+    var hasCheckInContext: Bool {
+        [
+            analysisCheckInTrainingContext,
+            analysisCheckInBodyweightTrend,
+            analysisCheckInRecoverySleep,
+            analysisCheckInStressSchedule,
+            analysisCheckInSorenessPain,
+            analysisCheckInNutritionAdherence
+        ].contains { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    }
+
+    var previousAnalysisSession: BodyAnalysisSession? {
+        sessions.first
+    }
+
+    var previousAnalysisResult: BodyAnalysisResult? {
+        previousAnalysisSession?.decodedResult
+    }
+
+    var automaticProgressSnapshot: AnalysisProgressSnapshot? {
+        guard let previousAnalysisSession, let previousAnalysisResult else {
+            return nil
+        }
+
+        let macroTargets = MacroTargetResolver.resolve(from: previousAnalysisResult)
+        return AnalysisProgressSnapshotBuilder.build(
+            previousAnalysisDate: previousAnalysisSession.date,
+            previousPriorityAreas: previousAnalysisResult.programmingPriorityAreas,
+            previousTopLeverageChange: previousAnalysisResult.topLeverageChange,
+            weightPoints: weightPoints(since: previousAnalysisSession.date),
+            nutritionDays: nutritionDaySummaries(since: previousAnalysisSession.date),
+            macroTargets: AnalysisMacroTargetSnapshot(
+                calories: macroTargets.calories,
+                proteinG: macroTargets.proteinG,
+                carbsG: macroTargets.carbsG,
+                fatG: macroTargets.fatG
+            ),
+            exerciseEvents: exercisePerformanceEvents(),
+            exerciseSnapshots: exerciseProgressSnapshots()
+        )
+    }
+
+    var currentAnalysisInputContext: AnalysisInputContext {
+        Config.analysisInputContext.withProgress(automaticProgressSnapshot)
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 24) {
                     photoCollectionCard
+                    checkInCard
+                    if let automaticProgressSnapshot {
+                        progressContextCard(snapshot: automaticProgressSnapshot)
+                    }
                     if !photos.isEmpty {
                         analyzeButton
                         if !canUseAI {
@@ -250,36 +310,136 @@ struct BodyAnalysisView: View {
         .foregroundStyle(.primary)
     }
 
+    var checkInCard: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Current Check-In")
+                        .font(.headline)
+                    Text("This sharpens the analysis beyond photos by giving the model current recovery, adherence, and training context.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button("Clear") {
+                    clearCheckIn()
+                }
+                .font(.caption)
+                .foregroundStyle(.orange)
+                .disabled(!hasCheckInContext)
+            }
+
+            VStack(spacing: 12) {
+                checkInField(
+                    "Current training context",
+                    text: $analysisCheckInTrainingContext,
+                    prompt: "e.g. deload week, first week back, pushing hard, stalled lifts"
+                )
+                checkInField(
+                    "Bodyweight or visual trend",
+                    text: $analysisCheckInBodyweightTrend,
+                    prompt: "e.g. weight flat for 2 weeks, looking leaner, up 1 lb"
+                )
+                checkInField(
+                    "Recovery and sleep (last 7 days)",
+                    text: $analysisCheckInRecoverySleep,
+                    prompt: "e.g. averaging 5.5 hours, waking up fatigued, good energy"
+                )
+                checkInField(
+                    "Stress and schedule pressure",
+                    text: $analysisCheckInStressSchedule,
+                    prompt: "e.g. several overnight shifts, easier week, travel"
+                )
+                checkInField(
+                    "Soreness or pain flags",
+                    text: $analysisCheckInSorenessPain,
+                    prompt: "e.g. right shoulder cranky on incline press, no major pain"
+                )
+                checkInField(
+                    "Nutrition adherence and appetite",
+                    text: $analysisCheckInNutritionAdherence,
+                    prompt: "e.g. hitting protein, missing calories on shift days, appetite low"
+                )
+            }
+
+            Text("This check-in persists until you clear or overwrite it, so keep it current before running a new analysis.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding()
+        .background(Color(.secondarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+    }
+
+    @ViewBuilder
+    func checkInField(_ title: String, text: Binding<String>, prompt: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.subheadline.bold())
+            TextField(prompt, text: text, axis: .vertical)
+                .lineLimit(2...4)
+                .textInputAutocapitalization(.sentences)
+                .padding(12)
+                .background(Color(.tertiarySystemBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+        }
+    }
+
+    func progressContextCard(snapshot: AnalysisProgressSnapshot) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Auto Progress Context", systemImage: "arrow.trianglehead.2.clockwise")
+                .font(.headline)
+                .foregroundStyle(.orange)
+
+            Text("Transform will automatically inject this retrospective summary from your saved data into the next analysis.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            Text(snapshot.summaryDescription)
+                .font(.subheadline)
+                .foregroundStyle(.primary)
+        }
+        .padding()
+        .background(Color(.secondarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+    }
+
     // MARK: - Analyze Button
 
     var analyzeButton: some View {
-        Button {
-            startAnalysis()
-        } label: {
-            HStack {
-                if isAnalyzing {
-                    ProgressView()
-                        .tint(.white)
-                        .padding(.trailing, 4)
-                    Text("Analyzing \(photos.count) photo\(photos.count == 1 ? "" : "s")...")
-                } else {
-                    Image(systemName: "sparkles")
-                    Text("Analyze My Physique")
-                    if photos.count > 1 {
-                        Text("(\(photos.count) photos)")
-                            .font(.caption)
-                            .opacity(0.8)
+        VStack(alignment: .leading, spacing: 8) {
+            Button {
+                startAnalysis()
+            } label: {
+                HStack {
+                    if isAnalyzing {
+                        ProgressView()
+                            .tint(.white)
+                            .padding(.trailing, 4)
+                        Text("Analyzing \(photos.count) photo\(photos.count == 1 ? "" : "s")...")
+                    } else {
+                        Image(systemName: "sparkles")
+                        Text("Analyze My Physique")
+                        if photos.count > 1 {
+                            Text("(\(photos.count) photos)")
+                                .font(.caption)
+                                .opacity(0.8)
+                        }
                     }
                 }
+                .frame(maxWidth: .infinity)
+                .padding()
+                .background(isAnalyzing ? Color.orange.opacity(0.6) : Color.orange)
+                .foregroundStyle(.white)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .bold()
             }
-            .frame(maxWidth: .infinity)
-            .padding()
-            .background(isAnalyzing ? Color.orange.opacity(0.6) : Color.orange)
-            .foregroundStyle(.white)
-            .clipShape(RoundedRectangle(cornerRadius: 12))
-            .bold()
+            .disabled(isAnalyzing || !canUseAI)
+
+            Text("Photo analysis is strongest for visible physique patterns and broad training priorities. It is more limited for injury, posture, metabolic, and adherence assessment without added history or check-in data.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
-        .disabled(isAnalyzing || !canUseAI)
     }
 
     // MARK: - Past Sessions with Delete
@@ -344,7 +504,10 @@ struct BodyAnalysisView: View {
         }
 
         do {
-            let result = try await ClaudeService.shared.analyzeBody(photos: photos)
+            let result = try await ClaudeService.shared.analyzeBody(
+                photos: photos,
+                inputContext: currentAnalysisInputContext
+            )
             try Task.checkCancellation()
             guard !Task.isCancelled else { return }
             analysisResult = result
@@ -416,6 +579,72 @@ struct BodyAnalysisView: View {
         DataBackupManager.shared.writeAutomaticBackup(using: modelContext)
         sessionToDelete = nil
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+    }
+
+    func clearCheckIn() {
+        analysisCheckInTrainingContext = Config.defaultAnalysisCheckInTrainingContext
+        analysisCheckInBodyweightTrend = Config.defaultAnalysisCheckInBodyweightTrend
+        analysisCheckInRecoverySleep = Config.defaultAnalysisCheckInRecoverySleep
+        analysisCheckInStressSchedule = Config.defaultAnalysisCheckInStressSchedule
+        analysisCheckInSorenessPain = Config.defaultAnalysisCheckInSorenessPain
+        analysisCheckInNutritionAdherence = Config.defaultAnalysisCheckInNutritionAdherence
+    }
+
+    func weightPoints(since startDate: Date) -> [AnalysisLoggedWeightPoint] {
+        weightEntries
+            .filter { $0.date >= startDate }
+            .map { AnalysisLoggedWeightPoint(date: $0.date, weightLbs: $0.weightLbs) }
+    }
+
+    func nutritionDaySummaries(since startDate: Date) -> [AnalysisLoggedNutritionDay] {
+        let calendar = Calendar.current
+        let grouped = nutritionEntries
+            .filter { $0.date >= startDate }
+            .reduce(into: [Date: AnalysisLoggedNutritionDay]()) { partialResult, entry in
+                let day = calendar.startOfDay(for: entry.date)
+                let existing = partialResult[day] ?? AnalysisLoggedNutritionDay(
+                    date: day,
+                    calories: 0,
+                    proteinG: 0,
+                    carbsG: 0,
+                    fatG: 0
+                )
+                partialResult[day] = AnalysisLoggedNutritionDay(
+                    date: day,
+                    calories: existing.calories + entry.calories,
+                    proteinG: existing.proteinG + entry.proteinG,
+                    carbsG: existing.carbsG + entry.carbsG,
+                    fatG: existing.fatG + entry.fatG
+                )
+            }
+
+        return grouped.values.sorted { $0.date < $1.date }
+    }
+
+    func exerciseProgressSnapshots() -> [AnalysisExerciseProgressSnapshot] {
+        exerciseWeightEntries.map { entry in
+            AnalysisExerciseProgressSnapshot(
+                exerciseName: entry.exerciseName,
+                canonicalExerciseKey: entry.canonicalExerciseKey,
+                latestWeightLbs: entry.weightLbs,
+                latestDate: entry.loggedAt,
+                bestWeightLbs: entry.hasBestRecord ? entry.bestWeightLbs : entry.weightLbs,
+                bestLoggedAt: entry.hasBestRecord ? entry.bestLoggedAt : entry.loggedAt,
+                bestRepsCompleted: entry.hasBestRecord ? entry.bestRepsCompleted : entry.repsCompleted
+            )
+        }
+    }
+
+    func exercisePerformanceEvents() -> [AnalysisExercisePerformanceEvent] {
+        exercisePerformanceLogs.map { entry in
+            AnalysisExercisePerformanceEvent(
+                exerciseName: entry.exerciseName,
+                canonicalExerciseKey: entry.canonicalExerciseKey,
+                loggedAt: entry.loggedAt,
+                weightLbs: entry.weightLbs,
+                repsCompleted: entry.repsCompleted
+            )
+        }
     }
 }
 

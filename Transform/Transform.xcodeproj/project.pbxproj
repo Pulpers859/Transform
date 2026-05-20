@@ -24,6 +24,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		019311E02FBE3D370000F766 /* LocalSecretsBridge.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Transform/LocalSecretsBridge.xcconfig; sourceTree = SOURCE_ROOT; };
 		019311B32FBE3D2F0000F766 /* Transform.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Transform.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		019311C22FBE3D370000F766 /* TransformTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TransformTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		019311CC2FBE3D370000F766 /* TransformUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TransformUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -375,6 +376,7 @@
 		};
 		019311D72FBE3D370000F766 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 019311E02FBE3D370000F766 /* LocalSecretsBridge.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -409,6 +411,7 @@
 		};
 		019311D82FBE3D370000F766 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 019311E02FBE3D370000F766 /* LocalSecretsBridge.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;

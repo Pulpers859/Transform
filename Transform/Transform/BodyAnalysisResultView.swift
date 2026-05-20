@@ -111,6 +111,20 @@ struct AnalysisResultContent: View {
                 .clipShape(RoundedRectangle(cornerRadius: 12))
             }
 
+            SectionCard(title: "Photo-Based Scope", icon: "info.circle") {
+                Text(result.resolvedAnalysisLimitations)
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+            }
+
+            if let inputContext = result.inputContext {
+                SectionCard(title: "Context Used", icon: "text.badge.checkmark") {
+                    Text(inputContext.coachingContextSummary)
+                        .font(.body)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
             // Overall assessment
             SectionCard(title: "Overall Assessment", icon: "figure.arms.open") {
                 Text(result.overallAssessment)
@@ -167,96 +181,102 @@ struct AnalysisResultContent: View {
                 }
             }
 
-            // Workout recommendations (Exercise Physiologist)
-            if !result.workoutRecommendations.isEmpty {
-                SectionCard(title: "Training Focus", icon: "dumbbell.fill") {
-                    SpecialistBadge(name: "Exercise Physiologist", color: .blue)
-                    BulletList(items: result.workoutRecommendations)
-                }
-            }
-
-            // Diet recommendations (Sports Dietitian)
-            if !result.dietRecommendations.isEmpty {
-                SectionCard(title: "Diet Recommendations", icon: "fork.knife") {
-                    SpecialistBadge(name: "Sports Dietitian", color: .green)
-                    BulletList(items: result.dietRecommendations)
-                }
-            }
-
-            if let macros = result.macroTargets {
-                SectionCard(title: "Recommended Macro Targets", icon: "target") {
-                    SpecialistBadge(name: "Sports Dietitian", color: .green)
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Calories: \(macros.calories) kcal/day")
-                        Text("Protein: \(Int(macros.proteinG)) g/day")
-                        Text("Carbs: \(Int(macros.carbsG)) g/day")
-                        Text("Fat: \(Int(macros.fatG)) g/day")
+            // Training
+            if !result.resolvedTrainingAssessment.isEmpty || !result.workoutRecommendations.isEmpty {
+                SectionCard(title: "Training", icon: "dumbbell.fill") {
+                    if !result.resolvedTrainingAssessment.isEmpty {
+                        Text(result.resolvedTrainingAssessment)
+                            .font(.body)
+                            .foregroundStyle(.primary)
                     }
-                    .font(.subheadline)
-                    .foregroundStyle(.primary)
+                    if !result.workoutRecommendations.isEmpty {
+                        if !result.resolvedTrainingAssessment.isEmpty {
+                            Divider()
+                        }
+                        BulletList(items: result.workoutRecommendations)
+                    }
                 }
             }
 
-            // Metabolic health (Physician)
-            if !result.metabolicHealthNotes.isEmpty {
-                SectionCard(title: "Metabolic Health", icon: "heart.text.clipboard") {
-                    SpecialistBadge(name: "Sports Medicine Physician", color: .red)
-                    Text(result.metabolicHealthNotes)
+            // Nutrition
+            if !result.resolvedNutritionAssessment.isEmpty || !result.dietRecommendations.isEmpty || result.macroTargets != nil {
+                SectionCard(title: "Nutrition", icon: "fork.knife") {
+                    if !result.resolvedNutritionAssessment.isEmpty {
+                        Text(result.resolvedNutritionAssessment)
+                            .font(.body)
+                            .foregroundStyle(.primary)
+                    }
+                    if !result.dietRecommendations.isEmpty {
+                        if !result.resolvedNutritionAssessment.isEmpty {
+                            Divider()
+                        }
+                        BulletList(items: result.dietRecommendations)
+                    }
+                    if let macros = result.macroTargets {
+                        if !result.dietRecommendations.isEmpty || !result.resolvedNutritionAssessment.isEmpty {
+                            Divider()
+                        }
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Recommended Macro Targets")
+                                .font(.subheadline.bold())
+                            Text("Calories: \(macros.calories) kcal/day")
+                            Text("Protein: \(Int(macros.proteinG)) g/day")
+                            Text("Carbs: \(Int(macros.carbsG)) g/day")
+                            Text("Fat: \(Int(macros.fatG)) g/day")
+                        }
+                        .font(.subheadline)
+                        .foregroundStyle(.primary)
+                    }
+                }
+            }
+
+            // Recovery & Risk
+            if !result.resolvedRecoveryRiskAssessment.isEmpty
+                || !result.posturalNotes.isEmpty
+                || !result.injuryRiskNotes.isEmpty
+                || !result.metabolicHealthNotes.isEmpty {
+                SectionCard(title: "Recovery & Risk", icon: "heart.text.clipboard") {
+                    if !result.resolvedRecoveryRiskAssessment.isEmpty {
+                        Text(result.resolvedRecoveryRiskAssessment)
+                            .font(.body)
+                            .foregroundStyle(.primary)
+                    }
+
+                    let supportNotes = [
+                        ("Postural Notes", result.posturalNotes),
+                        ("Injury / Loading Risk", result.injuryRiskNotes),
+                        ("Recovery / Energy Management", result.metabolicHealthNotes)
+                    ].filter { !$0.1.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+
+                    if !supportNotes.isEmpty {
+                        if !result.resolvedRecoveryRiskAssessment.isEmpty {
+                            Divider()
+                        }
+                        VStack(alignment: .leading, spacing: 10) {
+                            ForEach(supportNotes, id: \.0) { note in
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(note.0)
+                                        .font(.caption.bold())
+                                        .foregroundStyle(.orange)
+                                    Text(note.1)
+                                        .font(.body)
+                                        .foregroundStyle(.primary)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Adherence
+            if !result.resolvedAdherenceAssessment.isEmpty {
+                SectionCard(title: "Adherence", icon: "brain.head.profile") {
+                    Text(result.resolvedAdherenceAssessment)
                         .font(.body)
                         .foregroundStyle(.primary)
-                }
-            }
-
-            // Injury risk (Physician)
-            if !result.injuryRiskNotes.isEmpty {
-                SectionCard(title: "Injury Risk Assessment", icon: "exclamationmark.shield") {
-                    SpecialistBadge(name: "Sports Medicine Physician", color: .red)
-                    Text(result.injuryRiskNotes)
-                        .font(.body)
-                        .foregroundStyle(.primary)
-                }
-            }
-
-            // Psychological insights (Sport Psychologist)
-            if !result.psychologicalInsights.isEmpty {
-                SectionCard(title: "Behavioral & Adherence", icon: "brain.head.profile") {
-                    SpecialistBadge(name: "Sport Psychologist", color: .purple)
-                    Text(result.psychologicalInsights)
-                        .font(.body)
-                        .foregroundStyle(.primary)
-                }
-            }
-
-            // Postural notes
-            if !result.posturalNotes.isEmpty {
-                SectionCard(title: "Postural Notes", icon: "person.fill") {
-                    Text(result.posturalNotes)
-                        .font(.body)
-                        .foregroundStyle(.secondary)
                 }
             }
         }
-    }
-}
-
-// MARK: - Specialist Badge
-
-struct SpecialistBadge: View {
-    let name: String
-    let color: Color
-
-    var body: some View {
-        HStack(spacing: 6) {
-            Circle()
-                .fill(color)
-                .frame(width: 6, height: 6)
-            Text(name)
-                .font(.caption2.bold())
-                .foregroundStyle(color)
-                .textCase(.uppercase)
-                .tracking(0.5)
-        }
-        .padding(.bottom, 4)
     }
 }
 

@@ -271,6 +271,36 @@ class ExerciseWeightEntry {
     }
 }
 
+@Model
+class ExercisePerformanceLog {
+    var loggedAt: Date
+    var exerciseName: String = ""
+    var normalizedExerciseName: String = ""
+    var canonicalExerciseKey: String = ""
+    var weightLbs: Double = 0
+    var repsCompleted: Int?
+    var notes: String = ""
+    var muscleTarget: String = ""
+
+    init(
+        loggedAt: Date = .now,
+        exerciseName: String,
+        weightLbs: Double,
+        repsCompleted: Int? = nil,
+        notes: String = "",
+        muscleTarget: String = ""
+    ) {
+        self.loggedAt = loggedAt
+        self.exerciseName = exerciseName
+        self.normalizedExerciseName = ExerciseWeightEntry.normalize(exerciseName)
+        self.canonicalExerciseKey = ExerciseWeightEntry.canonicalLookupKey(exerciseName)
+        self.weightLbs = weightLbs
+        self.repsCompleted = repsCompleted
+        self.notes = notes
+        self.muscleTarget = muscleTarget
+    }
+}
+
 enum ExerciseWeightStore {
     @discardableResult
     static func normalizeAndConsolidate(in modelContext: ModelContext) throws -> Bool {

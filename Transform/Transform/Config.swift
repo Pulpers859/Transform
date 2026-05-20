@@ -1,8 +1,9 @@
 import Foundation
 
 enum Config {
-    // Built-in default for zero-friction usage, with optional runtime overrides.
-    static let bundledAnthropicAPIKey = "" // Set once and keep; env/Info.plist can still override.
+    // Leave this blank for normal use. Local secrets should come from an untracked
+    // Xcode config / plist on your own machine rather than being hardcoded in git.
+    static let bundledAnthropicAPIKey = ""
 
     static let defaultAnalysisAge = "30"
     static let defaultAnalysisSex = "Male"
@@ -11,8 +12,19 @@ enum Config {
     static let defaultAnalysisCurrentWeight = "195 lbs"
     static let defaultAnalysisOccupation = "Emergency medicine physician"
     static let defaultAnalysisTrainingFrequency = "Training 5-6 days/week"
+    static let defaultAnalysisTrainingAge = "4 years of consistent lifting"
+    static let defaultAnalysisEquipmentAccess = "Commercial gym with full machine, cable, dumbbell, and barbell access"
+    static let defaultAnalysisAverageSleep = "Variable due to shift work; often 5-7 hours"
+    static let defaultAnalysisPainHistory = "No major active injury reported; monitor overuse and recovery around long shifts"
+    static let defaultAnalysisActivityLevel = "High daily activity from long clinical shifts and time on feet"
     static let defaultAnalysisPrimaryGoal = "Body recomposition with visible abs and aesthetic proportions while maintaining performance for demanding clinical shifts"
     static let defaultAnalysisLifestyleConstraints = "Shift-work schedule with variable sleep and meal timing"
+    static let defaultAnalysisCheckInTrainingContext = ""
+    static let defaultAnalysisCheckInBodyweightTrend = ""
+    static let defaultAnalysisCheckInRecoverySleep = ""
+    static let defaultAnalysisCheckInStressSchedule = ""
+    static let defaultAnalysisCheckInSorenessPain = ""
+    static let defaultAnalysisCheckInNutritionAdherence = ""
 
     static let defaultCalorieTarget = 2200
     static let defaultProteinTargetG = 190.0
@@ -39,6 +51,8 @@ enum Config {
     static var fatTargetG: Double { AppSettingsStore.fatTargetG }
     static var bodyWeightGoalLbs: Double { AppSettingsStore.bodyWeightGoalLbs }
     static var analysisClientProfilePrompt: String { AppSettingsStore.analysisClientProfile.promptDescription }
+    static var analysisCheckInPrompt: String { AppSettingsStore.analysisCheckIn.promptDescription }
+    static var analysisInputContext: AnalysisInputContext { AppSettingsStore.analysisInputContext }
 }
 
 enum MacroTargetSource {
@@ -84,8 +98,19 @@ enum AppSettingsKeys {
     static let analysisCurrentWeight = "analysis_profile_current_weight"
     static let analysisOccupation = "analysis_profile_occupation"
     static let analysisTrainingFrequency = "analysis_profile_training_frequency"
+    static let analysisTrainingAge = "analysis_profile_training_age"
+    static let analysisEquipmentAccess = "analysis_profile_equipment_access"
+    static let analysisAverageSleep = "analysis_profile_average_sleep"
+    static let analysisPainHistory = "analysis_profile_pain_history"
+    static let analysisActivityLevel = "analysis_profile_activity_level"
     static let analysisPrimaryGoal = "analysis_profile_primary_goal"
     static let analysisLifestyleConstraints = "analysis_profile_lifestyle_constraints"
+    static let analysisCheckInTrainingContext = "analysis_checkin_training_context"
+    static let analysisCheckInBodyweightTrend = "analysis_checkin_bodyweight_trend"
+    static let analysisCheckInRecoverySleep = "analysis_checkin_recovery_sleep"
+    static let analysisCheckInStressSchedule = "analysis_checkin_stress_schedule"
+    static let analysisCheckInSorenessPain = "analysis_checkin_soreness_pain"
+    static let analysisCheckInNutritionAdherence = "analysis_checkin_nutrition_adherence"
 
     static let calorieTarget = "nutrition_calorie_target"
     static let proteinTarget = "nutrition_protein_target"
@@ -102,32 +127,64 @@ struct AnalysisClientProfile {
     let currentWeight: String
     let occupation: String
     let trainingFrequency: String
+    let trainingAge: String
+    let equipmentAccess: String
+    let averageSleep: String
+    let painHistory: String
+    let activityLevel: String
     let primaryGoal: String
     let lifestyleConstraints: String
 
     var promptDescription: String {
-        let lines = [
-            ("Age", age),
-            ("Sex/Gender", sex),
-            ("Build", build),
-            ("Height", height),
-            ("Current Body Weight", currentWeight),
-            ("Occupation", occupation),
-            ("Training Frequency", trainingFrequency),
-            ("Primary Goal", primaryGoal),
-            ("Lifestyle Constraints", lifestyleConstraints)
-        ]
-        .map { label, value in
-            let cleaned = value.trimmingCharacters(in: .whitespacesAndNewlines)
-            return "- \(label): \(cleaned.isEmpty ? "(unspecified)" : cleaned)"
-        }
-        .joined(separator: "\n")
+        snapshot.promptDescription
+    }
 
-        return """
-        Use the following user-editable profile context when personalizing the assessment.
-        Treat blank or unspecified fields as unknown rather than inventing them.
-        \(lines)
+    var snapshot: AnalysisProfileSnapshot {
+        AnalysisProfileSnapshot(
+            age: age,
+            sex: sex,
+            build: build,
+            height: height,
+            currentWeight: currentWeight,
+            occupation: occupation,
+            trainingFrequency: trainingFrequency,
+            trainingAge: trainingAge,
+            equipmentAccess: equipmentAccess,
+            averageSleep: averageSleep,
+            painHistory: painHistory,
+            activityLevel: activityLevel,
+            primaryGoal: primaryGoal,
+            lifestyleConstraints: lifestyleConstraints
+        )
+    }
+}
+
+struct AnalysisCheckIn {
+    let trainingContext: String
+    let bodyweightTrend: String
+    let recoverySleep: String
+    let stressSchedule: String
+    let sorenessPain: String
+    let nutritionAdherence: String
+
+    var promptDescription: String {
+        snapshot?.promptDescription ?? """
+        Current check-in context for this analysis.
+        Use it to sharpen recovery, nutrition, and programming interpretation instead of over-reading the photos.
+        - No current check-in provided.
         """
+    }
+
+    var snapshot: AnalysisCheckInSnapshot? {
+        let snapshot = AnalysisCheckInSnapshot(
+            trainingContext: trainingContext,
+            bodyweightTrend: bodyweightTrend,
+            recoverySleep: recoverySleep,
+            stressSchedule: stressSchedule,
+            sorenessPain: sorenessPain,
+            nutritionAdherence: nutritionAdherence
+        )
+        return snapshot.hasMeaningfulContent ? snapshot : nil
     }
 }
 
@@ -143,8 +200,32 @@ enum AppSettingsStore {
             currentWeight: string(for: AppSettingsKeys.analysisCurrentWeight, default: Config.defaultAnalysisCurrentWeight),
             occupation: string(for: AppSettingsKeys.analysisOccupation, default: Config.defaultAnalysisOccupation),
             trainingFrequency: string(for: AppSettingsKeys.analysisTrainingFrequency, default: Config.defaultAnalysisTrainingFrequency),
+            trainingAge: string(for: AppSettingsKeys.analysisTrainingAge, default: Config.defaultAnalysisTrainingAge),
+            equipmentAccess: string(for: AppSettingsKeys.analysisEquipmentAccess, default: Config.defaultAnalysisEquipmentAccess),
+            averageSleep: string(for: AppSettingsKeys.analysisAverageSleep, default: Config.defaultAnalysisAverageSleep),
+            painHistory: string(for: AppSettingsKeys.analysisPainHistory, default: Config.defaultAnalysisPainHistory),
+            activityLevel: string(for: AppSettingsKeys.analysisActivityLevel, default: Config.defaultAnalysisActivityLevel),
             primaryGoal: string(for: AppSettingsKeys.analysisPrimaryGoal, default: Config.defaultAnalysisPrimaryGoal),
             lifestyleConstraints: string(for: AppSettingsKeys.analysisLifestyleConstraints, default: Config.defaultAnalysisLifestyleConstraints)
+        )
+    }
+
+    static var analysisCheckIn: AnalysisCheckIn {
+        AnalysisCheckIn(
+            trainingContext: string(for: AppSettingsKeys.analysisCheckInTrainingContext, default: Config.defaultAnalysisCheckInTrainingContext),
+            bodyweightTrend: string(for: AppSettingsKeys.analysisCheckInBodyweightTrend, default: Config.defaultAnalysisCheckInBodyweightTrend),
+            recoverySleep: string(for: AppSettingsKeys.analysisCheckInRecoverySleep, default: Config.defaultAnalysisCheckInRecoverySleep),
+            stressSchedule: string(for: AppSettingsKeys.analysisCheckInStressSchedule, default: Config.defaultAnalysisCheckInStressSchedule),
+            sorenessPain: string(for: AppSettingsKeys.analysisCheckInSorenessPain, default: Config.defaultAnalysisCheckInSorenessPain),
+            nutritionAdherence: string(for: AppSettingsKeys.analysisCheckInNutritionAdherence, default: Config.defaultAnalysisCheckInNutritionAdherence)
+        )
+    }
+
+    static var analysisInputContext: AnalysisInputContext {
+        AnalysisInputContext(
+            profile: analysisClientProfile.snapshot,
+            checkIn: analysisCheckIn.snapshot,
+            progress: nil
         )
     }
 
@@ -199,21 +280,42 @@ enum AppSettingsStore {
 enum APIKeyProvider {
     private static let envKey = "ANTHROPIC_API_KEY"
     private static let plistKey = "ANTHROPIC_API_KEY"
+    private static let secretsPlistName = "Secrets"
 
     static var anthropicKey: String? {
-        if let env = ProcessInfo.processInfo.environment[envKey]?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !env.isEmpty {
+        if let env = cleanedSecret(ProcessInfo.processInfo.environment[envKey]) {
             return env
         }
 
-        if let plistValue = Bundle.main.object(forInfoDictionaryKey: plistKey) as? String {
-            let cleaned = plistValue.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !cleaned.isEmpty {
-                return cleaned
-            }
+        if let plistValue = cleanedSecret(Bundle.main.object(forInfoDictionaryKey: plistKey) as? String) {
+            return plistValue
+        }
+
+        if let url = Bundle.main.url(forResource: secretsPlistName, withExtension: "plist"),
+           let data = try? Data(contentsOf: url),
+           let object = try? PropertyListSerialization.propertyList(from: data, format: nil),
+           let dictionary = object as? [String: Any],
+           let secret = cleanedSecret(dictionary[plistKey] as? String) {
+            return secret
         }
 
         return nil
+    }
+
+    private static func cleanedSecret(_ rawValue: String?) -> String? {
+        guard let rawValue else { return nil }
+        let cleaned = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty else { return nil }
+        guard !cleaned.hasPrefix("$("), !cleaned.hasSuffix(")") else {
+            return nil
+        }
+        guard cleaned.lowercased() != "your_api_key_here" else {
+            return nil
+        }
+        guard cleaned.lowercased() != "sk-ant-your-real-key-goes-here" else {
+            return nil
+        }
+        return cleaned
     }
 }
 
