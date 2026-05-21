@@ -48,6 +48,12 @@ struct ContentView: View {
                     title: "Storage Warning",
                     message: startupWarning
                 )
+            } else if !didShowStartupWarning, let generationCrash = WorkoutGenerationDiagnostics.consumeUnexpectedTerminationMessage() {
+                didShowStartupWarning = true
+                appAlert = AppAlertContent(
+                    title: "Generation Interrupted",
+                    message: generationCrash
+                )
             } else if !didShowStartupWarning, let apiKeyWarning = Config.anthropicKeyStartupAlertMessage {
                 didShowStartupWarning = true
                 appAlert = AppAlertContent(

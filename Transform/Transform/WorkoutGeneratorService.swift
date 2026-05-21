@@ -77,6 +77,7 @@ extension ClaudeService {
     // MARK: - Generate Week 1 (Initial)
 
     func generateWeekOne(from analysisResult: BodyAnalysisResult) async throws -> WorkoutProgramResponse {
+        WorkoutGenerationDiagnostics.markStage("building week 1 analysis context")
         let analysisSummary = analysisContext(from: analysisResult)
         let detailContext = trainingDayDetailContext(from: analysisResult)
         let trainingIntent = trainingIntentPlan(from: analysisResult)
@@ -91,20 +92,25 @@ extension ClaudeService {
         var lastIssues: [String] = []
 
         do {
+            WorkoutGenerationDiagnostics.markStage("requesting week 1 scaffold from AI")
             let scaffold = try await generateWeekOneScaffold(
                 context: context,
                 blueprint: blueprint
             )
+            WorkoutGenerationDiagnostics.markStage("assembling scaffold-backed week 1 program")
             var assembled = sanitizeProgramResponse(
                 assembleProgramResponse(from: scaffold, dayDetails: [])
             )
+            WorkoutGenerationDiagnostics.markStage("expanding week 1 training-day coaching details")
             let dayDetails = try await generateWeekOneTrainingDayDetails(
                 scaffold: scaffold,
                 detailContext: detailContext
             )
+            WorkoutGenerationDiagnostics.markStage("merging week 1 day-detail responses")
             assembled = sanitizeProgramResponse(
                 assembleProgramResponse(from: scaffold, dayDetails: dayDetails)
             )
+            WorkoutGenerationDiagnostics.markStage("validating assembled week 1 program")
             let issues = validateProgramResponse(assembled, blueprint: blueprint)
             if issues.isEmpty {
                 return labeledProgramResponse(assembled, sourceLabel: aiSourceLabel)
@@ -242,6 +248,7 @@ extension ClaudeService {
         for day in scaffold.days.sorted(by: { $0.dayNumber < $1.dayNumber }) where !day.isRestDay {
             try Task.checkCancellation()
             do {
+                WorkoutGenerationDiagnostics.markStage("expanding training day \(day.dayNumber)")
                 let detail = try await generateTrainingDayDetail(
                     for: day,
                     scaffoldSummary: scaffoldSummary,
