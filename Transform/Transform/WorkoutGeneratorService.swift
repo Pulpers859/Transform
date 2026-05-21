@@ -78,6 +78,7 @@ extension ClaudeService {
 
     func generateWeekOne(from analysisResult: BodyAnalysisResult) async throws -> WorkoutProgramResponse {
         let analysisSummary = analysisContext(from: analysisResult)
+        let detailContext = trainingDayDetailContext(from: analysisResult)
         let trainingIntent = trainingIntentPlan(from: analysisResult)
         let blueprint = programBlueprint(for: trainingIntent, weekNumber: 1)
         let intentSummary = trainingIntentContext(from: trainingIntent)
@@ -94,11 +95,14 @@ extension ClaudeService {
                 context: context,
                 blueprint: blueprint
             )
+            var assembled = sanitizeProgramResponse(
+                assembleProgramResponse(from: scaffold, dayDetails: [])
+            )
             let dayDetails = try await generateWeekOneTrainingDayDetails(
                 scaffold: scaffold,
-                context: context
+                detailContext: detailContext
             )
-            let assembled = sanitizeProgramResponse(
+            assembled = sanitizeProgramResponse(
                 assembleProgramResponse(from: scaffold, dayDetails: dayDetails)
             )
             let issues = validateProgramResponse(assembled, blueprint: blueprint)
@@ -110,6 +114,18 @@ extension ClaudeService {
                 return labeledProgramResponse(assembled, sourceLabel: aiSourceLabel)
             }
             lastIssues = issues
+
+            let scaffoldOnlyIssues = validateProgramResponse(
+                sanitizeProgramResponse(assembleProgramResponse(from: scaffold, dayDetails: [])),
+                blueprint: blueprint
+            )
+            if scaffoldOnlyIssues.isEmpty || shouldAcceptAIOutput(despite: scaffoldOnlyIssues) {
+                print("[WorkoutGeneratorService] Week 1 returned scaffold-backed fallback notes after detail-expansion issues: \(issues.joined(separator: " | "))")
+                let scaffoldOnlyProgram = sanitizeProgramResponse(
+                    assembleProgramResponse(from: scaffold, dayDetails: [])
+                )
+                return labeledProgramResponse(scaffoldOnlyProgram, sourceLabel: aiSourceLabel)
+            }
         } catch {
             lastIssues = [error.localizedDescription]
 
@@ -217,18 +233,29 @@ extension ClaudeService {
 
     private func generateWeekOneTrainingDayDetails(
         scaffold: WorkoutProgramScaffoldResponse,
-        context: String
+        detailContext: String
     ) async throws -> [WorkoutDayDetailResponse] {
         let scaffoldSummary = compactWeekOneScaffoldReference(from: scaffold)
         var details: [WorkoutDayDetailResponse] = []
+        var failures: [String] = []
 
         for day in scaffold.days.sorted(by: { $0.dayNumber < $1.dayNumber }) where !day.isRestDay {
-            let detail = try await generateTrainingDayDetail(
-                for: day,
-                scaffoldSummary: scaffoldSummary,
-                context: context
-            )
-            details.append(detail)
+            try Task.checkCancellation()
+            do {
+                let detail = try await generateTrainingDayDetail(
+                    for: day,
+                    scaffoldSummary: scaffoldSummary,
+                    detailContext: detailContext
+                )
+                details.append(detail)
+            } catch {
+                failures.append("Day \(day.dayNumber): \(error.localizedDescription)")
+            }
+            await Task.yield()
+        }
+
+        if !failures.isEmpty {
+            print("[WorkoutGeneratorService] Week 1 day-detail enrichment partial failures: \(failures.joined(separator: " | "))")
         }
 
         return details
@@ -237,20 +264,20 @@ extension ClaudeService {
     private func generateTrainingDayDetail(
         for day: WorkoutDayScaffoldResponse,
         scaffoldSummary: String,
-        context: String
+        detailContext: String
     ) async throws -> WorkoutDayDetailResponse {
         let config = weekOneDayDetailConfig
         let toolSchema = trainingDayDetailSchema(day: day)
         let systemPrompt = trainingDayDetailSystemPrompt()
         let userPrompt = trainingDayDetailUserPrompt(
-            context: context,
+            context: detailContext,
             scaffoldSummary: scaffoldSummary,
             day: day
         )
         let requestContext = workoutRequestContext(
             phase: "week_one_day_\(day.dayNumber)_detail",
             weekNumber: 1,
-            analysisContext: context,
+            analysisContext: detailContext,
             previousWeekReference: scaffoldSummary,
             systemPrompt: systemPrompt,
             userPrompt: userPrompt
@@ -288,7 +315,7 @@ extension ClaudeService {
                         toolName: trainingDayDetailToolName,
                         toolSchema: toolSchema,
                         issues: issues,
-                        context: context,
+                        context: detailContext,
                         originalUserPrompt: userPrompt
                     )
                 }
@@ -305,7 +332,7 @@ extension ClaudeService {
                         toolName: trainingDayDetailToolName,
                         toolSchema: toolSchema,
                         issues: [correctionIssue(for: error)],
-                        context: context,
+                        context: detailContext,
                         originalUserPrompt: userPrompt
                     )
                 }
@@ -356,11 +383,7 @@ extension ClaudeService {
                     return "Day \(day.dayNumber) - \(day.dayName) [Recovery]: \(day.sessionFocus)"
                 }
 
-                let exerciseLine = day.exercises
-                    .prefix(6)
-                    .map { "\($0.exerciseName) \($0.sets)x\($0.reps)" }
-                    .joined(separator: "; ")
-                return "Day \(day.dayNumber) - \(day.dayName) [\(day.muscleGroups)]: \(day.sessionFocus) Exercises: \(exerciseLine)"
+                return "Day \(day.dayNumber) - \(day.dayName) [\(day.muscleGroups)]: \(day.sessionFocus)"
             }
             .joined(separator: "\n")
 
