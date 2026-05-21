@@ -88,61 +88,12 @@ extension ClaudeService {
             trainingIntentSummary: intentSummary,
             blueprintSummary: blueprintSummary
         )
-        var lastIssues: [String] = []
-
-        do {
-            WorkoutGenerationDiagnostics.markStage("requesting week 1 scaffold from AI")
-            let scaffold = try await generateWeekOneScaffold(
-                context: context,
-                blueprint: blueprint
-            )
-            WorkoutGenerationDiagnostics.markStage("assembling scaffold-backed week 1 program")
-            let assembled = sanitizeProgramResponse(
-                assembleProgramResponse(from: scaffold, dayDetails: [])
-            )
-            WorkoutGenerationDiagnostics.markStage("validating assembled week 1 program")
-            let issues = validateProgramResponse(assembled, blueprint: blueprint)
-            if issues.isEmpty {
-                return labeledProgramResponse(assembled, sourceLabel: aiSourceLabel)
-            }
-            if shouldAcceptAIOutput(despite: issues) {
-                print("[WorkoutGeneratorService] Week 1 accepted with heuristic validator warnings after scaffold assembly: \(issues.joined(separator: " | "))")
-                return labeledProgramResponse(assembled, sourceLabel: aiSourceLabel)
-            }
-            lastIssues = issues
-        } catch {
-            lastIssues = [error.localizedDescription]
-
-            if shouldAbortFallback(for: error) {
-                throw terminalGenerationError(
-                    while: "generating your initial workout program",
-                    underlying: error
-                )
-            }
-        }
-
-        if !lastIssues.isEmpty {
-            print("[WorkoutGeneratorService] Week 1 fallback activated after issues: \(lastIssues.joined(separator: " | "))")
-        }
-
-        return try validatedProceduralWeekOneProgram(
-            from: analysisResult,
-            trainingIntent: trainingIntent,
-            blueprint: blueprint,
-            diagnostic: lastIssues.joined(separator: " | ")
-        )
-    }
-
-    private func generateWeekOneScaffold(
-        context: String,
-        blueprint: ProgramBlueprint
-    ) async throws -> WorkoutProgramScaffoldResponse {
         let config = weekOneConfig
-        let toolSchema = programScaffoldToolSchema()
-        let systemPrompt = weekOneScaffoldSystemPrompt()
-        let userPrompt = weekOneScaffoldUserPrompt(context: context)
+        let toolSchema = programToolSchema()
+        let systemPrompt = weekOneSystemPrompt()
+        let userPrompt = weekOneUserPrompt(context: context)
         let requestContext = workoutRequestContext(
-            phase: "week_one_scaffold",
+            phase: "week_one",
             weekNumber: 1,
             analysisContext: context,
             previousWeekReference: nil,
@@ -154,65 +105,83 @@ extension ClaudeService {
             config: config,
             systemPrompt: systemPrompt,
             userPrompt: userPrompt,
-            toolName: programScaffoldToolName,
+            toolName: programToolName,
             toolSchema: toolSchema,
-            temperature: 0.5
+            temperature: 0.65
         )
 
         var lastIssues: [String] = []
 
         for attempt in 1...generationAttempts {
             do {
+                WorkoutGenerationDiagnostics.markStage("requesting week 1 program from AI (attempt \(attempt))")
                 let jsonString = try await AnthropicClient.shared.sendStructuredRequest(
                     body: requestBody,
-                    toolName: programScaffoldToolName,
+                    toolName: programToolName,
                     timeout: config.timeout,
                     context: requestContext
                 )
-                let decoded = try decodeJSONPayload(WorkoutProgramScaffoldResponse.self, from: jsonString)
-                let cleaned = sanitizeProgramScaffoldResponse(decoded)
-                let assembled = sanitizeProgramResponse(assembleProgramResponse(from: cleaned, dayDetails: []))
-                let issues = validateProgramResponse(assembled, blueprint: blueprint)
 
-                if issues.isEmpty || shouldAcceptAIOutput(despite: issues) {
-                    if !issues.isEmpty {
-                        print("[WorkoutGeneratorService] Week 1 scaffold accepted with heuristic validator warnings: \(issues.joined(separator: " | "))")
-                    }
-                    return cleaned
+                WorkoutGenerationDiagnostics.markStage("decoding and validating week 1 program (attempt \(attempt))")
+                let decoded = try decodeJSONPayload(WorkoutProgramResponse.self, from: jsonString)
+                let cleaned = sanitizeProgramResponse(decoded)
+                let issues = validateProgramResponse(cleaned, blueprint: blueprint)
+
+                if issues.isEmpty {
+                    return labeledProgramResponse(cleaned, sourceLabel: aiSourceLabel)
+                }
+                if shouldAcceptAIOutput(despite: issues) {
+                    print("[WorkoutGeneratorService] Week 1 accepted with heuristic validator warnings: \(issues.joined(separator: " | "))")
+                    return labeledProgramResponse(cleaned, sourceLabel: aiSourceLabel)
                 }
 
                 lastIssues = issues
                 if attempt < generationAttempts {
                     requestBody = correctionRequestBody(
                         config: config,
-                        toolName: programScaffoldToolName,
+                        toolName: programToolName,
                         toolSchema: toolSchema,
                         issues: issues,
                         context: context,
                         originalUserPrompt: userPrompt
                     )
+                    continue
                 }
             } catch {
-                lastIssues = ["Week 1 scaffold attempt \(attempt): \(error.localizedDescription)"]
+                lastIssues = ["API error (attempt \(attempt)): \(error.localizedDescription)"]
 
                 if shouldAbortFallback(for: error) {
-                    throw error
+                    throw terminalGenerationError(
+                        while: "generating your initial workout program",
+                        underlying: error
+                    )
                 }
 
                 if attempt < generationAttempts {
                     requestBody = correctionRequestBody(
                         config: config,
-                        toolName: programScaffoldToolName,
+                        toolName: programToolName,
                         toolSchema: toolSchema,
                         issues: [correctionIssue(for: error)],
                         context: context,
                         originalUserPrompt: userPrompt
                     )
+                    continue
                 }
             }
         }
 
-        throw ClaudeError.parseError("Week 1 scaffold could not be validated: \(lastIssues.joined(separator: " | "))")
+        if !lastIssues.isEmpty {
+            print("[WorkoutGeneratorService] Week 1 fallback activated after issues: \(lastIssues.joined(separator: " | "))")
+        }
+
+        WorkoutGenerationDiagnostics.markStage("building procedural week 1 fallback")
+        return try validatedProceduralWeekOneProgram(
+            from: analysisResult,
+            trainingIntent: trainingIntent,
+            blueprint: blueprint,
+            diagnostic: lastIssues.joined(separator: " | ")
+        )
     }
 
     // MARK: - Generate Next Week (2, 3, or 4)

@@ -646,19 +646,6 @@ extension ClaudeService {
         return cleaned.isEmpty ? "No analysis context provided." : cleaned
     }
 
-    func trainingDayDetailContext(from analysis: BodyAnalysisResult) -> String {
-        let priority = analysis.programmingPriorityAreas.joined(separator: ", ")
-        let inputContextSummary = analysis.inputContext?.generationSummary.trimmedOr(default: "") ?? ""
-
-        return """
-        Top leverage change: \(analysis.topLeverageChange.trimmedOr(default: "(not provided)"))
-        Priority muscles: \(priority.isEmpty ? "(none)" : priority)
-        Postural notes: \(analysis.posturalNotes.trimmedOr(default: "(none)"))
-        Injury risk notes: \(analysis.injuryRiskNotes.trimmedOr(default: "(none)"))
-        Current context: \(inputContextSummary.isEmpty ? "(none saved with this analysis)" : inputContextSummary)
-        """
-    }
-
     func priorityMuscles(from analysisJSON: String) -> [String] {
         let cleaned = cleanedJSONText(analysisJSON)
 
