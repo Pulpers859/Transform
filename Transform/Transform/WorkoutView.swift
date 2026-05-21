@@ -499,6 +499,7 @@ struct WorkoutView: View {
     func generateFirstWeek(from result: BodyAnalysisResult) async {
         guard !Task.isCancelled else { return }
         isGenerating = true
+        WorkoutGenerationDiagnostics.start(feature: "Week 1 workout generation")
         defer {
             if !Task.isCancelled {
                 isGenerating = false
@@ -555,11 +556,14 @@ struct WorkoutView: View {
             }
             DataBackupManager.shared.writeAutomaticBackup(using: modelContext)
             selectedWeek = 1
+            WorkoutGenerationDiagnostics.finish()
             UINotificationFeedbackGenerator().notificationOccurred(.success)
         } catch is CancellationError {
+            WorkoutGenerationDiagnostics.finish()
             return
         } catch {
             guard !Task.isCancelled else { return }
+            WorkoutGenerationDiagnostics.finish()
             errorMessage = error.localizedDescription
             showError = true
             UINotificationFeedbackGenerator().notificationOccurred(.error)
