@@ -501,6 +501,7 @@ struct WorkoutView: View {
         isGenerating = true
         WorkoutGenerationDiagnostics.start(feature: "Week 1 workout generation")
         defer {
+            WorkoutGenerationDiagnostics.finish()
             if !Task.isCancelled {
                 isGenerating = false
                 generationTask = nil
@@ -510,6 +511,7 @@ struct WorkoutView: View {
         do {
             let response = try await ClaudeService.shared.generateWeekOne(from: result)
             try Task.checkCancellation()
+            WorkoutGenerationDiagnostics.markStage("encoding generated week 1 program")
 
             guard
                 let analysisJSONString = encodeJSONString(
@@ -525,6 +527,7 @@ struct WorkoutView: View {
             }
 
             guard !Task.isCancelled else { return }
+            WorkoutGenerationDiagnostics.markStage("replacing stored week 1 program")
 
             for program in programs {
                 modelContext.delete(program)
@@ -546,6 +549,7 @@ struct WorkoutView: View {
             modelContext.insert(program)
 
             insertDays(from: response.days, into: program)
+            WorkoutGenerationDiagnostics.markStage("saving generated week 1 program to storage")
 
             guard PersistenceReporter.save(modelContext, operation: "generated week 1 workout program") else {
                 modelContext.rollback()
@@ -554,16 +558,16 @@ struct WorkoutView: View {
                 UINotificationFeedbackGenerator().notificationOccurred(.error)
                 return
             }
-            DataBackupManager.shared.writeAutomaticBackup(using: modelContext)
+            // The generated program is already persisted here. Keep the expensive full-export
+            // backup off the live AI generation path so a backup write cannot masquerade as a
+            // workout-generation crash.
+            WorkoutGenerationDiagnostics.markStage("finalizing generated week 1 program")
             selectedWeek = 1
-            WorkoutGenerationDiagnostics.finish()
             UINotificationFeedbackGenerator().notificationOccurred(.success)
         } catch is CancellationError {
-            WorkoutGenerationDiagnostics.finish()
             return
         } catch {
             guard !Task.isCancelled else { return }
-            WorkoutGenerationDiagnostics.finish()
             errorMessage = error.localizedDescription
             showError = true
             UINotificationFeedbackGenerator().notificationOccurred(.error)
@@ -627,7 +631,6 @@ struct WorkoutView: View {
                 UINotificationFeedbackGenerator().notificationOccurred(.error)
                 return
             }
-            DataBackupManager.shared.writeAutomaticBackup(using: modelContext)
             selectedWeek = nextWeek
             UINotificationFeedbackGenerator().notificationOccurred(.success)
         } catch is CancellationError {

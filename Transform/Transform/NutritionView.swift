@@ -746,7 +746,7 @@ struct NutritionView: View {
             UINotificationFeedbackGenerator().notificationOccurred(.error)
             return
         }
-        DataBackupManager.shared.writeAutomaticBackup(using: modelContext)
+        // Keep the expensive full-export backup out of the AI-generation completion path.
     }
 
     func encodeJSONString<T: Encodable>(_ value: T, context: String) -> String? {
