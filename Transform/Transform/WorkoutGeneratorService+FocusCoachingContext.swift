@@ -752,7 +752,7 @@ extension ClaudeService {
     }
 
     func networkFailureError(while action: String, underlying error: Error) -> ClaudeError {
-        ClaudeError.apiError("\(networkFailureSummary(for: underlying)) while \(action). No recovery-engine week was applied, so you can safely retry.")
+        ClaudeError.apiError("\(networkFailureSummary(for: error)) while \(action). No recovery-engine week was applied, so you can safely retry.")
     }
 
     private func networkFailureSummary(for error: Error) -> String {
