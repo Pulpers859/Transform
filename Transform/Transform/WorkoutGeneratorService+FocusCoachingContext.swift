@@ -752,7 +752,30 @@ extension ClaudeService {
     }
 
     func networkFailureError(while action: String, underlying error: Error) -> ClaudeError {
-        ClaudeError.apiError("The AI request did not complete cleanly while \(action). No recovery-engine week was applied, so you can safely retry.")
+        ClaudeError.apiError("\(networkFailureSummary(for: underlying)) while \(action). No recovery-engine week was applied, so you can safely retry.")
+    }
+
+    private func networkFailureSummary(for error: Error) -> String {
+        if let urlError = error as? URLError {
+            switch urlError.code {
+            case .timedOut:
+                return "The AI request timed out before Anthropic returned a complete structured response"
+            case .networkConnectionLost:
+                return "The network connection dropped before Anthropic returned a complete structured response"
+            case .notConnectedToInternet, .cannotFindHost, .cannotConnectToHost, .dnsLookupFailed:
+                return "The AI request could not reach Anthropic reliably"
+            case .cancelled:
+                return "The AI request was cancelled before completion"
+            default:
+                return "The AI request hit a transport error (\(urlError.code.rawValue))"
+            }
+        }
+
+        if error.isStructuredResponseEnvelopeFailure {
+            return "Anthropic returned an incomplete or malformed structured response envelope"
+        }
+
+        return "The AI request did not complete cleanly"
     }
 
     static func normalizedExerciseNameKey(_ name: String) -> String {

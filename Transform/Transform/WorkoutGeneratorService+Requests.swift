@@ -37,8 +37,10 @@ extension ClaudeService {
     }
 
     var weekOneConfig: GenerationConfig {
-        // Week 1 anchors the entire mesocycle — use the most capable model.
-        GenerationConfig(model: Config.claudeModel, maxTokens: 8192, timeout: 240)
+        // Week 1 is still a text-only structured planning task.
+        // Sonnet is materially faster and less timeout-prone than Opus here while preserving
+        // strong enough reasoning for the validator-backed generation pipeline.
+        GenerationConfig(model: Config.claudeModelLite, maxTokens: 8192, timeout: 180)
     }
 
     var nextWeekConfig: GenerationConfig {
