@@ -231,7 +231,12 @@ extension ClaudeService {
         from scaffold: WorkoutProgramScaffoldResponse,
         dayDetails: [WorkoutDayDetailResponse]
     ) -> WorkoutProgramResponse {
-        let detailByDay = Dictionary(uniqueKeysWithValues: dayDetails.map { ($0.dayNumber, $0) })
+        var detailByDay: [Int: WorkoutDayDetailResponse] = [:]
+        for detail in dayDetails {
+            if detailByDay[detail.dayNumber] == nil {
+                detailByDay[detail.dayNumber] = detail
+            }
+        }
 
         let days = scaffold.days.map { scaffoldDay -> WorkoutDayResponse in
             if scaffoldDay.isRestDay {
