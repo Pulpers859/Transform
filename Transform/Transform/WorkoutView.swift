@@ -1,5 +1,8 @@
 import SwiftUI
 import SwiftData
+#if canImport(UIKit)
+import UIKit
+#endif
 
 struct WorkoutView: View {
     @Environment(\.modelContext) private var modelContext
@@ -14,6 +17,9 @@ struct WorkoutView: View {
     @State private var selectedWeek = 1
     @State private var showGeneratorLab = false
     @State private var generationTask: Task<Void, Never>?
+    #if canImport(UIKit)
+    @State private var backgroundTaskID: UIBackgroundTaskIdentifier = .invalid
+    #endif
 
     var currentProgram: WorkoutProgram? { programs.first }
     var latestAnalysis: BodyAnalysisSession? { analysisSessions.first }
@@ -68,11 +74,6 @@ struct WorkoutView: View {
             }
             .onChange(of: currentProgram?.currentWeek) { _, _ in
                 syncSelectedWeekWithCurrentProgram()
-            }
-            .onDisappear {
-                generationTask?.cancel()
-                generationTask = nil
-                isGenerating = false
             }
         }
     }
@@ -500,7 +501,9 @@ struct WorkoutView: View {
         guard !Task.isCancelled else { return }
         isGenerating = true
         WorkoutGenerationDiagnostics.start(feature: "Week 1 workout generation")
+        beginGenerationRuntimeProtection(label: "Week 1 workout generation")
         defer {
+            endGenerationRuntimeProtection()
             WorkoutGenerationDiagnostics.finish()
             if !Task.isCancelled {
                 isGenerating = false
@@ -580,7 +583,9 @@ struct WorkoutView: View {
     func generateNextWeek(for program: WorkoutProgram) async {
         guard !Task.isCancelled else { return }
         isGenerating = true
+        beginGenerationRuntimeProtection(label: "Workout week generation")
         defer {
+            endGenerationRuntimeProtection()
             if !Task.isCancelled {
                 isGenerating = false
                 generationTask = nil
@@ -651,6 +656,30 @@ struct WorkoutView: View {
     }
 
     // MARK: - Helpers
+
+    @MainActor
+    func beginGenerationRuntimeProtection(label: String) {
+        #if canImport(UIKit)
+        endGenerationRuntimeProtection()
+        UIApplication.shared.isIdleTimerDisabled = true
+        backgroundTaskID = UIApplication.shared.beginBackgroundTask(withName: label) {
+            DispatchQueue.main.async {
+                generationTask?.cancel()
+                endGenerationRuntimeProtection()
+            }
+        }
+        #endif
+    }
+
+    @MainActor
+    func endGenerationRuntimeProtection() {
+        #if canImport(UIKit)
+        UIApplication.shared.isIdleTimerDisabled = false
+        guard backgroundTaskID != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(backgroundTaskID)
+        backgroundTaskID = .invalid
+        #endif
+    }
 
     func insertDays(from dayResponses: [WorkoutDayResponse], into program: WorkoutProgram) {
         for dayResponse in dayResponses {
