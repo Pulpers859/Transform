@@ -79,7 +79,6 @@ extension ClaudeService {
     func generateWeekOne(from analysisResult: BodyAnalysisResult) async throws -> WorkoutProgramResponse {
         WorkoutGenerationDiagnostics.markStage("building week 1 analysis context")
         let analysisSummary = analysisContext(from: analysisResult)
-        let detailContext = trainingDayDetailContext(from: analysisResult)
         let trainingIntent = trainingIntentPlan(from: analysisResult)
         let blueprint = programBlueprint(for: trainingIntent, weekNumber: 1)
         let intentSummary = trainingIntentContext(from: trainingIntent)
@@ -98,17 +97,8 @@ extension ClaudeService {
                 blueprint: blueprint
             )
             WorkoutGenerationDiagnostics.markStage("assembling scaffold-backed week 1 program")
-            var assembled = sanitizeProgramResponse(
+            let assembled = sanitizeProgramResponse(
                 assembleProgramResponse(from: scaffold, dayDetails: [])
-            )
-            WorkoutGenerationDiagnostics.markStage("expanding week 1 training-day coaching details")
-            let dayDetails = try await generateWeekOneTrainingDayDetails(
-                scaffold: scaffold,
-                detailContext: detailContext
-            )
-            WorkoutGenerationDiagnostics.markStage("merging week 1 day-detail responses")
-            assembled = sanitizeProgramResponse(
-                assembleProgramResponse(from: scaffold, dayDetails: dayDetails)
             )
             WorkoutGenerationDiagnostics.markStage("validating assembled week 1 program")
             let issues = validateProgramResponse(assembled, blueprint: blueprint)
@@ -116,22 +106,10 @@ extension ClaudeService {
                 return labeledProgramResponse(assembled, sourceLabel: aiSourceLabel)
             }
             if shouldAcceptAIOutput(despite: issues) {
-                print("[WorkoutGeneratorService] Week 1 accepted with heuristic validator warnings after scaffold/day assembly: \(issues.joined(separator: " | "))")
+                print("[WorkoutGeneratorService] Week 1 accepted with heuristic validator warnings after scaffold assembly: \(issues.joined(separator: " | "))")
                 return labeledProgramResponse(assembled, sourceLabel: aiSourceLabel)
             }
             lastIssues = issues
-
-            let scaffoldOnlyIssues = validateProgramResponse(
-                sanitizeProgramResponse(assembleProgramResponse(from: scaffold, dayDetails: [])),
-                blueprint: blueprint
-            )
-            if scaffoldOnlyIssues.isEmpty || shouldAcceptAIOutput(despite: scaffoldOnlyIssues) {
-                print("[WorkoutGeneratorService] Week 1 returned scaffold-backed fallback notes after detail-expansion issues: \(issues.joined(separator: " | "))")
-                let scaffoldOnlyProgram = sanitizeProgramResponse(
-                    assembleProgramResponse(from: scaffold, dayDetails: [])
-                )
-                return labeledProgramResponse(scaffoldOnlyProgram, sourceLabel: aiSourceLabel)
-            }
         } catch {
             lastIssues = [error.localizedDescription]
 
@@ -235,172 +213,6 @@ extension ClaudeService {
         }
 
         throw ClaudeError.parseError("Week 1 scaffold could not be validated: \(lastIssues.joined(separator: " | "))")
-    }
-
-    private func generateWeekOneTrainingDayDetails(
-        scaffold: WorkoutProgramScaffoldResponse,
-        detailContext: String
-    ) async throws -> [WorkoutDayDetailResponse] {
-        let scaffoldSummary = compactWeekOneScaffoldReference(from: scaffold)
-        var details: [WorkoutDayDetailResponse] = []
-        var failures: [String] = []
-
-        for day in scaffold.days.sorted(by: { $0.dayNumber < $1.dayNumber }) where !day.isRestDay {
-            try Task.checkCancellation()
-            do {
-                WorkoutGenerationDiagnostics.markStage("expanding training day \(day.dayNumber)")
-                let detail = try await generateTrainingDayDetail(
-                    for: day,
-                    scaffoldSummary: scaffoldSummary,
-                    detailContext: detailContext
-                )
-                details.append(detail)
-            } catch {
-                failures.append("Day \(day.dayNumber): \(error.localizedDescription)")
-            }
-            await Task.yield()
-        }
-
-        if !failures.isEmpty {
-            print("[WorkoutGeneratorService] Week 1 day-detail enrichment partial failures: \(failures.joined(separator: " | "))")
-        }
-
-        return details
-    }
-
-    private func generateTrainingDayDetail(
-        for day: WorkoutDayScaffoldResponse,
-        scaffoldSummary: String,
-        detailContext: String
-    ) async throws -> WorkoutDayDetailResponse {
-        let config = weekOneDayDetailConfig
-        let toolSchema = trainingDayDetailSchema(day: day)
-        let systemPrompt = trainingDayDetailSystemPrompt()
-        let userPrompt = trainingDayDetailUserPrompt(
-            context: detailContext,
-            scaffoldSummary: scaffoldSummary,
-            day: day
-        )
-        let requestContext = workoutRequestContext(
-            phase: "week_one_day_\(day.dayNumber)_detail",
-            weekNumber: 1,
-            analysisContext: detailContext,
-            previousWeekReference: scaffoldSummary,
-            systemPrompt: systemPrompt,
-            userPrompt: userPrompt
-        )
-
-        var requestBody = structuredRequestBody(
-            config: config,
-            systemPrompt: systemPrompt,
-            userPrompt: userPrompt,
-            toolName: trainingDayDetailToolName,
-            toolSchema: toolSchema,
-            temperature: 0.55
-        )
-
-        var lastIssues: [String] = []
-
-        for attempt in 1...generationAttempts {
-            do {
-                let jsonString = try await AnthropicClient.shared.sendStructuredRequest(
-                    body: requestBody,
-                    toolName: trainingDayDetailToolName,
-                    timeout: config.timeout,
-                    context: requestContext
-                )
-                let decoded = try decodeJSONPayload(WorkoutDayDetailResponse.self, from: jsonString)
-                let issues = validateTrainingDayDetail(decoded, against: day)
-                if issues.isEmpty {
-                    return decoded
-                }
-
-                lastIssues = issues
-                if attempt < generationAttempts {
-                    requestBody = correctionRequestBody(
-                        config: config,
-                        toolName: trainingDayDetailToolName,
-                        toolSchema: toolSchema,
-                        issues: issues,
-                        context: detailContext,
-                        originalUserPrompt: userPrompt
-                    )
-                }
-            } catch {
-                lastIssues = ["Day \(day.dayNumber) detail attempt \(attempt): \(error.localizedDescription)"]
-
-                if shouldAbortFallback(for: error) {
-                    throw error
-                }
-
-                if attempt < generationAttempts {
-                    requestBody = correctionRequestBody(
-                        config: config,
-                        toolName: trainingDayDetailToolName,
-                        toolSchema: toolSchema,
-                        issues: [correctionIssue(for: error)],
-                        context: detailContext,
-                        originalUserPrompt: userPrompt
-                    )
-                }
-            }
-        }
-
-        throw ClaudeError.parseError("Training-day detail for day \(day.dayNumber) could not be validated: \(lastIssues.joined(separator: " | "))")
-    }
-
-    private func validateTrainingDayDetail(
-        _ detail: WorkoutDayDetailResponse,
-        against day: WorkoutDayScaffoldResponse
-    ) -> [String] {
-        var issues: [String] = []
-
-        if detail.dayNumber != day.dayNumber {
-            issues.append("dayNumber must stay locked to \(day.dayNumber).")
-        }
-
-        let expected = day.exercises
-            .map { normalizeExerciseName($0.exerciseName) }
-            .sorted()
-        let actual = detail.exercises
-            .map { normalizeExerciseName($0.exerciseName) }
-            .sorted()
-
-        if detail.exercises.count != day.exercises.count {
-            issues.append("Exercise note count must stay locked to \(day.exercises.count).")
-        }
-        if actual != expected {
-            issues.append("Exercise names must exactly match the locked scaffold for day \(day.dayNumber).")
-        }
-        if detail.notes.trimmedOr(default: "").isEmpty {
-            issues.append("Training-day note is empty.")
-        }
-        if detail.exercises.contains(where: { $0.notes.trimmedOr(default: "").isEmpty }) {
-            issues.append("Every exercise needs a coaching note.")
-        }
-
-        return issues
-    }
-
-    private func compactWeekOneScaffoldReference(from scaffold: WorkoutProgramScaffoldResponse) -> String {
-        let dayLines = scaffold.days
-            .sorted { $0.dayNumber < $1.dayNumber }
-            .map { day -> String in
-                if day.isRestDay {
-                    return "Day \(day.dayNumber) - \(day.dayName) [Recovery]: \(day.sessionFocus)"
-                }
-
-                return "Day \(day.dayNumber) - \(day.dayName) [\(day.muscleGroups)]: \(day.sessionFocus)"
-            }
-            .joined(separator: "\n")
-
-        return """
-        Program: \(scaffold.programName)
-        Split: \(scaffold.splitType)
-        Summary: \(scaffold.programSummary)
-        Days per week: \(scaffold.daysPerWeek)
-        \(dayLines)
-        """
     }
 
     // MARK: - Generate Next Week (2, 3, or 4)
