@@ -37,8 +37,14 @@ extension ClaudeService {
     }
 
     var weekOneConfig: GenerationConfig {
-        // Week 1 anchors the entire mesocycle — use the most capable model.
-        GenerationConfig(model: Config.claudeModel, maxTokens: 8192, timeout: 240)
+        // Week 1 is the highest-leverage planning pass, so keep Opus for deeper reasoning.
+        // The latency fix comes from tighter prompt/output budgets, not from downgrading the model.
+        GenerationConfig(model: Config.claudeModel, maxTokens: 6144, timeout: 240)
+    }
+
+    var weekOneDayDetailConfig: GenerationConfig {
+        // Day-detail expansion is primarily coaching-note prose anchored to a locked scaffold.
+        GenerationConfig(model: Config.claudeModelLite, maxTokens: 2200, timeout: 120)
     }
 
     var nextWeekConfig: GenerationConfig {
@@ -48,6 +54,8 @@ extension ClaudeService {
 
     /// Tool names that the structured-output flow uses.
     var programToolName: String { "emit_workout_program" }
+    var programScaffoldToolName: String { "emit_workout_program_scaffold" }
+    var trainingDayDetailToolName: String { "emit_training_day_detail" }
     var weekToolName: String { "emit_workout_week" }
 
     func structuredRequestBody(
@@ -138,11 +146,13 @@ extension ClaudeService {
         - Session Notes (the `notes` field on each training day) must sound curated and personal:
           open with a one-line framing of today's intent given the analysis, then give SPECIFIC
           warm-up and mobility guidance tied to THIS day's lifts and THIS person's posture/injury
-          notes. No template language. No phrases like "progressive overload session."
+          notes. Keep session notes concise: 2-3 short sentences, ideally under 70 words total.
+          No template language. No phrases like "progressive overload session."
         - Exercise notes must be 2-4 sentences of real coaching. Include (a) a form/technique cue
           for THIS movement, (b) a progression cue appropriate for Week 1 (RIR/RPE or load/rep
           intent), and (c) a "why this is here for you" sentence that references the analysis
-          (e.g., the priority muscle, the postural imbalance, the leverage change).
+          (e.g., the priority muscle, the postural imbalance, the leverage change). Keep exercise
+          notes concise: exactly 2 short sentences, ideally under 45 words total.
 
         Programming constraints:
         - Exactly 7 days, dayNumber 1..7.
@@ -208,6 +218,117 @@ extension ClaudeService {
         """
     }
 
+    func weekOneScaffoldSystemPrompt() -> String {
+        """
+        You are a multi-disciplinary coaching panel designing Week 1 of a personalized 4-week
+        hypertrophy mesocycle for a specific individual.
+
+        This pass is for the full-week scaffold only. Your job is to lock in:
+        - the 7-day structure,
+        - which days are training vs recovery,
+        - the exact exercise lineup for each training day,
+        - set/rep/rest/tempo prescriptions,
+        - and a short sessionFocus line for each day.
+
+        Do NOT spend tokens writing long coaching notes yet. Training-day sessionFocus should be
+        one short sentence that states the day's purpose. Rest-day sessionFocus should be one
+        short recovery directive. Exercise selection and prescriptions must still be high quality
+        and analysis-driven.
+
+        Follow the Body Analysis, Structured Training Intent, and Weekly Blueprint exactly.
+
+        Programming constraints:
+        - Exactly 7 days, dayNumber 1..7.
+        - 4-6 training days, 1-3 rest days.
+        - Training days: 5-8 exercises. Rest days: empty exercises array.
+        - Day theme and exercises must align.
+        - Use standardized exercise naming.
+        - On a focus day, lead with a prime hypertrophy movement for that focus.
+        - Do not fill broad Lower/Legs days with redundant glute/posterior-chain overlap at the
+          expense of quad stimulus unless the day is explicitly glute/hamstring biased.
+        - Tempo is only for rep-based lifts where cadence matters. Leave it empty for carries,
+          distance-based work, and similar drills.
+        - Loaded carries do not replace true direct core work when the blueprint calls for core.
+        - Prefer high-value exercise selection over filler.
+
+        Always call the emit_workout_program_scaffold tool. Never respond with free text.
+        """
+    }
+
+    func weekOneScaffoldUserPrompt(context: String) -> String {
+        """
+        Build the complete Week 1 scaffold for this individual's mesocycle.
+
+        --- Coaching Inputs ---
+        \(context)
+        --- end Coaching Inputs ---
+
+        Requirements:
+        - Name the program and split meaningfully.
+        - programSummary must be one sentence describing what this 4-week arc is designed to
+          accomplish for this specific user.
+        - sessionFocus must be concise. No long coaching notes in this pass.
+        - Exercise prescriptions must already be realistic and internally coherent.
+
+        Call the emit_workout_program_scaffold tool with your answer.
+        """
+    }
+
+    func trainingDayDetailSystemPrompt() -> String {
+        """
+        You are the same coaching panel, but this pass is only expanding one already-planned
+        training day from a locked weekly scaffold.
+
+        Do NOT change the day split, exercise list, sets, reps, tempo, rest, or order. Your job
+        is only to write:
+        - the day-level coaching note for that training day
+        - the exercise-level coaching notes for the listed exercises
+
+        Requirements:
+        - Day note: 2-3 short sentences, ideally under 70 words total.
+        - Exercise notes: exactly 2 short sentences each, ideally under 45 words total.
+        - Every training-day note must tie the day's purpose back to the analysis and include
+          warm-up / mobility guidance for that day's lifts and the user's posture/injury notes.
+        - Every exercise note must include a form cue, a Week 1 progression cue, and a brief
+          personalization sentence tied to the analysis.
+        - Stay faithful to the locked scaffold. No drift.
+
+        Always call the emit_training_day_detail tool. Never respond with free text.
+        """
+    }
+
+    func trainingDayDetailUserPrompt(
+        context: String,
+        scaffoldSummary: String,
+        day: WorkoutDayScaffoldResponse
+    ) -> String {
+        let exerciseReference = day.exercises.enumerated().map { index, exercise in
+            "\(index + 1). \(exercise.exerciseName) - \(exercise.sets)x\(exercise.reps), rest \(exercise.restSeconds)s, target \(exercise.muscleTarget), tempo \(exercise.tempo.isEmpty ? "(empty)" : exercise.tempo)"
+        }.joined(separator: "\n")
+
+        return """
+        Expand the coaching detail for Day \(day.dayNumber) only.
+
+        --- Coaching Inputs ---
+        \(context)
+        --- end Coaching Inputs ---
+
+        --- Locked Week 1 Scaffold Summary ---
+        \(scaffoldSummary)
+        --- end Locked Week 1 Scaffold Summary ---
+
+        --- Target Training Day ---
+        Day \(day.dayNumber) - \(day.dayName)
+        Muscle groups: \(day.muscleGroups)
+        Session focus: \(day.sessionFocus)
+        Exercises:
+        \(exerciseReference)
+        --- end Target Training Day ---
+
+        Call the emit_training_day_detail tool with your answer.
+        """
+    }
+
     func weekOneUserPrompt(context: String) -> String {
         """
         Build Week 1 of this individual's 4-week mesocycle. Treat the coaching inputs below as
@@ -224,10 +345,10 @@ extension ClaudeService {
           for THIS person based on the analysis.
         - Each training day's `notes` must read like a real coach's briefing for that day — tie
           the intent back to the analysis and give warm-up / mobility guidance specific to the
-          day's lifts and the user's posture/injury notes.
+          day's lifts and the user's posture/injury notes. Keep each day note compact.
         - Each exercise's `notes` must include a form cue, a Week 1 progression cue, and a
           personalization sentence referencing the analysis (priority muscle, leverage change,
-          postural issue, etc.).
+          postural issue, etc.). Keep each exercise note to two short sentences.
 
         Call the emit_workout_program tool with your answer.
         """
@@ -503,6 +624,83 @@ extension ClaudeService {
         return schema
     }
 
+    func exerciseScaffoldSchema() -> [String: Any] {
+        let properties: [String: Any] = [
+            "exerciseName": stringProp("Specific lift name, e.g., 'Incline Dumbbell Press'."),
+            "sets": integerProp(minimum: 1, maximum: 8),
+            "reps": stringProp("Rep prescription, e.g., '8-10' or '12-15'."),
+            "tempo": stringProp("Optional. Leave empty for carries, distance-based work, and similar drills."),
+            "restSeconds": integerProp(minimum: 30, maximum: 240),
+            "muscleTarget": stringProp("Primary muscle target.")
+        ]
+        let required: [String] = ["exerciseName", "sets", "reps", "restSeconds", "muscleTarget"]
+        return [
+            "type": "object",
+            "properties": properties,
+            "required": required,
+            "additionalProperties": false
+        ]
+    }
+
+    func dayScaffoldSchema(dayNumbers: [Int]) -> [String: Any] {
+        let exercisesProp: [String: Any] = [
+            "type": "array",
+            "items": exerciseScaffoldSchema(),
+            "description": "5-8 entries on training days; empty array on rest days."
+        ]
+        let properties: [String: Any] = [
+            "dayNumber": integerProp(allowedValues: dayNumbers),
+            "dayName": stringProp(),
+            "muscleGroups": stringProp(),
+            "isRestDay": booleanProp(),
+            "sessionFocus": stringProp("One short sentence stating the purpose of the day. Keep it concise."),
+            "exercises": exercisesProp
+        ]
+        let required: [String] = ["dayNumber", "dayName", "muscleGroups", "isRestDay", "sessionFocus", "exercises"]
+        return [
+            "type": "object",
+            "properties": properties,
+            "required": required,
+            "additionalProperties": false
+        ]
+    }
+
+    func exerciseDetailSchema(allowedNames: [String]) -> [String: Any] {
+        let properties: [String: Any] = [
+            "exerciseName": [
+                "type": "string",
+                "enum": allowedNames
+            ],
+            "notes": stringProp("Exactly 2 short sentences: form cue + Week 1 progression cue + brief personalization.")
+        ]
+        return [
+            "type": "object",
+            "properties": properties,
+            "required": ["exerciseName", "notes"],
+            "additionalProperties": false
+        ]
+    }
+
+    func trainingDayDetailSchema(day: WorkoutDayScaffoldResponse) -> [String: Any] {
+        let allowedNames = day.exercises.map(\.exerciseName)
+        let properties: [String: Any] = [
+            "dayNumber": integerProp(allowedValues: [day.dayNumber]),
+            "notes": stringProp("2-3 short sentences: analysis-anchored intent + warm-up / mobility guidance for this day."),
+            "exercises": [
+                "type": "array",
+                "minItems": allowedNames.count,
+                "maxItems": allowedNames.count,
+                "items": exerciseDetailSchema(allowedNames: allowedNames)
+            ]
+        ]
+        return [
+            "type": "object",
+            "properties": properties,
+            "required": ["dayNumber", "notes", "exercises"],
+            "additionalProperties": false
+        ]
+    }
+
     func daySchema(dayNumbers: [Int]) -> [String: Any] {
         let exercisesProp: [String: Any] = [
             "type": "array",
@@ -550,6 +748,29 @@ extension ClaudeService {
             "additionalProperties": false
         ]
         return schema
+    }
+
+    func programScaffoldToolSchema() -> [String: Any] {
+        let dayNumbers = Array(1...7)
+        let daysProp: [String: Any] = [
+            "type": "array",
+            "minItems": 7,
+            "maxItems": 7,
+            "items": dayScaffoldSchema(dayNumbers: dayNumbers)
+        ]
+        let properties: [String: Any] = [
+            "programName": stringProp(),
+            "programSummary": stringProp("One sentence: what the 4-week arc is designed to accomplish for this specific user, referencing the analysis."),
+            "splitType": stringProp(),
+            "daysPerWeek": integerProp(minimum: 4, maximum: 6),
+            "days": daysProp
+        ]
+        return [
+            "type": "object",
+            "properties": properties,
+            "required": ["programName", "programSummary", "splitType", "daysPerWeek", "days"],
+            "additionalProperties": false
+        ]
     }
 
     func weekToolSchema(dayStart: Int, dayEnd: Int) -> [String: Any] {
