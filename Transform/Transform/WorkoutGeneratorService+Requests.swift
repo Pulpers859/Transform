@@ -37,10 +37,9 @@ extension ClaudeService {
     }
 
     var weekOneConfig: GenerationConfig {
-        // Week 1 is still a text-only structured planning task.
-        // Sonnet is materially faster and less timeout-prone than Opus here while preserving
-        // strong enough reasoning for the validator-backed generation pipeline.
-        GenerationConfig(model: Config.claudeModelLite, maxTokens: 8192, timeout: 180)
+        // Week 1 is the highest-leverage planning pass, so keep Opus for deeper reasoning.
+        // The latency fix comes from tighter prompt/output budgets, not from downgrading the model.
+        GenerationConfig(model: Config.claudeModel, maxTokens: 6144, timeout: 240)
     }
 
     var nextWeekConfig: GenerationConfig {
@@ -140,11 +139,13 @@ extension ClaudeService {
         - Session Notes (the `notes` field on each training day) must sound curated and personal:
           open with a one-line framing of today's intent given the analysis, then give SPECIFIC
           warm-up and mobility guidance tied to THIS day's lifts and THIS person's posture/injury
-          notes. No template language. No phrases like "progressive overload session."
+          notes. Keep session notes concise: 2-3 short sentences, ideally under 70 words total.
+          No template language. No phrases like "progressive overload session."
         - Exercise notes must be 2-4 sentences of real coaching. Include (a) a form/technique cue
           for THIS movement, (b) a progression cue appropriate for Week 1 (RIR/RPE or load/rep
           intent), and (c) a "why this is here for you" sentence that references the analysis
-          (e.g., the priority muscle, the postural imbalance, the leverage change).
+          (e.g., the priority muscle, the postural imbalance, the leverage change). Keep exercise
+          notes concise: exactly 2 short sentences, ideally under 45 words total.
 
         Programming constraints:
         - Exactly 7 days, dayNumber 1..7.
@@ -226,10 +227,10 @@ extension ClaudeService {
           for THIS person based on the analysis.
         - Each training day's `notes` must read like a real coach's briefing for that day — tie
           the intent back to the analysis and give warm-up / mobility guidance specific to the
-          day's lifts and the user's posture/injury notes.
+          day's lifts and the user's posture/injury notes. Keep each day note compact.
         - Each exercise's `notes` must include a form cue, a Week 1 progression cue, and a
           personalization sentence referencing the analysis (priority muscle, leverage change,
-          postural issue, etc.).
+          postural issue, etc.). Keep each exercise note to two short sentences.
 
         Call the emit_workout_program tool with your answer.
         """
