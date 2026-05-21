@@ -324,9 +324,9 @@ enum AnthropicAPIKeyStatus: Equatable {
         \(inlineHelpText)
 
         Supported setup:
-        1. Create a local file named Secrets.plist beside Transform.xcodeproj.
+        1. Create a local file named Secrets.plist inside the Transform app source folder.
         2. Add ANTHROPIC_API_KEY with your real key.
-        3. Make sure that file is added to the Transform app target so it is copied into the app bundle.
+        3. Leave it uncommitted; the app folder is synchronized into the Transform target during your local Xcode build.
 
         Exact bundled path checked at runtime:
         \(expectedBundlePath)
