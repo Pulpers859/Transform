@@ -67,6 +67,16 @@ extension ClaudeService {
         )
     }
 
+    func sanitizeProgramScaffoldResponse(_ program: WorkoutProgramScaffoldResponse) -> WorkoutProgramScaffoldResponse {
+        WorkoutProgramScaffoldResponse(
+            programName: program.programName.trimmedOr(default: "Custom Program"),
+            programSummary: program.programSummary.trimmedOr(default: "4-week hypertrophy mesocycle."),
+            splitType: program.splitType.trimmedOr(default: "Custom Split"),
+            daysPerWeek: max(1, min(7, program.daysPerWeek)),
+            days: sanitizeScaffoldDays(program.days)
+        )
+    }
+
     func sanitizeWeekResponse(_ week: WorkoutWeekResponse) -> WorkoutWeekResponse {
         WorkoutWeekResponse(
             weekSummary: week.weekSummary.trimmedOr(default: "Weekly progression update."),
@@ -153,6 +163,155 @@ extension ClaudeService {
                     exercises: day.isRestDay ? [WorkoutExerciseResponse]() : cleanedExercises
                 )
             }
+    }
+
+    func sanitizeScaffoldDays(_ days: [WorkoutDayScaffoldResponse]) -> [WorkoutDayScaffoldResponse] {
+        days
+            .sorted { $0.dayNumber < $1.dayNumber }
+            .map { day in
+                let weekNumber: Int = ((day.dayNumber - 1) / 7) + 1
+                let cleanedExercises: [WorkoutExerciseScaffoldResponse] = day.exercises.map { exercise in
+                    let cleanedName = canonicalExerciseName(
+                        exercise.exerciseName,
+                        muscleTarget: exercise.muscleTarget
+                    )
+                    let cleanedTarget = exercise.muscleTarget.trimmedOr(default: "Primary Target")
+                    let cleanedSets = polishedExerciseSets(
+                        rawSets: exercise.sets,
+                        exerciseName: cleanedName,
+                        muscleTarget: cleanedTarget,
+                        weekNumber: weekNumber
+                    )
+                    let cleanedReps = polishedExerciseRepRange(
+                        rawReps: exercise.reps,
+                        exerciseName: cleanedName,
+                        muscleTarget: cleanedTarget,
+                        weekNumber: weekNumber
+                    )
+                    let cleanedTempo = polishedExerciseTempo(
+                        rawTempo: exercise.tempo,
+                        exerciseName: cleanedName,
+                        muscleTarget: cleanedTarget,
+                        weekNumber: weekNumber,
+                        reps: cleanedReps
+                    )
+                    let cleanedRestSeconds = polishedExerciseRestSeconds(
+                        rawRestSeconds: exercise.restSeconds,
+                        exerciseName: cleanedName,
+                        muscleTarget: cleanedTarget,
+                        weekNumber: weekNumber
+                    )
+
+                    return WorkoutExerciseScaffoldResponse(
+                        exerciseName: cleanedName,
+                        sets: cleanedSets,
+                        reps: cleanedReps,
+                        tempo: cleanedTempo,
+                        restSeconds: cleanedRestSeconds,
+                        muscleTarget: cleanedTarget
+                    )
+                }
+
+                return WorkoutDayScaffoldResponse(
+                    dayNumber: day.dayNumber,
+                    dayName: day.dayName.trimmedOr(default: "Day \(day.dayNumber)"),
+                    muscleGroups: day.muscleGroups.trimmedOr(default: day.isRestDay ? "Recovery" : "Primary Training"),
+                    isRestDay: day.isRestDay,
+                    sessionFocus: day.sessionFocus.trimmedOr(
+                        default: day.isRestDay
+                            ? "Recovery emphasis with light activity as tolerated."
+                            : "Analysis-driven hypertrophy session."
+                    ),
+                    exercises: day.isRestDay ? [] : cleanedExercises
+                )
+            }
+    }
+
+    func assembleProgramResponse(
+        from scaffold: WorkoutProgramScaffoldResponse,
+        dayDetails: [WorkoutDayDetailResponse]
+    ) -> WorkoutProgramResponse {
+        let detailByDay = Dictionary(uniqueKeysWithValues: dayDetails.map { ($0.dayNumber, $0) })
+
+        let days = scaffold.days.map { scaffoldDay -> WorkoutDayResponse in
+            if scaffoldDay.isRestDay {
+                return WorkoutDayResponse(
+                    dayNumber: scaffoldDay.dayNumber,
+                    dayName: scaffoldDay.dayName,
+                    muscleGroups: scaffoldDay.muscleGroups,
+                    isRestDay: true,
+                    notes: deterministicRestDayNotes(from: scaffoldDay),
+                    exercises: []
+                )
+            }
+
+            let detail = detailByDay[scaffoldDay.dayNumber]
+            var detailByExerciseName: [String: String] = [:]
+            for exerciseDetail in detail?.exercises ?? [] {
+                let key = normalizeExerciseName(exerciseDetail.exerciseName)
+                if detailByExerciseName[key] == nil {
+                    detailByExerciseName[key] = exerciseDetail.notes
+                }
+            }
+
+            let exercises = scaffoldDay.exercises.enumerated().map { index, exercise in
+                let note = detailByExerciseName[normalizeExerciseName(exercise.exerciseName)] ?? fallbackExerciseNote(
+                    for: exercise,
+                    exerciseIndex: index
+                )
+
+                return WorkoutExerciseResponse(
+                    exerciseName: exercise.exerciseName,
+                    sets: exercise.sets,
+                    reps: exercise.reps,
+                    tempo: exercise.tempo,
+                    restSeconds: exercise.restSeconds,
+                    notes: note,
+                    muscleTarget: exercise.muscleTarget
+                )
+            }
+
+            return WorkoutDayResponse(
+                dayNumber: scaffoldDay.dayNumber,
+                dayName: scaffoldDay.dayName,
+                muscleGroups: scaffoldDay.muscleGroups,
+                isRestDay: false,
+                notes: detail?.notes.trimmedOr(default: fallbackTrainingDayNotes(from: scaffoldDay))
+                    ?? fallbackTrainingDayNotes(from: scaffoldDay),
+                exercises: exercises
+            )
+        }
+
+        return WorkoutProgramResponse(
+            programName: scaffold.programName,
+            programSummary: scaffold.programSummary,
+            splitType: scaffold.splitType,
+            daysPerWeek: scaffold.daysPerWeek,
+            days: days
+        )
+    }
+
+    private func deterministicRestDayNotes(from scaffoldDay: WorkoutDayScaffoldResponse) -> String {
+        let focus = scaffoldDay.sessionFocus.trimmedOr(default: "Recovery emphasis with light activity as tolerated.")
+        return focus.hasSuffix(".") ? focus : "\(focus)."
+    }
+
+    private func fallbackTrainingDayNotes(from scaffoldDay: WorkoutDayScaffoldResponse) -> String {
+        let focus = scaffoldDay.sessionFocus.trimmedOr(default: "\(scaffoldDay.muscleGroups) focus with analysis-driven setup work.")
+        let base = focus.hasSuffix(".") ? focus : "\(focus)."
+        return "\(base) Warm up the first movement pattern thoroughly and keep progression conservative until rep quality is repeatable."
+    }
+
+    private func fallbackExerciseNote(
+        for exercise: WorkoutExerciseScaffoldResponse,
+        exerciseIndex: Int
+    ) -> String {
+        let cleanedName = exercise.exerciseName.trimmedOr(default: "Exercise")
+        let target = exercise.muscleTarget.trimmedOr(default: "the target muscle")
+        let progressionCue = exerciseIndex == 0
+            ? "Start with 1-2 reps in reserve and only add load if every rep stays crisp."
+            : "Own the prescribed reps before adding load next week."
+        return "Use controlled technique on \(cleanedName) and keep tension on \(target). \(progressionCue)"
     }
 
     // MARK: - Validation

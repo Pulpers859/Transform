@@ -238,7 +238,7 @@ extension ClaudeService {
     }
 
     private var nutritionWeekOneConfig: NutritionGenerationConfig {
-        NutritionGenerationConfig(model: Config.claudeModel, maxTokens: 8192, timeout: 240)
+        NutritionGenerationConfig(model: Config.claudeModelLite, maxTokens: 8192, timeout: 180)
     }
 
     private var nutritionNextWeekConfig: NutritionGenerationConfig {
