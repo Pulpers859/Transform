@@ -573,7 +573,8 @@ struct BodyAnalysisView: View {
             UINotificationFeedbackGenerator().notificationOccurred(.error)
             return
         }
-        DataBackupManager.shared.writeAutomaticBackup(using: modelContext)
+        // The analysis session is already persisted. Avoid chaining a full export backup onto
+        // the live AI result path, which can make a successful analysis feel like it crashed.
         photos.removeAll()
         currentPose = poses.first ?? "Front"
         analysisResult = nil
