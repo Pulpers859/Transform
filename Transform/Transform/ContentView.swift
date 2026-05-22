@@ -38,7 +38,9 @@ struct ContentView: View {
         .tint(.orange)
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .inactive || newPhase == .background {
-                DataBackupManager.shared.writeAutomaticBackup(using: modelContext)
+                if !WorkoutGenerationDiagnostics.isActive {
+                    DataBackupManager.shared.writeAutomaticBackup(using: modelContext)
+                }
             }
         }
         .onAppear {
