@@ -17,6 +17,7 @@ struct WorkoutView: View {
     @State private var selectedWeek = 1
     @State private var showGeneratorLab = false
     @State private var generationTask: Task<Void, Never>?
+    @State private var generationProtectionToken: UUID?
     #if canImport(UIKit)
     @State private var backgroundTaskID: UIBackgroundTaskIdentifier = .invalid
     #endif
@@ -474,6 +475,8 @@ struct WorkoutView: View {
 
     @MainActor
     func startFirstWeekGeneration(from result: BodyAnalysisResult) {
+        guard !isGenerating else { return }
+        isGenerating = true
         generationTask?.cancel()
         generationTask = Task {
             await generateFirstWeek(from: result)
@@ -482,6 +485,8 @@ struct WorkoutView: View {
 
     @MainActor
     func startNextWeekGeneration(for program: WorkoutProgram) {
+        guard !isGenerating else { return }
+        isGenerating = true
         generationTask?.cancel()
         generationTask = Task {
             await generateNextWeek(for: program)
@@ -490,6 +495,8 @@ struct WorkoutView: View {
 
     @MainActor
     func startRegeneration(from result: BodyAnalysisResult) {
+        guard !isGenerating else { return }
+        isGenerating = true
         generationTask?.cancel()
         generationTask = Task {
             await regenerateProgram(from: result)
@@ -498,17 +505,19 @@ struct WorkoutView: View {
 
     @MainActor
     func generateFirstWeek(from result: BodyAnalysisResult) async {
-        guard !Task.isCancelled else { return }
         isGenerating = true
+        guard !Task.isCancelled else {
+            isGenerating = false
+            generationTask = nil
+            return
+        }
         WorkoutGenerationDiagnostics.start(feature: "Week 1 workout generation")
-        beginGenerationRuntimeProtection(label: "Week 1 workout generation")
+        let protectionToken = beginGenerationRuntimeProtection(label: "Week 1 workout generation")
         defer {
-            endGenerationRuntimeProtection()
+            endGenerationRuntimeProtection(matching: protectionToken)
             WorkoutGenerationDiagnostics.finish()
-            if !Task.isCancelled {
-                isGenerating = false
-                generationTask = nil
-            }
+            isGenerating = false
+            generationTask = nil
         }
 
         do {
@@ -581,20 +590,24 @@ struct WorkoutView: View {
 
     @MainActor
     func generateNextWeek(for program: WorkoutProgram) async {
-        guard !Task.isCancelled else { return }
         isGenerating = true
-        beginGenerationRuntimeProtection(label: "Workout week generation")
+        guard !Task.isCancelled else {
+            isGenerating = false
+            generationTask = nil
+            return
+        }
+        let nextWeek = program.currentWeek + 1
+        WorkoutGenerationDiagnostics.start(feature: "Week \(nextWeek) workout generation")
+        let protectionToken = beginGenerationRuntimeProtection(label: "Workout week generation")
         defer {
-            endGenerationRuntimeProtection()
-            if !Task.isCancelled {
-                isGenerating = false
-                generationTask = nil
-            }
+            endGenerationRuntimeProtection(matching: protectionToken)
+            WorkoutGenerationDiagnostics.finish()
+            isGenerating = false
+            generationTask = nil
         }
 
-        let nextWeek = program.currentWeek + 1
-
         do {
+            WorkoutGenerationDiagnostics.markStage("requesting week \(nextWeek) program from AI")
             let response = try await ClaudeService.shared.generateNextWeek(
                 weekNumber: nextWeek,
                 previousWeekJSON: program.programJSON,
@@ -603,6 +616,7 @@ struct WorkoutView: View {
                 programName: program.programName
             )
             try Task.checkCancellation()
+            WorkoutGenerationDiagnostics.markStage("encoding generated week \(nextWeek) program")
 
             guard let weekJSON = encodeJSONString(
                 response,
@@ -616,6 +630,7 @@ struct WorkoutView: View {
             let priorSummary = program.programSummary
             let priorProgramJSON = program.programJSON
 
+            WorkoutGenerationDiagnostics.markStage("inserting generated week \(nextWeek) program")
             insertDays(from: response.days, into: program)
 
             program.currentWeek = nextWeek
@@ -625,6 +640,7 @@ struct WorkoutView: View {
             }
             program.programJSON = weekJSON
 
+            WorkoutGenerationDiagnostics.markStage("saving generated week \(nextWeek) program to storage")
             guard PersistenceReporter.save(modelContext, operation: "generated next workout week") else {
                 modelContext.rollback()
                 program.currentWeek = priorCurrentWeek
@@ -636,6 +652,7 @@ struct WorkoutView: View {
                 UINotificationFeedbackGenerator().notificationOccurred(.error)
                 return
             }
+            WorkoutGenerationDiagnostics.markStage("finalizing generated week \(nextWeek) program")
             selectedWeek = nextWeek
             UINotificationFeedbackGenerator().notificationOccurred(.success)
         } catch is CancellationError {
@@ -658,21 +675,29 @@ struct WorkoutView: View {
     // MARK: - Helpers
 
     @MainActor
-    func beginGenerationRuntimeProtection(label: String) {
-        #if canImport(UIKit)
+    func beginGenerationRuntimeProtection(label: String) -> UUID {
         endGenerationRuntimeProtection()
+        let token = UUID()
+        generationProtectionToken = token
+        #if canImport(UIKit)
         UIApplication.shared.isIdleTimerDisabled = true
         backgroundTaskID = UIApplication.shared.beginBackgroundTask(withName: label) {
-            DispatchQueue.main.async {
+            Task { @MainActor in
+                guard generationProtectionToken == token else { return }
                 generationTask?.cancel()
-                endGenerationRuntimeProtection()
+                endGenerationRuntimeProtection(matching: token)
             }
         }
         #endif
+        return token
     }
 
     @MainActor
-    func endGenerationRuntimeProtection() {
+    func endGenerationRuntimeProtection(matching token: UUID? = nil) {
+        if let token, generationProtectionToken != token {
+            return
+        }
+        generationProtectionToken = nil
         #if canImport(UIKit)
         UIApplication.shared.isIdleTimerDisabled = false
         guard backgroundTaskID != .invalid else { return }
