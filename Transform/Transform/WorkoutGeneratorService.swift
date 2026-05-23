@@ -113,6 +113,7 @@ extension ClaudeService {
         var lastIssues: [String] = []
 
         for attempt in 1...generationAttempts {
+            try Task.checkCancellation()
             do {
                 WorkoutGenerationDiagnostics.markStage("requesting week 1 program from AI (attempt \(attempt))")
                 let jsonString = try await AnthropicClient.shared.sendStructuredRequest(
@@ -251,6 +252,7 @@ extension ClaudeService {
         var lastIssues: [String] = []
 
         for attempt in 1...generationAttempts {
+            try Task.checkCancellation()
             do {
                 let jsonString = try await AnthropicClient.shared.sendStructuredRequest(
                     body: requestBody,

@@ -155,6 +155,7 @@ final class AnthropicClient {
         )
 
         for attempt in 1...maxAttempts {
+            try Task.checkCancellation()
             do {
                 var request = URLRequest(url: url)
                 request.httpMethod = "POST"
@@ -425,7 +426,10 @@ final class AnthropicClient {
     }
 
     private func shouldRetry(error: Error) -> Bool {
-        error.isTransientNetworkFailure
+        if let urlError = error as? URLError, urlError.code == .timedOut {
+            return false
+        }
+        return error.isTransientNetworkFailure
     }
 }
 
