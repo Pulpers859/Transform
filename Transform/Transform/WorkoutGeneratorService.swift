@@ -126,14 +126,11 @@ extension ClaudeService {
                     context: requestContext
                 )
 
-                let memMB = Self.availableMemoryMB()
-                WorkoutGenerationDiagnostics.markStage("decoding week 1 JSON (attempt \(attempt), \(jsonString.count) chars, \(memMB)MB free)")
+                WorkoutGenerationDiagnostics.markStage("decoding week 1 JSON (attempt \(attempt), \(jsonString.count) chars, \(Self.availableMemoryMB())MB free)")
                 let decoded = try decodeJSONPayload(WorkoutProgramResponse.self, from: jsonString)
-                await Task.yield()
-                WorkoutGenerationDiagnostics.markStage("sanitizing week 1 response (attempt \(attempt), \(decoded.days.count) days, \(Self.availableMemoryMB())MB free)")
+                WorkoutGenerationDiagnostics.markStage("sanitizing week 1 response (attempt \(attempt), \(decoded.days.count) days)")
                 let cleaned = autoreleasepool { sanitizeProgramResponse(decoded) }
-                await Task.yield()
-                WorkoutGenerationDiagnostics.markStage("validating week 1 response (attempt \(attempt), \(Self.availableMemoryMB())MB free)")
+                WorkoutGenerationDiagnostics.markStage("validating week 1 response (attempt \(attempt))")
                 let issues = validateProgramResponse(cleaned, blueprint: blueprint)
 
                 if issues.isEmpty {

@@ -1,8 +1,5 @@
 import SwiftUI
 import SwiftData
-#if canImport(UIKit)
-import UIKit
-#endif
 
 struct WorkoutView: View {
     @Environment(\.modelContext) private var modelContext
@@ -17,10 +14,6 @@ struct WorkoutView: View {
     @State private var selectedWeek = 1
     @State private var showGeneratorLab = false
     @State private var generationTask: Task<Void, Never>?
-    @State private var generationProtectionToken: UUID?
-    #if canImport(UIKit)
-    @State private var backgroundTaskID: UIBackgroundTaskIdentifier = .invalid
-    #endif
 
     var currentProgram: WorkoutProgram? { programs.first }
     var latestAnalysis: BodyAnalysisSession? { analysisSessions.first }
@@ -676,36 +669,12 @@ struct WorkoutView: View {
 
     @MainActor
     func beginGenerationRuntimeProtection(label: String) -> UUID {
-        endGenerationRuntimeProtection()
         let token = UUID()
-        generationProtectionToken = token
-        #if canImport(UIKit)
-        UIApplication.shared.isIdleTimerDisabled = true
-        var bgTaskID: UIBackgroundTaskIdentifier = .invalid
-        bgTaskID = UIApplication.shared.beginBackgroundTask(withName: label) {
-            self.generationTask?.cancel()
-            self.generationProtectionToken = nil
-            self.backgroundTaskID = .invalid
-            UIApplication.shared.isIdleTimerDisabled = false
-            UIApplication.shared.endBackgroundTask(bgTaskID)
-        }
-        backgroundTaskID = bgTaskID
-        #endif
         return token
     }
 
     @MainActor
     func endGenerationRuntimeProtection(matching token: UUID? = nil) {
-        if let token, generationProtectionToken != token {
-            return
-        }
-        generationProtectionToken = nil
-        #if canImport(UIKit)
-        UIApplication.shared.isIdleTimerDisabled = false
-        guard backgroundTaskID != .invalid else { return }
-        UIApplication.shared.endBackgroundTask(backgroundTaskID)
-        backgroundTaskID = .invalid
-        #endif
     }
 
     func insertDays(from dayResponses: [WorkoutDayResponse], into program: WorkoutProgram) {
