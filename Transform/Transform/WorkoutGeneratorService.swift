@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(os)
+import os
+#endif
 
 // MARK: - Workout Generator Service (Week-by-Week)
 
@@ -123,11 +126,14 @@ extension ClaudeService {
                     context: requestContext
                 )
 
-                WorkoutGenerationDiagnostics.markStage("decoding week 1 JSON (attempt \(attempt), \(jsonString.count) chars)")
+                let memMB = Self.availableMemoryMB()
+                WorkoutGenerationDiagnostics.markStage("decoding week 1 JSON (attempt \(attempt), \(jsonString.count) chars, \(memMB)MB free)")
                 let decoded = try decodeJSONPayload(WorkoutProgramResponse.self, from: jsonString)
-                WorkoutGenerationDiagnostics.markStage("sanitizing week 1 response (attempt \(attempt), \(decoded.days.count) days)")
-                let cleaned = sanitizeProgramResponse(decoded)
-                WorkoutGenerationDiagnostics.markStage("validating week 1 response (attempt \(attempt))")
+                await Task.yield()
+                WorkoutGenerationDiagnostics.markStage("sanitizing week 1 response (attempt \(attempt), \(decoded.days.count) days, \(Self.availableMemoryMB())MB free)")
+                let cleaned = autoreleasepool { sanitizeProgramResponse(decoded) }
+                await Task.yield()
+                WorkoutGenerationDiagnostics.markStage("validating week 1 response (attempt \(attempt), \(Self.availableMemoryMB())MB free)")
                 let issues = validateProgramResponse(cleaned, blueprint: blueprint)
 
                 if issues.isEmpty {
@@ -185,6 +191,14 @@ extension ClaudeService {
             blueprint: blueprint,
             diagnostic: lastIssues.joined(separator: " | ")
         )
+    }
+
+    static func availableMemoryMB() -> Int {
+        #if canImport(os)
+        return Int(os_proc_available_memory() / (1024 * 1024))
+        #else
+        return -1
+        #endif
     }
 
     // MARK: - Generate Next Week (2, 3, or 4)

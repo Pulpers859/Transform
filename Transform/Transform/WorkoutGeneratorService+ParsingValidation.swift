@@ -78,80 +78,82 @@ extension ClaudeService {
         days
             .sorted { $0.dayNumber < $1.dayNumber }
             .map { (day: WorkoutDayResponse) -> WorkoutDayResponse in
-                let weekNumber: Int = ((day.dayNumber - 1) / 7) + 1
-                let cleanedExercises: [WorkoutExerciseResponse] = day.exercises.enumerated().map { (entry: (offset: Int, element: WorkoutExerciseResponse)) -> WorkoutExerciseResponse in
-                    let index: Int = entry.offset
-                    let exercise: WorkoutExerciseResponse = entry.element
-                    let cleanedName = canonicalExerciseName(
-                        exercise.exerciseName,
-                        muscleTarget: exercise.muscleTarget
-                    )
-                    let cleanedTarget = exercise.muscleTarget.trimmedOr(default: "Primary Target")
-                    let cleanedNotes = polishedExerciseNotes(
-                        rawNotes: exercise.notes,
-                        exerciseName: cleanedName,
-                        muscleTarget: cleanedTarget,
-                        weekNumber: weekNumber,
-                        exerciseIndex: index
-                    )
-                    let cleanedSets = polishedExerciseSets(
-                        rawSets: exercise.sets,
-                        exerciseName: cleanedName,
-                        muscleTarget: cleanedTarget,
-                        weekNumber: weekNumber
-                    )
-                    let cleanedReps = polishedExerciseRepRange(
-                        rawReps: exercise.reps,
-                        exerciseName: cleanedName,
-                        muscleTarget: cleanedTarget,
-                        weekNumber: weekNumber
-                    )
-                    let cleanedTempo = polishedExerciseTempo(
-                        rawTempo: exercise.tempo,
-                        exerciseName: cleanedName,
-                        muscleTarget: cleanedTarget,
-                        weekNumber: weekNumber,
-                        reps: cleanedReps
-                    )
-                    let cleanedRestSeconds = polishedExerciseRestSeconds(
-                        rawRestSeconds: exercise.restSeconds,
-                        exerciseName: cleanedName,
-                        muscleTarget: cleanedTarget,
-                        weekNumber: weekNumber
-                    )
+                autoreleasepool {
+                    let weekNumber: Int = ((day.dayNumber - 1) / 7) + 1
+                    let cleanedExercises: [WorkoutExerciseResponse] = day.exercises.enumerated().map { (entry: (offset: Int, element: WorkoutExerciseResponse)) -> WorkoutExerciseResponse in
+                        let index: Int = entry.offset
+                        let exercise: WorkoutExerciseResponse = entry.element
+                        let cleanedName = canonicalExerciseName(
+                            exercise.exerciseName,
+                            muscleTarget: exercise.muscleTarget
+                        )
+                        let cleanedTarget = exercise.muscleTarget.trimmedOr(default: "Primary Target")
+                        let cleanedNotes = polishedExerciseNotes(
+                            rawNotes: exercise.notes,
+                            exerciseName: cleanedName,
+                            muscleTarget: cleanedTarget,
+                            weekNumber: weekNumber,
+                            exerciseIndex: index
+                        )
+                        let cleanedSets = polishedExerciseSets(
+                            rawSets: exercise.sets,
+                            exerciseName: cleanedName,
+                            muscleTarget: cleanedTarget,
+                            weekNumber: weekNumber
+                        )
+                        let cleanedReps = polishedExerciseRepRange(
+                            rawReps: exercise.reps,
+                            exerciseName: cleanedName,
+                            muscleTarget: cleanedTarget,
+                            weekNumber: weekNumber
+                        )
+                        let cleanedTempo = polishedExerciseTempo(
+                            rawTempo: exercise.tempo,
+                            exerciseName: cleanedName,
+                            muscleTarget: cleanedTarget,
+                            weekNumber: weekNumber,
+                            reps: cleanedReps
+                        )
+                        let cleanedRestSeconds = polishedExerciseRestSeconds(
+                            rawRestSeconds: exercise.restSeconds,
+                            exerciseName: cleanedName,
+                            muscleTarget: cleanedTarget,
+                            weekNumber: weekNumber
+                        )
 
-                    return WorkoutExerciseResponse(
-                        exerciseName: cleanedName,
-                        sets: cleanedSets,
-                        reps: cleanedReps,
-                        tempo: cleanedTempo,
-                        restSeconds: cleanedRestSeconds,
-                        notes: cleanedNotes,
-                        muscleTarget: cleanedTarget
+                        return WorkoutExerciseResponse(
+                            exerciseName: cleanedName,
+                            sets: cleanedSets,
+                            reps: cleanedReps,
+                            tempo: cleanedTempo,
+                            restSeconds: cleanedRestSeconds,
+                            notes: cleanedNotes,
+                            muscleTarget: cleanedTarget
+                        )
+                    }
+
+                    let dayStyle = inferredDayStyle(dayName: day.dayName, muscleGroups: day.muscleGroups)
+                    let cleanedDayNotes: String
+                    if day.isRestDay {
+                        cleanedDayNotes = day.notes.trimmedOr(default: "Active recovery, mobility work, and light cardio.")
+                    } else {
+                        cleanedDayNotes = polishedTrainingDayNotes(
+                            rawNotes: day.notes,
+                            dayStyle: dayStyle,
+                            weekNumber: weekNumber,
+                            exercises: cleanedExercises
+                        )
+                    }
+
+                    return WorkoutDayResponse(
+                        dayNumber: day.dayNumber,
+                        dayName: day.dayName.trimmedOr(default: "Day \(day.dayNumber)"),
+                        muscleGroups: day.muscleGroups.trimmedOr(default: day.isRestDay ? "Recovery" : "Primary Training"),
+                        isRestDay: day.isRestDay,
+                        notes: cleanedDayNotes,
+                        exercises: day.isRestDay ? [WorkoutExerciseResponse]() : cleanedExercises
                     )
                 }
-
-                let dayStyle = inferredDayStyle(dayName: day.dayName, muscleGroups: day.muscleGroups)
-                let cleanedDayNotes: String
-                if day.isRestDay {
-                    cleanedDayNotes = day.notes.trimmedOr(default: "Active recovery, mobility work, and light cardio.")
-                } else {
-                    cleanedDayNotes = polishedTrainingDayNotes(
-                        rawNotes: day.notes,
-                        dayStyle: dayStyle,
-                        weekNumber: weekNumber,
-                        exercises: cleanedExercises
-                    )
-                }
-
-                return WorkoutDayResponse(
-                    dayNumber: day.dayNumber,
-                    dayName: day.dayName.trimmedOr(default: "Day \(day.dayNumber)"),
-                    muscleGroups: day.muscleGroups.trimmedOr(default: day.isRestDay ? "Recovery" : "Primary Training"),
-                    isRestDay: day.isRestDay,
-                    notes: cleanedDayNotes,
-                    exercises: day.isRestDay ? [WorkoutExerciseResponse]() : cleanedExercises
-                )
             }
     }
 
