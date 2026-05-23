@@ -465,13 +465,10 @@ extension ClaudeService {
     // Schema structures mix String, Int, Array, and Dict values, and the inference can
     // otherwise fail with "Heterogeneous collection literal" errors.
 
-    func stringProp(_ description: String? = nil, maxLength: Int? = nil) -> [String: Any] {
+    func stringProp(_ description: String? = nil) -> [String: Any] {
         var prop: [String: Any] = ["type": "string"]
         if let description {
             prop["description"] = description
-        }
-        if let maxLength {
-            prop["maxLength"] = maxLength
         }
         return prop
     }
@@ -490,14 +487,14 @@ extension ClaudeService {
 
     func exerciseSchema() -> [String: Any] {
         let properties: [String: Any] = [
-            "exerciseName": stringProp("Specific lift name, e.g., 'Incline Dumbbell Press'.", maxLength: 80),
+            "exerciseName": stringProp("Specific lift name, e.g., 'Incline Dumbbell Press'."),
             "sets": integerProp(minimum: 1, maximum: 8),
-            "reps": stringProp("Rep prescription, e.g., '8-10' or 'AMRAP'.", maxLength: 32),
+            "reps": stringProp("Rep prescription, e.g., '8-10' or 'AMRAP'."),
             // EvidenceProfile.md TEMPO-001 [confidence: low]
-            "tempo": stringProp("Optional. Use an explicit 4-part tempo for rep-based lifts when cadence matters, e.g., '3-1-1-0' or '2-0-X-1'. Omit or leave empty for carries, distance-based work, and similar drills where a 4-part tempo is not meaningful.", maxLength: 16),
+            "tempo": stringProp("Optional. Use an explicit 4-part tempo for rep-based lifts when cadence matters, e.g., '3-1-1-0' or '2-0-X-1'. Omit or leave empty for carries, distance-based work, and similar drills where a 4-part tempo is not meaningful."),
             "restSeconds": integerProp(minimum: 30, maximum: 240),
-            "notes": stringProp("2-4 sentences: form cue + phase-appropriate progression cue + 'why this is here for you' sentence tied to the body analysis.", maxLength: 280),
-            "muscleTarget": stringProp("Primary muscle target.", maxLength: 48)
+            "notes": stringProp("2-4 sentences: form cue + phase-appropriate progression cue + 'why this is here for you' sentence tied to the body analysis."),
+            "muscleTarget": stringProp("Primary muscle target.")
         ]
         let required: [String] = ["exerciseName", "sets", "reps", "restSeconds", "notes", "muscleTarget"]
         let schema: [String: Any] = [
@@ -513,15 +510,14 @@ extension ClaudeService {
         let exercisesProp: [String: Any] = [
             "type": "array",
             "items": exerciseSchema(),
-            "maxItems": 8,
             "description": "5-8 entries on training days; empty array on rest days."
         ]
         let properties: [String: Any] = [
             "dayNumber": integerProp(allowedValues: dayNumbers),
-            "dayName": stringProp(maxLength: 32),
-            "muscleGroups": stringProp(maxLength: 80),
+            "dayName": stringProp(),
+            "muscleGroups": stringProp(),
             "isRestDay": booleanProp(),
-            "notes": stringProp("Session Notes: intent framing tied to the body analysis + warm-up + mobility guidance for THIS day's lifts and THIS user's posture/injury. For rest days, a short active-recovery note.", maxLength: 420),
+            "notes": stringProp("Session Notes: intent framing tied to the body analysis + warm-up + mobility guidance for THIS day's lifts and THIS user's posture/injury. For rest days, a short active-recovery note."),
             "exercises": exercisesProp
         ]
         let required: [String] = ["dayNumber", "dayName", "muscleGroups", "isRestDay", "notes", "exercises"]
@@ -543,9 +539,9 @@ extension ClaudeService {
             "items": daySchema(dayNumbers: dayNumbers)
         ]
         let properties: [String: Any] = [
-            "programName": stringProp(maxLength: 100),
-            "programSummary": stringProp("One sentence: what the 4-week arc is designed to accomplish for this specific user, referencing the analysis.", maxLength: 220),
-            "splitType": stringProp(maxLength: 80),
+            "programName": stringProp(),
+            "programSummary": stringProp("One sentence: what the 4-week arc is designed to accomplish for this specific user, referencing the analysis."),
+            "splitType": stringProp(),
             "daysPerWeek": integerProp(minimum: 4, maximum: 6),
             "days": daysProp
         ]
@@ -568,7 +564,7 @@ extension ClaudeService {
             "items": daySchema(dayNumbers: dayNumbers)
         ]
         let properties: [String: Any] = [
-            "weekSummary": stringProp("One sentence: what THIS phase accomplishes for THIS user, referencing the analysis.", maxLength: 220),
+            "weekSummary": stringProp("One sentence: what THIS phase accomplishes for THIS user, referencing the analysis."),
             "days": daysProp
         ]
         let required: [String] = ["weekSummary", "days"]

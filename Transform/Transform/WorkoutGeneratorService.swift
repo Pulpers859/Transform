@@ -2,6 +2,7 @@ import Foundation
 #if canImport(os)
 import os
 #endif
+import Dispatch
 
 // MARK: - Workout Generator Service (Week-by-Week)
 
@@ -126,12 +127,18 @@ extension ClaudeService {
                     context: requestContext
                 )
 
-                WorkoutGenerationDiagnostics.markStage("decoding week 1 JSON (attempt \(attempt), \(jsonString.count) chars, \(Self.availableMemoryMB())MB free)")
-                let decoded = try decodeJSONPayload(WorkoutProgramResponse.self, from: jsonString)
-                WorkoutGenerationDiagnostics.markStage("sanitizing week 1 response (attempt \(attempt), \(Self.payloadProfile(for: decoded.days)))")
-                let cleaned = autoreleasepool { sanitizeProgramResponse(decoded) }
+                WorkoutGenerationDiagnostics.markStage("decoding week 1 JSON off main thread (attempt \(attempt), \(jsonString.count) chars, \(Self.availableMemoryMB())MB free)")
+                let decoded = try await runOffMainThread {
+                    try self.decodeJSONPayload(WorkoutProgramResponse.self, from: jsonString)
+                }
+                WorkoutGenerationDiagnostics.markStage("sanitizing week 1 response off main thread (attempt \(attempt), \(Self.payloadProfile(for: decoded.days)))")
+                let cleaned = try await runOffMainThread {
+                    self.sanitizeProgramResponse(decoded)
+                }
                 WorkoutGenerationDiagnostics.markStage("validating week 1 response (attempt \(attempt))")
-                let issues = validateProgramResponse(cleaned, blueprint: blueprint)
+                let issues = try await runOffMainThread {
+                    self.validateProgramResponse(cleaned, blueprint: blueprint)
+                }
 
                 if issues.isEmpty {
                     return labeledProgramResponse(cleaned, sourceLabel: aiSourceLabel)
@@ -206,6 +213,19 @@ extension ClaudeService {
         return "\(days.count) days, \(exerciseCount) exercises, \(noteChars) note chars, \(Self.availableMemoryMB())MB free"
     }
 
+    func runOffMainThread<T>(_ work: @escaping () throws -> T) async throws -> T {
+        try await withCheckedThrowingContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                do {
+                    let result = try autoreleasepool(invoking: work)
+                    continuation.resume(returning: result)
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
+
     // MARK: - Generate Next Week (2, 3, or 4)
 
     func generateNextWeek(
@@ -275,22 +295,31 @@ extension ClaudeService {
         for attempt in 1...generationAttempts {
             try Task.checkCancellation()
             do {
+                WorkoutGenerationDiagnostics.markStage("requesting week \(weekNumber) program from AI (attempt \(attempt))")
                 let jsonString = try await AnthropicClient.shared.sendStructuredRequest(
                     body: requestBody,
                     toolName: weekToolName,
                     timeout: config.timeout,
                     context: requestContext
                 )
-                let decoded = try decodeJSONPayload(WorkoutWeekResponse.self, from: jsonString)
-                WorkoutGenerationDiagnostics.markStage("sanitizing week \(weekNumber) response (attempt \(attempt), \(Self.payloadProfile(for: decoded.days)))")
-                let cleaned = sanitizeWeekResponse(decoded)
-                let issues = validateWeekResponse(
-                    cleaned,
-                    dayStart: dayStart,
-                    dayEnd: dayEnd,
-                    previousWeekDays: hasValidPreviousWeek ? previousWeekDays : nil,
-                    blueprint: blueprint
-                )
+                WorkoutGenerationDiagnostics.markStage("decoding week \(weekNumber) JSON off main thread (attempt \(attempt), \(jsonString.count) chars, \(Self.availableMemoryMB())MB free)")
+                let decoded = try await runOffMainThread {
+                    try self.decodeJSONPayload(WorkoutWeekResponse.self, from: jsonString)
+                }
+                WorkoutGenerationDiagnostics.markStage("sanitizing week \(weekNumber) response off main thread (attempt \(attempt), \(Self.payloadProfile(for: decoded.days)))")
+                let cleaned = try await runOffMainThread {
+                    self.sanitizeWeekResponse(decoded)
+                }
+                WorkoutGenerationDiagnostics.markStage("validating week \(weekNumber) response (attempt \(attempt))")
+                let issues = try await runOffMainThread {
+                    self.validateWeekResponse(
+                        cleaned,
+                        dayStart: dayStart,
+                        dayEnd: dayEnd,
+                        previousWeekDays: hasValidPreviousWeek ? previousWeekDays : nil,
+                        blueprint: blueprint
+                    )
+                }
 
                 if issues.isEmpty {
                     return labeledWeekResponse(cleaned, sourceLabel: aiSourceLabel)
