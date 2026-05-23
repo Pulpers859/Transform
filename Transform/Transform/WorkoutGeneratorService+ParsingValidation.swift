@@ -59,9 +59,9 @@ extension ClaudeService {
 
     func sanitizeProgramResponse(_ program: WorkoutProgramResponse) -> WorkoutProgramResponse {
         WorkoutProgramResponse(
-            programName: program.programName.trimmedOr(default: "Custom Program"),
-            programSummary: program.programSummary.trimmedOr(default: "4-week hypertrophy mesocycle."),
-            splitType: program.splitType.trimmedOr(default: "Custom Split"),
+            programName: boundedFieldText(program.programName, maxLength: 100, default: "Custom Program"),
+            programSummary: boundedCoachingText(program.programSummary, softLimit: 180, hardLimit: 220, default: "4-week hypertrophy mesocycle."),
+            splitType: boundedFieldText(program.splitType, maxLength: 80, default: "Custom Split"),
             daysPerWeek: max(1, min(7, program.daysPerWeek)),
             days: sanitizeDays(program.days)
         )
@@ -69,7 +69,7 @@ extension ClaudeService {
 
     func sanitizeWeekResponse(_ week: WorkoutWeekResponse) -> WorkoutWeekResponse {
         WorkoutWeekResponse(
-            weekSummary: week.weekSummary.trimmedOr(default: "Weekly progression update."),
+            weekSummary: boundedCoachingText(week.weekSummary, softLimit: 180, hardLimit: 220, default: "Weekly progression update."),
             days: sanitizeDays(week.days)
         )
     }
@@ -80,16 +80,17 @@ extension ClaudeService {
             .map { (day: WorkoutDayResponse) -> WorkoutDayResponse in
                 autoreleasepool {
                     let weekNumber: Int = ((day.dayNumber - 1) / 7) + 1
-                    let cleanedExercises: [WorkoutExerciseResponse] = day.exercises.enumerated().map { (entry: (offset: Int, element: WorkoutExerciseResponse)) -> WorkoutExerciseResponse in
+                    let exercisesToSanitize = day.isRestDay ? [WorkoutExerciseResponse]() : Array(day.exercises.prefix(8))
+                    let cleanedExercises: [WorkoutExerciseResponse] = exercisesToSanitize.enumerated().map { (entry: (offset: Int, element: WorkoutExerciseResponse)) -> WorkoutExerciseResponse in
                         let index: Int = entry.offset
                         let exercise: WorkoutExerciseResponse = entry.element
                         let cleanedName = canonicalExerciseName(
-                            exercise.exerciseName,
+                            boundedFieldText(exercise.exerciseName, maxLength: 80, default: "Exercise"),
                             muscleTarget: exercise.muscleTarget
                         )
-                        let cleanedTarget = exercise.muscleTarget.trimmedOr(default: "Primary Target")
+                        let cleanedTarget = boundedFieldText(exercise.muscleTarget, maxLength: 48, default: "Primary Target")
                         let cleanedNotes = polishedExerciseNotes(
-                            rawNotes: exercise.notes,
+                            rawNotes: boundedCoachingText(exercise.notes, softLimit: 220, hardLimit: 280),
                             exerciseName: cleanedName,
                             muscleTarget: cleanedTarget,
                             weekNumber: weekNumber,
@@ -102,13 +103,13 @@ extension ClaudeService {
                             weekNumber: weekNumber
                         )
                         let cleanedReps = polishedExerciseRepRange(
-                            rawReps: exercise.reps,
+                            rawReps: boundedFieldText(exercise.reps, maxLength: 32, default: "8-12"),
                             exerciseName: cleanedName,
                             muscleTarget: cleanedTarget,
                             weekNumber: weekNumber
                         )
                         let cleanedTempo = polishedExerciseTempo(
-                            rawTempo: exercise.tempo,
+                            rawTempo: boundedFieldText(exercise.tempo, maxLength: 16, default: ""),
                             exerciseName: cleanedName,
                             muscleTarget: cleanedTarget,
                             weekNumber: weekNumber,
@@ -135,10 +136,15 @@ extension ClaudeService {
                     let dayStyle = inferredDayStyle(dayName: day.dayName, muscleGroups: day.muscleGroups)
                     let cleanedDayNotes: String
                     if day.isRestDay {
-                        cleanedDayNotes = day.notes.trimmedOr(default: "Active recovery, mobility work, and light cardio.")
+                        cleanedDayNotes = boundedCoachingText(
+                            day.notes,
+                            softLimit: 220,
+                            hardLimit: 320,
+                            default: "Active recovery, mobility work, and light cardio."
+                        )
                     } else {
                         cleanedDayNotes = polishedTrainingDayNotes(
-                            rawNotes: day.notes,
+                            rawNotes: boundedCoachingText(day.notes, softLimit: 320, hardLimit: 420),
                             dayStyle: dayStyle,
                             weekNumber: weekNumber,
                             exercises: cleanedExercises
@@ -147,14 +153,59 @@ extension ClaudeService {
 
                     return WorkoutDayResponse(
                         dayNumber: day.dayNumber,
-                        dayName: day.dayName.trimmedOr(default: "Day \(day.dayNumber)"),
-                        muscleGroups: day.muscleGroups.trimmedOr(default: day.isRestDay ? "Recovery" : "Primary Training"),
+                        dayName: boundedFieldText(day.dayName, maxLength: 32, default: "Day \(day.dayNumber)"),
+                        muscleGroups: boundedFieldText(
+                            day.muscleGroups,
+                            maxLength: 80,
+                            default: day.isRestDay ? "Recovery" : "Primary Training"
+                        ),
                         isRestDay: day.isRestDay,
                         notes: cleanedDayNotes,
                         exercises: day.isRestDay ? [WorkoutExerciseResponse]() : cleanedExercises
                     )
                 }
             }
+    }
+
+    func boundedFieldText(_ rawValue: String, maxLength: Int, default fallback: String) -> String {
+        let collapsed = collapsedWhitespace(in: rawValue)
+        let trimmed = collapsed.isEmpty ? fallback : collapsed
+        guard trimmed.count > maxLength else { return trimmed }
+        return String(trimmed.prefix(maxLength)).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    func boundedCoachingText(
+        _ rawValue: String,
+        softLimit: Int,
+        hardLimit: Int,
+        default fallback: String = ""
+    ) -> String {
+        let collapsed = collapsedWhitespace(in: rawValue)
+        let base = collapsed.isEmpty ? fallback : collapsed
+        guard base.count > hardLimit else { return base }
+
+        let hardPrefix = String(base.prefix(hardLimit))
+        if let sentenceEnd = hardPrefix.lastIndex(where: { ".!?".contains($0) }) {
+            let sentenceDistance = hardPrefix.distance(from: hardPrefix.startIndex, to: sentenceEnd)
+            if sentenceDistance >= softLimit / 2 {
+                return String(hardPrefix[...sentenceEnd]).trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+        }
+
+        let softPrefix = String(base.prefix(softLimit))
+        if let whitespaceBreak = softPrefix.lastIndex(where: \.isWhitespace) {
+            let bounded = String(softPrefix[..<whitespaceBreak]).trimmingCharacters(in: .whitespacesAndNewlines)
+            return bounded.isEmpty ? String(softPrefix.prefix(softLimit)).trimmingCharacters(in: .whitespacesAndNewlines) : "\(bounded)..."
+        }
+
+        return String(softPrefix.prefix(softLimit)).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    func collapsedWhitespace(in rawValue: String) -> String {
+        rawValue
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     // MARK: - Validation

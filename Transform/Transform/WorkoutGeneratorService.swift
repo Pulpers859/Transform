@@ -128,7 +128,7 @@ extension ClaudeService {
 
                 WorkoutGenerationDiagnostics.markStage("decoding week 1 JSON (attempt \(attempt), \(jsonString.count) chars, \(Self.availableMemoryMB())MB free)")
                 let decoded = try decodeJSONPayload(WorkoutProgramResponse.self, from: jsonString)
-                WorkoutGenerationDiagnostics.markStage("sanitizing week 1 response (attempt \(attempt), \(decoded.days.count) days)")
+                WorkoutGenerationDiagnostics.markStage("sanitizing week 1 response (attempt \(attempt), \(Self.payloadProfile(for: decoded.days)))")
                 let cleaned = autoreleasepool { sanitizeProgramResponse(decoded) }
                 WorkoutGenerationDiagnostics.markStage("validating week 1 response (attempt \(attempt))")
                 let issues = validateProgramResponse(cleaned, blueprint: blueprint)
@@ -196,6 +196,14 @@ extension ClaudeService {
         #else
         return -1
         #endif
+    }
+
+    static func payloadProfile(for days: [WorkoutDayResponse]) -> String {
+        let exerciseCount = days.reduce(0) { $0 + $1.exercises.count }
+        let noteChars = days.reduce(0) { partial, day in
+            partial + day.notes.count + day.exercises.reduce(0) { $0 + $1.notes.count }
+        }
+        return "\(days.count) days, \(exerciseCount) exercises, \(noteChars) note chars, \(Self.availableMemoryMB())MB free"
     }
 
     // MARK: - Generate Next Week (2, 3, or 4)
@@ -274,6 +282,7 @@ extension ClaudeService {
                     context: requestContext
                 )
                 let decoded = try decodeJSONPayload(WorkoutWeekResponse.self, from: jsonString)
+                WorkoutGenerationDiagnostics.markStage("sanitizing week \(weekNumber) response (attempt \(attempt), \(Self.payloadProfile(for: decoded.days)))")
                 let cleaned = sanitizeWeekResponse(decoded)
                 let issues = validateWeekResponse(
                     cleaned,

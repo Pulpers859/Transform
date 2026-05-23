@@ -505,9 +505,7 @@ struct WorkoutView: View {
             return
         }
         WorkoutGenerationDiagnostics.start(feature: "Week 1 workout generation")
-        let protectionToken = beginGenerationRuntimeProtection(label: "Week 1 workout generation")
         defer {
-            endGenerationRuntimeProtection(matching: protectionToken)
             WorkoutGenerationDiagnostics.finish()
             isGenerating = false
             generationTask = nil
@@ -591,9 +589,7 @@ struct WorkoutView: View {
         }
         let nextWeek = program.currentWeek + 1
         WorkoutGenerationDiagnostics.start(feature: "Week \(nextWeek) workout generation")
-        let protectionToken = beginGenerationRuntimeProtection(label: "Workout week generation")
         defer {
-            endGenerationRuntimeProtection(matching: protectionToken)
             WorkoutGenerationDiagnostics.finish()
             isGenerating = false
             generationTask = nil
@@ -666,16 +662,6 @@ struct WorkoutView: View {
     }
 
     // MARK: - Helpers
-
-    @MainActor
-    func beginGenerationRuntimeProtection(label: String) -> UUID {
-        let token = UUID()
-        return token
-    }
-
-    @MainActor
-    func endGenerationRuntimeProtection(matching token: UUID? = nil) {
-    }
 
     func insertDays(from dayResponses: [WorkoutDayResponse], into program: WorkoutProgram) {
         for dayResponse in dayResponses {
