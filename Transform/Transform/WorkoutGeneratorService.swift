@@ -123,9 +123,11 @@ extension ClaudeService {
                     context: requestContext
                 )
 
-                WorkoutGenerationDiagnostics.markStage("decoding and validating week 1 program (attempt \(attempt))")
+                WorkoutGenerationDiagnostics.markStage("decoding week 1 JSON (attempt \(attempt), \(jsonString.count) chars)")
                 let decoded = try decodeJSONPayload(WorkoutProgramResponse.self, from: jsonString)
+                WorkoutGenerationDiagnostics.markStage("sanitizing week 1 response (attempt \(attempt), \(decoded.days.count) days)")
                 let cleaned = sanitizeProgramResponse(decoded)
+                WorkoutGenerationDiagnostics.markStage("validating week 1 response (attempt \(attempt))")
                 let issues = validateProgramResponse(cleaned, blueprint: blueprint)
 
                 if issues.isEmpty {

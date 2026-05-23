@@ -681,13 +681,15 @@ struct WorkoutView: View {
         generationProtectionToken = token
         #if canImport(UIKit)
         UIApplication.shared.isIdleTimerDisabled = true
-        backgroundTaskID = UIApplication.shared.beginBackgroundTask(withName: label) {
-            Task { @MainActor in
-                guard generationProtectionToken == token else { return }
-                generationTask?.cancel()
-                endGenerationRuntimeProtection(matching: token)
-            }
+        var bgTaskID: UIBackgroundTaskIdentifier = .invalid
+        bgTaskID = UIApplication.shared.beginBackgroundTask(withName: label) {
+            self.generationTask?.cancel()
+            self.generationProtectionToken = nil
+            self.backgroundTaskID = .invalid
+            UIApplication.shared.isIdleTimerDisabled = false
+            UIApplication.shared.endBackgroundTask(bgTaskID)
         }
+        backgroundTaskID = bgTaskID
         #endif
         return token
     }

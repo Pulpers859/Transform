@@ -89,6 +89,11 @@ final class AnthropicClient {
             throw ClaudeError.parseError("Envelope parse failure: missing content array")
         }
 
+        let stopReason = root["stop_reason"] as? String ?? "unknown"
+        if stopReason == "max_tokens" {
+            throw ClaudeError.parseError("Tool protocol failure: model hit max_tokens before completing structured output — response is truncated")
+        }
+
         // Find the tool_use block matching the requested tool.
         let toolBlock = content.first { block in
             (block["type"] as? String) == "tool_use" &&

@@ -39,7 +39,7 @@ extension ClaudeService {
     var weekOneConfig: GenerationConfig {
         // Week 1 is the highest-leverage planning pass, so keep Opus for deeper reasoning.
         // The latency fix comes from tighter prompt/output budgets, not from downgrading the model.
-        GenerationConfig(model: Config.claudeModel, maxTokens: 6144, timeout: 240)
+        GenerationConfig(model: Config.claudeModel, maxTokens: 8192, timeout: 240)
     }
 
     var nextWeekConfig: GenerationConfig {
