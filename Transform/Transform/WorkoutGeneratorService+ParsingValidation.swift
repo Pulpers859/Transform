@@ -59,9 +59,9 @@ extension ClaudeService {
 
     func sanitizeProgramResponse(_ program: WorkoutProgramResponse) -> WorkoutProgramResponse {
         WorkoutProgramResponse(
-            programName: program.programName.trimmedOr(default: "Custom Program"),
-            programSummary: program.programSummary.trimmedOr(default: "4-week hypertrophy mesocycle."),
-            splitType: program.splitType.trimmedOr(default: "Custom Split"),
+            programName: normalizedDisplayText(program.programName, fallback: "Custom Program"),
+            programSummary: normalizedCoachingText(program.programSummary, fallback: "4-week hypertrophy mesocycle."),
+            splitType: normalizedDisplayText(program.splitType, fallback: "Custom Split"),
             daysPerWeek: max(1, min(7, program.daysPerWeek)),
             days: sanitizeDays(program.days)
         )
@@ -69,7 +69,7 @@ extension ClaudeService {
 
     func sanitizeWeekResponse(_ week: WorkoutWeekResponse) -> WorkoutWeekResponse {
         WorkoutWeekResponse(
-            weekSummary: week.weekSummary.trimmedOr(default: "Weekly progression update."),
+            weekSummary: normalizedCoachingText(week.weekSummary, fallback: "Weekly progression update."),
             days: sanitizeDays(week.days)
         )
     }
@@ -77,82 +77,127 @@ extension ClaudeService {
     func sanitizeDays(_ days: [WorkoutDayResponse]) -> [WorkoutDayResponse] {
         days
             .sorted { $0.dayNumber < $1.dayNumber }
-            .map { (day: WorkoutDayResponse) -> WorkoutDayResponse in
-                let weekNumber: Int = ((day.dayNumber - 1) / 7) + 1
-                let cleanedExercises: [WorkoutExerciseResponse] = day.exercises.enumerated().map { (entry: (offset: Int, element: WorkoutExerciseResponse)) -> WorkoutExerciseResponse in
-                    let index: Int = entry.offset
-                    let exercise: WorkoutExerciseResponse = entry.element
-                    let cleanedName = canonicalExerciseName(
-                        exercise.exerciseName,
-                        muscleTarget: exercise.muscleTarget
-                    )
-                    let cleanedTarget = exercise.muscleTarget.trimmedOr(default: "Primary Target")
-                    let cleanedNotes = polishedExerciseNotes(
-                        rawNotes: exercise.notes,
-                        exerciseName: cleanedName,
-                        muscleTarget: cleanedTarget,
-                        weekNumber: weekNumber,
-                        exerciseIndex: index
-                    )
-                    let cleanedSets = polishedExerciseSets(
-                        rawSets: exercise.sets,
-                        exerciseName: cleanedName,
-                        muscleTarget: cleanedTarget,
-                        weekNumber: weekNumber
-                    )
-                    let cleanedReps = polishedExerciseRepRange(
-                        rawReps: exercise.reps,
-                        exerciseName: cleanedName,
-                        muscleTarget: cleanedTarget,
-                        weekNumber: weekNumber
-                    )
-                    let cleanedTempo = polishedExerciseTempo(
-                        rawTempo: exercise.tempo,
-                        exerciseName: cleanedName,
-                        muscleTarget: cleanedTarget,
-                        weekNumber: weekNumber,
-                        reps: cleanedReps
-                    )
-                    let cleanedRestSeconds = polishedExerciseRestSeconds(
-                        rawRestSeconds: exercise.restSeconds,
-                        exerciseName: cleanedName,
-                        muscleTarget: cleanedTarget,
-                        weekNumber: weekNumber
-                    )
+            .map(sanitizeDay)
+    }
 
-                    return WorkoutExerciseResponse(
-                        exerciseName: cleanedName,
-                        sets: cleanedSets,
-                        reps: cleanedReps,
-                        tempo: cleanedTempo,
-                        restSeconds: cleanedRestSeconds,
-                        notes: cleanedNotes,
-                        muscleTarget: cleanedTarget
-                    )
-                }
+    func sanitizeDay(_ day: WorkoutDayResponse) -> WorkoutDayResponse {
+        let weekNumber: Int = ((day.dayNumber - 1) / 7) + 1
+        let cleanedDayName = normalizedDisplayText(day.dayName, fallback: "Day \(day.dayNumber)")
+        let cleanedMuscleGroups = normalizedDisplayText(
+            day.muscleGroups,
+            fallback: day.isRestDay ? "Recovery" : "Primary Training"
+        )
+        let cleanedExercises = day.isRestDay
+            ? [WorkoutExerciseResponse]()
+            : day.exercises.enumerated().map { sanitizeExercise($0.element, weekNumber: weekNumber, exerciseIndex: $0.offset) }
 
-                let dayStyle = inferredDayStyle(dayName: day.dayName, muscleGroups: day.muscleGroups)
-                let cleanedDayNotes: String
-                if day.isRestDay {
-                    cleanedDayNotes = day.notes.trimmedOr(default: "Active recovery, mobility work, and light cardio.")
-                } else {
-                    cleanedDayNotes = polishedTrainingDayNotes(
-                        rawNotes: day.notes,
-                        dayStyle: dayStyle,
-                        weekNumber: weekNumber,
-                        exercises: cleanedExercises
-                    )
-                }
+        let cleanedDayNotes: String
+        if day.isRestDay {
+            cleanedDayNotes = normalizedCoachingText(
+                day.notes,
+                fallback: "Active recovery, mobility work, and light cardio."
+            )
+        } else {
+            let fallbackStyle = inferredDayStyle(dayName: cleanedDayName, muscleGroups: cleanedMuscleGroups) ?? "Training"
+            let fallbackFocus = cleanedExercises.first?.muscleTarget ?? ""
+            let fallback = proceduralDayNotes(
+                style: fallbackStyle,
+                weekNumber: weekNumber,
+                exercises: cleanedExercises,
+                focus: fallbackFocus
+            )
+            cleanedDayNotes = normalizedCoachingText(day.notes, fallback: fallback)
+        }
 
-                return WorkoutDayResponse(
-                    dayNumber: day.dayNumber,
-                    dayName: day.dayName.trimmedOr(default: "Day \(day.dayNumber)"),
-                    muscleGroups: day.muscleGroups.trimmedOr(default: day.isRestDay ? "Recovery" : "Primary Training"),
-                    isRestDay: day.isRestDay,
-                    notes: cleanedDayNotes,
-                    exercises: day.isRestDay ? [WorkoutExerciseResponse]() : cleanedExercises
-                )
-            }
+        return WorkoutDayResponse(
+            dayNumber: day.dayNumber,
+            dayName: cleanedDayName,
+            muscleGroups: cleanedMuscleGroups,
+            isRestDay: day.isRestDay,
+            notes: cleanedDayNotes,
+            exercises: cleanedExercises
+        )
+    }
+
+    func sanitizeExercise(
+        _ exercise: WorkoutExerciseResponse,
+        weekNumber: Int,
+        exerciseIndex: Int
+    ) -> WorkoutExerciseResponse {
+        let cleanedTarget = normalizedDisplayText(exercise.muscleTarget, fallback: "Primary Target")
+        let cleanedName = canonicalExerciseName(
+            normalizedDisplayText(exercise.exerciseName, fallback: "Exercise"),
+            muscleTarget: cleanedTarget
+        )
+        let cleanedSets = polishedExerciseSets(
+            rawSets: exercise.sets,
+            exerciseName: cleanedName,
+            muscleTarget: cleanedTarget,
+            weekNumber: weekNumber
+        )
+        let cleanedReps = polishedExerciseRepRange(
+            rawReps: normalizedDisplayText(exercise.reps, fallback: ""),
+            exerciseName: cleanedName,
+            muscleTarget: cleanedTarget,
+            weekNumber: weekNumber
+        )
+        let cleanedTempo = polishedExerciseTempo(
+            rawTempo: normalizedDisplayText(exercise.tempo, fallback: ""),
+            exerciseName: cleanedName,
+            muscleTarget: cleanedTarget,
+            weekNumber: weekNumber,
+            reps: cleanedReps
+        )
+        let cleanedRestSeconds = polishedExerciseRestSeconds(
+            rawRestSeconds: exercise.restSeconds,
+            exerciseName: cleanedName,
+            muscleTarget: cleanedTarget,
+            weekNumber: weekNumber
+        )
+        let fallbackNotes = proceduralExerciseNotes(
+            weekNumber: weekNumber,
+            exerciseName: cleanedName,
+            muscleTarget: cleanedTarget,
+            index: exerciseIndex,
+            focus: cleanedTarget
+        )
+        let cleanedNotes = normalizedExerciseCoachingText(exercise.notes, fallback: fallbackNotes)
+
+        return WorkoutExerciseResponse(
+            exerciseName: cleanedName,
+            sets: cleanedSets,
+            reps: cleanedReps,
+            tempo: cleanedTempo,
+            restSeconds: cleanedRestSeconds,
+            notes: cleanedNotes,
+            muscleTarget: cleanedTarget
+        )
+    }
+
+    func normalizedDisplayText(_ rawValue: String, fallback: String) -> String {
+        let collapsed = collapseWhitespace(in: rawValue)
+        return collapsed.isEmpty ? fallback : collapsed
+    }
+
+    func normalizedCoachingText(_ rawValue: String, fallback: String) -> String {
+        let collapsed = collapseWhitespace(in: rawValue)
+        guard !collapsed.isEmpty else { return fallback }
+        let wordCount = collapsed.split(separator: " ").count
+        return wordCount >= 6 ? collapsed : fallback
+    }
+
+    func normalizedExerciseCoachingText(_ rawValue: String, fallback: String) -> String {
+        let collapsed = collapseWhitespace(in: rawValue)
+        guard !collapsed.isEmpty else { return fallback }
+        let wordCount = collapsed.split(separator: " ").count
+        return wordCount >= 5 ? collapsed : fallback
+    }
+
+    func collapseWhitespace(in rawValue: String) -> String {
+        rawValue
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     // MARK: - Validation
