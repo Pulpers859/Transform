@@ -432,6 +432,8 @@ struct ExerciseCard: View {
         .fullScreenCover(isPresented: $showExpandedRestTimer) {
             RestTimerFullscreen(
                 exerciseName: exercise.exerciseName,
+                exerciseNumber: exercise.order + 1,
+                prescriptionLabel: "\(exercise.sets) sets x \(exercise.reps) reps",
                 statusLabel: restStatusLabel,
                 timeText: restDisplayText,
                 accent: timerAccent,
@@ -671,6 +673,8 @@ struct ExerciseWeightSnapshotTile: View {
 
 struct RestTimerFullscreen: View {
     let exerciseName: String
+    let exerciseNumber: Int
+    let prescriptionLabel: String
     let statusLabel: String
     let timeText: String
     let accent: Color
@@ -702,10 +706,18 @@ struct RestTimerFullscreen: View {
 
                 Spacer()
 
+                Text("Exercise \(exerciseNumber)")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.white.opacity(0.55))
+
                 Text(exerciseName)
                     .font(.title3.bold())
                     .foregroundStyle(.white.opacity(0.85))
                     .multilineTextAlignment(.center)
+
+                Text(prescriptionLabel)
+                    .font(.title2.weight(.semibold))
+                    .foregroundStyle(accent)
 
                 Text(statusLabel.uppercased())
                     .font(.system(size: 12, weight: .bold, design: .monospaced))

@@ -111,6 +111,24 @@ git checkout dev
 - stale decoded analysis or stale cached data reuse
 - API-credit waste from doomed retries or overly rigid acceptance logic
 
+## Known Workout Generator Failure Modes (May 2026 Postmortem)
+
+### 1. App crash during sanitization — duplicate key in exerciseNameAliasCache
+**Symptom**: App closes silently during Week 1 generation. Diagnostics stage reads "sanitize d1/7.e1/6 name" or similar. Elapsed time ~100-113 seconds.
+**Root cause**: `Dictionary(uniqueKeysWithValues:)` in `exerciseNameAliasCache` (MetadataProfiles.swift) crashes with a fatal error when two entries normalize to the same key. Example: "Band Pull Aparts" and "Band Pull-Aparts" both normalize to "band pull aparts" because `normalizedExerciseNameKey` strips hyphens.
+**Fix**: Use a safe dict-building loop (`var dict = [String: String](); for (key, value) in entries { dict[normalizedExerciseNameKey(key)] = value }`) instead of `Dictionary(uniqueKeysWithValues:)`. Also check `exerciseMetadataCatalogCache` for the same pattern.
+**How to detect**: If the app crashes (not an error message, but the app literally closes) during generation, check UserDefaults crash breadcrumbs via `WorkoutGenerationDiagnostics.consumeUnexpectedTerminationMessage()`. If the stage mentions "sanitize" and a specific exercise position, suspect a `Dictionary(uniqueKeysWithValues:)` crash in a lazy cache.
+
+### 2. Parse error "Procedural fallback generated an invalid Week 1 program" — blueprint target misses
+**Symptom**: Error message with "missed its direct-set target", "missed its frequency target", or "undershot its weighted stimulus target" for specific muscle groups.
+**Root cause (validation too strict)**: The validator had ~40 quality-related checks as hard failures. Near-misses in blueprint targets (e.g., 11/12.5 direct sets = 88%) rejected the entire output. Both AI attempts and the procedural fallback would fail, leaving the user with an error.
+**Root cause (fallback can't meet targets)**: The procedural fallback repair loop (`repairedProceduralDays` in FallbackCore.swift) could only bump set counts on exercises that already existed on a day. It could not inject new exercises onto days that lacked coverage for an under-served priority. Example: Posterior Deltoids needs 2-day frequency but only 1 Pull day had a Face Pull — the repair loop couldn't spread rear delt work to a second day.
+**Fix**:
+  - `isHeuristicValidationIssue` (ParsingValidation.swift): expanded to cover all quality/near-miss issues as warnings. Only structural integrity checks (empty fields, wrong day counts, invalid ranges) remain as hard failures.
+  - `injectAccessoryExercise` (FallbackCore.swift): new function that injects exercises from the priority's accessory catalog when a candidate day has zero matching exercises. Checks `exerciseMatchesDayStyle` to avoid injecting Pull exercises onto Push days.
+  - `repairCandidateDayNumbersExpanded` (FallbackCore.swift): when frequency target is unmet, expands candidate days beyond focus/support to include any style-compatible training day.
+**How to detect**: If the error says "Procedural fallback generated an invalid Week 1 program", check the specific issues listed. If they are all quality/near-miss issues (not structural), the fix is in `isHeuristicValidationIssue`. If a specific muscle group is severely under-served (< 70% of target), the fix is in the repair loop's injection and candidate day expansion logic.
+
 ## Agent Working Style
 - Inspect current code before assuming prior context is still accurate.
 - Make direct changes when the path is clear.
