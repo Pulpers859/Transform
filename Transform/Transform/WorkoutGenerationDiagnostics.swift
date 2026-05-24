@@ -7,7 +7,7 @@ enum WorkoutGenerationDiagnostics {
     private static let startedAtKey = "workout_generation_started_at"
     private static let featureKey = "workout_generation_feature"
 
-    static var bypassSanitization = true
+    static var bypassSanitization = false
 
     static var isActive: Bool {
         defaults.bool(forKey: activeKey)
