@@ -113,6 +113,7 @@ extension ClaudeService {
     }
 
     private func sanitizeDay(_ day: WorkoutDayResponse, tag: String) -> WorkoutDayResponse {
+        let weekNumber = ((day.dayNumber - 1) / 7) + 1
         let cleanedDayName = normalizedDisplayText(day.dayName, fallback: "Day \(day.dayNumber)")
         let cleanedMuscleGroups = normalizedDisplayText(
             day.muscleGroups,
@@ -124,19 +125,29 @@ extension ClaudeService {
             cleanedExercises.reserveCapacity(day.exercises.count)
             for (j, exercise) in day.exercises.enumerated() {
                 let exTag = "\(tag).e\(j + 1)/\(day.exercises.count)"
-                WorkoutGenerationDiagnostics.markStage("sanitize \(exTag)")
-                let cleaned = sanitizeExerciseLight(exercise)
+                let cleaned = sanitizeExercise(exercise, weekNumber: weekNumber, exerciseIndex: j, tag: exTag)
                 cleanedExercises.append(cleaned)
             }
         }
 
         WorkoutGenerationDiagnostics.markStage("sanitize \(tag) dayNotes")
-        let cleanedDayNotes = normalizedCoachingText(
-            day.notes,
-            fallback: day.isRestDay
-                ? "Active recovery, mobility work, and light cardio."
-                : "Focus on controlled movement with proper form."
-        )
+        let cleanedDayNotes: String
+        if day.isRestDay {
+            cleanedDayNotes = normalizedCoachingText(
+                day.notes,
+                fallback: "Active recovery, mobility work, and light cardio."
+            )
+        } else {
+            let fallbackStyle = inferredDayStyle(dayName: cleanedDayName, muscleGroups: cleanedMuscleGroups) ?? "Training"
+            let fallbackFocus = cleanedExercises.first?.muscleTarget ?? ""
+            let fallback = proceduralDayNotes(
+                style: fallbackStyle,
+                weekNumber: weekNumber,
+                exercises: cleanedExercises,
+                focus: fallbackFocus
+            )
+            cleanedDayNotes = normalizedCoachingText(day.notes, fallback: fallback)
+        }
 
         return WorkoutDayResponse(
             dayNumber: day.dayNumber,
@@ -148,22 +159,7 @@ extension ClaudeService {
         )
     }
 
-    private func sanitizeExerciseLight(_ exercise: WorkoutExerciseResponse) -> WorkoutExerciseResponse {
-        WorkoutExerciseResponse(
-            exerciseName: normalizedDisplayText(exercise.exerciseName, fallback: "Exercise"),
-            sets: max(1, min(8, exercise.sets)),
-            reps: normalizedDisplayText(exercise.reps, fallback: "8-12"),
-            tempo: normalizedDisplayText(exercise.tempo, fallback: "2-0-2-0"),
-            restSeconds: max(30, min(240, exercise.restSeconds)),
-            notes: normalizedExerciseCoachingText(
-                exercise.notes,
-                fallback: "Focus on controlled movement with proper form."
-            ),
-            muscleTarget: normalizedDisplayText(exercise.muscleTarget, fallback: "Primary Target")
-        )
-    }
-
-    private func sanitizeExerciseFull(
+    private func sanitizeExercise(
         _ exercise: WorkoutExerciseResponse,
         weekNumber: Int,
         exerciseIndex: Int,
@@ -486,8 +482,6 @@ extension ClaudeService {
             || issue.contains("carries too much total fatigue load")
             || issue.contains("was supposed to emphasize")
             || issue.contains("was planned for")
-            || issue.contains("missed its direct-set target")
-            || issue.contains("missed its frequency target")
     }
 
     func validateContinuity(currentWeekDays: [WorkoutDayResponse], previousWeekDays: [WorkoutDayResponse]) -> [String] {

@@ -721,8 +721,8 @@ extension ClaudeService {
             ExerciseMetadata(canonicalName: "Incline Smith Machine Press", primaryAreas: ["Upper Chest"], secondaryAreas: ["Triceps", "Anterior Deltoids"], movementPattern: "Incline Press", fatigueCost: 2)
     ]
 
-    static let exerciseNameAliasCache: [String: String] = Dictionary(
-        uniqueKeysWithValues: [
+    static let exerciseNameAliasCache: [String: String] = {
+        let entries: [(String, String)] = [
             ("Face Pulls", "Face Pull"),
             ("Cable Face Pull", "Face Pull"),
             ("Cable Face Pulls", "Face Pull"),
@@ -743,18 +743,24 @@ extension ClaudeService {
             ("Barbell Shrugs", "Barbell Shrug"),
             ("Band Pull Apart", "Band Pull-Apart"),
             ("Band Pull Aparts", "Band Pull-Apart"),
-            ("Band Pull-Aparts", "Band Pull-Apart"),
             ("Lying Leg Curls", "Lying Leg Curl"),
             ("Glute Ham Raise", "Glute-Ham Raise"),
             ("Cable Crossovers", "Cable Crossover")
-        ].map { (normalizedExerciseNameKey($0.0), $0.1) }
-    )
-
-    static let exerciseMetadataCatalogCache: [String: ExerciseMetadata] = Dictionary(
-        uniqueKeysWithValues: exerciseMetadataEntriesCache.map { entry in
-            (normalizedExerciseNameKey(entry.canonicalName), entry)
+        ]
+        var dict = [String: String]()
+        for (key, value) in entries {
+            dict[normalizedExerciseNameKey(key)] = value
         }
-    )
+        return dict
+    }()
+
+    static let exerciseMetadataCatalogCache: [String: ExerciseMetadata] = {
+        var dict = [String: ExerciseMetadata]()
+        for entry in exerciseMetadataEntriesCache {
+            dict[normalizedExerciseNameKey(entry.canonicalName)] = entry
+        }
+        return dict
+    }()
 
     func inferredExerciseMetadata(for exercise: WorkoutExerciseResponse) -> ExerciseMetadata {
         let nameText = normalizedPriorityText(exercise.exerciseName)
