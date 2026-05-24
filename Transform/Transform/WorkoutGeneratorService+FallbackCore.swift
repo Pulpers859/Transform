@@ -403,7 +403,7 @@ extension ClaudeService {
         )
 
         var updated = exercises
-        if estimatedDayFatigue(for: updated + [newExercise]) <= targetFatigueCap {
+        if exercises.count < 8, estimatedDayFatigue(for: updated + [newExercise]) <= targetFatigueCap {
             updated.append(newExercise)
             return (exercises: updated, setsAdded: sets)
         }
