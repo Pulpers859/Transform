@@ -266,12 +266,17 @@ extension ClaudeService {
                         ) > 0
                     }
 
+                    let dayStyle = relativeBlueprintDayIndex(for: dayNumber, dayStart: dayStart)
+                        .flatMap { idx in blueprint.dayPlans.first(where: { $0.dayIndex == idx })?.style }
+                        ?? ""
+
                     if matchingIndices.isEmpty && remainingShortfall > 0 {
                         let injected = injectAccessoryExercise(
                             into: exercises,
                             for: allocation,
                             weekNumber: weekNumber,
-                            targetFatigueCap: targetFatigueCap
+                            targetFatigueCap: targetFatigueCap,
+                            dayStyle: dayStyle
                         )
                         if let injected {
                             exercises = injected.exercises
@@ -366,13 +371,22 @@ extension ClaudeService {
         into exercises: [WorkoutExerciseResponse],
         for allocation: BlueprintPriorityAllocation,
         weekNumber: Int,
-        targetFatigueCap: Int
+        targetFatigueCap: Int,
+        dayStyle: String
     ) -> (exercises: [WorkoutExerciseResponse], setsAdded: Int)? {
         let intent = priorityIntent(for: allocation)
         let catalog = priorityAccessoryCatalog(for: intent)
         let usedKeys = Set(exercises.map { normalizeExerciseName($0.exerciseName) })
+        let canonicalStyle = canonicalTrainingStyle(dayStyle)
 
-        guard let candidate = catalog.first(where: { !usedKeys.contains(normalizeExerciseName($0.name)) }) else {
+        guard let candidate = catalog.first(where: { entry in
+            guard !usedKeys.contains(normalizeExerciseName(entry.name)) else { return false }
+            let probe = WorkoutExerciseResponse(
+                exerciseName: entry.name, sets: 3, reps: "10-12",
+                tempo: "2-0-1-0", restSeconds: 60, notes: "", muscleTarget: entry.target
+            )
+            return exerciseMatchesDayStyle(probe, style: canonicalStyle)
+        }) else {
             return nil
         }
 
