@@ -57,40 +57,80 @@ extension ClaudeService {
         return values
     }
 
-    func sanitizeProgramResponse(_ program: WorkoutProgramResponse) -> WorkoutProgramResponse {
-        WorkoutProgramResponse(
+    // MARK: - Sanitization (async pipeline with per-exercise diagnostics)
+
+    func sanitizeProgramResponse(_ program: WorkoutProgramResponse) async throws -> WorkoutProgramResponse {
+        if WorkoutGenerationDiagnostics.bypassSanitization {
+            WorkoutGenerationDiagnostics.markStage("BYPASS: returning raw decoded program")
+            return program
+        }
+
+        let sortedDays = program.days.sorted { $0.dayNumber < $1.dayNumber }
+        var cleanedDays = [WorkoutDayResponse]()
+        cleanedDays.reserveCapacity(sortedDays.count)
+
+        for (i, day) in sortedDays.enumerated() {
+            try Task.checkCancellation()
+            let tag = "d\(i + 1)/\(sortedDays.count)"
+            WorkoutGenerationDiagnostics.markStage("sanitize \(tag)")
+            let cleaned = sanitizeDay(day, tag: tag)
+            cleanedDays.append(cleaned)
+        }
+
+        WorkoutGenerationDiagnostics.markStage("sanitize assembly")
+        return WorkoutProgramResponse(
             programName: normalizedDisplayText(program.programName, fallback: "Custom Program"),
             programSummary: normalizedCoachingText(program.programSummary, fallback: "4-week hypertrophy mesocycle."),
             splitType: normalizedDisplayText(program.splitType, fallback: "Custom Split"),
             daysPerWeek: max(1, min(7, program.daysPerWeek)),
-            days: sanitizeDays(program.days)
+            days: cleanedDays
         )
     }
 
-    func sanitizeWeekResponse(_ week: WorkoutWeekResponse) -> WorkoutWeekResponse {
-        WorkoutWeekResponse(
+    func sanitizeWeekResponse(_ week: WorkoutWeekResponse) async throws -> WorkoutWeekResponse {
+        if WorkoutGenerationDiagnostics.bypassSanitization {
+            WorkoutGenerationDiagnostics.markStage("BYPASS: returning raw decoded week")
+            return week
+        }
+
+        let sortedDays = week.days.sorted { $0.dayNumber < $1.dayNumber }
+        var cleanedDays = [WorkoutDayResponse]()
+        cleanedDays.reserveCapacity(sortedDays.count)
+
+        for (i, day) in sortedDays.enumerated() {
+            try Task.checkCancellation()
+            let tag = "d\(i + 1)/\(sortedDays.count)"
+            WorkoutGenerationDiagnostics.markStage("sanitize \(tag)")
+            let cleaned = sanitizeDay(day, tag: tag)
+            cleanedDays.append(cleaned)
+        }
+
+        WorkoutGenerationDiagnostics.markStage("sanitize assembly")
+        return WorkoutWeekResponse(
             weekSummary: normalizedCoachingText(week.weekSummary, fallback: "Weekly progression update."),
-            days: sanitizeDays(week.days)
+            days: cleanedDays
         )
     }
 
-    func sanitizeDays(_ days: [WorkoutDayResponse]) -> [WorkoutDayResponse] {
-        days
-            .sorted { $0.dayNumber < $1.dayNumber }
-            .map(sanitizeDay)
-    }
-
-    func sanitizeDay(_ day: WorkoutDayResponse) -> WorkoutDayResponse {
-        let weekNumber: Int = ((day.dayNumber - 1) / 7) + 1
+    private func sanitizeDay(_ day: WorkoutDayResponse, tag: String) -> WorkoutDayResponse {
+        let weekNumber = ((day.dayNumber - 1) / 7) + 1
         let cleanedDayName = normalizedDisplayText(day.dayName, fallback: "Day \(day.dayNumber)")
         let cleanedMuscleGroups = normalizedDisplayText(
             day.muscleGroups,
             fallback: day.isRestDay ? "Recovery" : "Primary Training"
         )
-        let cleanedExercises = day.isRestDay
-            ? [WorkoutExerciseResponse]()
-            : day.exercises.enumerated().map { sanitizeExercise($0.element, weekNumber: weekNumber, exerciseIndex: $0.offset) }
 
+        var cleanedExercises = [WorkoutExerciseResponse]()
+        if !day.isRestDay {
+            cleanedExercises.reserveCapacity(day.exercises.count)
+            for (j, exercise) in day.exercises.enumerated() {
+                let exTag = "\(tag).e\(j + 1)/\(day.exercises.count)"
+                let cleaned = sanitizeExercise(exercise, weekNumber: weekNumber, exerciseIndex: j, tag: exTag)
+                cleanedExercises.append(cleaned)
+            }
+        }
+
+        WorkoutGenerationDiagnostics.markStage("sanitize \(tag) dayNotes")
         let cleanedDayNotes: String
         if day.isRestDay {
             cleanedDayNotes = normalizedCoachingText(
@@ -119,28 +159,36 @@ extension ClaudeService {
         )
     }
 
-    func sanitizeExercise(
+    private func sanitizeExercise(
         _ exercise: WorkoutExerciseResponse,
         weekNumber: Int,
-        exerciseIndex: Int
+        exerciseIndex: Int,
+        tag: String
     ) -> WorkoutExerciseResponse {
+        WorkoutGenerationDiagnostics.markStage("sanitize \(tag) name")
         let cleanedTarget = normalizedDisplayText(exercise.muscleTarget, fallback: "Primary Target")
         let cleanedName = canonicalExerciseName(
             normalizedDisplayText(exercise.exerciseName, fallback: "Exercise"),
             muscleTarget: cleanedTarget
         )
+
+        WorkoutGenerationDiagnostics.markStage("sanitize \(tag) sets")
         let cleanedSets = polishedExerciseSets(
             rawSets: exercise.sets,
             exerciseName: cleanedName,
             muscleTarget: cleanedTarget,
             weekNumber: weekNumber
         )
+
+        WorkoutGenerationDiagnostics.markStage("sanitize \(tag) reps")
         let cleanedReps = polishedExerciseRepRange(
             rawReps: normalizedDisplayText(exercise.reps, fallback: ""),
             exerciseName: cleanedName,
             muscleTarget: cleanedTarget,
             weekNumber: weekNumber
         )
+
+        WorkoutGenerationDiagnostics.markStage("sanitize \(tag) tempo")
         let cleanedTempo = polishedExerciseTempo(
             rawTempo: normalizedDisplayText(exercise.tempo, fallback: ""),
             exerciseName: cleanedName,
@@ -148,12 +196,16 @@ extension ClaudeService {
             weekNumber: weekNumber,
             reps: cleanedReps
         )
+
+        WorkoutGenerationDiagnostics.markStage("sanitize \(tag) rest")
         let cleanedRestSeconds = polishedExerciseRestSeconds(
             rawRestSeconds: exercise.restSeconds,
             exerciseName: cleanedName,
             muscleTarget: cleanedTarget,
             weekNumber: weekNumber
         )
+
+        WorkoutGenerationDiagnostics.markStage("sanitize \(tag) notes")
         let fallbackNotes = proceduralExerciseNotes(
             weekNumber: weekNumber,
             exerciseName: cleanedName,
