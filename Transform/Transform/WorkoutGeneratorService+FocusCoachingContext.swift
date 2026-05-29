@@ -319,7 +319,14 @@ extension ClaudeService {
             )
         }
 
-        return evidenceTunedCoachingLanguage(trimmed)
+        let tuned = evidenceTunedCoachingLanguage(trimmed)
+        guard !hasConcreteProgressionCue(tuned) else {
+            return tuned
+        }
+
+        return evidenceTunedCoachingLanguage(
+            "\(tuned) \(progressionCue(for: weekNumber, exerciseName: exerciseName, muscleTarget: muscleTarget))"
+        )
     }
 
     func isEmptyOrTooShortInsight(_ notes: String) -> Bool {
@@ -327,6 +334,34 @@ extension ClaudeService {
         if trimmed.isEmpty { return true }
         let wordCount = trimmed.split { $0.isWhitespace || $0.isNewline }.count
         return wordCount < 5
+    }
+
+    func hasConcreteProgressionCue(_ notes: String) -> Bool {
+        let normalized = normalizedPriorityText(notes)
+        return containsAny(
+            normalized,
+            keywords: [
+                "rpe",
+                "rir",
+                "reps in reserve",
+                "rep in reserve",
+                "add reps",
+                "add one rep",
+                "add 1 rep",
+                "add load",
+                "increase load",
+                "increase weight",
+                "beat last week",
+                "same load",
+                "hold load",
+                "top of the rep range",
+                "top of range",
+                "before increasing load",
+                "progression target",
+                "deload target",
+                "baseline target"
+            ]
+        )
     }
 
     func withSourceLabel(_ summary: String, sourceLabel: String) -> String {

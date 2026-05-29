@@ -155,6 +155,9 @@ extension ClaudeService {
           intent), and (c) a "why this is here for you" sentence that references the analysis
           (e.g., the priority muscle, the postural imbalance, the leverage change). Keep exercise
           notes concise: exactly 2 short sentences, ideally under 45 words total.
+        - Use double progression as the default progression model: choose a load that lands in
+          the rep range at the prescribed RPE/RIR, add reps before load, and hold load or trim
+          the lowest-priority isolation set when sleep, joint pain, or stress is poor.
 
         Programming constraints:
         - Exactly 7 days, dayNumber 1..7.
@@ -240,6 +243,8 @@ extension ClaudeService {
         - Each exercise's `notes` must include a form cue, a Week 1 progression cue, and a
           personalization sentence referencing the analysis (priority muscle, leverage change,
           postural issue, etc.). Keep each exercise note to two short sentences.
+        - Progression cues must be concrete: mention RPE/RIR, adding reps before load, holding
+          load, or another specific load/rep progression rule.
 
         Call the emit_workout_program tool with your answer.
         """
@@ -267,6 +272,9 @@ extension ClaudeService {
         mobility guidance tied to this day's lifts AND the user's posture/injury notes. Exercise
         notes still must include form cue + phase-appropriate progression cue + a "why this is
         here for you" sentence tied to the analysis.
+        Use double progression as the default progression model: add reps before load, keep
+        compounds inside the phase RPE cap, and hold load or trim the lowest-priority isolation
+        set when sleep, joint pain, or stress is poor.
 
         Programming constraints:
         - Exactly 7 days for the requested dayNumber range.
@@ -347,6 +355,8 @@ extension ClaudeService {
           mobility guidance tied to this day's lifts and the user's posture/injury notes.
         - Every exercise's `notes` must include a form cue, a Week \(weekNumber)-appropriate
           progression cue, and a personalization sentence referencing the analysis.
+        - Progression cues must be concrete: mention RPE/RIR, adding reps before load, holding
+          load, or another specific load/rep progression rule.
         - weekSummary: one sentence describing what THIS phase accomplishes for THIS person,
           referencing the analysis.
 

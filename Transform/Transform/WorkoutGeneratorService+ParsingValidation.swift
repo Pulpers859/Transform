@@ -532,6 +532,9 @@ extension ClaudeService {
                 if isEmptyOrTooShortInsight(exercise.notes) {
                     issues.append("Day \(day.dayNumber) exercise \(exercise.exerciseName) notes are empty or too short.")
                 }
+                if !hasConcreteProgressionCue(exercise.notes) {
+                    issues.append("Day \(day.dayNumber) exercise \(exercise.exerciseName) notes do not include a concrete progression cue.")
+                }
             }
 
             issues.append(contentsOf: validatePrescriptionUniformity(on: day))
@@ -620,6 +623,7 @@ extension ClaudeService {
             "is not clearly adapted to the impingement",
             "session notes are empty or too short",
             "notes are empty or too short",
+            "notes do not include a concrete progression cue",
             "the generated day reads as",
             "is supposed to emphasize quads"
         ]
