@@ -56,8 +56,7 @@ extension ClaudeService {
         systemPrompt: String,
         userPrompt: String,
         toolName: String,
-        toolSchema: [String: Any],
-        temperature: Double
+        toolSchema: [String: Any]
     ) -> [String: Any] {
         let tool: [String: Any] = [
             "name": toolName,
@@ -77,7 +76,6 @@ extension ClaudeService {
         return [
             "model": config.model,
             "max_tokens": config.maxTokens,
-            "temperature": temperature,
             "system": cachedSystem,
             "tools": [tool],
             "tool_choice": ["type": "tool", "name": toolName],
@@ -120,8 +118,7 @@ extension ClaudeService {
             systemPrompt: systemPrompt,
             userPrompt: userPrompt,
             toolName: toolName,
-            toolSchema: toolSchema,
-            temperature: 0
+            toolSchema: toolSchema
         )
     }
 

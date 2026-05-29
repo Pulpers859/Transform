@@ -109,8 +109,7 @@ extension ClaudeService {
             systemPrompt: systemPrompt,
             userPrompt: userPrompt,
             toolName: programToolName,
-            toolSchema: toolSchema,
-            temperature: 0.65
+            toolSchema: toolSchema
         )
 
         var lastIssues: [String] = []
@@ -270,8 +269,7 @@ extension ClaudeService {
             systemPrompt: systemPrompt,
             userPrompt: userPrompt,
             toolName: weekToolName,
-            toolSchema: toolSchema,
-            temperature: 0.65
+            toolSchema: toolSchema
         )
 
         var lastIssues: [String] = []
@@ -470,8 +468,7 @@ extension ClaudeService {
                 systemPrompt: systemPrompt,
                 userPrompt: userPrompt,
                 toolName: programToolName,
-                toolSchema: toolSchema,
-                temperature: 0.65
+                toolSchema: toolSchema
             )
 
             var attempts: [WorkoutGeneratorDebugAttempt] = []
@@ -853,8 +850,7 @@ extension ClaudeService {
                 systemPrompt: systemPrompt,
                 userPrompt: userPrompt,
                 toolName: weekToolName,
-                toolSchema: toolSchema,
-                temperature: 0.65
+                toolSchema: toolSchema
             )
 
             var attempts: [WorkoutGeneratorDebugAttempt] = []
