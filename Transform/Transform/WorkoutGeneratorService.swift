@@ -136,7 +136,11 @@ extension ClaudeService {
                 if issues.isEmpty {
                     return labeledProgramResponse(cleaned, sourceLabel: aiSourceLabel)
                 }
-                if shouldAcceptAIOutput(despite: issues) {
+                if shouldAcceptAIOutput(
+                    despite: issues,
+                    attempt: attempt,
+                    generationAttempts: generationAttempts
+                ) {
                     print("[WorkoutGeneratorService] Week 1 accepted with heuristic validator warnings: \(issues.joined(separator: " | "))")
                     return labeledProgramResponse(cleaned, sourceLabel: aiSourceLabel)
                 }
@@ -298,7 +302,11 @@ extension ClaudeService {
                 if issues.isEmpty {
                     return labeledWeekResponse(cleaned, sourceLabel: aiSourceLabel)
                 }
-                if shouldAcceptAIOutput(despite: issues) {
+                if shouldAcceptAIOutput(
+                    despite: issues,
+                    attempt: attempt,
+                    generationAttempts: generationAttempts
+                ) {
                     print("[WorkoutGeneratorService] Week \(weekNumber) accepted with heuristic validator warnings: \(issues.joined(separator: " | "))")
                     return labeledWeekResponse(cleaned, sourceLabel: aiSourceLabel)
                 }
@@ -520,7 +528,11 @@ extension ClaudeService {
                             )
                         }
 
-                        if shouldAcceptAIOutput(despite: issues) {
+                        if shouldAcceptAIOutput(
+                            despite: issues,
+                            attempt: attempt,
+                            generationAttempts: generationAttempts
+                        ) {
                             attempts.append(
                                 WorkoutGeneratorDebugAttempt(
                                     attemptNumber: attempt,
@@ -904,7 +916,11 @@ extension ClaudeService {
                             )
                         }
 
-                        if shouldAcceptAIOutput(despite: issues) {
+                        if shouldAcceptAIOutput(
+                            despite: issues,
+                            attempt: attempt,
+                            generationAttempts: generationAttempts
+                        ) {
                             attempts.append(
                                 WorkoutGeneratorDebugAttempt(
                                     attemptNumber: attempt,

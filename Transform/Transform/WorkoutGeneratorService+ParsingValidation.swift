@@ -1,6 +1,12 @@
 import Foundation
 
 extension ClaudeService {
+    enum ValidationIssueDisposition {
+        case acceptableWarning
+        case correctionPass
+        case hardFailure
+    }
+
     // MARK: - Parsing and Cleanup
 
     func decodeJSONPayload<T: Decodable>(_ type: T.Type, from responseText: String) throws -> T {
@@ -128,6 +134,10 @@ extension ClaudeService {
                 let cleaned = sanitizeExercise(exercise, weekNumber: weekNumber, exerciseIndex: j, tag: exTag)
                 cleanedExercises.append(cleaned)
             }
+            cleanedExercises = rebalanceUniformPrescriptionsIfNeeded(
+                cleanedExercises,
+                weekNumber: weekNumber
+            )
         }
 
         WorkoutGenerationDiagnostics.markStage("sanitize \(tag) dayNotes")
@@ -224,6 +234,74 @@ extension ClaudeService {
             notes: cleanedNotes,
             muscleTarget: cleanedTarget
         )
+    }
+
+    private func rebalanceUniformPrescriptionsIfNeeded(
+        _ exercises: [WorkoutExerciseResponse],
+        weekNumber: Int
+    ) -> [WorkoutExerciseResponse] {
+        guard exercises.count >= 4 else { return exercises }
+
+        let roles = exercises.map {
+            proceduralExerciseRole(for: $0.exerciseName, muscleTarget: $0.muscleTarget)
+        }
+        let roleSet = Set(roles.map(\.rawValue))
+        let hasCompoundRole = roles.contains(.anchor) || roles.contains(.secondary)
+        let hasAccessoryRole = roles.contains(.accessory)
+        guard roleSet.count >= 2, hasCompoundRole, hasAccessoryRole else {
+            return exercises
+        }
+
+        let shouldRebalanceRest = Set(exercises.map(\.restSeconds)).count == 1
+        let tempoApplicableIndices = exercises.indices.filter { index in
+            let exercise = exercises[index]
+            return requiresExplicitTempo(
+                exerciseName: exercise.exerciseName,
+                muscleTarget: exercise.muscleTarget,
+                reps: exercise.reps
+            )
+        }
+        let normalizedTempos = Set(tempoApplicableIndices.map { index in
+            normalizedTempo(exercises[index].tempo) ?? exercises[index].tempo
+        })
+        let shouldRebalanceTempo = tempoApplicableIndices.count >= 2 && normalizedTempos.count == 1
+
+        guard shouldRebalanceRest || shouldRebalanceTempo else { return exercises }
+
+        return exercises.map { exercise in
+            let updatedTempo: String
+            if shouldRebalanceTempo,
+               requiresExplicitTempo(
+                   exerciseName: exercise.exerciseName,
+                   muscleTarget: exercise.muscleTarget,
+                   reps: exercise.reps
+               ) {
+                updatedTempo = proceduralTempo(
+                    for: weekNumber,
+                    exerciseName: exercise.exerciseName,
+                    muscleTarget: exercise.muscleTarget,
+                    reps: exercise.reps
+                )
+            } else if shouldRebalanceTempo {
+                updatedTempo = ""
+            } else {
+                updatedTempo = exercise.tempo
+            }
+
+            let updatedRestSeconds = shouldRebalanceRest
+                ? proceduralRestSeconds(for: exercise.exerciseName, muscleTarget: exercise.muscleTarget)
+                : exercise.restSeconds
+
+            return WorkoutExerciseResponse(
+                exerciseName: exercise.exerciseName,
+                sets: exercise.sets,
+                reps: exercise.reps,
+                tempo: updatedTempo,
+                restSeconds: updatedRestSeconds,
+                notes: exercise.notes,
+                muscleTarget: exercise.muscleTarget
+            )
+        }
     }
 
     func normalizedDisplayText(_ rawValue: String, fallback: String) -> String {
@@ -323,6 +401,7 @@ extension ClaudeService {
             let peakDirectSession = peakDirectSession(for: allocation, stimulusReport: stimulusReport)
             let frequencyMiss = coverage.dayMatches < allocation.targetFrequency
             let directSetMiss = coverage.directSets + 1.0 < allocation.directSetTarget
+            let overDirectSetMiss = coverage.directSets > allocation.directSetTarget * 1.3
             let slotMiss = coverage.exerciseMatches + 1 < allocation.targetExerciseSlots
                 && coverage.directSets + 0.5 < allocation.directSetTarget
             let weightedStimulusMiss = coverage.weightedStimulus + 1.0 < allocation.weightedStimulusTarget
@@ -336,6 +415,11 @@ extension ClaudeService {
             if directSetMiss {
                 issues.append(
                     "Blueprint priority '\(coverage.label)' missed its direct-set target (\(formatStimulusValue(coverage.directSets))/\(formatStimulusValue(allocation.directSetTarget)))."
+                )
+            }
+            if overDirectSetMiss {
+                issues.append(
+                    "Blueprint priority '\(coverage.label)' overshot its direct-set target enough to create avoidable fatigue (\(formatStimulusValue(coverage.directSets))/\(formatStimulusValue(allocation.directSetTarget))). Trim redundant work instead of stacking junk volume."
                 )
             }
             if slotMiss {
@@ -470,38 +554,86 @@ extension ClaudeService {
 
     func shouldAcceptAIOutput(despite issues: [String]) -> Bool {
         guard !issues.isEmpty else { return false }
-        return issues.allSatisfy(isHeuristicValidationIssue)
+        return issues.allSatisfy { validationDisposition(for: $0) != .hardFailure }
+    }
+
+    func shouldAcceptAIOutput(
+        despite issues: [String],
+        attempt: Int,
+        generationAttempts: Int
+    ) -> Bool {
+        guard !issues.isEmpty else { return false }
+        if issues.allSatisfy({ validationDisposition(for: $0) == .acceptableWarning }) {
+            return true
+        }
+
+        guard attempt >= generationAttempts else { return false }
+        return issues.allSatisfy { validationDisposition(for: $0) != .hardFailure }
+    }
+
+    func validationDisposition(for issue: String) -> ValidationIssueDisposition {
+        if matchesValidationIssue(issue, patterns: acceptableWarningIssuePatterns) {
+            return .acceptableWarning
+        }
+        if matchesValidationIssue(issue, patterns: correctionWorthyIssuePatterns)
+            || (issue.contains("targets") && issue.contains("but never includes a prime")) {
+            return .correctionPass
+        }
+        return .hardFailure
+    }
+
+    func matchesValidationIssue(_ issue: String, patterns: [String]) -> Bool {
+        patterns.contains { issue.contains($0) }
+    }
+
+    var acceptableWarningIssuePatterns: [String] {
+        [
+            "undershot its targeted exercise-slot goal",
+            "undershot its weighted stimulus target",
+            "Too few anchor lifts carried over"
+        ]
+    }
+
+    var correctionWorthyIssuePatterns: [String] {
+        [
+            "is concentrated into overly fatiguing sessions",
+            "exceeds its focus-day direct-set cap",
+            "exceeds its per-session direct-set cap",
+            "carries too much total fatigue load",
+            "overshot its direct-set target enough to create avoidable fatigue",
+            "was supposed to emphasize",
+            "was planned for",
+            "missed its direct-set target",
+            "missed its frequency target",
+            "low-value filler",
+            "too crowded for a fatigue-managed",
+            "one identical rest prescription",
+            "one identical tempo prescription",
+            "does not clearly support",
+            "reads as a broad lower-body session",
+            "stacks too many glute",
+            "session notes talk about",
+            "opens its",
+            "spends too many",
+            "never includes a prime hypertrophy movement",
+            "is not clearly adapted to the impingement",
+            "session notes are empty or too short",
+            "notes are empty or too short",
+            "the generated day reads as",
+            "is supposed to emphasize quads"
+        ]
+    }
+
+    func isAcceptableWarningIssue(_ issue: String) -> Bool {
+        validationDisposition(for: issue) == .acceptableWarning
+    }
+
+    func isCorrectionWorthyHeuristicIssue(_ issue: String) -> Bool {
+        validationDisposition(for: issue) == .correctionPass
     }
 
     func isHeuristicValidationIssue(_ issue: String) -> Bool {
-        issue.contains("undershot its targeted exercise-slot goal")
-            || issue.contains("undershot its weighted stimulus target")
-            || issue.contains("is concentrated into overly fatiguing sessions")
-            || issue.contains("exceeds its focus-day direct-set cap")
-            || issue.contains("exceeds its per-session direct-set cap")
-            || issue.contains("carries too much total fatigue load")
-            || issue.contains("was supposed to emphasize")
-            || issue.contains("was planned for")
-            || issue.contains("missed its direct-set target")
-            || issue.contains("missed its frequency target")
-            || issue.contains("low-value filler")
-            || issue.contains("too crowded for a fatigue-managed")
-            || issue.contains("one identical rest prescription")
-            || issue.contains("one identical tempo prescription")
-            || issue.contains("does not clearly support")
-            || issue.contains("reads as a broad lower-body session")
-            || issue.contains("stacks too many glute")
-            || issue.contains("session notes talk about")
-            || issue.contains("opens its")
-            || issue.contains("spends too many")
-            || issue.contains("never includes a prime hypertrophy movement")
-            || issue.contains("is not clearly adapted to the impingement")
-            || issue.contains("Too few anchor lifts carried over")
-            || issue.contains("session notes are empty or too short")
-            || issue.contains("notes are empty or too short")
-            || issue.contains("the generated day reads as")
-            || issue.contains("is supposed to emphasize quads")
-            || (issue.contains("targets") && issue.contains("but never includes a prime"))
+        validationDisposition(for: issue) != .hardFailure
     }
 
     func validateContinuity(currentWeekDays: [WorkoutDayResponse], previousWeekDays: [WorkoutDayResponse]) -> [String] {
