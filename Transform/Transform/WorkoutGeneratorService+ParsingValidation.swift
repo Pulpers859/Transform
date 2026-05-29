@@ -612,6 +612,7 @@ extension ClaudeService {
             "does not clearly support",
             "reads as a broad lower-body session",
             "stacks too many glute",
+            "uses shoulder-intensive pressing on an Arms/Lateral focus day",
             "session notes talk about",
             "opens its",
             "spends too many",

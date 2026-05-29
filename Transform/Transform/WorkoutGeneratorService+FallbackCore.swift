@@ -673,10 +673,9 @@ extension ClaudeService {
                 ("Incline Dumbbell Curl", "Biceps"),
                 ("Hammer Curl", "Brachialis"),
                 ("Cable Curl", "Biceps"),
-                ("Close-Grip Bench Press", "Triceps"),
-                ("Skull Crusher", "Triceps"),
                 ("Rope Triceps Pressdown", "Triceps"),
-                ("Overhead Cable Triceps Extension", "Triceps")
+                ("Overhead Cable Triceps Extension", "Triceps"),
+                ("Skull Crusher", "Triceps")
             ]
         default:
             return genericExerciseCatalog()

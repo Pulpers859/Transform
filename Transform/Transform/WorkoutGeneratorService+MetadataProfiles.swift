@@ -382,6 +382,12 @@ extension ClaudeService {
             )
         }
 
+        issues.append(contentsOf: validateArmsDayShoulderStress(
+            on: day,
+            expectedStyle: expectedCanonical,
+            focusArea: focusArea
+        ))
+
         if expectedCanonical == "Lower" && day.exercises.count >= 7 {
             issues.append(
                 "Day \(day.dayNumber) is too crowded for a fatigue-managed Lower session. In a shift-work recomposition block, prefer fewer high-value lower-body movements over extra filler."
@@ -395,6 +401,42 @@ extension ClaudeService {
         ))
 
         return issues
+    }
+
+    func validateArmsDayShoulderStress(
+        on day: WorkoutDayResponse,
+        expectedStyle: String,
+        focusArea: String?
+    ) -> [String] {
+        guard expectedStyle == "Arms" else { return [] }
+
+        let normalizedFocus = normalizedPriorityText(focusArea ?? "")
+        let isDeltBiasedArmDay = normalizedFocus.contains("lateral delt")
+            || normalizedFocus.contains("side delt")
+            || normalizedFocus.contains("shoulder")
+        guard isDeltBiasedArmDay else { return [] }
+
+        let shoulderIntensivePresses = day.exercises.filter { exercise in
+            let normalizedName = normalizeExerciseName(exercise.exerciseName)
+            return containsAny(
+                normalizedName,
+                keywords: [
+                    "close grip bench",
+                    "close-grip bench",
+                    "dip",
+                    "shoulder press",
+                    "overhead press",
+                    "arnold press"
+                ]
+            )
+        }
+
+        guard !shoulderIntensivePresses.isEmpty else { return [] }
+
+        let names = shoulderIntensivePresses.prefix(2).map(\.exerciseName).joined(separator: ", ")
+        return [
+            "Day \(day.dayNumber) uses shoulder-intensive pressing on an Arms/Lateral focus day (\(names)). Prefer cable or machine arm work so the lateral-delt exposure does not add avoidable anterior-shoulder stress."
+        ]
     }
 
     func validateLowerSessionBalance(
