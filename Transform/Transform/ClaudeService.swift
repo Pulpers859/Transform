@@ -207,18 +207,11 @@ class ClaudeService {
             "text": "Analyze \(photos.count > 1 ? "all \(photos.count) photos together" : "this photo"). Respond with ONLY the JSON object specified in your instructions. Do not include any text before or after the JSON. Start your response with {"
         ])
 
-        let cachedSystem: [[String: Any]] = [
-            [
-                "type": "text",
-                "text": systemPrompt,
-                "cache_control": ["type": "ephemeral"]
-            ]
-        ]
-
         let requestBody: [String: Any] = [
             "model": Config.claudeModel,
             "max_tokens": 4096,
-            "system": cachedSystem,
+            "cache_control": ["type": "ephemeral"],
+            "system": systemPrompt,
             "messages": [
                 [
                     "role": "user",
