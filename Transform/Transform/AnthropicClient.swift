@@ -168,6 +168,7 @@ final class AnthropicClient {
                 request.setValue("application/json", forHTTPHeaderField: "Accept")
                 request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
                 request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
+                request.setValue("prompt-caching-2024-07-31", forHTTPHeaderField: "anthropic-beta")
                 request.httpBody = encodedBody
                 request.timeoutInterval = timeout
 

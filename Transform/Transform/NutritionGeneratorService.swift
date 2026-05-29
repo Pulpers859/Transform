@@ -261,11 +261,19 @@ extension ClaudeService {
             "input_schema": toolSchema
         ]
 
+        let cachedSystem: [[String: Any]] = [
+            [
+                "type": "text",
+                "text": systemPrompt,
+                "cache_control": ["type": "ephemeral"]
+            ]
+        ]
+
         return [
             "model": config.model,
             "max_tokens": config.maxTokens,
             "temperature": temperature,
-            "system": systemPrompt,
+            "system": cachedSystem,
             "tools": [tool],
             "tool_choice": ["type": "tool", "name": toolName],
             "messages": [

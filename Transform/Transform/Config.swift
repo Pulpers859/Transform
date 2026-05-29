@@ -46,10 +46,8 @@ enum Config {
         anthropicKeyStatus.startupAlertMessage
     }
 
-    // Anthropic snapshot IDs from the official models docs. Snapshot IDs are more stable
-    // than free-floating aliases when you want predictable generation behavior over time.
-    static let claudeModel = "claude-opus-4-1-20250805" // Vision tasks (body analysis)
-    static let claudeModelLite = "claude-sonnet-4-20250514" // Text tasks (macro estimation)
+    static let claudeModel = "claude-opus-4-8"
+    static let claudeModelLite = "claude-sonnet-4-6"
 
     static var calorieTarget: Int { AppSettingsStore.calorieTarget }
     static var proteinTargetG: Double { AppSettingsStore.proteinTargetG }

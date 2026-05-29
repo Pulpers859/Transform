@@ -245,8 +245,7 @@ class ExerciseWeightEntry {
 
         let stopWords: Set<String> = [
             "the", "a", "an", "and", "or", "with", "for", "to",
-            "week", "day", "set", "sets", "rep", "reps", "rir", "rpe",
-            "machine", "cable", "db", "bb"
+            "week", "day", "set", "sets", "rep", "reps", "rir", "rpe"
         ]
 
         let normalizedText = String(normalizedCharacters)
