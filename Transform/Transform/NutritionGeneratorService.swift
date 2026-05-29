@@ -258,7 +258,8 @@ extension ClaudeService {
         let tool: [String: Any] = [
             "name": toolName,
             "description": "Emit the nutrition plan in the required structured shape. Always call this tool; never respond with free text.",
-            "input_schema": toolSchema
+            "input_schema": toolSchema,
+            "cache_control": ["type": "ephemeral"]
         ]
 
         let cachedSystem: [[String: Any]] = [
