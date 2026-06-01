@@ -167,6 +167,12 @@ extension ClaudeService {
                 supportIntents: supportIntents,
                 targetFatigueCap: plan.targetFatigueCap,
                 targetSessionMinutes: plan.targetSessionMinutes,
+                selectionContext: ExerciseSelectionContext(
+                    calibration: blueprint.calibration,
+                    injuryRiskFocus: blueprint.injuryRiskFocus,
+                    targetSessionMinutes: plan.targetSessionMinutes,
+                    style: style
+                ),
                 previousExercises: previousExercises
             )
 
@@ -557,6 +563,7 @@ extension ClaudeService {
         supportIntents: [MusclePriorityIntent],
         targetFatigueCap: Int,
         targetSessionMinutes: Int,
+        selectionContext: ExerciseSelectionContext,
         previousExercises: [WorkoutExerciseResponse]
     ) -> [WorkoutExerciseResponse] {
         let targetCount = weekNumber == 4 ? 5 : 6
@@ -583,7 +590,11 @@ extension ClaudeService {
         }
         let lockedPrefixCount = focusIntent == nil ? selected.count : 0
 
-        let catalog = orderedExerciseCatalog(for: style, focusIntent: focusIntent)
+        let catalog = orderedExerciseCatalog(
+            for: style,
+            focusIntent: focusIntent,
+            selectionContext: selectionContext
+        )
         for candidate in catalog where selected.count < targetCount {
             let key = normalizeExerciseName(candidate.name)
             guard !used.contains(key) else { continue }
@@ -592,7 +603,10 @@ extension ClaudeService {
         }
 
         if selected.count < 5 {
-            for candidate in orderedGenericExerciseCatalog(focusIntent: focusIntent) where selected.count < 5 {
+            for candidate in orderedGenericExerciseCatalog(
+                focusIntent: focusIntent,
+                selectionContext: selectionContext
+            ) where selected.count < 5 {
                 let key = normalizeExerciseName(candidate.name)
                 guard !used.contains(key) else { continue }
                 used.insert(key)

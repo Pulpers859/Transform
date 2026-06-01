@@ -655,7 +655,8 @@ extension ClaudeService {
 
     func orderedExerciseCatalog(
         for style: String,
-        focusIntent: MusclePriorityIntent?
+        focusIntent: MusclePriorityIntent?,
+        selectionContext: ExerciseSelectionContext? = nil
     ) -> [(name: String, target: String)] {
         let catalog = exerciseCatalog(for: style)
         guard let focusIntent else { return catalog }
@@ -674,13 +675,29 @@ extension ClaudeService {
                     focusArea: focusIntent.area
                 )
                 if lhsFocusPriority != rhsFocusPriority { return lhsFocusPriority < rhsFocusPriority }
+                if let selectionContext {
+                    let lhsScore = exerciseSelectionScore(
+                        exerciseName: lhs.element.name,
+                        muscleTarget: lhs.element.target,
+                        focusIntent: focusIntent,
+                        selectionContext: selectionContext
+                    )
+                    let rhsScore = exerciseSelectionScore(
+                        exerciseName: rhs.element.name,
+                        muscleTarget: rhs.element.target,
+                        focusIntent: focusIntent,
+                        selectionContext: selectionContext
+                    )
+                    if lhsScore != rhsScore { return lhsScore > rhsScore }
+                }
                 return lhs.offset < rhs.offset
             }
             .map(\.element)
     }
 
     func orderedGenericExerciseCatalog(
-        focusIntent: MusclePriorityIntent?
+        focusIntent: MusclePriorityIntent?,
+        selectionContext: ExerciseSelectionContext? = nil
     ) -> [(name: String, target: String)] {
         let catalog = genericExerciseCatalog()
         guard let focusIntent else { return catalog }
@@ -699,9 +716,132 @@ extension ClaudeService {
                     focusArea: focusIntent.area
                 )
                 if lhsFocusPriority != rhsFocusPriority { return lhsFocusPriority < rhsFocusPriority }
+                if let selectionContext {
+                    let lhsScore = exerciseSelectionScore(
+                        exerciseName: lhs.element.name,
+                        muscleTarget: lhs.element.target,
+                        focusIntent: focusIntent,
+                        selectionContext: selectionContext
+                    )
+                    let rhsScore = exerciseSelectionScore(
+                        exerciseName: rhs.element.name,
+                        muscleTarget: rhs.element.target,
+                        focusIntent: focusIntent,
+                        selectionContext: selectionContext
+                    )
+                    if lhsScore != rhsScore { return lhsScore > rhsScore }
+                }
                 return lhs.offset < rhs.offset
             }
             .map(\.element)
+    }
+
+    func exerciseSelectionScore(
+        exerciseName: String,
+        muscleTarget: String,
+        focusIntent: MusclePriorityIntent?,
+        selectionContext: ExerciseSelectionContext
+    ) -> Int {
+        let metadata = exerciseMetadata(
+            forExerciseName: exerciseName,
+            muscleTarget: muscleTarget
+        )
+        var score = 0
+
+        if let focusIntent {
+            switch focusStimulusKind(
+                exerciseName: exerciseName,
+                muscleTarget: muscleTarget,
+                focusArea: focusIntent.area
+            ) {
+            case .prime:
+                score += 30
+            case .secondary:
+                score += 20
+            case .support:
+                score += 8
+            case .none:
+                break
+            }
+        }
+
+        if metadata.preferredContexts.contains("hypertrophy") {
+            score += 8
+        }
+
+        if selectionContext.calibration.recoveryConstrained {
+            score -= metadata.systemicFatigue * 4
+            if metadata.preferredContexts.contains("shift_work_friendly") {
+                score += 10
+            }
+            if metadata.avoidContexts.contains("shift_work_friendly") {
+                score -= 12
+            }
+        } else {
+            score -= metadata.systemicFatigue * 2
+        }
+
+        if selectionContext.calibration.lowPerformanceDataQuality {
+            score -= metadata.stabilityDemand * 4
+            if metadata.preferredContexts.contains("low_data_quality") {
+                score += 8
+            }
+            if metadata.avoidContexts.contains("low_data_quality") {
+                score -= 8
+            }
+        }
+
+        if selectionContext.targetSessionMinutes <= 60 {
+            if metadata.preferredContexts.contains("short_session") {
+                score += 8
+            }
+            if metadata.avoidContexts.contains("short_session") {
+                score -= 10
+            }
+            if metadata.exerciseClass == "Isolation" || metadata.exerciseClass == "Prehab" {
+                score += 4
+            }
+            score -= max(0, metadata.systemicFatigue - 1) * 2
+        }
+
+        if hasShoulderRisk(injuryRiskFocus: selectionContext.injuryRiskFocus) {
+            score -= metadata.shoulderRisk * 5
+            if metadata.preferredContexts.contains("shoulder_risk") || metadata.preferredContexts.contains("shoulder_friendly") {
+                score += 10
+            }
+            if metadata.avoidContexts.contains("shoulder_risk") {
+                score -= 14
+            }
+        }
+
+        if let focusIntent,
+           normalizedPriorityText(focusIntent.area).contains("lateral delt"),
+           metadata.preferredContexts.contains("lateral_delt_priority") {
+            score += 12
+        }
+
+        if canonicalTrainingStyle(selectionContext.style) == "Arms" {
+            if metadata.avoidContexts.contains("arms_pump_day") {
+                score -= 12
+            }
+            if metadata.exerciseClass == "Isolation" {
+                score += 6
+            }
+        }
+
+        if metadata.exerciseClass == "Heavy Compound" && selectionContext.calibration.lowPerformanceDataQuality {
+            score -= 6
+        }
+
+        return score
+    }
+
+    func hasShoulderRisk(injuryRiskFocus: String) -> Bool {
+        let normalized = normalizedPriorityText(injuryRiskFocus)
+        return containsAny(
+            normalized,
+            keywords: ["shoulder impingement", "internal rotation", "internally rotated", "upper crossed", "shoulder health"]
+        )
     }
 
 }

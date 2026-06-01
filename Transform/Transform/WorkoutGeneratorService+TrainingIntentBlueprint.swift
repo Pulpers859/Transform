@@ -177,7 +177,8 @@ extension ClaudeService {
             topLeverageChange: trainingIntent.topLeverageChange,
             posturalFocus: trainingIntent.posturalFocus,
             injuryRiskFocus: trainingIntent.injuryRiskFocus,
-            programmingNotes: trainingIntent.programmingNotes
+            programmingNotes: trainingIntent.programmingNotes,
+            calibration: trainingIntent.calibration
         )
     }
 

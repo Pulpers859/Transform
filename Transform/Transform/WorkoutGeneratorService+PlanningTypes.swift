@@ -52,6 +52,13 @@ extension ClaudeService {
         let programmingNotes: [String]
     }
 
+    struct ExerciseSelectionContext {
+        let calibration: ProgramCalibrationProfile
+        let injuryRiskFocus: String
+        let targetSessionMinutes: Int
+        let style: String
+    }
+
     struct PriorityFocusProfile {
         let label: String
         let triggerKeywords: [String]
@@ -66,6 +73,41 @@ extension ClaudeService {
         let secondaryAreas: [String]
         let movementPattern: String
         let fatigueCost: Int
+        let equipment: String
+        let exerciseClass: String
+        let systemicFatigue: Int
+        let stabilityDemand: Int
+        let shoulderRisk: Int
+        let preferredContexts: [String]
+        let avoidContexts: [String]
+
+        init(
+            canonicalName: String,
+            primaryAreas: [String],
+            secondaryAreas: [String],
+            movementPattern: String,
+            fatigueCost: Int,
+            equipment: String = "Unknown",
+            exerciseClass: String = "Accessory",
+            systemicFatigue: Int? = nil,
+            stabilityDemand: Int = 2,
+            shoulderRisk: Int = 1,
+            preferredContexts: [String] = [],
+            avoidContexts: [String] = []
+        ) {
+            self.canonicalName = canonicalName
+            self.primaryAreas = primaryAreas
+            self.secondaryAreas = secondaryAreas
+            self.movementPattern = movementPattern
+            self.fatigueCost = fatigueCost
+            self.equipment = equipment
+            self.exerciseClass = exerciseClass
+            self.systemicFatigue = systemicFatigue ?? fatigueCost
+            self.stabilityDemand = stabilityDemand
+            self.shoulderRisk = shoulderRisk
+            self.preferredContexts = preferredContexts
+            self.avoidContexts = avoidContexts
+        }
     }
 
     enum FocusStimulusKind {
@@ -162,6 +204,7 @@ extension ClaudeService {
         let posturalFocus: String
         let injuryRiskFocus: String
         let programmingNotes: [String]
+        let calibration: ProgramCalibrationProfile
     }
 
     struct WeekStimulusReport {

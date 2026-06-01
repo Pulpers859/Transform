@@ -855,7 +855,8 @@ extension ClaudeService {
     static let exerciseMetadataCatalogCache: [String: ExerciseMetadata] = {
         var dict = [String: ExerciseMetadata]()
         for entry in exerciseMetadataEntriesCache {
-            dict[normalizedExerciseNameKey(entry.canonicalName)] = entry
+            let enriched = Self.enrichedExerciseMetadata(entry)
+            dict[normalizedExerciseNameKey(entry.canonicalName)] = enriched
         }
         return dict
     }()
@@ -882,69 +883,69 @@ extension ClaudeService {
         let isLowerBodyCurlPattern = containsAny(combinedText, keywords: ["leg curl", "hamstring curl"])
 
         if containsAny(combinedText, keywords: ["core", "abs", "oblique", "crunch", "plank", "rollout", "pallof", "leg raise", "knee raise", "serratus"]) {
-            return ExerciseMetadata(canonicalName: exercise.exerciseName, primaryAreas: ["Core/Abs"], secondaryAreas: [], movementPattern: "Core", fatigueCost: 1)
+            return Self.enrichedExerciseMetadata(ExerciseMetadata(canonicalName: exercise.exerciseName, primaryAreas: ["Core/Abs"], secondaryAreas: [], movementPattern: "Core", fatigueCost: 1))
         }
         if containsAny(combinedText, keywords: ["calf"]) {
-            return ExerciseMetadata(canonicalName: exercise.exerciseName, primaryAreas: ["Calves"], secondaryAreas: [], movementPattern: "Calf Raise", fatigueCost: 1)
+            return Self.enrichedExerciseMetadata(ExerciseMetadata(canonicalName: exercise.exerciseName, primaryAreas: ["Calves"], secondaryAreas: [], movementPattern: "Calf Raise", fatigueCost: 1))
         }
         if containsAny(combinedText, keywords: ["wrist curl", "wrist extension", "reverse curl"]) {
-            return ExerciseMetadata(canonicalName: exercise.exerciseName, primaryAreas: ["Forearms"], secondaryAreas: ["Biceps"], movementPattern: "Forearm", fatigueCost: 1)
+            return Self.enrichedExerciseMetadata(ExerciseMetadata(canonicalName: exercise.exerciseName, primaryAreas: ["Forearms"], secondaryAreas: ["Biceps"], movementPattern: "Forearm", fatigueCost: 1))
         }
         if containsAny(combinedText, keywords: ["y raise", "trap 3", "scaption", "wall slide", "external rotation", "pull apart"]) {
-            return ExerciseMetadata(canonicalName: exercise.exerciseName, primaryAreas: ["Shoulders"], secondaryAreas: ["Upper Back"], movementPattern: "Scapular Raise", fatigueCost: 1)
+            return Self.enrichedExerciseMetadata(ExerciseMetadata(canonicalName: exercise.exerciseName, primaryAreas: ["Shoulders"], secondaryAreas: ["Upper Back"], movementPattern: "Scapular Raise", fatigueCost: 1))
         }
         if containsAny(combinedText, keywords: ["brachialis", "hammer curl", "cross body curl"]) {
-            return ExerciseMetadata(canonicalName: exercise.exerciseName, primaryAreas: ["Brachialis"], secondaryAreas: ["Biceps", "Forearms"], movementPattern: "Curl", fatigueCost: 1)
+            return Self.enrichedExerciseMetadata(ExerciseMetadata(canonicalName: exercise.exerciseName, primaryAreas: ["Brachialis"], secondaryAreas: ["Biceps", "Forearms"], movementPattern: "Curl", fatigueCost: 1))
         }
         if targetsBiceps || (containsAny(combinedText, keywords: ["bicep", "curl", "preacher curl", "bayesian curl"]) && !isLowerBodyCurlPattern) {
-            return ExerciseMetadata(canonicalName: exercise.exerciseName, primaryAreas: ["Biceps"], secondaryAreas: ["Forearms"], movementPattern: "Curl", fatigueCost: 1)
+            return Self.enrichedExerciseMetadata(ExerciseMetadata(canonicalName: exercise.exerciseName, primaryAreas: ["Biceps"], secondaryAreas: ["Forearms"], movementPattern: "Curl", fatigueCost: 1))
         }
         if targetsTriceps || containsAny(combinedText, keywords: ["tricep", "pressdown", "kickback", "skull crusher", "jm press", "triceps extension", "overhead extension"]) {
             let usesCompoundPressPattern = containsAny(nameText, keywords: ["press"]) && !containsAny(nameText, keywords: ["pressdown"])
-            return ExerciseMetadata(
+            return Self.enrichedExerciseMetadata(ExerciseMetadata(
                 canonicalName: exercise.exerciseName,
                 primaryAreas: ["Triceps"],
                 secondaryAreas: usesCompoundPressPattern ? ["Chest", "Anterior Deltoids"] : [],
                 movementPattern: usesCompoundPressPattern ? "Close-Grip Press" : "Extension",
                 fatigueCost: usesCompoundPressPattern ? 2 : 1
-            )
+            ))
         }
         if targetsRearDelts || containsAny(combinedText, keywords: ["rear delt", "posterior delt", "reverse fly", "reverse pec deck", "face pull"]) {
-            return ExerciseMetadata(canonicalName: exercise.exerciseName, primaryAreas: ["Rear Deltoids"], secondaryAreas: ["Upper Back"], movementPattern: "Rear Delt", fatigueCost: 1)
+            return Self.enrichedExerciseMetadata(ExerciseMetadata(canonicalName: exercise.exerciseName, primaryAreas: ["Rear Deltoids"], secondaryAreas: ["Upper Back"], movementPattern: "Rear Delt", fatigueCost: 1))
         }
         if targetsLateralDelts || containsAny(combinedText, keywords: ["lateral raise", "lateral delt", "side delt"]) {
-            return ExerciseMetadata(canonicalName: exercise.exerciseName, primaryAreas: ["Lateral Deltoids"], secondaryAreas: [], movementPattern: "Lateral Raise", fatigueCost: 1)
+            return Self.enrichedExerciseMetadata(ExerciseMetadata(canonicalName: exercise.exerciseName, primaryAreas: ["Lateral Deltoids"], secondaryAreas: [], movementPattern: "Lateral Raise", fatigueCost: 1))
         }
         if targetsAnteriorDelts || (targetsShoulders && containsAny(nameText, keywords: ["press", "arnold"])) || containsAny(nameText, keywords: ["shoulder press", "overhead press", "arnold press"]) {
-            return ExerciseMetadata(canonicalName: exercise.exerciseName, primaryAreas: ["Anterior Deltoids"], secondaryAreas: ["Triceps"], movementPattern: "Vertical Press", fatigueCost: 2)
+            return Self.enrichedExerciseMetadata(ExerciseMetadata(canonicalName: exercise.exerciseName, primaryAreas: ["Anterior Deltoids"], secondaryAreas: ["Triceps"], movementPattern: "Vertical Press", fatigueCost: 2))
         }
         if containsAny(combinedText, keywords: ["shoulder", "delt", "deltoid"]) {
-            return ExerciseMetadata(canonicalName: exercise.exerciseName, primaryAreas: ["Shoulders"], secondaryAreas: ["Triceps"], movementPattern: "Shoulder", fatigueCost: 1)
+            return Self.enrichedExerciseMetadata(ExerciseMetadata(canonicalName: exercise.exerciseName, primaryAreas: ["Shoulders"], secondaryAreas: ["Triceps"], movementPattern: "Shoulder", fatigueCost: 1))
         }
         if targetsUpperBack || containsAny(combinedText, keywords: ["row", "chest supported", "upper back", "mid back", "machine row", "t bar row"]) {
-            return ExerciseMetadata(canonicalName: exercise.exerciseName, primaryAreas: ["Upper Back"], secondaryAreas: ["Lats", "Biceps"], movementPattern: "Row", fatigueCost: 2)
+            return Self.enrichedExerciseMetadata(ExerciseMetadata(canonicalName: exercise.exerciseName, primaryAreas: ["Upper Back"], secondaryAreas: ["Lats", "Biceps"], movementPattern: "Row", fatigueCost: 2))
         }
         if targetsLats || containsPriorityPhrase(in: combinedText, keywords: ["lats", "lat", "latissimus dorsi", "pullup", "pull up", "chinup", "chin up", "pulldown", "straight arm pulldown"]) {
-            return ExerciseMetadata(canonicalName: exercise.exerciseName, primaryAreas: ["Lats"], secondaryAreas: ["Biceps"], movementPattern: "Vertical Pull", fatigueCost: 2)
+            return Self.enrichedExerciseMetadata(ExerciseMetadata(canonicalName: exercise.exerciseName, primaryAreas: ["Lats"], secondaryAreas: ["Biceps"], movementPattern: "Vertical Pull", fatigueCost: 2))
         }
         if targetsBack {
             let rowLikePattern = containsAny(nameText, keywords: ["row", "chest supported", "machine row", "t bar row"])
-            return ExerciseMetadata(
+            return Self.enrichedExerciseMetadata(ExerciseMetadata(
                 canonicalName: exercise.exerciseName,
                 primaryAreas: ["Back"],
                 secondaryAreas: ["Lats", "Biceps"],
                 movementPattern: rowLikePattern ? "Row" : "Pull",
                 fatigueCost: 2
-            )
+            ))
         }
         if targetsGlutes || containsAny(combinedText, keywords: ["glute", "hip thrust", "glute bridge"]) {
-            return ExerciseMetadata(canonicalName: exercise.exerciseName, primaryAreas: ["Glutes"], secondaryAreas: ["Hamstrings"], movementPattern: "Glute", fatigueCost: 2)
+            return Self.enrichedExerciseMetadata(ExerciseMetadata(canonicalName: exercise.exerciseName, primaryAreas: ["Glutes"], secondaryAreas: ["Hamstrings"], movementPattern: "Glute", fatigueCost: 2))
         }
         if targetsHamstrings || containsAny(combinedText, keywords: ["hamstring", "leg curl", "rdl", "romanian deadlift", "stiff leg", "good morning", "hinge", "deadlift"]) {
-            return ExerciseMetadata(canonicalName: exercise.exerciseName, primaryAreas: ["Hamstrings"], secondaryAreas: ["Glutes"], movementPattern: "Hinge", fatigueCost: 2)
+            return Self.enrichedExerciseMetadata(ExerciseMetadata(canonicalName: exercise.exerciseName, primaryAreas: ["Hamstrings"], secondaryAreas: ["Glutes"], movementPattern: "Hinge", fatigueCost: 2))
         }
         if targetsQuads || containsAny(combinedText, keywords: ["quad", "squat", "leg press", "split squat", "lunge", "leg extension", "step up", "hack squat"]) {
-            return ExerciseMetadata(canonicalName: exercise.exerciseName, primaryAreas: ["Quads"], secondaryAreas: ["Glutes"], movementPattern: "Squat", fatigueCost: 2)
+            return Self.enrichedExerciseMetadata(ExerciseMetadata(canonicalName: exercise.exerciseName, primaryAreas: ["Quads"], secondaryAreas: ["Glutes"], movementPattern: "Squat", fatigueCost: 2))
         }
 
         let hasChestPattern = containsAny(combinedText, keywords: ["chest", "pec", "bench", "fly", "dip"])
@@ -959,18 +960,157 @@ extension ClaudeService {
         )
 
         if isUpperChestPattern {
-            return ExerciseMetadata(canonicalName: exercise.exerciseName, primaryAreas: ["Upper Chest"], secondaryAreas: ["Triceps", "Anterior Deltoids"], movementPattern: "Incline Press", fatigueCost: 2)
+            return Self.enrichedExerciseMetadata(ExerciseMetadata(canonicalName: exercise.exerciseName, primaryAreas: ["Upper Chest"], secondaryAreas: ["Triceps", "Anterior Deltoids"], movementPattern: "Incline Press", fatigueCost: 2))
         }
         if targetsChest || hasChestPattern || (hasPressPattern && !isShoulderPressPattern && !isLowerBodyPressPattern && !isArmPressPattern && !targetsShoulders) {
-            return ExerciseMetadata(canonicalName: exercise.exerciseName, primaryAreas: ["Chest"], secondaryAreas: ["Triceps", "Anterior Deltoids"], movementPattern: "Press", fatigueCost: 2)
+            return Self.enrichedExerciseMetadata(ExerciseMetadata(canonicalName: exercise.exerciseName, primaryAreas: ["Chest"], secondaryAreas: ["Triceps", "Anterior Deltoids"], movementPattern: "Press", fatigueCost: 2))
         }
 
-        return ExerciseMetadata(
+        return Self.enrichedExerciseMetadata(ExerciseMetadata(
             canonicalName: exercise.exerciseName,
             primaryAreas: [exercise.muscleTarget.trimmedOr(default: "Primary Target")],
             secondaryAreas: [],
             movementPattern: "Unknown",
             fatigueCost: 1
+        ))
+    }
+
+    static func enrichedExerciseMetadata(_ metadata: ExerciseMetadata) -> ExerciseMetadata {
+        func normalized(_ text: String) -> String {
+            text
+                .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+                .lowercased()
+                .replacingOccurrences(of: "-", with: " ")
+        }
+
+        func containsAnyKeyword(_ text: String, keywords: [String]) -> Bool {
+            keywords.contains { text.contains($0) }
+        }
+
+        let name = normalizedExerciseNameKey(metadata.canonicalName)
+        let pattern = normalized(metadata.movementPattern)
+        let primary = Set(metadata.primaryAreas.map(normalized))
+
+        var equipment = metadata.equipment
+        var exerciseClass = metadata.exerciseClass
+        var systemicFatigue = metadata.systemicFatigue
+        var stabilityDemand = metadata.stabilityDemand
+        var shoulderRisk = metadata.shoulderRisk
+        var preferredContexts = Set(metadata.preferredContexts)
+        var avoidContexts = Set(metadata.avoidContexts)
+
+        if name.contains("cable") || pattern.contains("pressdown") || pattern.contains("pullover") {
+            equipment = "Cable"
+        } else if name.contains("machine") || name.contains("pec deck") || name.contains("hack squat") {
+            equipment = "Machine"
+        } else if name.contains("barbell") || name.contains("ez-bar") || name.contains("smith") || name.contains("trap bar") {
+            equipment = "Barbell"
+        } else if name.contains("dumbbell") || name.contains("arnold") {
+            equipment = "Dumbbell"
+        } else if name.contains("band") {
+            equipment = "Band"
+        } else if name.contains("pull-up") || name.contains("dip") || name.contains("ab wheel") {
+            equipment = "Bodyweight"
+        }
+
+        switch metadata.fatigueCost {
+        case 3:
+            exerciseClass = "Heavy Compound"
+            systemicFatigue = max(systemicFatigue, 3)
+            stabilityDemand = max(stabilityDemand, equipment == "Machine" ? 2 : 3)
+        case 2:
+            exerciseClass = pattern.contains("press") || pattern.contains("row") || pattern.contains("pull") || pattern.contains("squat") || pattern.contains("hinge")
+                ? "Hypertrophy Compound"
+                : "Stable Accessory"
+            systemicFatigue = max(systemicFatigue, 2)
+            stabilityDemand = max(stabilityDemand, equipment == "Machine" || equipment == "Cable" ? 1 : 2)
+        default:
+            exerciseClass = containsAnyKeyword(pattern, keywords: ["scapular", "face pull", "anti rotation", "anti extension", "core"])
+                ? "Prehab"
+                : "Isolation"
+            systemicFatigue = max(systemicFatigue, 1)
+            stabilityDemand = max(stabilityDemand, equipment == "Cable" || equipment == "Machine" ? 1 : 2)
+        }
+
+        if primary.contains(normalized("Upper Chest")) || primary.contains(normalized("Chest")) {
+            preferredContexts.formUnion(["hypertrophy", "commercial_gym"])
+            if equipment == "Cable" || equipment == "Machine" {
+                preferredContexts.insert("shift_work_friendly")
+            }
+        }
+
+        if primary.contains(normalized("Lateral Deltoids")) {
+            preferredContexts.formUnion(["lateral_delt_priority", "physique", "low_systemic_fatigue"])
+            if equipment == "Cable" || equipment == "Machine" {
+                preferredContexts.formUnion(["shift_work_friendly", "shoulder_friendly"])
+            }
+        }
+
+        if primary.contains(normalized("Rear Deltoids")) || pattern.contains("face pull") {
+            preferredContexts.formUnion(["shoulder_friendly", "posture_support", "low_systemic_fatigue"])
+        }
+
+        if containsAnyKeyword(pattern, keywords: ["row", "vertical pull", "pullover"]) && (equipment == "Machine" || equipment == "Cable") {
+            preferredContexts.insert("shift_work_friendly")
+        }
+
+        if containsAnyKeyword(pattern, keywords: ["squat", "hinge"]) && equipment != "Machine" {
+            avoidContexts.formUnion(["short_session", "low_data_quality"])
+        }
+
+        if containsAnyKeyword(name, keywords: ["close grip bench", "jm press", "dip", "arnold press", "shoulder press", "overhead press"]) {
+            shoulderRisk = max(shoulderRisk, 3)
+        }
+        if containsAnyKeyword(name, keywords: ["upright row", "dip", "arnold press"]) {
+            shoulderRisk = max(shoulderRisk, 4)
+        }
+        if pattern.contains("vertical press") {
+            shoulderRisk = max(shoulderRisk, 3)
+        }
+        if containsAnyKeyword(name, keywords: ["cable lateral raise", "machine lateral raise", "reverse pec deck", "face pull", "chest supported row", "lat pulldown", "leg press", "hack squat", "seated leg curl", "cable triceps pressdown", "rope triceps pressdown"]) {
+            preferredContexts.formUnion(["shift_work_friendly", "low_data_quality"])
+        }
+        if containsAnyKeyword(name, keywords: ["close grip bench", "jm press", "dip"]) {
+            avoidContexts.formUnion(["shoulder_risk", "arms_pump_day", "short_session"])
+        }
+        if containsAnyKeyword(name, keywords: ["back squat", "front squat", "trap bar deadlift", "romanian deadlift"]) {
+            avoidContexts.insert("short_session")
+            if equipment != "Machine" {
+                avoidContexts.insert("shift_work_friendly")
+            }
+        }
+        if containsAnyKeyword(name, keywords: ["incline dumbbell press", "machine chest press", "landmine press", "incline smith machine press"]) {
+            preferredContexts.formUnion(["hypertrophy", "shoulder_friendly"])
+        }
+        if containsAnyKeyword(name, keywords: ["landmine press"]) {
+            shoulderRisk = min(shoulderRisk, 2)
+            preferredContexts.insert("shoulder_risk")
+        }
+        if primary.contains(normalized("Anterior Deltoids")) && pattern.contains("vertical press") {
+            avoidContexts.insert("shoulder_risk")
+        }
+
+        if primary.contains(normalized("Quads")) && (equipment == "Machine" || name.contains("leg press") || name.contains("hack squat")) {
+            preferredContexts.formUnion(["shift_work_friendly", "short_session"])
+        }
+
+        if equipment == "Cable" || equipment == "Machine" {
+            stabilityDemand = min(stabilityDemand, 2)
+        }
+
+        return ExerciseMetadata(
+            canonicalName: metadata.canonicalName,
+            primaryAreas: metadata.primaryAreas,
+            secondaryAreas: metadata.secondaryAreas,
+            movementPattern: metadata.movementPattern,
+            fatigueCost: metadata.fatigueCost,
+            equipment: equipment,
+            exerciseClass: exerciseClass,
+            systemicFatigue: systemicFatigue,
+            stabilityDemand: stabilityDemand,
+            shoulderRisk: shoulderRisk,
+            preferredContexts: Array(preferredContexts).sorted(),
+            avoidContexts: Array(avoidContexts).sorted()
         )
     }
 
