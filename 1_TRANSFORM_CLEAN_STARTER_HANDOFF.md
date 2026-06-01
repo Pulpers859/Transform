@@ -34,7 +34,7 @@ Important operating rules:
 - Preserve real workout quality over merely making the app pass rigid checks.
 - Respect the split `WorkoutGeneratorService` architecture; do not collapse it back into one giant file.
 - Keep evidence/profile logic, metadata logic, blueprint logic, validator logic, fallback logic, and coaching quality in sync.
-- Treat tracked secrets carefully. `Secrets.plist` exists in the app tree and should not become a dumping ground for live credentials.
+- Treat local secrets carefully. `Transform\Transform\Secrets.plist` is expected as an ignored local setup file when AI features are configured; it should stay uncommitted and should not become a dumping ground for live credentials.
 
 Default working behavior:
 - I describe the issue here in chat

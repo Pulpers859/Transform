@@ -10,7 +10,7 @@ struct WorkoutGeneratorLabView: View {
 
     @State private var selectedStage: WorkoutGeneratorDebugStage = .weekOne
     @State private var selectedMode: WorkoutGeneratorDebugMode = .procedural
-    @State private var selectedAnalysisIndex = 0
+    @State private var selectedAnalysisSourceIndex = 0
     @State private var targetWeekNumber = 2
     @State private var splitType = ""
     @State private var programName = ""
@@ -41,19 +41,25 @@ struct WorkoutGeneratorLabView: View {
         programs.first
     }
 
-    var selectedAnalysisSession: BodyAnalysisSession? {
-        guard analysisSessions.indices.contains(selectedAnalysisIndex) else { return nil }
-        return analysisSessions[selectedAnalysisIndex]
+    var analysisSourceOptions: [WorkoutGeneratorAnalysisSourceOption] {
+        var options: [WorkoutGeneratorAnalysisSourceOption] = []
+
+        if let currentProgram,
+           !currentProgram.analysisJSON.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            options.append(programAnalysisSourceOption(for: currentProgram))
+        }
+
+        options.append(contentsOf: analysisSessions.map(savedAnalysisSourceOption(for:)))
+        return options
+    }
+
+    var selectedAnalysisSource: WorkoutGeneratorAnalysisSourceOption? {
+        guard analysisSourceOptions.indices.contains(selectedAnalysisSourceIndex) else { return nil }
+        return analysisSourceOptions[selectedAnalysisSourceIndex]
     }
 
     var selectedAnalysisSummary: String {
-        guard let session = selectedAnalysisSession else { return "No saved analysis selected." }
-        let priorities = Array(session.programmingPriorityAreas.prefix(3)).joined(separator: ", ")
-        let focus = priorities.trimmingCharacters(in: .whitespacesAndNewlines)
-        if focus.isEmpty {
-            return session.date.formatted(date: .abbreviated, time: .shortened)
-        }
-        return "\(session.date.formatted(date: .abbreviated, time: .shortened)) • \(focus)"
+        selectedAnalysisSource?.summary ?? "No analysis snapshot selected."
     }
 
     var liveAICreditWarning: String {
@@ -159,11 +165,13 @@ struct WorkoutGeneratorLabView: View {
                 refreshAnalysisJSONFromSelection()
             }
             .onChange(of: programs.count) { _, _ in
+                syncSelectionBounds()
+                refreshAnalysisJSONFromSelection()
                 if previousWeekJSON.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     seedProgramContextFromCurrentProgram()
                 }
             }
-            .onChange(of: selectedAnalysisIndex) { _, _ in
+            .onChange(of: selectedAnalysisSourceIndex) { _, _ in
                 refreshAnalysisJSONFromSelection()
             }
             .onChange(of: analysisJSON) { _, _ in
@@ -242,14 +250,14 @@ struct WorkoutGeneratorLabView: View {
         VStack(alignment: .leading, spacing: 14) {
             sectionTitle("Analysis Source")
 
-            if analysisSessions.isEmpty {
-                Text("Save at least one body analysis to seed the lab with real context.")
+            if analysisSourceOptions.isEmpty {
+                Text("Save at least one body analysis or generate a workout program to seed the lab with real context.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else {
-                Picker("Saved Analysis", selection: $selectedAnalysisIndex) {
-                    ForEach(Array(analysisSessions.enumerated()), id: \.offset) { index, session in
-                        Text(analysisLabel(for: session)).tag(index)
+                Picker("Analysis Snapshot", selection: $selectedAnalysisSourceIndex) {
+                    ForEach(Array(analysisSourceOptions.enumerated()), id: \.offset) { index, option in
+                        Text(option.label).tag(index)
                     }
                 }
                 .pickerStyle(.menu)
@@ -571,16 +579,17 @@ struct WorkoutGeneratorLabView: View {
     func seedStateIfNeeded(force: Bool) {
         guard force || !didSeed else { return }
         didSeed = true
+        selectedAnalysisSourceIndex = 0
         syncSelectionBounds()
         refreshAnalysisJSONFromSelection()
         seedProgramContextFromCurrentProgram()
     }
 
     func syncSelectionBounds() {
-        if !analysisSessions.isEmpty {
-            selectedAnalysisIndex = min(selectedAnalysisIndex, analysisSessions.count - 1)
+        if !analysisSourceOptions.isEmpty {
+            selectedAnalysisSourceIndex = min(selectedAnalysisSourceIndex, analysisSourceOptions.count - 1)
         } else {
-            selectedAnalysisIndex = 0
+            selectedAnalysisSourceIndex = 0
         }
     }
 
@@ -597,25 +606,14 @@ struct WorkoutGeneratorLabView: View {
     }
 
     func refreshAnalysisJSONFromSelection() {
-        guard let session = selectedAnalysisSession else {
+        guard let selectedAnalysisSource else {
             analysisJSON = ""
             decodedAnalysis = nil
             return
         }
 
-        if !session.analysisJSON.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            analysisJSON = session.analysisJSON
-            scheduleAnalysisValidation(immediate: true)
-            return
-        }
-
-        if let result = session.decodedResult,
-           let encoded = try? prettyJSONString(result) {
-            analysisJSON = encoded
-            scheduleAnalysisValidation(immediate: true)
-        } else {
-            scheduleAnalysisValidation(immediate: true)
-        }
+        analysisJSON = selectedAnalysisSource.analysisJSON
+        scheduleAnalysisValidation(immediate: true)
     }
 
     func refreshPreviousWeekJSONFromCurrentProgram() {
@@ -678,6 +676,50 @@ struct WorkoutGeneratorLabView: View {
         let focus = Array(session.programmingPriorityAreas.prefix(2)).joined(separator: ", ")
         let cleanedFocus = focus.trimmingCharacters(in: .whitespacesAndNewlines)
         return cleanedFocus.isEmpty ? date : "\(date) • \(cleanedFocus)"
+    }
+
+    func savedAnalysisSourceOption(for session: BodyAnalysisSession) -> WorkoutGeneratorAnalysisSourceOption {
+        let json: String
+        if !session.analysisJSON.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            json = session.analysisJSON
+        } else if let result = session.decodedResult,
+                  let encoded = try? prettyJSONString(result) {
+            json = encoded
+        } else {
+            json = ""
+        }
+
+        let priorities = Array(session.programmingPriorityAreas.prefix(3)).joined(separator: ", ")
+        let focus = priorities.trimmingCharacters(in: .whitespacesAndNewlines)
+        let summary = focus.isEmpty
+            ? "Saved body-analysis session from \(session.date.formatted(date: .abbreviated, time: .shortened))."
+            : "Saved body-analysis session from \(session.date.formatted(date: .abbreviated, time: .shortened)) focused on \(focus)."
+
+        return WorkoutGeneratorAnalysisSourceOption(
+            label: analysisLabel(for: session),
+            summary: summary,
+            analysisJSON: json
+        )
+    }
+
+    func programAnalysisSourceOption(for program: WorkoutProgram) -> WorkoutGeneratorAnalysisSourceOption {
+        let programDate = program.createdDate.formatted(date: .abbreviated, time: .shortened)
+        let analysisDate = program.sourceAnalysisDate?.formatted(date: .abbreviated, time: .shortened)
+        let focus = program.focusAreas.trimmingCharacters(in: .whitespacesAndNewlines)
+        let focusSuffix = focus.isEmpty ? "" : " • \(focus)"
+
+        let summary: String
+        if let analysisDate, !analysisDate.isEmpty {
+            summary = "Embedded analysis snapshot from the current workout program created \(programDate). Original analysis date: \(analysisDate)."
+        } else {
+            summary = "Embedded analysis snapshot from the current workout program created \(programDate)."
+        }
+
+        return WorkoutGeneratorAnalysisSourceOption(
+            label: "Current Program • \(programDate)\(focusSuffix)",
+            summary: summary,
+            analysisJSON: program.analysisJSON
+        )
     }
 
     func copyToClipboard(_ payload: String, confirmation: String) {
@@ -845,4 +887,10 @@ struct WorkoutGeneratorLabView: View {
         analysisValidationTask?.cancel()
         dismiss()
     }
+}
+
+private struct WorkoutGeneratorAnalysisSourceOption {
+    let label: String
+    let summary: String
+    let analysisJSON: String
 }

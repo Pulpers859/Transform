@@ -57,7 +57,8 @@ Order matters:
 - Retry behavior burns API credits on obviously doomed attempts.
 
 ## Body Analysis Standards
-- Never hardcode one person's profile into prompts or defaults.
+- Never silently hardcode one person's profile into generic prompts or fallback defaults.
+- For this personal-use build, a one-time baseline seed into editable app settings is acceptable when it preserves user control and does not masquerade as generic multi-user behavior.
 - Analysis should shape training, but vague lifestyle assumptions should not be smuggled in as facts.
 - Postural and injury notes must influence exercise selection and warm-up guidance when relevant.
 

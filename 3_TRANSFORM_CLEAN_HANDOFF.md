@@ -40,6 +40,11 @@ Transform is not a generic fitness toy. It should behave like a careful hybrid o
 5. Reducing wasted AI / API usage
 6. Maintainable architecture
 
+## Personal Baseline Context
+- This build is intentionally used as a personal app.
+- Keep generic fallback defaults neutral in code when practical, but it is acceptable to seed Patrick's editable analysis profile into local app settings at startup as a one-time baseline.
+- Do not silently turn that personal baseline back into generic hardcoded prompt defaults.
+
 ### Non-negotiables
 - Fix root causes, not cosmetic symptoms.
 - Do not dumb down training output just to satisfy a rigid validator.
@@ -83,8 +88,8 @@ git checkout dev
 - Avoid brittle launch arguments for paths with apostrophes.
 
 ## Secrets / Credential Handling
-- Do not treat tracked files as a safe place for live credentials.
-- `Transform\Transform\Secrets.plist` currently exists and should be treated carefully.
+- Do not treat repo-tracked files as a safe place for live credentials.
+- `Transform\Transform\Secrets.plist` is expected as an ignored local setup file when AI features are configured, and it should stay uncommitted.
 - Prefer example files plus ignored real local secret/config files whenever practical.
 - Before first push of a new app, run a secret scan.
 

@@ -118,9 +118,17 @@ struct WorkoutDayDetailView: View {
                         .foregroundStyle(.orange)
 
                     ForEach(sessionNoteSections.warmupSteps, id: \.self) { step in
-                        Text("- \(step)")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                        HStack(alignment: .top, spacing: 8) {
+                            Image(systemName: "circle.fill")
+                                .font(.system(size: 5))
+                                .foregroundStyle(.orange)
+                                .padding(.top, 6)
+
+                            Text(step)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                     }
                 }
                 .padding(.top, 4)
@@ -201,10 +209,14 @@ struct ExerciseCard: View {
         return "\(formatWeight(bestWeight)) lb"
     }
 
-    var bestRepsText: String? {
+    var lastRepsTileText: String? {
+        latestWeightLog?.repsCompleted.map { "\($0) reps" }
+    }
+
+    var bestRepsTileText: String? {
         guard let latestWeightLog else { return nil }
-        let bestReps = latestWeightLog.bestRepsCompleted ?? latestWeightLog.repsCompleted
-        return bestReps.map { "\($0) reps at best" }
+        let bestReps = latestWeightLog.hasBestRecord ? (latestWeightLog.bestRepsCompleted ?? latestWeightLog.repsCompleted) : latestWeightLog.repsCompleted
+        return bestReps.map { "\($0) reps" }
     }
 
     var parsedPrescription: ExercisePrescription? {
@@ -328,7 +340,9 @@ struct ExerciseCard: View {
                 if latestWeightLog != nil {
                     ExerciseWeightSnapshotTile(
                         lastWeightText: latestWeightLog.map { "\(formatWeight($0.weightLbs)) lb" } ?? "-",
-                        bestWeightText: bestWeightText ?? "-"
+                        lastRepsText: lastRepsTileText,
+                        bestWeightText: bestWeightText ?? "-",
+                        bestRepsText: bestRepsTileText
                     )
                 }
             }
@@ -377,19 +391,9 @@ struct ExerciseCard: View {
             .padding(.vertical, 10)
 
             if let latestWeightLog,
-               latestWeightLog.repsCompleted != nil || !latestWeightLog.notes.isEmpty || bestRepsText != nil {
+               !latestWeightLog.notes.isEmpty {
                 Divider().padding(.horizontal, 14)
                 VStack(alignment: .leading, spacing: 4) {
-                    if let reps = latestWeightLog.repsCompleted {
-                        Text("Last logged reps: \(reps)")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    if let bestRepsText {
-                        Text(bestRepsText)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
                     if !latestWeightLog.notes.isEmpty {
                         Text(latestWeightLog.notes)
                             .font(.caption)
@@ -639,26 +643,36 @@ struct ExerciseStat: View {
 
 struct ExerciseWeightSnapshotTile: View {
     let lastWeightText: String
+    let lastRepsText: String?
     let bestWeightText: String
+    let bestRepsText: String?
 
     var body: some View {
         HStack(spacing: 0) {
-            weightColumn(title: "Last", value: lastWeightText)
+            weightColumn(title: "Last", value: lastWeightText, reps: lastRepsText)
             Divider()
                 .padding(.vertical, 10)
-            weightColumn(title: "Best", value: bestWeightText)
+            weightColumn(title: "Best", value: bestWeightText, reps: bestRepsText)
         }
         .background(Color.primary.opacity(0.04))
         .clipShape(RoundedRectangle(cornerRadius: 14))
     }
 
-    func weightColumn(title: String, value: String) -> some View {
-        VStack(spacing: 6) {
+    func weightColumn(title: String, value: String, reps: String?) -> some View {
+        VStack(spacing: 5) {
             Text(value)
                 .font(.subheadline.bold())
                 .foregroundStyle(.primary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.82)
+
+            if let reps, !reps.isEmpty {
+                Text(reps)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.82)
+            }
 
             Text(title.uppercased())
                 .font(.system(size: 9, weight: .bold, design: .monospaced))
@@ -785,9 +799,23 @@ struct SessionNoteSections {
             return SessionNoteSections(summary: "", warmupSteps: [])
         }
 
-        let normalized = trimmed
+        if let delimitedSections = parseDelimitedWarmupSections(from: trimmed) {
+            return delimitedSections
+        }
+
+        if let embeddedSections = parseEmbeddedWarmupSections(from: trimmed) {
+            return embeddedSections
+        }
+
+        return SessionNoteSections(summary: trimmed, warmupSteps: [])
+    }
+
+    private static func parseDelimitedWarmupSections(from text: String) -> SessionNoteSections? {
+        let normalized = text
             .replacingOccurrences(of: "Warm-up:", with: "|", options: .caseInsensitive)
             .replacingOccurrences(of: "Warm up:", with: "|", options: .caseInsensitive)
+            .replacingOccurrences(of: "Warm-up checklist:", with: "|", options: .caseInsensitive)
+            .replacingOccurrences(of: "Warm up checklist:", with: "|", options: .caseInsensitive)
             .replacingOccurrences(of: "Mobility/activation:", with: "|", options: .caseInsensitive)
             .replacingOccurrences(of: "Mobility:", with: "|", options: .caseInsensitive)
 
@@ -797,26 +825,75 @@ struct SessionNoteSections {
             .filter { !$0.isEmpty }
 
         guard chunks.count > 1 else {
-            return SessionNoteSections(summary: trimmed, warmupSteps: [])
+            return nil
         }
 
         let summary = chunks.first ?? ""
         let instructionText = chunks.dropFirst().joined(separator: " ")
-        let steps = instructionText
-            .components(separatedBy: CharacterSet(charactersIn: ".;"))
-            .flatMap { sentence -> [String] in
-                sentence
-                    .replacingOccurrences(of: " then ", with: ",", options: .caseInsensitive)
-                    .split(separator: ",")
-                    .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
-            }
-            .map { step in
-                step.replacingOccurrences(of: "Emphasis today:", with: "", options: .caseInsensitive)
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-            }
-            .filter { !$0.isEmpty }
+        let steps = splitWarmupSteps(from: instructionText)
 
         return SessionNoteSections(summary: summary, warmupSteps: steps)
+    }
+
+    private static func parseEmbeddedWarmupSections(from text: String) -> SessionNoteSections? {
+        guard let triggerRange = text.range(
+            of: #"(?i)warm[\s-]*up with\s+"#,
+            options: .regularExpression
+        ) else {
+            return nil
+        }
+
+        let summaryPrefix = text[..<triggerRange.lowerBound]
+            .trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
+        let warmupAndRemainder = String(text[triggerRange.upperBound...])
+
+        let delimiters = [" — ", " – ", ";", "."]
+        let endIndex = delimiters
+            .compactMap { delimiter in
+                warmupAndRemainder.range(of: delimiter).map { $0.lowerBound }
+            }
+            .min()
+
+        let warmupListText: String
+        let trailingGuidance: String
+        if let endIndex {
+            warmupListText = String(warmupAndRemainder[..<endIndex])
+            trailingGuidance = String(warmupAndRemainder[endIndex...])
+                .trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
+        } else {
+            warmupListText = warmupAndRemainder
+            trailingGuidance = ""
+        }
+
+        let steps = splitWarmupSteps(from: warmupListText)
+        guard !steps.isEmpty else {
+            return nil
+        }
+
+        let summary = [summaryPrefix, trailingGuidance]
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        return SessionNoteSections(summary: summary, warmupSteps: steps)
+    }
+
+    private static func splitWarmupSteps(from text: String) -> [String] {
+        let cleaned = text
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: " then ", with: ", ", options: .caseInsensitive)
+            .replacingOccurrences(of: " plus ", with: ", ", options: .caseInsensitive)
+            .replacingOccurrences(of: " and ", with: ", ", options: .caseInsensitive)
+            .replacingOccurrences(of: "\n•", with: "\n")
+            .replacingOccurrences(of: "\n-", with: "\n")
+
+        return cleaned
+            .components(separatedBy: CharacterSet(charactersIn: ",\n"))
+            .map {
+                $0.replacingOccurrences(of: "Emphasis today:", with: "", options: .caseInsensitive)
+                    .trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
+            }
+            .filter { !$0.isEmpty }
     }
 }
 

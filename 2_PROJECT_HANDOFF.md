@@ -46,7 +46,7 @@
 - Audit adjacent risks after making fixes.
 - Run the checks that are realistically available in the current environment.
 - Clearly distinguish evidence-backed logic from heuristics.
-- Treat secrets as local-only by default whenever possible. The current presence of `Secrets.plist` should be treated as a risk surface, not permission to commit live keys casually.
+- Treat secrets as local-only by default whenever possible. `Transform\Transform\Secrets.plist` is an ignored local setup file when AI features are configured, not permission to commit live keys casually.
 
 ## Product Priorities
 Order matters:
@@ -56,6 +56,11 @@ Order matters:
 4. Validator correctness
 5. Reducing wasted AI / API usage
 6. Maintainable architecture
+
+## Personal Baseline Context
+- This build is intentionally used as a personal app, not a generic public fitness product.
+- Keep generic fallback defaults neutral in code when practical, but it is acceptable to seed Patrick's editable analysis profile into local app settings at startup as a one-time baseline.
+- Do not silently convert that personal baseline seed back into generic hardcoded prompt defaults.
 
 ## Transform-Specific Non-Negotiables
 - Fix root causes, not cosmetic symptoms.

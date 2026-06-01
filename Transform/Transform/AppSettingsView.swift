@@ -111,20 +111,21 @@ struct AppSettingsView: View {
     }
 
     private func restoreDefaults() {
-        analysisAge = Config.defaultAnalysisAge
-        analysisSex = Config.defaultAnalysisSex
-        analysisBuild = Config.defaultAnalysisBuild
-        analysisHeight = Config.defaultAnalysisHeight
-        analysisCurrentWeight = Config.defaultAnalysisCurrentWeight
-        analysisOccupation = Config.defaultAnalysisOccupation
-        analysisTrainingFrequency = Config.defaultAnalysisTrainingFrequency
-        analysisTrainingAge = Config.defaultAnalysisTrainingAge
-        analysisEquipmentAccess = Config.defaultAnalysisEquipmentAccess
-        analysisAverageSleep = Config.defaultAnalysisAverageSleep
-        analysisPainHistory = Config.defaultAnalysisPainHistory
-        analysisActivityLevel = Config.defaultAnalysisActivityLevel
-        analysisPrimaryGoal = Config.defaultAnalysisPrimaryGoal
-        analysisLifestyleConstraints = Config.defaultAnalysisLifestyleConstraints
+        let baselineProfile = AppSettingsStore.personalAnalysisProfile
+        analysisAge = baselineProfile.age
+        analysisSex = baselineProfile.sex
+        analysisBuild = baselineProfile.build
+        analysisHeight = baselineProfile.height
+        analysisCurrentWeight = baselineProfile.currentWeight
+        analysisOccupation = baselineProfile.occupation
+        analysisTrainingFrequency = baselineProfile.trainingFrequency
+        analysisTrainingAge = baselineProfile.trainingAge
+        analysisEquipmentAccess = baselineProfile.equipmentAccess
+        analysisAverageSleep = baselineProfile.averageSleep
+        analysisPainHistory = baselineProfile.painHistory
+        analysisActivityLevel = baselineProfile.activityLevel
+        analysisPrimaryGoal = baselineProfile.primaryGoal
+        analysisLifestyleConstraints = baselineProfile.lifestyleConstraints
 
         calorieTarget = String(Config.defaultCalorieTarget)
         proteinTarget = String(format: "%.0f", Config.defaultProteinTargetG)

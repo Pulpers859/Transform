@@ -123,7 +123,7 @@ struct WorkoutView: View {
                     .background(Color(.secondarySystemBackground))
                     .clipShape(RoundedRectangle(cornerRadius: 12))
 
-                    generateWeekOneButton(result: result)
+                    generateWeekOneButton(analysis: analysis, result: result)
                     if !canUseAI {
                         Text(Config.anthropicKeyInlineHelpText)
                             .font(.caption2)
@@ -152,9 +152,9 @@ struct WorkoutView: View {
         }
     }
 
-    func generateWeekOneButton(result: BodyAnalysisResult) -> some View {
+    func generateWeekOneButton(analysis: BodyAnalysisSession, result: BodyAnalysisResult) -> some View {
         Button {
-            startFirstWeekGeneration(from: result)
+            startFirstWeekGeneration(from: result, sourceAnalysisDate: analysis.date)
         } label: {
             HStack {
                 if isGenerating {
@@ -180,51 +180,63 @@ struct WorkoutView: View {
     // MARK: - Program Header
 
     func programHeader(_ program: WorkoutProgram) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(program.programName)
-                        .font(.title3.bold())
-                    HStack(spacing: 6) {
-                        Text(program.splitType)
-                            .font(.caption.bold())
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 4)
-                            .background(Color.orange.opacity(0.15))
-                            .foregroundStyle(.orange)
-                            .clipShape(Capsule())
-                        Text("Week \(program.currentWeek) of \(program.maxWeeks)")
-                            .font(.caption.bold())
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 4)
-                            .background(Color.blue.opacity(0.15))
-                            .foregroundStyle(.blue)
-                            .clipShape(Capsule())
-                        if let sourceBadge = generationSourceBadge(for: program.programSummary) {
-                            Text(sourceBadge.label)
-                                .font(.caption.bold())
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 4)
-                                .background(sourceBadge.background)
-                                .foregroundStyle(sourceBadge.foreground)
-                                .clipShape(Capsule())
-                        }
+        VStack(alignment: .leading, spacing: 14) {
+            Text(program.programName)
+                .font(.title2.bold())
+                .fixedSize(horizontal: false, vertical: true)
+
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 12) {
+                    programHeaderMetaLabel(
+                        text: "\(program.daysPerWeek) days/week",
+                        systemImage: "calendar"
+                    )
+                    programHeaderMetaLabel(
+                        text: program.createdDate.formatted(date: .abbreviated, time: .omitted),
+                        systemImage: "clock"
+                    )
+                    Spacer(minLength: 0)
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    programHeaderMetaLabel(
+                        text: "\(program.daysPerWeek) days/week",
+                        systemImage: "calendar"
+                    )
+                    programHeaderMetaLabel(
+                        text: program.createdDate.formatted(date: .abbreviated, time: .omitted),
+                        systemImage: "clock"
+                    )
+                }
+            }
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    programHeaderBadge(
+                        program.splitType,
+                        foreground: .orange,
+                        background: Color.orange.opacity(0.15)
+                    )
+                    programHeaderBadge(
+                        "Week \(program.currentWeek) of \(program.maxWeeks)",
+                        foreground: .blue,
+                        background: Color.blue.opacity(0.15)
+                    )
+                    if let sourceBadge = generationSourceBadge(for: program.programSummary) {
+                        programHeaderBadge(
+                            sourceBadge.label,
+                            foreground: sourceBadge.foreground,
+                            background: sourceBadge.background
+                        )
                     }
                 }
-                Spacer()
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text("\(program.daysPerWeek) days/week")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Text(program.createdDate.formatted(date: .abbreviated, time: .omitted))
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                }
+                .padding(.vertical, 2)
             }
 
             Text(summaryWithoutSourcePrefix(program.programSummary))
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
 
             if !program.focusAreas.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
@@ -427,7 +439,7 @@ struct WorkoutView: View {
         VStack(spacing: 12) {
             if let result = latestAnalysis?.decodedResult {
                 Button {
-                    startRegeneration(from: result)
+                    startRegeneration(from: result, sourceAnalysisDate: latestAnalysis?.date)
                 } label: {
                     HStack {
                         if isGenerating {
@@ -467,12 +479,12 @@ struct WorkoutView: View {
     // MARK: - Logic: Generate Week 1
 
     @MainActor
-    func startFirstWeekGeneration(from result: BodyAnalysisResult) {
+    func startFirstWeekGeneration(from result: BodyAnalysisResult, sourceAnalysisDate: Date?) {
         guard !isGenerating else { return }
         isGenerating = true
         generationTask?.cancel()
         generationTask = Task {
-            await generateFirstWeek(from: result)
+            await generateFirstWeek(from: result, sourceAnalysisDate: sourceAnalysisDate)
         }
     }
 
@@ -487,17 +499,17 @@ struct WorkoutView: View {
     }
 
     @MainActor
-    func startRegeneration(from result: BodyAnalysisResult) {
+    func startRegeneration(from result: BodyAnalysisResult, sourceAnalysisDate: Date?) {
         guard !isGenerating else { return }
         isGenerating = true
         generationTask?.cancel()
         generationTask = Task {
-            await regenerateProgram(from: result)
+            await regenerateProgram(from: result, sourceAnalysisDate: sourceAnalysisDate)
         }
     }
 
     @MainActor
-    func generateFirstWeek(from result: BodyAnalysisResult) async {
+    func generateFirstWeek(from result: BodyAnalysisResult, sourceAnalysisDate: Date?) async {
         isGenerating = true
         guard !Task.isCancelled else {
             isGenerating = false
@@ -543,7 +555,7 @@ struct WorkoutView: View {
                 daysPerWeek: response.daysPerWeek,
                 totalDays: response.days.count,
                 focusAreas: result.programmingPrioritySummary,
-                sourceAnalysisDate: .now,
+                sourceAnalysisDate: sourceAnalysisDate,
                 programJSON: weekJSON,
                 currentWeek: 1,
                 maxWeeks: 4,
@@ -657,8 +669,8 @@ struct WorkoutView: View {
     // MARK: - Logic: Regenerate (Start Over)
 
     @MainActor
-    func regenerateProgram(from result: BodyAnalysisResult) async {
-        await generateFirstWeek(from: result)
+    func regenerateProgram(from result: BodyAnalysisResult, sourceAnalysisDate: Date?) async {
+        await generateFirstWeek(from: result, sourceAnalysisDate: sourceAnalysisDate)
     }
 
     // MARK: - Helpers
@@ -746,6 +758,25 @@ struct WorkoutView: View {
 
     func summaryWithoutSourcePrefix(_ summary: String) -> String {
         GeneratedContentSource.strip(from: summary)
+    }
+
+    func programHeaderBadge(_ title: String, foreground: Color, background: Color) -> some View {
+        Text(title)
+            .font(.caption.bold())
+            .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: false)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(background)
+            .foregroundStyle(foreground)
+            .clipShape(Capsule())
+    }
+
+    func programHeaderMetaLabel(text: String, systemImage: String) -> some View {
+        Label(text, systemImage: systemImage)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
     }
 
     func syncSelectedWeekWithCurrentProgram() {

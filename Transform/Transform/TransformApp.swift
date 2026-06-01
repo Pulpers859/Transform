@@ -6,6 +6,7 @@ struct TransformApp: App {
     private let startup: StartupConfiguration = StartupConfiguration.build()
 
     init() {
+        AppSettingsStore.seedPersonalProfileIfNeeded()
         _ = AppLifecycleMonitor.shared.start()
     }
 

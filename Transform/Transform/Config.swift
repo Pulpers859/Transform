@@ -1,20 +1,22 @@
 import Foundation
 
 enum Config {
-    static let defaultAnalysisAge = "30"
-    static let defaultAnalysisSex = "Male"
-    static let defaultAnalysisBuild = "Mesomorph build"
-    static let defaultAnalysisHeight = "6'0\""
-    static let defaultAnalysisCurrentWeight = "195 lbs"
-    static let defaultAnalysisOccupation = "Emergency medicine physician"
-    static let defaultAnalysisTrainingFrequency = "Training 5-6 days/week"
-    static let defaultAnalysisTrainingAge = "4 years of consistent lifting"
-    static let defaultAnalysisEquipmentAccess = "Commercial gym with full machine, cable, dumbbell, and barbell access"
-    static let defaultAnalysisAverageSleep = "Variable due to shift work; often 5-7 hours"
-    static let defaultAnalysisPainHistory = "No major active injury reported; monitor overuse and recovery around long shifts"
-    static let defaultAnalysisActivityLevel = "High daily activity from long clinical shifts and time on feet"
-    static let defaultAnalysisPrimaryGoal = "Body recomposition with visible abs and aesthetic proportions while maintaining performance for demanding clinical shifts"
-    static let defaultAnalysisLifestyleConstraints = "Shift-work schedule with variable sleep and meal timing"
+    // Keep first-run profile defaults blank so body analysis starts from user input,
+    // not a baked-in persona that can bias coaching.
+    static let defaultAnalysisAge = ""
+    static let defaultAnalysisSex = ""
+    static let defaultAnalysisBuild = ""
+    static let defaultAnalysisHeight = ""
+    static let defaultAnalysisCurrentWeight = ""
+    static let defaultAnalysisOccupation = ""
+    static let defaultAnalysisTrainingFrequency = ""
+    static let defaultAnalysisTrainingAge = ""
+    static let defaultAnalysisEquipmentAccess = ""
+    static let defaultAnalysisAverageSleep = ""
+    static let defaultAnalysisPainHistory = ""
+    static let defaultAnalysisActivityLevel = ""
+    static let defaultAnalysisPrimaryGoal = ""
+    static let defaultAnalysisLifestyleConstraints = ""
     static let defaultAnalysisCheckInTrainingContext = ""
     static let defaultAnalysisCheckInBodyweightTrend = ""
     static let defaultAnalysisCheckInRecoverySleep = ""
@@ -57,6 +59,23 @@ enum Config {
     static var analysisClientProfilePrompt: String { AppSettingsStore.analysisClientProfile.promptDescription }
     static var analysisCheckInPrompt: String { AppSettingsStore.analysisCheckIn.promptDescription }
     static var analysisInputContext: AnalysisInputContext { AppSettingsStore.analysisInputContext }
+}
+
+enum PersonalProfileSeed {
+    static let age = "30"
+    static let sex = "Male"
+    static let build = "Mesomorph build"
+    static let height = "6'0\""
+    static let currentWeight = "195 lbs"
+    static let occupation = "Emergency medicine physician"
+    static let trainingFrequency = "Training 5-6 days/week"
+    static let trainingAge = "4 years of consistent lifting"
+    static let equipmentAccess = "Commercial gym with full machine, cable, dumbbell, and barbell access"
+    static let averageSleep = "Variable due to shift work; often 5-7 hours"
+    static let painHistory = "No major active injury reported; monitor overuse and recovery around long shifts"
+    static let activityLevel = "High daily activity from long clinical shifts and time on feet"
+    static let primaryGoal = "Body recomposition with visible abs and aesthetic proportions while maintaining performance for demanding clinical shifts"
+    static let lifestyleConstraints = "Shift-work schedule with variable sleep and meal timing"
 }
 
 enum MacroTargetSource {
@@ -195,6 +214,29 @@ struct AnalysisCheckIn {
 enum AppSettingsStore {
     private static let defaults = UserDefaults.standard
 
+    static func seedPersonalProfileIfNeeded() {
+        let seededValues: [(String, String)] = [
+            (AppSettingsKeys.analysisAge, PersonalProfileSeed.age),
+            (AppSettingsKeys.analysisSex, PersonalProfileSeed.sex),
+            (AppSettingsKeys.analysisBuild, PersonalProfileSeed.build),
+            (AppSettingsKeys.analysisHeight, PersonalProfileSeed.height),
+            (AppSettingsKeys.analysisCurrentWeight, PersonalProfileSeed.currentWeight),
+            (AppSettingsKeys.analysisOccupation, PersonalProfileSeed.occupation),
+            (AppSettingsKeys.analysisTrainingFrequency, PersonalProfileSeed.trainingFrequency),
+            (AppSettingsKeys.analysisTrainingAge, PersonalProfileSeed.trainingAge),
+            (AppSettingsKeys.analysisEquipmentAccess, PersonalProfileSeed.equipmentAccess),
+            (AppSettingsKeys.analysisAverageSleep, PersonalProfileSeed.averageSleep),
+            (AppSettingsKeys.analysisPainHistory, PersonalProfileSeed.painHistory),
+            (AppSettingsKeys.analysisActivityLevel, PersonalProfileSeed.activityLevel),
+            (AppSettingsKeys.analysisPrimaryGoal, PersonalProfileSeed.primaryGoal),
+            (AppSettingsKeys.analysisLifestyleConstraints, PersonalProfileSeed.lifestyleConstraints)
+        ]
+
+        for (key, value) in seededValues where defaults.object(forKey: key) == nil {
+            defaults.set(value, forKey: key)
+        }
+    }
+
     static var analysisClientProfile: AnalysisClientProfile {
         AnalysisClientProfile(
             age: string(for: AppSettingsKeys.analysisAge, default: Config.defaultAnalysisAge),
@@ -251,6 +293,25 @@ enum AppSettingsStore {
 
     static var bodyWeightGoalLbs: Double {
         double(for: AppSettingsKeys.bodyWeightGoal, default: Config.defaultBodyWeightGoalLbs, min: 50, max: 999)
+    }
+
+    static var personalAnalysisProfile: AnalysisClientProfile {
+        AnalysisClientProfile(
+            age: PersonalProfileSeed.age,
+            sex: PersonalProfileSeed.sex,
+            build: PersonalProfileSeed.build,
+            height: PersonalProfileSeed.height,
+            currentWeight: PersonalProfileSeed.currentWeight,
+            occupation: PersonalProfileSeed.occupation,
+            trainingFrequency: PersonalProfileSeed.trainingFrequency,
+            trainingAge: PersonalProfileSeed.trainingAge,
+            equipmentAccess: PersonalProfileSeed.equipmentAccess,
+            averageSleep: PersonalProfileSeed.averageSleep,
+            painHistory: PersonalProfileSeed.painHistory,
+            activityLevel: PersonalProfileSeed.activityLevel,
+            primaryGoal: PersonalProfileSeed.primaryGoal,
+            lifestyleConstraints: PersonalProfileSeed.lifestyleConstraints
+        )
     }
 
     private static func string(for key: String, default defaultValue: String) -> String {
