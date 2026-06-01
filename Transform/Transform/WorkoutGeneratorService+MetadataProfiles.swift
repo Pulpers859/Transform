@@ -855,7 +855,7 @@ extension ClaudeService {
     static let exerciseMetadataCatalogCache: [String: ExerciseMetadata] = {
         var dict = [String: ExerciseMetadata]()
         for entry in exerciseMetadataEntriesCache {
-            let enriched = Self.enrichedExerciseMetadata(entry)
+            let enriched = ClaudeService.enrichedExerciseMetadata(entry)
             dict[normalizedExerciseNameKey(entry.canonicalName)] = enriched
         }
         return dict

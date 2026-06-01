@@ -41,7 +41,7 @@ struct WorkoutGeneratorLabView: View {
         programs.first
     }
 
-    var analysisSourceOptions: [WorkoutGeneratorAnalysisSourceOption] {
+    private var analysisSourceOptions: [WorkoutGeneratorAnalysisSourceOption] {
         var options: [WorkoutGeneratorAnalysisSourceOption] = []
 
         if let currentProgram,
@@ -53,7 +53,7 @@ struct WorkoutGeneratorLabView: View {
         return options
     }
 
-    var selectedAnalysisSource: WorkoutGeneratorAnalysisSourceOption? {
+    private var selectedAnalysisSource: WorkoutGeneratorAnalysisSourceOption? {
         guard analysisSourceOptions.indices.contains(selectedAnalysisSourceIndex) else { return nil }
         return analysisSourceOptions[selectedAnalysisSourceIndex]
     }
@@ -678,7 +678,7 @@ struct WorkoutGeneratorLabView: View {
         return cleanedFocus.isEmpty ? date : "\(date) • \(cleanedFocus)"
     }
 
-    func savedAnalysisSourceOption(for session: BodyAnalysisSession) -> WorkoutGeneratorAnalysisSourceOption {
+    private func savedAnalysisSourceOption(for session: BodyAnalysisSession) -> WorkoutGeneratorAnalysisSourceOption {
         let json: String
         if !session.analysisJSON.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             json = session.analysisJSON
@@ -702,7 +702,7 @@ struct WorkoutGeneratorLabView: View {
         )
     }
 
-    func programAnalysisSourceOption(for program: WorkoutProgram) -> WorkoutGeneratorAnalysisSourceOption {
+    private func programAnalysisSourceOption(for program: WorkoutProgram) -> WorkoutGeneratorAnalysisSourceOption {
         let programDate = program.createdDate.formatted(date: .abbreviated, time: .shortened)
         let analysisDate = program.sourceAnalysisDate?.formatted(date: .abbreviated, time: .shortened)
         let focus = program.focusAreas.trimmingCharacters(in: .whitespacesAndNewlines)
