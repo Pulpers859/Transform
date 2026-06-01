@@ -30,6 +30,7 @@
 - Inspect before assuming.
 - Work in the source-of-truth repo only.
 - Sync from GitHub before normal work so the local repo is not stale.
+- After completing code changes, push them to GitHub unless the user explicitly says not to.
 - Fix root causes, not surface symptoms.
 - Be honest and direct.
 - Prefer architecture/data-flow fixes over hacks.
@@ -128,7 +129,25 @@ Order matters:
 - The agent audits adjacent risks.
 - The agent runs local checks where possible.
 - The agent handles Git steps when appropriate.
+- The agent pushes completed code changes to GitHub by default.
 - The user should not need to babysit PowerShell, Git, or GitHub for normal work.
+
+## Recent Generator Architecture Changes
+- Structured Anthropic workout and nutrition requests no longer send deprecated `temperature`.
+- Workout generation now calibrates aggressiveness using recovery context, performance-data quality, and nutrition-adherence context.
+- Priority validation now checks for minimum viable stimulus so token exposures do not count as meaningful priority work.
+- Weekly variation-cap validation now guards against noisy exercise rotation for the same priority muscle.
+- Session time-budget validation now estimates likely session duration and flags bloated days.
+- Procedural fallback now trims to both fatigue and session-time budgets instead of only exercise count or coarse fatigue caps.
+- Workout exercise metadata is richer and now includes selection-relevant context like equipment, exercise class, systemic fatigue, stability demand, shoulder risk, and preferred/avoid contexts.
+- Procedural exercise ordering and selection now use more context-aware scoring for recovery constraints, low data quality, shoulder-risk cases, short sessions, and arms-day context.
+
+## Recent Commits Worth Knowing
+- `38ae571` - `Enrich workout exercise metadata and selection`
+- `1e5568d` - `Add workout generator calibration and budget guards`
+- `5c3bf1d` - `Remove deprecated temperature from structured requests`
+- `d0b4655` - `Require concrete workout progression cues`
+- `c557f88` - `Tighten workout validator shoulder stress checks`
 
 ## Before Starting Any New Task
 The agent should confirm:
