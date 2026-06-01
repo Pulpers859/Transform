@@ -9,6 +9,7 @@ extension ClaudeService {
         let topLeverageChange: String
         let posturalFocus: String
         let injuryRiskFocus: String
+        let calibration: ProgramCalibrationProfile
     }
 
     struct MusclePriorityIntent {
@@ -31,10 +32,24 @@ extension ClaudeService {
     struct PriorityCoverage {
         let label: String
         let dayMatches: Int
+        let meaningfulDayMatches: Int
         let exerciseMatches: Int
+        let variationCount: Int
         let directSets: Double
         let weightedStimulus: Double
         let peakSessionFatigue: Int
+    }
+
+    struct ProgramCalibrationProfile {
+        let lowPerformanceDataQuality: Bool
+        let poorNutritionAdherence: Bool
+        let recoveryConstrained: Bool
+        let recompositionGoal: Bool
+        let weeklyVolumeScale: Double
+        let reduceExerciseSlotComplexity: Bool
+        let defaultSessionTimeCapMinutes: Int
+        let sessionTimeCapsByStyle: [String: Int]
+        let programmingNotes: [String]
     }
 
     struct PriorityFocusProfile {
@@ -131,6 +146,7 @@ extension ClaudeService {
         let focusArea: String?
         let supportAreas: [String]
         let targetFatigueCap: Int
+        let targetSessionMinutes: Int
         let targetPrioritySlots: Int
         let emphasisPatterns: [String]
         let isRestDay: Bool
@@ -155,6 +171,7 @@ extension ClaudeService {
         var exposureDays: [String: Set<Int>] = [:]
         var exerciseMatches: [String: Int] = [:]
         var exerciseKeys: [String: Set<String>] = [:]
+        var exerciseNames: [String: Set<String>] = [:]
         var peakSessionFatigue: [String: Int] = [:]
         var dailyFatigue: [Int: Int] = [:]
     }

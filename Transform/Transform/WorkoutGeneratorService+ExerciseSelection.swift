@@ -171,7 +171,8 @@ extension ClaudeService {
         weekNumber: Int,
         focusIntent: MusclePriorityIntent?,
         supportIntents: [MusclePriorityIntent],
-        targetFatigueCap: Int
+        targetFatigueCap: Int,
+        targetSessionMinutes: Int? = nil
     ) -> [WorkoutExerciseResponse] {
         var balanced = exercises
 
@@ -201,6 +202,16 @@ extension ClaudeService {
                 break
             }
             balanced.remove(at: removalIndex)
+        }
+
+        if let targetSessionMinutes {
+            balanced = rebalanceSessionTime(
+                in: balanced,
+                weekNumber: weekNumber,
+                focusIntent: focusIntent,
+                supportIntents: supportIntents,
+                targetSessionMinutes: targetSessionMinutes
+            )
         }
 
         return balanced
@@ -397,6 +408,56 @@ extension ClaudeService {
         }
 
         return rebalanced
+    }
+
+    func rebalanceSessionTime(
+        in exercises: [WorkoutExerciseResponse],
+        weekNumber: Int,
+        focusIntent: MusclePriorityIntent?,
+        supportIntents: [MusclePriorityIntent],
+        targetSessionMinutes: Int
+    ) -> [WorkoutExerciseResponse] {
+        var rebalanced = exercises
+
+        while estimatedSessionMinutes(for: proceduralTrainingDay(from: rebalanced)) > targetSessionMinutes + 3 {
+            guard let reductionIndex = volumeReductionCandidateIndex(
+                in: rebalanced,
+                weekNumber: weekNumber,
+                focusIntent: focusIntent,
+                supportIntents: supportIntents
+            ) else {
+                break
+            }
+
+            let minimumSets = minimumSetFloor(for: rebalanced[reductionIndex])
+            if rebalanced[reductionIndex].sets > minimumSets {
+                rebalanced[reductionIndex] = exerciseResponse(
+                    rebalanced[reductionIndex],
+                    withSets: rebalanced[reductionIndex].sets - 1
+                )
+                continue
+            }
+
+            if rebalanced.count > 5 {
+                rebalanced.remove(at: reductionIndex)
+                continue
+            }
+
+            break
+        }
+
+        return rebalanced
+    }
+
+    func proceduralTrainingDay(from exercises: [WorkoutExerciseResponse]) -> WorkoutDayResponse {
+        WorkoutDayResponse(
+            dayNumber: 1,
+            dayName: "Procedural Session",
+            muscleGroups: "Training",
+            isRestDay: false,
+            notes: "",
+            exercises: exercises
+        )
     }
 
     func volumeReductionCandidateIndex(

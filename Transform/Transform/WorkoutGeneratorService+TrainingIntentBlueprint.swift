@@ -18,15 +18,17 @@ extension ClaudeService {
             )
         }
 
-        return TrainingIntentPlan(
+        let basePlan = TrainingIntentPlan(
             splitRecommendation: "Adaptive Hypertrophy Split",
             weeklyTrainingDays: nil,
             programmingNotes: [],
             priorities: mergedPriorityIntents(priorities),
             topLeverageChange: analysis.topLeverageChange.trimmedOr(default: "(not provided)"),
             posturalFocus: analysis.posturalNotes.trimmedOr(default: "(none)"),
-            injuryRiskFocus: analysis.injuryRiskNotes.trimmedOr(default: "(none)")
+            injuryRiskFocus: analysis.injuryRiskNotes.trimmedOr(default: "(none)"),
+            calibration: neutralCalibrationProfile()
         )
+        return calibratedTrainingIntentPlan(basePlan, using: calibrationProfile(from: analysis))
     }
 
     func fallbackTrainingIntentPlan(from focusAreas: [String]) -> TrainingIntentPlan {
@@ -47,7 +49,8 @@ extension ClaudeService {
             priorities: mergedPriorityIntents(priorities),
             topLeverageChange: "(not provided)",
             posturalFocus: "(none)",
-            injuryRiskFocus: "(none)"
+            injuryRiskFocus: "(none)",
+            calibration: neutralCalibrationProfile()
         )
     }
 
@@ -56,15 +59,17 @@ extension ClaudeService {
             musclePriorityIntent(from: priority, rank: index, analysis: analysis)
         }
 
-        return TrainingIntentPlan(
+        let basePlan = TrainingIntentPlan(
             splitRecommendation: structuredIntent.splitRecommendation.trimmedOr(default: "Adaptive Hypertrophy Split"),
             weeklyTrainingDays: max(4, min(6, structuredIntent.weeklyTrainingDays)),
             programmingNotes: structuredIntent.programmingNotes.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty },
             priorities: mergedPriorityIntents(priorities),
             topLeverageChange: analysis.topLeverageChange.trimmedOr(default: "(not provided)"),
             posturalFocus: analysis.posturalNotes.trimmedOr(default: "(none)"),
-            injuryRiskFocus: analysis.injuryRiskNotes.trimmedOr(default: "(none)")
+            injuryRiskFocus: analysis.injuryRiskNotes.trimmedOr(default: "(none)"),
+            calibration: neutralCalibrationProfile()
         )
+        return calibratedTrainingIntentPlan(basePlan, using: calibrationProfile(from: analysis))
     }
 
     func trainingIntentContext(from trainingIntent: TrainingIntentPlan) -> String {
@@ -116,7 +121,7 @@ extension ClaudeService {
                 ? ""
                 : "; support \(dayPlan.supportAreas.joined(separator: ", "))"
             let patterns = dayPlan.emphasisPatterns.joined(separator: ", ")
-            return "- day \(dayPlan.dayIndex): \(dayPlan.style) focus \(focus)\(support); priority slots \(dayPlan.targetPrioritySlots); fatigue cap \(dayPlan.targetFatigueCap); patterns \(patterns.isEmpty ? "(none)" : patterns)"
+            return "- day \(dayPlan.dayIndex): \(dayPlan.style) focus \(focus)\(support); priority slots \(dayPlan.targetPrioritySlots); fatigue cap \(dayPlan.targetFatigueCap); session budget ~\(dayPlan.targetSessionMinutes) min; patterns \(patterns.isEmpty ? "(none)" : patterns)"
         }.joined(separator: "\n")
 
         return """
@@ -159,7 +164,8 @@ extension ClaudeService {
         let dayPlans = buildBlueprintDayPlans(
             trainingDays: trainingDays,
             priorityAllocations: allocations,
-            weekNumber: weekNumber
+            weekNumber: weekNumber,
+            calibration: trainingIntent.calibration
         )
 
         return ProgramBlueprint(
@@ -204,7 +210,8 @@ extension ClaudeService {
     func buildBlueprintDayPlans(
         trainingDays: Int,
         priorityAllocations: [BlueprintPriorityAllocation],
-        weekNumber: Int
+        weekNumber: Int,
+        calibration: ProgramCalibrationProfile
     ) -> [BlueprintDayPlan] {
         let restPattern = defaultRestPattern(for: trainingDays, weekNumber: weekNumber)
         let styles = orderedBlueprintStyles(for: priorityAllocations, trainingDays: trainingDays)
@@ -221,6 +228,7 @@ extension ClaudeService {
                         focusArea: nil,
                         supportAreas: [],
                         targetFatigueCap: 0,
+                        targetSessionMinutes: 0,
                         targetPrioritySlots: 0,
                         emphasisPatterns: [],
                         isRestDay: true
@@ -250,6 +258,7 @@ extension ClaudeService {
                     focusArea: focus?.area,
                     supportAreas: supportAreas,
                     targetFatigueCap: evidenceProfile.sessionFatigueCapsByStyle[style.lowercased()] ?? 18,
+                    targetSessionMinutes: sessionTimeCapMinutes(for: style, calibration: calibration),
                     targetPrioritySlots: focus.map(prioritySlotsPerSession(for:)) ?? 1,
                     emphasisPatterns: Array((focus?.preferredMovementPatterns ?? []).prefix(3)),
                     isRestDay: false
@@ -774,5 +783,292 @@ extension ClaudeService {
         }).mapValues { groupedDays in
             groupedDays.sorted { $0.dayNumber < $1.dayNumber }
         }
+    }
+
+    func neutralCalibrationProfile() -> ProgramCalibrationProfile {
+        ProgramCalibrationProfile(
+            lowPerformanceDataQuality: false,
+            poorNutritionAdherence: false,
+            recoveryConstrained: false,
+            recompositionGoal: false,
+            weeklyVolumeScale: 1.0,
+            reduceExerciseSlotComplexity: false,
+            defaultSessionTimeCapMinutes: 75,
+            sessionTimeCapsByStyle: [
+                "Push": 75,
+                "Pull": 75,
+                "Upper": 75,
+                "Lower": 75,
+                "Legs": 75,
+                "Arms": 60
+            ],
+            programmingNotes: []
+        )
+    }
+
+    func calibrationProfile(from analysis: BodyAnalysisResult) -> ProgramCalibrationProfile {
+        let profile = analysis.inputContext?.profile
+        let checkIn = analysis.inputContext?.checkIn
+        let progress = analysis.inputContext?.progress
+
+        let goalText = normalizedPriorityText([
+            profile?.primaryGoal ?? "",
+            analysis.overallAssessment,
+            analysis.trainingAssessment,
+            analysis.nutritionAssessment
+        ].joined(separator: " "))
+
+        let recompositionGoal = containsAny(
+            goalText,
+            keywords: ["recomp", "recomposition", "fat loss", "deficit", "cut", "visible abs"]
+        )
+
+        let nutritionText = normalizedPriorityText([
+            progress?.nutritionAdherence ?? "",
+            analysis.adherenceAssessment,
+            analysis.psychologicalInsights,
+            analysis.nutritionAssessment
+        ].joined(separator: " "))
+        let nutritionCoverage = loggedCoverageRatio(from: progress?.nutritionAdherence ?? "")
+        let proteinCoverage = proteinTargetHitRatio(from: progress?.nutritionAdherence ?? "")
+        let poorNutritionAdherence =
+            containsAny(
+                nutritionText,
+                keywords: [
+                    "no nutrition logs were recorded",
+                    "nutrition adherence could not be evaluated",
+                    "minimal nutrition logging",
+                    "poor nutrition adherence",
+                    "inconsistent logging"
+                ]
+            )
+            || nutritionCoverage.map { $0 < 0.5 } == true
+            || proteinCoverage.map { $0 < 0.5 } == true
+
+        let performanceText = normalizedPriorityText([
+            progress?.performanceSignals ?? "",
+            progress?.dataQualityNotes ?? "",
+            analysis.analysisLimitations
+        ].joined(separator: " "))
+        let lowPerformanceDataQuality = containsAny(
+            performanceText,
+            keywords: [
+                "no append only performance events were logged",
+                "no append-only performance events were logged",
+                "performance context is limited",
+                "no exercise strength summaries are stored",
+                "falls back to latest best movement summaries",
+                "fewer than two weight logs"
+            ]
+        )
+
+        let recoveryText = normalizedPriorityText([
+            profile?.averageSleep ?? "",
+            profile?.lifestyleConstraints ?? "",
+            checkIn?.recoverySleep ?? "",
+            checkIn?.stressSchedule ?? "",
+            analysis.metabolicHealthNotes,
+            analysis.recoveryRiskAssessment
+        ].joined(separator: " "))
+        let recoveryHours = representativeSleepHours(from: recoveryText)
+        let recoveryConstrained =
+            containsAny(
+                recoveryText,
+                keywords: [
+                    "shift work",
+                    "shift-work",
+                    "variable sleep",
+                    "poor sleep",
+                    "long clinical shifts",
+                    "stressful shifts",
+                    "high stress"
+                ]
+            )
+            || recoveryHours.map { $0 < 7.0 } == true
+
+        var weeklyVolumeScale = 1.0
+        if lowPerformanceDataQuality {
+            weeklyVolumeScale *= 0.92
+        }
+        if poorNutritionAdherence && recompositionGoal {
+            weeklyVolumeScale *= 0.90
+        }
+        if recoveryConstrained {
+            weeklyVolumeScale *= 0.95
+        }
+        weeklyVolumeScale = max(0.80, min(1.0, weeklyVolumeScale))
+
+        let reduceExerciseSlotComplexity = lowPerformanceDataQuality || (poorNutritionAdherence && recompositionGoal)
+        let defaultSessionTimeCapMinutes = recoveryConstrained ? 70 : 75
+        let styleSessionCaps: [String: Int] = [
+            "Push": defaultSessionTimeCapMinutes,
+            "Pull": defaultSessionTimeCapMinutes,
+            "Upper": defaultSessionTimeCapMinutes,
+            "Lower": recoveryConstrained ? 70 : 75,
+            "Legs": recoveryConstrained ? 70 : 75,
+            "Arms": recoveryConstrained ? 55 : 60
+        ]
+
+        var notes: [String] = []
+        if lowPerformanceDataQuality {
+            notes.append("Recent performance-data quality is limited, so keep exercise selection stable and progression conservative until more high-quality logs exist.")
+        }
+        if poorNutritionAdherence && recompositionGoal {
+            notes.append("Nutrition adherence is the bottleneck right now, so keep specialization volume near the recoverable lower-mid range instead of chasing extra fatigue.")
+        }
+        if recoveryConstrained {
+            notes.append("Session design should stay tight for shift-work recovery: trim filler first, keep compounds honest, and protect the weekly time budget.")
+        }
+
+        return ProgramCalibrationProfile(
+            lowPerformanceDataQuality: lowPerformanceDataQuality,
+            poorNutritionAdherence: poorNutritionAdherence,
+            recoveryConstrained: recoveryConstrained,
+            recompositionGoal: recompositionGoal,
+            weeklyVolumeScale: weeklyVolumeScale,
+            reduceExerciseSlotComplexity: reduceExerciseSlotComplexity,
+            defaultSessionTimeCapMinutes: defaultSessionTimeCapMinutes,
+            sessionTimeCapsByStyle: styleSessionCaps,
+            programmingNotes: notes
+        )
+    }
+
+    func calibratedTrainingIntentPlan(
+        _ plan: TrainingIntentPlan,
+        using calibration: ProgramCalibrationProfile
+    ) -> TrainingIntentPlan {
+        let adjustedPriorities = plan.priorities.map { intent in
+            adjustedPriorityIntent(intent, using: calibration)
+        }
+        let adjustedNotes = (plan.programmingNotes + calibration.programmingNotes).uniquePreservingOrder()
+
+        return TrainingIntentPlan(
+            splitRecommendation: plan.splitRecommendation,
+            weeklyTrainingDays: plan.weeklyTrainingDays,
+            programmingNotes: adjustedNotes,
+            priorities: adjustedPriorities,
+            topLeverageChange: plan.topLeverageChange,
+            posturalFocus: plan.posturalFocus,
+            injuryRiskFocus: plan.injuryRiskFocus,
+            calibration: calibration
+        )
+    }
+
+    func adjustedPriorityIntent(
+        _ intent: MusclePriorityIntent,
+        using calibration: ProgramCalibrationProfile
+    ) -> MusclePriorityIntent {
+        let normalizedLevel = normalizedPriorityLevel(intent.priorityLevel, rank: intent.rank)
+        let minimumWeeklyDirectTarget = normalizedLevel == "High" ? 6.0 : normalizedLevel == "Medium" ? 4.0 : 3.0
+        let scaledDirectSets = roundedStimulusValue(
+            max(minimumWeeklyDirectTarget, intent.weeklyDirectSetTarget * calibration.weeklyVolumeScale)
+        )
+        let scaledStimulus = roundedStimulusValue(
+            max(scaledDirectSets + 1.0, intent.weeklyStimulusTarget * calibration.weeklyVolumeScale)
+        )
+
+        var adjustedExerciseTarget = intent.weeklyExerciseTarget
+        if calibration.reduceExerciseSlotComplexity && adjustedExerciseTarget > 2 {
+            adjustedExerciseTarget -= 1
+        }
+        if calibration.recoveryConstrained && normalizedLevel != "High" && adjustedExerciseTarget > 1 {
+            adjustedExerciseTarget -= 1
+        }
+
+        return MusclePriorityIntent(
+            area: intent.area,
+            priorityLevel: intent.priorityLevel,
+            rank: intent.rank,
+            rationale: intent.rationale,
+            weeklyDayTarget: intent.weeklyDayTarget,
+            weeklyExerciseTarget: max(1, min(5, adjustedExerciseTarget)),
+            weeklyDirectSetTarget: scaledDirectSets,
+            weeklyStimulusTarget: scaledStimulus,
+            preferredStyles: intent.preferredStyles,
+            preferredMovementPatterns: intent.preferredMovementPatterns,
+            coverageKeywords: intent.coverageKeywords,
+            accessoryCatalog: intent.accessoryCatalog,
+            volumeBias: intent.volumeBias,
+            directWorkBias: intent.directWorkBias
+        )
+    }
+
+    func sessionTimeCapMinutes(for style: String, calibration: ProgramCalibrationProfile) -> Int {
+        calibration.sessionTimeCapsByStyle[canonicalTrainingStyle(style)] ?? calibration.defaultSessionTimeCapMinutes
+    }
+
+    func roundedStimulusValue(_ value: Double) -> Double {
+        (value * 2).rounded() / 2
+    }
+
+    func loggedCoverageRatio(from summary: String) -> Double? {
+        let pattern = #"logged on (\d+) of (\d+) day\(s\)"#
+        guard let match = firstRegexMatch(pattern: pattern, in: summary),
+              match.count == 3,
+              let numerator = Double(match[1]),
+              let denominator = Double(match[2]),
+              denominator > 0 else {
+            return nil
+        }
+        return numerator / denominator
+    }
+
+    func proteinTargetHitRatio(from summary: String) -> Double? {
+        let pattern = #"protein hit at least 90% of target on (\d+)\/(\d+) logged day\(s\)"#
+        guard let match = firstRegexMatch(pattern: pattern, in: summary),
+              match.count == 3,
+              let numerator = Double(match[1]),
+              let denominator = Double(match[2]),
+              denominator > 0 else {
+            return nil
+        }
+        return numerator / denominator
+    }
+
+    func representativeSleepHours(from text: String) -> Double? {
+        let pattern = #"(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)\s*hour"#
+        if let match = firstRegexMatch(pattern: pattern, in: text),
+           match.count == 3,
+           let lower = Double(match[1]),
+           let upper = Double(match[2]) {
+            return (lower + upper) / 2
+        }
+
+        let simplePattern = #"(\d+(?:\.\d+)?)\s*hour"#
+        if let match = firstRegexMatch(pattern: simplePattern, in: text),
+           match.count == 2,
+           let hours = Double(match[1]) {
+            return hours
+        }
+
+        return nil
+    }
+
+    func firstRegexMatch(pattern: String, in text: String) -> [String]? {
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else {
+            return nil
+        }
+        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+        guard let match = regex.firstMatch(in: text, options: [], range: range) else {
+            return nil
+        }
+
+        return (0..<match.numberOfRanges).compactMap { index in
+            guard let range = Range(match.range(at: index), in: text) else { return nil }
+            return String(text[range])
+        }
+    }
+}
+
+private extension Array where Element == String {
+    func uniquePreservingOrder() -> [String] {
+        var seen = Set<String>()
+        var ordered: [String] = []
+        for value in self {
+            if seen.insert(value).inserted {
+                ordered.append(value)
+            }
+        }
+        return ordered
     }
 }

@@ -166,6 +166,7 @@ extension ClaudeService {
                 focusIntent: focusIntent,
                 supportIntents: supportIntents,
                 targetFatigueCap: plan.targetFatigueCap,
+                targetSessionMinutes: plan.targetSessionMinutes,
                 previousExercises: previousExercises
             )
 
@@ -333,7 +334,58 @@ extension ClaudeService {
             }
         }
 
-        return repaired
+        return enforceProceduralSessionBudgets(
+            repaired,
+            weekNumber: weekNumber,
+            blueprint: blueprint,
+            dayStart: dayStart
+        )
+    }
+
+    func enforceProceduralSessionBudgets(
+        _ days: [WorkoutDayResponse],
+        weekNumber: Int,
+        blueprint: ProgramBlueprint,
+        dayStart: Int
+    ) -> [WorkoutDayResponse] {
+        var updatedDays = days
+
+        for index in updatedDays.indices {
+            let day = updatedDays[index]
+            guard !day.isRestDay,
+                  let relativeDayIndex = relativeBlueprintDayIndex(for: day.dayNumber, dayStart: dayStart),
+                  let plan = blueprint.dayPlans.first(where: { $0.dayIndex == relativeDayIndex }) else {
+                continue
+            }
+
+            let focusIntent = plan.focusArea.flatMap { area in
+                blueprint.priorityAllocations.first(where: {
+                    normalizedPriorityText($0.area) == normalizedPriorityText(area)
+                }).map(priorityIntent(for:))
+            }
+            let supportIntents = plan.supportAreas.compactMap { area in
+                blueprint.priorityAllocations.first(where: {
+                    normalizedPriorityText($0.area) == normalizedPriorityText(area)
+                }).map(priorityIntent(for:))
+            }
+            let trimmedExercises = rebalanceSessionTime(
+                in: day.exercises,
+                weekNumber: weekNumber,
+                focusIntent: focusIntent,
+                supportIntents: supportIntents,
+                targetSessionMinutes: plan.targetSessionMinutes
+            )
+            updatedDays[index] = WorkoutDayResponse(
+                dayNumber: day.dayNumber,
+                dayName: day.dayName,
+                muscleGroups: day.muscleGroups,
+                isRestDay: day.isRestDay,
+                notes: day.notes,
+                exercises: trimmedExercises
+            )
+        }
+
+        return updatedDays
     }
 
     func repairCandidateDayNumbersExpanded(
@@ -504,6 +556,7 @@ extension ClaudeService {
         focusIntent: MusclePriorityIntent?,
         supportIntents: [MusclePriorityIntent],
         targetFatigueCap: Int,
+        targetSessionMinutes: Int,
         previousExercises: [WorkoutExerciseResponse]
     ) -> [WorkoutExerciseResponse] {
         let targetCount = weekNumber == 4 ? 5 : 6
@@ -605,7 +658,8 @@ extension ClaudeService {
             weekNumber: weekNumber,
             focusIntent: focusIntent,
             supportIntents: supportIntents,
-            targetFatigueCap: targetFatigueCap
+            targetFatigueCap: targetFatigueCap,
+            targetSessionMinutes: targetSessionMinutes
         )
     }
 

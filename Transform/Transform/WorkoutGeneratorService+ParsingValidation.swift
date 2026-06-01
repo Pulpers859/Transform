@@ -400,16 +400,23 @@ extension ClaudeService {
             let coverage = priorityCoverage(for: allocation, stimulusReport: stimulusReport)
             let peakDirectSession = peakDirectSession(for: allocation, stimulusReport: stimulusReport)
             let frequencyMiss = coverage.dayMatches < allocation.targetFrequency
+            let meaningfulFrequencyMiss = coverage.meaningfulDayMatches < allocation.targetFrequency
             let directSetMiss = coverage.directSets + 1.0 < allocation.directSetTarget
             let overDirectSetMiss = coverage.directSets > allocation.directSetTarget * 1.3
             let slotMiss = coverage.exerciseMatches + 1 < allocation.targetExerciseSlots
                 && coverage.directSets + 0.5 < allocation.directSetTarget
             let weightedStimulusMiss = coverage.weightedStimulus + 1.0 < allocation.weightedStimulusTarget
                 && directSetMiss
+            let variationCap = maximumUsefulVariationCount(for: allocation)
 
             if frequencyMiss {
                 issues.append(
                     "Blueprint priority '\(coverage.label)' missed its frequency target (\(coverage.dayMatches)/\(allocation.targetFrequency) targeted days)."
+                )
+            }
+            if meaningfulFrequencyMiss {
+                issues.append(
+                    "Blueprint priority '\(coverage.label)' only delivered \(coverage.meaningfulDayMatches)/\(allocation.targetFrequency) meaningful exposures that met the minimum viable stimulus threshold. Avoid counting token 1-set touches as real priority frequency."
                 )
             }
             if directSetMiss {
@@ -430,6 +437,11 @@ extension ClaudeService {
             if weightedStimulusMiss {
                 issues.append(
                     "Blueprint priority '\(coverage.label)' undershot its weighted stimulus target (\(formatStimulusValue(coverage.weightedStimulus))/\(formatStimulusValue(allocation.weightedStimulusTarget)))."
+                )
+            }
+            if coverage.variationCount > variationCap {
+                issues.append(
+                    "Blueprint priority '\(coverage.label)' uses too many weekly exercise variations (\(coverage.variationCount) vs cap \(variationCap)). Keep 1-2 repeatable main lifts and trim redundant rotation so progression stays trackable."
                 )
             }
 
@@ -621,6 +633,9 @@ extension ClaudeService {
             "spends too many",
             "never includes a prime hypertrophy movement",
             "is not clearly adapted to the impingement",
+            "minimum viable stimulus threshold",
+            "uses too many weekly exercise variations",
+            "session budget",
             "session notes are empty or too short",
             "notes are empty or too short",
             "notes do not include a concrete progression cue",

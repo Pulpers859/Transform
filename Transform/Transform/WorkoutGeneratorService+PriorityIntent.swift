@@ -322,13 +322,27 @@ extension ClaudeService {
 
     func priorityCoverage(for allocation: BlueprintPriorityAllocation, stimulusReport: WeekStimulusReport) -> PriorityCoverage {
         let aliases = stimulusAreaAliases(for: allocation.area)
+        var directSetsByDay: [Int: Double] = [:]
 
         let dayMatches = aliases.reduce(into: Set<Int>()) { partialResult, alias in
             partialResult.formUnion(stimulusReport.exposureDays[alias] ?? [])
         }.count
 
+        for alias in aliases {
+            for (dayNumber, directSets) in stimulusReport.directSetsByDay[alias] ?? [:] {
+                directSetsByDay[dayNumber, default: 0] += directSets
+            }
+        }
+
+        let meaningfulThreshold = minimumMeaningfulPriorityExposureSets(for: allocation.area)
+        let meaningfulDayMatches = directSetsByDay.values.filter { $0 + 0.01 >= meaningfulThreshold }.count
+
         let exerciseMatches = aliases.reduce(into: Set<String>()) { partialResult, alias in
             partialResult.formUnion(stimulusReport.exerciseKeys[alias] ?? [])
+        }.count
+
+        let variationCount = aliases.reduce(into: Set<String>()) { partialResult, alias in
+            partialResult.formUnion(stimulusReport.exerciseNames[alias] ?? [])
         }.count
 
         let directSets = aliases.reduce(0.0) { partialResult, alias in
@@ -346,7 +360,9 @@ extension ClaudeService {
         return PriorityCoverage(
             label: allocation.area,
             dayMatches: dayMatches,
+            meaningfulDayMatches: meaningfulDayMatches,
             exerciseMatches: exerciseMatches,
+            variationCount: variationCount,
             directSets: directSets,
             weightedStimulus: weightedStimulus,
             peakSessionFatigue: peakSessionFatigue
@@ -441,6 +457,7 @@ extension ClaudeService {
                     report.exposureDays[area, default: []].insert(day.dayNumber)
                     report.exerciseMatches[area, default: 0] += 1
                     report.exerciseKeys[area, default: []].insert(exerciseKey)
+                    report.exerciseNames[area, default: []].insert(normalizeExerciseName(exercise.exerciseName))
                     stimulatedAreas.insert(area)
                     fatigueByArea[area, default: 0] += fatigueContribution
                 }
@@ -450,6 +467,7 @@ extension ClaudeService {
                     report.exposureDays[area, default: []].insert(day.dayNumber)
                     report.exerciseMatches[area, default: 0] += 1
                     report.exerciseKeys[area, default: []].insert(exerciseKey)
+                    report.exerciseNames[area, default: []].insert(normalizeExerciseName(exercise.exerciseName))
                     stimulatedAreas.insert(area)
                     fatigueByArea[area, default: 0] += max(1, fatigueContribution / 2)
                 }
@@ -524,6 +542,31 @@ extension ClaudeService {
             return String(Int(value))
         }
         return String(format: "%.1f", value)
+    }
+
+    func minimumMeaningfulPriorityExposureSets(for area: String) -> Double {
+        let normalized = normalizedPriorityText(area)
+        if containsAny(
+            normalized,
+            keywords: [
+                "lateral delt", "rear delt", "posterior delt", "anterior delt", "shoulder",
+                "bicep", "tricep", "brachialis", "forearm", "calf", "abs", "core", "oblique", "serratus"
+            ]
+        ) {
+            return 2.0
+        }
+        return 3.0
+    }
+
+    func maximumUsefulVariationCount(for allocation: BlueprintPriorityAllocation) -> Int {
+        switch normalizedPriorityLevel(allocation.priorityLevel, rank: 0) {
+        case "High":
+            return 4
+        case "Medium":
+            return 3
+        default:
+            return 2
+        }
     }
 
 }

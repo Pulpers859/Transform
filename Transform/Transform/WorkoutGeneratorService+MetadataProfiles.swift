@@ -239,6 +239,7 @@ extension ClaudeService {
                 focusArea: plan.focusArea,
                 supportAreas: plan.supportAreas
             ))
+            issues.append(contentsOf: validateSessionTimeBudget(on: actualDay, budgetMinutes: plan.targetSessionMinutes))
             issues.append(contentsOf: validateSessionNoteAlignment(on: actualDay))
             issues.append(contentsOf: validateInjuryRiskAlignment(
                 on: actualDay,
@@ -247,6 +248,61 @@ extension ClaudeService {
         }
 
         return issues
+    }
+
+    func validateSessionTimeBudget(on day: WorkoutDayResponse, budgetMinutes: Int) -> [String] {
+        guard budgetMinutes > 0, !day.isRestDay else { return [] }
+
+        let estimatedMinutes = estimatedSessionMinutes(for: day)
+        guard estimatedMinutes > budgetMinutes + 5 else { return [] }
+
+        return [
+            "Day \(day.dayNumber) is likely to run about \(estimatedMinutes) minutes, which exceeds its ~\(budgetMinutes)-minute session budget. Trim low-value accessories or simplify setup instead of letting the session bloat."
+        ]
+    }
+
+    func estimatedSessionMinutes(for day: WorkoutDayResponse) -> Int {
+        guard !day.isRestDay else { return 0 }
+
+        let warmupMinutes = 8.0
+        let exerciseMinutes = day.exercises.reduce(0.0) { partialResult, exercise in
+            partialResult + estimatedExerciseMinutes(for: exercise)
+        }
+
+        return Int(ceil(warmupMinutes + exerciseMinutes))
+    }
+
+    func estimatedExerciseMinutes(for exercise: WorkoutExerciseResponse) -> Double {
+        let metadata = exerciseMetadata(for: exercise)
+        let role = proceduralExerciseRole(for: exercise.exerciseName, muscleTarget: exercise.muscleTarget)
+
+        let activeSecondsPerSet: Double
+        switch role {
+        case .anchor:
+            activeSecondsPerSet = 45
+        case .secondary:
+            activeSecondsPerSet = 40
+        case .accessory:
+            activeSecondsPerSet = 35
+        case .core:
+            activeSecondsPerSet = 30
+        }
+
+        let rampAndSetupMinutes: Double
+        switch role {
+        case .anchor:
+            rampAndSetupMinutes = metadata.fatigueCost >= 3 ? 6.0 : 5.0
+        case .secondary:
+            rampAndSetupMinutes = 4.0
+        case .accessory:
+            rampAndSetupMinutes = 2.0
+        case .core:
+            rampAndSetupMinutes = 1.5
+        }
+
+        let activeMinutes = (Double(exercise.sets) * activeSecondsPerSet) / 60.0
+        let restMinutes = (Double(max(0, exercise.sets - 1)) * Double(exercise.restSeconds)) / 60.0
+        return activeMinutes + restMinutes + rampAndSetupMinutes
     }
 
     func shouldFlagStyleMismatch(
