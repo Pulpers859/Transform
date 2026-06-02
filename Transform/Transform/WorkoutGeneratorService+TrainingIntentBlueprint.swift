@@ -585,7 +585,7 @@ extension ClaudeService {
     ) -> [String] {
         let supportLimit = maximumCompanionSupportAreas(for: style, focus: focus)
 
-        allocations
+        return allocations
             .filter { allocation in
                 allocation.preferredStyles.contains(style)
                     && allocation.area != focus?.area
