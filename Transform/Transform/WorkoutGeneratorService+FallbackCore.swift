@@ -1156,23 +1156,32 @@ extension ClaudeService {
                 ("Incline Dumbbell Press", "Upper Chest"),
                 ("Flat Barbell Bench Press", "Chest"),
                 ("Machine Chest Press", "Chest"),
+                ("Machine Incline Press", "Upper Chest"),
+                ("Dumbbell Bench Press", "Chest"),
                 ("Seated Dumbbell Shoulder Press", "Deltoids"),
                 ("Cable Lateral Raise", "Lateral Deltoids"),
+                ("Leaning Dumbbell Lateral Raise", "Lateral Deltoids"),
                 ("Dip (Assisted or Weighted)", "Triceps"),
                 ("Rope Triceps Pressdown", "Triceps"),
-                ("Overhead Cable Triceps Extension", "Triceps")
+                ("Overhead Cable Triceps Extension", "Triceps"),
+                ("V-Bar Pressdown", "Triceps")
             ]
         case "Pull":
             return [
                 ("Pull-Up (Weighted or Assisted)", "Lats"),
                 ("Lat Pulldown", "Lats"),
+                ("Neutral-Grip Lat Pulldown", "Lats"),
+                ("Chin-Up", "Lats"),
                 ("Chest-Supported Row", "Upper Back"),
                 ("Seated Cable Row", "Mid Back"),
                 ("Single-Arm Dumbbell Row", "Lats"),
+                ("Cable High Row", "Upper Back"),
                 ("Reverse Pec Deck", "Rear Deltoids"),
                 ("Face Pull", "Rear Deltoids"),
+                ("Prone Incline Dumbbell Rear Delt Raise", "Rear Deltoids"),
                 ("EZ-Bar Curl", "Biceps"),
-                ("Incline Dumbbell Curl", "Biceps")
+                ("Incline Dumbbell Curl", "Biceps"),
+                ("Bayesian Cable Curl", "Biceps")
             ]
         case "Lower":
             return [
@@ -1181,19 +1190,27 @@ extension ClaudeService {
                 ("Romanian Deadlift", "Hamstrings"),
                 ("Leg Press", "Quads"),
                 ("Walking Lunge", "Glutes"),
+                ("Reverse Lunge", "Glutes"),
                 ("Leg Curl", "Hamstrings"),
+                ("Seated Leg Curl", "Hamstrings"),
                 ("Leg Extension", "Quads"),
-                ("Standing Calf Raise", "Calves")
+                ("Hip Thrust", "Glutes"),
+                ("Standing Calf Raise", "Calves"),
+                ("Seated Calf Raise", "Calves")
             ]
         case "Upper":
             return [
                 ("Incline Barbell Press", "Upper Chest"),
+                ("Machine Incline Press", "Upper Chest"),
                 ("Machine Shoulder Press", "Deltoids"),
                 ("Chest-Supported Row", "Upper Back"),
                 ("Lat Pulldown", "Lats"),
+                ("Neutral-Grip Lat Pulldown", "Lats"),
                 ("Cable Fly", "Chest"),
                 ("Reverse Pec Deck", "Rear Deltoids"),
+                ("Dumbbell Rear Delt Fly", "Rear Deltoids"),
                 ("Cable Lateral Raise", "Lateral Deltoids"),
+                ("Behind-the-Back Cable Lateral Raise", "Lateral Deltoids"),
                 ("Cable Triceps Pressdown", "Triceps")
             ]
         case "Legs":
@@ -1201,8 +1218,11 @@ extension ClaudeService {
                 ("Trap Bar Deadlift", "Posterior Chain"),
                 ("Bulgarian Split Squat", "Quads/Glutes"),
                 ("Hack Squat", "Quads"),
+                ("Pendulum Squat", "Quads"),
                 ("Seated Leg Curl", "Hamstrings"),
+                ("Nordic Hamstring Curl", "Hamstrings"),
                 ("Hip Thrust", "Glutes"),
+                ("Single-Leg Hip Thrust", "Glutes"),
                 ("Leg Extension", "Quads"),
                 ("Seated Calf Raise", "Calves"),
                 ("Cable Crunch", "Abs")
@@ -1215,7 +1235,12 @@ extension ClaudeService {
                 ("Overhead Cable Triceps Extension", "Triceps"),
                 ("Hammer Curl", "Brachialis"),
                 ("Skull Crusher", "Triceps"),
-                ("Cable Curl", "Biceps")
+                ("Cable Curl", "Biceps"),
+                ("Spider Curl", "Biceps"),
+                ("Bayesian Cable Curl", "Biceps"),
+                ("V-Bar Pressdown", "Triceps"),
+                ("Cable Kickback", "Triceps"),
+                ("Concentration Curl", "Biceps")
             ]
         default:
             return genericExerciseCatalog()

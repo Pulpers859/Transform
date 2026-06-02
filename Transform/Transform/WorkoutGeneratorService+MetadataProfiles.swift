@@ -816,7 +816,76 @@ extension ClaudeService {
             ExerciseMetadata(canonicalName: "Farmer's Walk", primaryAreas: ["Anterior Core"], secondaryAreas: ["Forearms", "Upper Back"], movementPattern: "Carry", fatigueCost: 2),
             ExerciseMetadata(canonicalName: "Barbell Shrug", primaryAreas: ["Upper Back"], secondaryAreas: [], movementPattern: "Shrug", fatigueCost: 1),
             ExerciseMetadata(canonicalName: "Landmine Press", primaryAreas: ["Anterior Deltoids"], secondaryAreas: ["Upper Chest", "Triceps"], movementPattern: "Landmine Press", fatigueCost: 2),
-            ExerciseMetadata(canonicalName: "Incline Smith Machine Press", primaryAreas: ["Upper Chest"], secondaryAreas: ["Triceps", "Anterior Deltoids"], movementPattern: "Incline Press", fatigueCost: 2)
+            ExerciseMetadata(canonicalName: "Incline Smith Machine Press", primaryAreas: ["Upper Chest"], secondaryAreas: ["Triceps", "Anterior Deltoids"], movementPattern: "Incline Press", fatigueCost: 2),
+
+            ExerciseMetadata(canonicalName: "Dumbbell Bench Press", primaryAreas: ["Chest"], secondaryAreas: ["Triceps", "Anterior Deltoids"], movementPattern: "Horizontal Press", fatigueCost: 2),
+            ExerciseMetadata(canonicalName: "Flat Dumbbell Fly", primaryAreas: ["Chest"], secondaryAreas: [], movementPattern: "Fly", fatigueCost: 1),
+            ExerciseMetadata(canonicalName: "Decline Barbell Bench Press", primaryAreas: ["Chest"], secondaryAreas: ["Triceps", "Anterior Deltoids"], movementPattern: "Horizontal Press", fatigueCost: 3),
+            ExerciseMetadata(canonicalName: "Smith Machine Bench Press", primaryAreas: ["Chest"], secondaryAreas: ["Triceps", "Anterior Deltoids"], movementPattern: "Horizontal Press", fatigueCost: 2),
+
+            ExerciseMetadata(canonicalName: "Machine Incline Press", primaryAreas: ["Upper Chest"], secondaryAreas: ["Triceps", "Anterior Deltoids"], movementPattern: "Incline Press", fatigueCost: 2),
+            ExerciseMetadata(canonicalName: "Low-Incline Dumbbell Fly", primaryAreas: ["Upper Chest"], secondaryAreas: [], movementPattern: "Fly", fatigueCost: 1),
+            ExerciseMetadata(canonicalName: "Reverse-Grip Barbell Bench Press", primaryAreas: ["Upper Chest"], secondaryAreas: ["Triceps"], movementPattern: "Horizontal Press", fatigueCost: 2, shoulderRisk: 2),
+
+            ExerciseMetadata(canonicalName: "Barbell Overhead Press", primaryAreas: ["Anterior Deltoids"], secondaryAreas: ["Triceps", "Lateral Deltoids"], movementPattern: "Vertical Press", fatigueCost: 3, shoulderRisk: 3),
+            ExerciseMetadata(canonicalName: "Smith Machine Overhead Press", primaryAreas: ["Anterior Deltoids"], secondaryAreas: ["Triceps"], movementPattern: "Vertical Press", fatigueCost: 2, shoulderRisk: 2),
+
+            ExerciseMetadata(canonicalName: "Behind-the-Back Cable Lateral Raise", primaryAreas: ["Lateral Deltoids"], secondaryAreas: [], movementPattern: "Lateral Raise", fatigueCost: 1),
+            ExerciseMetadata(canonicalName: "Leaning Dumbbell Lateral Raise", primaryAreas: ["Lateral Deltoids"], secondaryAreas: [], movementPattern: "Lateral Raise", fatigueCost: 1),
+            ExerciseMetadata(canonicalName: "Cable Upright Row", primaryAreas: ["Lateral Deltoids"], secondaryAreas: ["Upper Back", "Anterior Deltoids"], movementPattern: "Upright Row", fatigueCost: 2, shoulderRisk: 2),
+            ExerciseMetadata(canonicalName: "Lying Incline Dumbbell Lateral Raise", primaryAreas: ["Lateral Deltoids"], secondaryAreas: [], movementPattern: "Lateral Raise", fatigueCost: 1),
+
+            ExerciseMetadata(canonicalName: "Prone Incline Dumbbell Rear Delt Raise", primaryAreas: ["Rear Deltoids"], secondaryAreas: ["Upper Back"], movementPattern: "Rear Delt Fly", fatigueCost: 1),
+            ExerciseMetadata(canonicalName: "Reverse Cable Crossover", primaryAreas: ["Rear Deltoids"], secondaryAreas: ["Upper Back"], movementPattern: "Rear Delt Fly", fatigueCost: 1),
+            ExerciseMetadata(canonicalName: "Dumbbell Rear Delt Fly", primaryAreas: ["Rear Deltoids"], secondaryAreas: ["Upper Back"], movementPattern: "Rear Delt Fly", fatigueCost: 1),
+
+            ExerciseMetadata(canonicalName: "Neutral-Grip Lat Pulldown", primaryAreas: ["Lats"], secondaryAreas: ["Biceps"], movementPattern: "Vertical Pull", fatigueCost: 2),
+            ExerciseMetadata(canonicalName: "Cable Pullover", primaryAreas: ["Lats"], secondaryAreas: [], movementPattern: "Pullover", fatigueCost: 1),
+            ExerciseMetadata(canonicalName: "Chin-Up", primaryAreas: ["Lats"], secondaryAreas: ["Biceps"], movementPattern: "Vertical Pull", fatigueCost: 3),
+            ExerciseMetadata(canonicalName: "Machine Lat Pulldown", primaryAreas: ["Lats"], secondaryAreas: ["Biceps"], movementPattern: "Vertical Pull", fatigueCost: 2),
+            ExerciseMetadata(canonicalName: "Single-Arm Cable Row", primaryAreas: ["Lats"], secondaryAreas: ["Upper Back", "Biceps"], movementPattern: "Row", fatigueCost: 2),
+
+            ExerciseMetadata(canonicalName: "Barbell Bent-Over Row", primaryAreas: ["Upper Back"], secondaryAreas: ["Lats", "Biceps"], movementPattern: "Row", fatigueCost: 3),
+            ExerciseMetadata(canonicalName: "Meadows Row", primaryAreas: ["Upper Back", "Lats"], secondaryAreas: ["Biceps"], movementPattern: "Row", fatigueCost: 2),
+            ExerciseMetadata(canonicalName: "Cable High Row", primaryAreas: ["Upper Back"], secondaryAreas: ["Rear Deltoids"], movementPattern: "Row", fatigueCost: 2),
+            ExerciseMetadata(canonicalName: "Dumbbell Shrug", primaryAreas: ["Upper Back"], secondaryAreas: [], movementPattern: "Shrug", fatigueCost: 1),
+
+            ExerciseMetadata(canonicalName: "Spider Curl", primaryAreas: ["Biceps"], secondaryAreas: [], movementPattern: "Curl", fatigueCost: 1),
+            ExerciseMetadata(canonicalName: "Bayesian Cable Curl", primaryAreas: ["Biceps"], secondaryAreas: [], movementPattern: "Curl", fatigueCost: 1),
+            ExerciseMetadata(canonicalName: "Concentration Curl", primaryAreas: ["Biceps"], secondaryAreas: [], movementPattern: "Curl", fatigueCost: 1),
+            ExerciseMetadata(canonicalName: "Machine Preacher Curl", primaryAreas: ["Biceps"], secondaryAreas: [], movementPattern: "Curl", fatigueCost: 1),
+
+            ExerciseMetadata(canonicalName: "Dumbbell Overhead Triceps Extension", primaryAreas: ["Triceps"], secondaryAreas: [], movementPattern: "Extension", fatigueCost: 1),
+            ExerciseMetadata(canonicalName: "Machine Dip", primaryAreas: ["Triceps"], secondaryAreas: ["Chest", "Anterior Deltoids"], movementPattern: "Dip", fatigueCost: 2),
+            ExerciseMetadata(canonicalName: "Cable Kickback", primaryAreas: ["Triceps"], secondaryAreas: [], movementPattern: "Extension", fatigueCost: 1),
+            ExerciseMetadata(canonicalName: "V-Bar Pressdown", primaryAreas: ["Triceps"], secondaryAreas: [], movementPattern: "Pressdown", fatigueCost: 1),
+
+            ExerciseMetadata(canonicalName: "Pendulum Squat", primaryAreas: ["Quads"], secondaryAreas: ["Glutes"], movementPattern: "Squat", fatigueCost: 2),
+            ExerciseMetadata(canonicalName: "Sissy Squat", primaryAreas: ["Quads"], secondaryAreas: [], movementPattern: "Squat", fatigueCost: 1),
+            ExerciseMetadata(canonicalName: "Belt Squat", primaryAreas: ["Quads"], secondaryAreas: ["Glutes"], movementPattern: "Squat", fatigueCost: 2),
+
+            ExerciseMetadata(canonicalName: "Stiff-Leg Deadlift", primaryAreas: ["Hamstrings"], secondaryAreas: ["Glutes", "Posterior Chain"], movementPattern: "Hinge", fatigueCost: 3),
+            ExerciseMetadata(canonicalName: "Single-Leg Romanian Deadlift", primaryAreas: ["Hamstrings"], secondaryAreas: ["Glutes"], movementPattern: "Hinge", fatigueCost: 2),
+            ExerciseMetadata(canonicalName: "Nordic Hamstring Curl", primaryAreas: ["Hamstrings"], secondaryAreas: [], movementPattern: "Curl", fatigueCost: 2),
+            ExerciseMetadata(canonicalName: "Cable Pull-Through", primaryAreas: ["Glutes", "Hamstrings"], secondaryAreas: ["Posterior Chain"], movementPattern: "Hinge", fatigueCost: 1),
+            ExerciseMetadata(canonicalName: "Good Morning", primaryAreas: ["Hamstrings"], secondaryAreas: ["Glutes", "Posterior Chain"], movementPattern: "Hinge", fatigueCost: 3),
+
+            ExerciseMetadata(canonicalName: "Cable Glute Kickback", primaryAreas: ["Glutes"], secondaryAreas: [], movementPattern: "Hip Extension", fatigueCost: 1),
+            ExerciseMetadata(canonicalName: "Single-Leg Hip Thrust", primaryAreas: ["Glutes"], secondaryAreas: ["Hamstrings"], movementPattern: "Hip Thrust", fatigueCost: 2),
+            ExerciseMetadata(canonicalName: "Sumo Deadlift", primaryAreas: ["Glutes"], secondaryAreas: ["Quads", "Hamstrings", "Posterior Chain"], movementPattern: "Hinge", fatigueCost: 3),
+            ExerciseMetadata(canonicalName: "Reverse Lunge", primaryAreas: ["Glutes"], secondaryAreas: ["Quads"], movementPattern: "Lunge", fatigueCost: 2),
+            ExerciseMetadata(canonicalName: "45-Degree Back Extension", primaryAreas: ["Glutes"], secondaryAreas: ["Hamstrings", "Posterior Chain"], movementPattern: "Hip Extension", fatigueCost: 1),
+
+            ExerciseMetadata(canonicalName: "Leg Press Calf Raise", primaryAreas: ["Calves"], secondaryAreas: [], movementPattern: "Calf Raise", fatigueCost: 1),
+            ExerciseMetadata(canonicalName: "Smith Machine Calf Raise", primaryAreas: ["Calves"], secondaryAreas: [], movementPattern: "Calf Raise", fatigueCost: 1),
+            ExerciseMetadata(canonicalName: "Single-Leg Standing Calf Raise", primaryAreas: ["Calves"], secondaryAreas: [], movementPattern: "Calf Raise", fatigueCost: 1),
+            ExerciseMetadata(canonicalName: "Donkey Calf Raise", primaryAreas: ["Calves"], secondaryAreas: [], movementPattern: "Calf Raise", fatigueCost: 1),
+
+            ExerciseMetadata(canonicalName: "Hanging Leg Raise", primaryAreas: ["Lower Abs"], secondaryAreas: [], movementPattern: "Leg Raise", fatigueCost: 1),
+            ExerciseMetadata(canonicalName: "Machine Crunch", primaryAreas: ["Abs"], secondaryAreas: [], movementPattern: "Spinal Flexion", fatigueCost: 1),
+            ExerciseMetadata(canonicalName: "Decline Weighted Crunch", primaryAreas: ["Abs"], secondaryAreas: [], movementPattern: "Spinal Flexion", fatigueCost: 1),
+            ExerciseMetadata(canonicalName: "Dead Bug", primaryAreas: ["Anterior Core"], secondaryAreas: [], movementPattern: "Anti-Extension", fatigueCost: 1),
+            ExerciseMetadata(canonicalName: "Suitcase Carry", primaryAreas: ["Obliques"], secondaryAreas: ["Forearms"], movementPattern: "Carry", fatigueCost: 2)
     ]
 
     static let exerciseNameAliasCache: [String: String] = {
@@ -843,7 +912,116 @@ extension ClaudeService {
             ("Band Pull Aparts", "Band Pull-Apart"),
             ("Lying Leg Curls", "Lying Leg Curl"),
             ("Glute Ham Raise", "Glute-Ham Raise"),
-            ("Cable Crossovers", "Cable Crossover")
+            ("Cable Crossovers", "Cable Crossover"),
+            ("Chin Up", "Chin-Up"),
+            ("Chin Ups", "Chin-Up"),
+            ("Chinup", "Chin-Up"),
+            ("Chinups", "Chin-Up"),
+            ("Weighted Chin-Up", "Chin-Up"),
+            ("Neutral Grip Lat Pulldown", "Neutral-Grip Lat Pulldown"),
+            ("Neutral Grip Pulldown", "Neutral-Grip Lat Pulldown"),
+            ("Close Grip Lat Pulldown", "Close-Grip Lat Pulldown"),
+            ("Cable Pullovers", "Cable Pullover"),
+            ("Machine Pulldown", "Machine Lat Pulldown"),
+            ("Single Arm Cable Row", "Single-Arm Cable Row"),
+            ("One Arm Cable Row", "Single-Arm Cable Row"),
+            ("Bent Over Row", "Barbell Bent-Over Row"),
+            ("Bent-Over Row", "Barbell Bent-Over Row"),
+            ("Barbell Row", "Barbell Bent-Over Row"),
+            ("Barbell Rows", "Barbell Bent-Over Row"),
+            ("Meadows Rows", "Meadows Row"),
+            ("Landmine Meadows Row", "Meadows Row"),
+            ("Dumbbell Shrugs", "Dumbbell Shrug"),
+            ("DB Shrug", "Dumbbell Shrug"),
+            ("DB Shrugs", "Dumbbell Shrug"),
+            ("Cable High Rows", "Cable High Row"),
+            ("Behind the Back Cable Lateral Raise", "Behind-the-Back Cable Lateral Raise"),
+            ("Behind Back Cable Lateral Raise", "Behind-the-Back Cable Lateral Raise"),
+            ("Leaning Lateral Raise", "Leaning Dumbbell Lateral Raise"),
+            ("Leaning DB Lateral Raise", "Leaning Dumbbell Lateral Raise"),
+            ("Cable Upright Rows", "Cable Upright Row"),
+            ("Wide Grip Cable Upright Row", "Cable Upright Row"),
+            ("Lying Lateral Raise", "Lying Incline Dumbbell Lateral Raise"),
+            ("Incline Lateral Raise", "Lying Incline Dumbbell Lateral Raise"),
+            ("Prone Rear Delt Raise", "Prone Incline Dumbbell Rear Delt Raise"),
+            ("Incline Rear Delt Raise", "Prone Incline Dumbbell Rear Delt Raise"),
+            ("Prone Dumbbell Rear Delt Raise", "Prone Incline Dumbbell Rear Delt Raise"),
+            ("Reverse Cable Crossovers", "Reverse Cable Crossover"),
+            ("Reverse Cable Fly", "Reverse Cable Crossover"),
+            ("Dumbbell Rear Delt Flys", "Dumbbell Rear Delt Fly"),
+            ("Bent-Over Dumbbell Rear Delt Fly", "Dumbbell Rear Delt Fly"),
+            ("Bent Over Rear Delt Fly", "Dumbbell Rear Delt Fly"),
+            ("Spider Curls", "Spider Curl"),
+            ("Bayesian Curl", "Bayesian Cable Curl"),
+            ("Bayesian Curls", "Bayesian Cable Curl"),
+            ("Concentration Curls", "Concentration Curl"),
+            ("Machine Preacher Curls", "Machine Preacher Curl"),
+            ("Machine Bicep Curl", "Machine Preacher Curl"),
+            ("V Bar Pressdown", "V-Bar Pressdown"),
+            ("V-Bar Pushdown", "V-Bar Pressdown"),
+            ("V Bar Pushdown", "V-Bar Pressdown"),
+            ("Cable Kickbacks", "Cable Kickback"),
+            ("Tricep Kickback", "Cable Kickback"),
+            ("Triceps Kickback", "Cable Kickback"),
+            ("Machine Dips", "Machine Dip"),
+            ("Assisted Dip Machine", "Machine Dip"),
+            ("Dumbbell Overhead Extension", "Dumbbell Overhead Triceps Extension"),
+            ("DB Overhead Triceps Extension", "Dumbbell Overhead Triceps Extension"),
+            ("Overhead Dumbbell Extension", "Dumbbell Overhead Triceps Extension"),
+            ("Pendulum Squats", "Pendulum Squat"),
+            ("Sissy Squats", "Sissy Squat"),
+            ("Belt Squats", "Belt Squat"),
+            ("Stiff Leg Deadlift", "Stiff-Leg Deadlift"),
+            ("Stiff Legged Deadlift", "Stiff-Leg Deadlift"),
+            ("Single Leg Romanian Deadlift", "Single-Leg Romanian Deadlift"),
+            ("Single Leg RDL", "Single-Leg Romanian Deadlift"),
+            ("Nordic Curl", "Nordic Hamstring Curl"),
+            ("Nordic Curls", "Nordic Hamstring Curl"),
+            ("Nordic Hamstring Curls", "Nordic Hamstring Curl"),
+            ("Cable Pull Through", "Cable Pull-Through"),
+            ("Cable Pull Throughs", "Cable Pull-Through"),
+            ("Pull Through", "Cable Pull-Through"),
+            ("Good Mornings", "Good Morning"),
+            ("Barbell Good Morning", "Good Morning"),
+            ("Cable Glute Kickbacks", "Cable Glute Kickback"),
+            ("Glute Kickback", "Cable Glute Kickback"),
+            ("Single Leg Hip Thrust", "Single-Leg Hip Thrust"),
+            ("Single-Leg Glute Bridge", "Single-Leg Hip Thrust"),
+            ("Sumo Deadlifts", "Sumo Deadlift"),
+            ("Reverse Lunges", "Reverse Lunge"),
+            ("Dumbbell Reverse Lunge", "Reverse Lunge"),
+            ("Back Extension", "45-Degree Back Extension"),
+            ("Hyperextension", "45-Degree Back Extension"),
+            ("45 Degree Back Extension", "45-Degree Back Extension"),
+            ("Leg Press Calf Raises", "Leg Press Calf Raise"),
+            ("Smith Machine Calf Raises", "Smith Machine Calf Raise"),
+            ("Single Leg Calf Raise", "Single-Leg Standing Calf Raise"),
+            ("Single-Leg Calf Raise", "Single-Leg Standing Calf Raise"),
+            ("Donkey Calf Raises", "Donkey Calf Raise"),
+            ("Hanging Leg Raises", "Hanging Leg Raise"),
+            ("Straight Leg Hanging Raise", "Hanging Leg Raise"),
+            ("Machine Crunches", "Machine Crunch"),
+            ("Decline Crunch", "Decline Weighted Crunch"),
+            ("Weighted Decline Crunch", "Decline Weighted Crunch"),
+            ("Dead Bugs", "Dead Bug"),
+            ("Suitcase Carries", "Suitcase Carry"),
+            ("Dumbbell Bench Presses", "Dumbbell Bench Press"),
+            ("DB Bench Press", "Dumbbell Bench Press"),
+            ("Flat Dumbbell Flys", "Flat Dumbbell Fly"),
+            ("DB Fly", "Flat Dumbbell Fly"),
+            ("Flat DB Fly", "Flat Dumbbell Fly"),
+            ("Decline Bench Press", "Decline Barbell Bench Press"),
+            ("Smith Machine Bench Presses", "Smith Machine Bench Press"),
+            ("Machine Incline Presses", "Machine Incline Press"),
+            ("Incline Machine Press", "Machine Incline Press"),
+            ("Low Incline Dumbbell Fly", "Low-Incline Dumbbell Fly"),
+            ("Reverse Grip Bench Press", "Reverse-Grip Barbell Bench Press"),
+            ("Reverse-Grip Bench Press", "Reverse-Grip Barbell Bench Press"),
+            ("Overhead Press", "Barbell Overhead Press"),
+            ("Standing Overhead Press", "Barbell Overhead Press"),
+            ("Strict Press", "Barbell Overhead Press"),
+            ("Military Press", "Barbell Overhead Press"),
+            ("Smith Machine Shoulder Press", "Smith Machine Overhead Press")
         ]
         var dict = [String: String]()
         for (key, value) in entries {
@@ -1067,7 +1245,7 @@ extension ClaudeService {
         if pattern.contains("vertical press") {
             shoulderRisk = max(shoulderRisk, 3)
         }
-        if containsAnyKeyword(name, keywords: ["cable lateral raise", "machine lateral raise", "reverse pec deck", "face pull", "chest supported row", "lat pulldown", "leg press", "hack squat", "seated leg curl", "cable triceps pressdown", "rope triceps pressdown"]) {
+        if containsAnyKeyword(name, keywords: ["cable lateral raise", "machine lateral raise", "reverse pec deck", "face pull", "chest supported row", "lat pulldown", "leg press", "hack squat", "seated leg curl", "cable triceps pressdown", "rope triceps pressdown", "machine incline press", "machine lat pulldown", "machine preacher curl", "machine crunch", "machine dip", "v bar pressdown", "behind the back cable", "bayesian cable curl", "cable pullover", "cable high row", "cable kickback", "pendulum squat", "leg press calf raise"]) {
             preferredContexts.formUnion(["shift_work_friendly", "low_data_quality"])
         }
         if containsAnyKeyword(name, keywords: ["close grip bench", "jm press", "dip"]) {
@@ -1163,7 +1341,11 @@ extension ClaudeService {
                 preferredStyles: ["Arms", "Pull", "Upper"],
                 accessoryCatalog: [
                     ("EZ-Bar Curl", "Biceps"),
-                    ("Incline Dumbbell Curl", "Biceps")
+                    ("Incline Dumbbell Curl", "Biceps"),
+                    ("Spider Curl", "Biceps"),
+                    ("Bayesian Cable Curl", "Biceps"),
+                    ("Concentration Curl", "Biceps"),
+                    ("Machine Preacher Curl", "Biceps")
                 ]
             ),
             PriorityFocusProfile(
@@ -1173,7 +1355,10 @@ extension ClaudeService {
                 preferredStyles: ["Arms", "Push", "Upper"],
                 accessoryCatalog: [
                     ("Rope Triceps Pressdown", "Triceps"),
-                    ("Overhead Cable Triceps Extension", "Triceps")
+                    ("Overhead Cable Triceps Extension", "Triceps"),
+                    ("V-Bar Pressdown", "Triceps"),
+                    ("Cable Kickback", "Triceps"),
+                    ("Dumbbell Overhead Triceps Extension", "Triceps")
                 ]
             ),
             PriorityFocusProfile(
@@ -1183,7 +1368,10 @@ extension ClaudeService {
                 preferredStyles: ["Pull", "Upper"],
                 accessoryCatalog: [
                     ("Lat Pulldown", "Lats"),
-                    ("Straight-Arm Pulldown", "Lats")
+                    ("Straight-Arm Pulldown", "Lats"),
+                    ("Neutral-Grip Lat Pulldown", "Lats"),
+                    ("Cable Pullover", "Lats"),
+                    ("Machine Lat Pulldown", "Lats")
                 ]
             ),
             PriorityFocusProfile(
@@ -1193,7 +1381,10 @@ extension ClaudeService {
                 preferredStyles: ["Pull", "Upper"],
                 accessoryCatalog: [
                     ("Chest-Supported Row", "Upper Back"),
-                    ("Machine Row", "Mid Back")
+                    ("Machine Row", "Mid Back"),
+                    ("Cable High Row", "Upper Back"),
+                    ("Barbell Bent-Over Row", "Upper Back"),
+                    ("Meadows Row", "Upper Back")
                 ]
             ),
             PriorityFocusProfile(
@@ -1234,7 +1425,10 @@ extension ClaudeService {
                 accessoryCatalog: [
                     ("Cable Lateral Raise", "Lateral Deltoids"),
                     ("Machine Lateral Raise", "Lateral Deltoids"),
-                    ("Dumbbell Lateral Raise", "Lateral Deltoids")
+                    ("Dumbbell Lateral Raise", "Lateral Deltoids"),
+                    ("Behind-the-Back Cable Lateral Raise", "Lateral Deltoids"),
+                    ("Leaning Dumbbell Lateral Raise", "Lateral Deltoids"),
+                    ("Lying Incline Dumbbell Lateral Raise", "Lateral Deltoids")
                 ]
             ),
             PriorityFocusProfile(
@@ -1245,7 +1439,10 @@ extension ClaudeService {
                 accessoryCatalog: [
                     ("Reverse Pec Deck", "Rear Deltoids"),
                     ("Cable Rear Delt Fly", "Rear Deltoids"),
-                    ("Chest-Supported Rear Delt Row", "Rear Deltoids")
+                    ("Chest-Supported Rear Delt Row", "Rear Deltoids"),
+                    ("Prone Incline Dumbbell Rear Delt Raise", "Rear Deltoids"),
+                    ("Reverse Cable Crossover", "Rear Deltoids"),
+                    ("Dumbbell Rear Delt Fly", "Rear Deltoids")
                 ]
             ),
             PriorityFocusProfile(
@@ -1266,7 +1463,10 @@ extension ClaudeService {
                 accessoryCatalog: [
                     ("Incline Dumbbell Press", "Upper Chest"),
                     ("Incline Barbell Press", "Upper Chest"),
-                    ("Low-Incline Cable Fly", "Upper Chest")
+                    ("Low-Incline Cable Fly", "Upper Chest"),
+                    ("Machine Incline Press", "Upper Chest"),
+                    ("Low-Incline Dumbbell Fly", "Upper Chest"),
+                    ("Incline Smith Machine Press", "Upper Chest")
                 ]
             ),
             PriorityFocusProfile(
@@ -1276,7 +1476,10 @@ extension ClaudeService {
                 preferredStyles: ["Push", "Upper"],
                 accessoryCatalog: [
                     ("Machine Chest Press", "Chest"),
-                    ("Cable Fly", "Chest")
+                    ("Cable Fly", "Chest"),
+                    ("Dumbbell Bench Press", "Chest"),
+                    ("Flat Dumbbell Fly", "Chest"),
+                    ("Pec Deck", "Chest")
                 ]
             ),
             PriorityFocusProfile(
@@ -1323,7 +1526,11 @@ extension ClaudeService {
                 preferredStyles: ["Lower", "Legs"],
                 accessoryCatalog: [
                     ("Hip Thrust", "Glutes"),
-                    ("Bulgarian Split Squat", "Quads/Glutes")
+                    ("Bulgarian Split Squat", "Quads/Glutes"),
+                    ("Cable Glute Kickback", "Glutes"),
+                    ("Single-Leg Hip Thrust", "Glutes"),
+                    ("Reverse Lunge", "Glutes"),
+                    ("45-Degree Back Extension", "Glutes")
                 ]
             ),
             PriorityFocusProfile(
@@ -1333,7 +1540,10 @@ extension ClaudeService {
                 preferredStyles: ["Lower", "Legs"],
                 accessoryCatalog: [
                     ("Front Squat", "Quads"),
-                    ("Leg Extension", "Quads")
+                    ("Leg Extension", "Quads"),
+                    ("Pendulum Squat", "Quads"),
+                    ("Belt Squat", "Quads"),
+                    ("Hack Squat", "Quads")
                 ]
             ),
             PriorityFocusProfile(
@@ -1343,7 +1553,10 @@ extension ClaudeService {
                 preferredStyles: ["Lower", "Legs"],
                 accessoryCatalog: [
                     ("Romanian Deadlift", "Hamstrings"),
-                    ("Seated Leg Curl", "Hamstrings")
+                    ("Seated Leg Curl", "Hamstrings"),
+                    ("Nordic Hamstring Curl", "Hamstrings"),
+                    ("Lying Leg Curl", "Hamstrings"),
+                    ("Stiff-Leg Deadlift", "Hamstrings")
                 ]
             ),
             PriorityFocusProfile(

@@ -56,7 +56,7 @@ extension ClaudeService {
 
         switch focus {
         case let value where value.contains("posterior delt") || value.contains("rear delt"):
-            if containsAny(combinedText, keywords: ["reverse pec deck", "reverse fly", "rear delt fly", "rear delt row", "cable rear delt"]) {
+            if containsAny(combinedText, keywords: ["reverse pec deck", "reverse fly", "rear delt fly", "rear delt row", "cable rear delt", "rear delt raise", "reverse cable crossover"]) {
                 return .prime
             }
             if containsAny(combinedText, keywords: ["face pull"]) {
@@ -73,7 +73,7 @@ extension ClaudeService {
                 return .support
             }
         case let value where value.contains("upper chest") || value.contains("clavicular"):
-            if containsAny(combinedText, keywords: ["incline press", "incline dumbbell press", "incline barbell press", "low incline", "incline fly"]) {
+            if containsAny(combinedText, keywords: ["incline press", "incline dumbbell press", "incline barbell press", "low incline", "incline fly", "reverse grip", "machine incline"]) {
                 return .prime
             }
             if containsAny(combinedText, keywords: ["bench press", "chest press", "pec deck", "fly", "dip"]) {
@@ -84,14 +84,14 @@ extension ClaudeService {
                 return .prime
             }
         case let value where value.contains("tricep"):
-            if containsAny(combinedText, keywords: ["pressdown", "extension", "skull crusher", "jm press"]) {
+            if containsAny(combinedText, keywords: ["pressdown", "extension", "skull crusher", "jm press", "kickback"]) {
                 return .prime
             }
             if containsAny(combinedText, keywords: ["close-grip", "dip"]) {
                 return .secondary
             }
         case let value where containsPriorityPhrase(in: value, keywords: ["lat", "lats", "latissimus dorsi", "latissimus"]):
-            if containsAny(combinedText, keywords: ["pulldown", "pull-up", "pull up", "pullup", "chinup", "chin up", "straight-arm pulldown"]) {
+            if containsAny(combinedText, keywords: ["pulldown", "pull-up", "pull up", "pullup", "chinup", "chin up", "chin-up", "straight-arm pulldown", "pullover"]) {
                 return .prime
             }
             if containsAny(combinedText, keywords: ["row"]) {
