@@ -1017,7 +1017,7 @@ extension ClaudeService {
     }
 
     func loggedCoverageRatio(from summary: String) -> Double? {
-        let pattern = #"logged on (\d+) of (\d+) day\(s\)"#
+        let pattern = #"logged on (\d+) of (\d+) day(?:s|\(s\))?"#
         guard let match = firstRegexMatch(pattern: pattern, in: summary),
               match.count == 3,
               let numerator = Double(match[1]),
@@ -1029,7 +1029,7 @@ extension ClaudeService {
     }
 
     func proteinTargetHitRatio(from summary: String) -> Double? {
-        let pattern = #"protein hit at least 90% of target on (\d+)\/(\d+) logged day\(s\)"#
+        let pattern = #"protein hit at least 90% of target on (\d+)\/(\d+) logged day(?:s|\(s\))?"#
         guard let match = firstRegexMatch(pattern: pattern, in: summary),
               match.count == 3,
               let numerator = Double(match[1]),

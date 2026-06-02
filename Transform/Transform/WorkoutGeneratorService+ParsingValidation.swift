@@ -402,7 +402,7 @@ extension ClaudeService {
             let frequencyMiss = coverage.dayMatches < allocation.targetFrequency
             let meaningfulFrequencyMiss = coverage.meaningfulDayMatches < allocation.targetFrequency
             let directSetMiss = coverage.directSets + 1.0 < allocation.directSetTarget
-            let overDirectSetMiss = coverage.directSets > allocation.directSetTarget * 1.3
+            let overDirectSetMiss = coverage.directSets > allocation.directSetTarget * 1.3 + 0.5
             let slotMiss = coverage.exerciseMatches + 1 < allocation.targetExerciseSlots
                 && coverage.directSets + 0.5 < allocation.directSetTarget
             let weightedStimulusMiss = coverage.weightedStimulus + 1.0 < allocation.weightedStimulusTarget
@@ -564,7 +564,8 @@ extension ClaudeService {
             issues.append("All days are rest days.")
         }
 
-        return Array(Set(issues)).sorted()
+        var seen = Set<String>()
+        return issues.filter { seen.insert($0).inserted }
     }
 
     func shouldAcceptAIOutput(despite issues: [String]) -> Bool {
@@ -580,6 +581,9 @@ extension ClaudeService {
         guard !issues.isEmpty else { return false }
         if issues.allSatisfy({ validationDisposition(for: $0) == .acceptableWarning }) {
             return true
+        }
+        if attempt >= generationAttempts {
+            return issues.allSatisfy({ validationDisposition(for: $0) != .hardFailure })
         }
         return false
     }
