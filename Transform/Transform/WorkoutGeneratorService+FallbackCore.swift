@@ -213,6 +213,35 @@ extension ClaudeService {
         blueprint: ProgramBlueprint,
         dayStart: Int
     ) -> [WorkoutDayResponse] {
+        let repaired = repairProceduralPriorityCoverage(
+            in: days,
+            weekNumber: weekNumber,
+            blueprint: blueprint,
+            dayStart: dayStart
+        )
+        let budgeted = enforceProceduralSessionBudgets(
+            repaired,
+            weekNumber: weekNumber,
+            blueprint: blueprint,
+            dayStart: dayStart
+        )
+
+        // Run one final blueprint-aware repair after session trimming so the
+        // last time-budget pass cannot quietly undo required priority coverage.
+        return repairProceduralPriorityCoverage(
+            in: budgeted,
+            weekNumber: weekNumber,
+            blueprint: blueprint,
+            dayStart: dayStart
+        )
+    }
+
+    func repairProceduralPriorityCoverage(
+        in days: [WorkoutDayResponse],
+        weekNumber: Int,
+        blueprint: ProgramBlueprint,
+        dayStart: Int
+    ) -> [WorkoutDayResponse] {
         var repaired = days
         var passCount = 0
         var changed = true
@@ -224,20 +253,27 @@ extension ClaudeService {
 
             for allocation in blueprint.priorityAllocations {
                 let coverage = priorityCoverage(for: allocation, stimulusReport: stimulusReport)
-                var remainingShortfall = Int(ceil(allocation.directSetTarget - coverage.directSets - 0.01))
-                let frequencyShortfall = allocation.targetFrequency - coverage.dayMatches
-                guard remainingShortfall > 0 || frequencyShortfall > 0 else { continue }
+                var remainingDirectShortfall = max(0, allocation.directSetTarget - coverage.directSets)
+                var remainingWeightedShortfall = max(0, allocation.weightedStimulusTarget - coverage.weightedStimulus)
+                var remainingFrequencyShortfall = max(0, allocation.targetFrequency - coverage.dayMatches)
+                guard remainingDirectShortfall > 0.01
+                        || remainingWeightedShortfall > 0.01
+                        || remainingFrequencyShortfall > 0 else {
+                    continue
+                }
 
                 let candidateDays = repairCandidateDayNumbersExpanded(
                     for: allocation,
                     blueprint: blueprint,
                     dayStart: dayStart,
                     existingDays: repaired,
-                    needsFrequencyExpansion: frequencyShortfall > 0
+                    needsFrequencyExpansion: remainingFrequencyShortfall > 0
                 )
 
                 for dayNumber in candidateDays {
-                    guard remainingShortfall > 0 || frequencyShortfall > 0,
+                    guard remainingDirectShortfall > 0.01
+                            || remainingWeightedShortfall > 0.01
+                            || remainingFrequencyShortfall > 0,
                           let dayIndex = repaired.firstIndex(where: { $0.dayNumber == dayNumber }) else {
                         continue
                     }
@@ -252,16 +288,21 @@ extension ClaudeService {
                         dayStart: dayStart
                     )
                     let currentDirectSets = directSets(on: day, forFocusArea: allocation.area)
-                    var remainingSessionRoom = Int(floor(allowedCap - currentDirectSets + 0.01))
-                    guard remainingSessionRoom > 0 else { continue }
+                    var remainingSessionDirectCapacity = max(0, allowedCap - currentDirectSets)
+                    guard remainingSessionDirectCapacity > 0.01 || remainingFrequencyShortfall > 0 else { continue }
 
                     let targetFatigueCap = relativeBlueprintDayIndex(for: dayNumber, dayStart: dayStart)
                         .flatMap { relativeDayIndex in
                             blueprint.dayPlans.first(where: { $0.dayIndex == relativeDayIndex })?.targetFatigueCap
                         }
                         ?? maxDailyFatigueThreshold(for: repaired, dayNumber: dayNumber)
+                    let targetSessionMinutes = relativeBlueprintDayIndex(for: dayNumber, dayStart: dayStart)
+                        .flatMap { relativeDayIndex in
+                            blueprint.dayPlans.first(where: { $0.dayIndex == relativeDayIndex })?.targetSessionMinutes
+                        }
                     var exercises = day.exercises
                     var dayChanged = false
+                    var startedWithoutExposure = currentDirectSets <= 0.01
 
                     let intent = priorityIntent(for: allocation)
                     let matchingIndices = exercises.indices.filter { index in
@@ -277,35 +318,66 @@ extension ClaudeService {
                         .flatMap { idx in blueprint.dayPlans.first(where: { $0.dayIndex == idx })?.style }
                         ?? ""
 
-                    if matchingIndices.isEmpty && remainingShortfall > 0 {
+                    let existingPotentialGain = additionalRepairPotentialGain(
+                        for: exercises,
+                        matchingIndices: matchingIndices,
+                        intent: intent,
+                        weekNumber: weekNumber,
+                        remainingSessionDirectCapacity: remainingSessionDirectCapacity
+                    )
+                    let needsSupplementalExercise = matchingIndices.isEmpty
+                        || remainingDirectShortfall > existingPotentialGain + 0.01
+                        || remainingWeightedShortfall > existingPotentialGain + 0.01
+
+                    if needsSupplementalExercise
+                        && (remainingDirectShortfall > 0.01
+                            || remainingWeightedShortfall > 0.01
+                            || remainingFrequencyShortfall > 0) {
                         let injected = injectAccessoryExercise(
                             into: exercises,
                             for: allocation,
                             weekNumber: weekNumber,
                             targetFatigueCap: targetFatigueCap,
-                            dayStyle: dayStyle
+                            dayStyle: dayStyle,
+                            targetSessionMinutes: targetSessionMinutes
                         )
                         if let injected {
                             exercises = injected.exercises
-                            remainingShortfall -= injected.setsAdded
-                            remainingSessionRoom -= injected.setsAdded
+                            remainingDirectShortfall = max(0, remainingDirectShortfall - injected.directGain)
+                            remainingWeightedShortfall = max(0, remainingWeightedShortfall - injected.directGain)
+                            remainingSessionDirectCapacity = max(0, remainingSessionDirectCapacity - injected.directGain)
+                            if startedWithoutExposure, injected.directGain > 0 {
+                                remainingFrequencyShortfall = max(0, remainingFrequencyShortfall - 1)
+                                startedWithoutExposure = false
+                            }
                             dayChanged = true
                             changed = true
                         }
                     }
 
-                    let updatedMatchingIndices = exercises.indices.filter { index in
-                        directPrioritySetContribution(
-                            exerciseName: exercises[index].exerciseName,
-                            muscleTarget: exercises[index].muscleTarget,
-                            intent: intent,
-                            sets: exercises[index].sets
-                        ) > 0
-                    }
+                    let updatedMatchingIndices = exercises.indices
+                        .filter { index in
+                            directPrioritySetContribution(
+                                exerciseName: exercises[index].exerciseName,
+                                muscleTarget: exercises[index].muscleTarget,
+                                intent: intent,
+                                sets: exercises[index].sets
+                            ) > 0
+                        }
+                        .sorted { lhs, rhs in
+                            priorityContributionPerSet(for: exercises[lhs], intent: intent)
+                                > priorityContributionPerSet(for: exercises[rhs], intent: intent)
+                        }
 
                     for exerciseIndex in updatedMatchingIndices {
-                        while remainingShortfall > 0,
-                              remainingSessionRoom > 0,
+                        let perSetGain = priorityContributionPerSet(
+                            for: exercises[exerciseIndex],
+                            intent: intent
+                        )
+                        guard perSetGain > 0 else { continue }
+
+                        while (remainingDirectShortfall > 0.01 || remainingWeightedShortfall > 0.01),
+                              remainingSessionDirectCapacity + 0.01 >= perSetGain,
                               exercises[exerciseIndex].sets < repairSetCeiling(for: exercises[exerciseIndex], weekNumber: weekNumber) {
                             let updatedExercise = exerciseResponse(
                                 exercises[exerciseIndex],
@@ -314,13 +386,46 @@ extension ClaudeService {
                             var updatedExercises = exercises
                             updatedExercises[exerciseIndex] = updatedExercise
 
-                            if estimatedDayFatigue(for: updatedExercises) > targetFatigueCap {
+                            if !canAccommodatePriorityRepair(
+                                updatedExercises,
+                                targetFatigueCap: targetFatigueCap,
+                                targetSessionMinutes: targetSessionMinutes
+                            ) {
                                 break
                             }
 
                             exercises = updatedExercises
-                            remainingShortfall -= 1
-                            remainingSessionRoom -= 1
+                            remainingDirectShortfall = max(0, remainingDirectShortfall - perSetGain)
+                            remainingWeightedShortfall = max(0, remainingWeightedShortfall - perSetGain)
+                            remainingSessionDirectCapacity = max(0, remainingSessionDirectCapacity - perSetGain)
+                            if startedWithoutExposure {
+                                remainingFrequencyShortfall = max(0, remainingFrequencyShortfall - 1)
+                                startedWithoutExposure = false
+                            }
+                            dayChanged = true
+                            changed = true
+                        }
+                    }
+
+                    if (remainingDirectShortfall > 0.01 || remainingWeightedShortfall > 0.01),
+                       remainingSessionDirectCapacity > 0.01 {
+                        let injected = injectAccessoryExercise(
+                            into: exercises,
+                            for: allocation,
+                            weekNumber: weekNumber,
+                            targetFatigueCap: targetFatigueCap,
+                            dayStyle: dayStyle,
+                            targetSessionMinutes: targetSessionMinutes
+                        )
+                        if let injected {
+                            exercises = injected.exercises
+                            remainingDirectShortfall = max(0, remainingDirectShortfall - injected.directGain)
+                            remainingWeightedShortfall = max(0, remainingWeightedShortfall - injected.directGain)
+                            remainingSessionDirectCapacity = max(0, remainingSessionDirectCapacity - injected.directGain)
+                            if startedWithoutExposure, injected.directGain > 0 {
+                                remainingFrequencyShortfall = max(0, remainingFrequencyShortfall - 1)
+                                startedWithoutExposure = false
+                            }
                             dayChanged = true
                             changed = true
                         }
@@ -340,12 +445,7 @@ extension ClaudeService {
             }
         }
 
-        return enforceProceduralSessionBudgets(
-            repaired,
-            weekNumber: weekNumber,
-            blueprint: blueprint,
-            dayStart: dayStart
-        )
+        return repaired
     }
 
     func enforceProceduralSessionBudgets(
@@ -430,63 +530,146 @@ extension ClaudeService {
         for allocation: BlueprintPriorityAllocation,
         weekNumber: Int,
         targetFatigueCap: Int,
-        dayStyle: String
-    ) -> (exercises: [WorkoutExerciseResponse], setsAdded: Int)? {
+        dayStyle: String,
+        targetSessionMinutes: Int?
+    ) -> (exercises: [WorkoutExerciseResponse], directGain: Double)? {
         let intent = priorityIntent(for: allocation)
         let catalog = priorityAccessoryCatalog(for: intent)
         let usedKeys = Set(exercises.map { normalizeExerciseName($0.exerciseName) })
         let canonicalStyle = canonicalTrainingStyle(dayStyle)
 
-        guard let candidate = catalog.first(where: { entry in
+        let candidates = catalog.filter { entry in
             guard !usedKeys.contains(normalizeExerciseName(entry.name)) else { return false }
             let probe = WorkoutExerciseResponse(
                 exerciseName: entry.name, sets: 3, reps: "10-12",
                 tempo: "2-0-1-0", restSeconds: 60, notes: "", muscleTarget: entry.target
             )
             return exerciseMatchesDayStyle(probe, style: canonicalStyle)
-        }) else {
-            return nil
         }
 
-        let sets = proceduralSets(for: weekNumber, exerciseName: candidate.name, muscleTarget: candidate.target)
-        let reps = proceduralRepRange(for: weekNumber, exerciseName: candidate.name, muscleTarget: candidate.target)
-        let newExercise = WorkoutExerciseResponse(
-            exerciseName: candidate.name,
-            sets: sets,
-            reps: reps,
-            tempo: proceduralTempo(for: weekNumber, exerciseName: candidate.name, muscleTarget: candidate.target, reps: reps),
-            restSeconds: proceduralRestSeconds(for: candidate.name, muscleTarget: candidate.target),
-            notes: proceduralExerciseNotes(weekNumber: weekNumber, exerciseName: candidate.name, muscleTarget: candidate.target, index: exercises.count, focus: allocation.area),
-            muscleTarget: candidate.target
-        )
-
-        var updated = exercises
-        if exercises.count < 8, estimatedDayFatigue(for: updated + [newExercise]) <= targetFatigueCap {
-            updated.append(newExercise)
-            return (exercises: updated, setsAdded: sets)
-        }
-
-        guard let removalIndex = exercises.indices.reversed().first(where: { index in
-            let contribution = directPrioritySetContribution(
-                exerciseName: exercises[index].exerciseName,
-                muscleTarget: exercises[index].muscleTarget,
-                intent: intent,
-                sets: exercises[index].sets
+        for candidate in candidates {
+            let sets = proceduralSets(for: weekNumber, exerciseName: candidate.name, muscleTarget: candidate.target)
+            let reps = proceduralRepRange(for: weekNumber, exerciseName: candidate.name, muscleTarget: candidate.target)
+            let newExercise = WorkoutExerciseResponse(
+                exerciseName: candidate.name,
+                sets: sets,
+                reps: reps,
+                tempo: proceduralTempo(for: weekNumber, exerciseName: candidate.name, muscleTarget: candidate.target, reps: reps),
+                restSeconds: proceduralRestSeconds(for: candidate.name, muscleTarget: candidate.target),
+                notes: proceduralExerciseNotes(weekNumber: weekNumber, exerciseName: candidate.name, muscleTarget: candidate.target, index: exercises.count, focus: allocation.area),
+                muscleTarget: candidate.target
             )
-            return contribution == 0
-        }) else {
-            return nil
-        }
+            let directGain = directPrioritySetContribution(
+                exerciseName: newExercise.exerciseName,
+                muscleTarget: newExercise.muscleTarget,
+                intent: intent,
+                sets: newExercise.sets
+            )
+            guard directGain > 0 else { continue }
 
-        updated = exercises
-        updated.remove(at: removalIndex)
-        updated.append(newExercise)
+            var updated = exercises
+            let appended = updated + [newExercise]
+            if exercises.count < 8,
+               canAccommodatePriorityRepair(
+                    appended,
+                    targetFatigueCap: targetFatigueCap,
+                    targetSessionMinutes: targetSessionMinutes
+               ) {
+                updated.append(newExercise)
+                return (exercises: updated, directGain: directGain)
+            }
 
-        if estimatedDayFatigue(for: updated) <= targetFatigueCap {
-            return (exercises: updated, setsAdded: sets)
+            guard let removalIndex = exercises.indices.reversed().first(where: { index in
+                let contribution = directPrioritySetContribution(
+                    exerciseName: exercises[index].exerciseName,
+                    muscleTarget: exercises[index].muscleTarget,
+                    intent: intent,
+                    sets: exercises[index].sets
+                )
+                return contribution == 0
+            }) else {
+                continue
+            }
+
+            updated = exercises
+            updated.remove(at: removalIndex)
+            updated.append(newExercise)
+
+            if canAccommodatePriorityRepair(
+                updated,
+                targetFatigueCap: targetFatigueCap,
+                targetSessionMinutes: targetSessionMinutes
+            ) {
+                return (exercises: updated, directGain: directGain)
+            }
         }
 
         return nil
+    }
+
+    func additionalRepairPotentialGain(
+        for exercises: [WorkoutExerciseResponse],
+        matchingIndices: [Int],
+        intent: MusclePriorityIntent,
+        weekNumber: Int,
+        remainingSessionDirectCapacity: Double
+    ) -> Double {
+        guard remainingSessionDirectCapacity > 0.01 else { return 0 }
+
+        var remainingCapacity = remainingSessionDirectCapacity
+        var potentialGain = 0.0
+        let orderedIndices = matchingIndices.sorted { lhs, rhs in
+            priorityContributionPerSet(for: exercises[lhs], intent: intent)
+                > priorityContributionPerSet(for: exercises[rhs], intent: intent)
+        }
+
+        for index in orderedIndices {
+            let perSetGain = priorityContributionPerSet(for: exercises[index], intent: intent)
+            guard perSetGain > 0 else { continue }
+
+            let remainingSetRoom = max(
+                0,
+                repairSetCeiling(for: exercises[index], weekNumber: weekNumber) - exercises[index].sets
+            )
+            guard remainingSetRoom > 0 else { continue }
+
+            var setsAvailable = remainingSetRoom
+            while setsAvailable > 0 && remainingCapacity + 0.01 >= perSetGain {
+                potentialGain += perSetGain
+                remainingCapacity -= perSetGain
+                setsAvailable -= 1
+            }
+        }
+
+        return potentialGain
+    }
+
+    func priorityContributionPerSet(
+        for exercise: WorkoutExerciseResponse,
+        intent: MusclePriorityIntent
+    ) -> Double {
+        directPrioritySetContribution(
+            exerciseName: exercise.exerciseName,
+            muscleTarget: exercise.muscleTarget,
+            intent: intent,
+            sets: 1
+        )
+    }
+
+    func canAccommodatePriorityRepair(
+        _ exercises: [WorkoutExerciseResponse],
+        targetFatigueCap: Int,
+        targetSessionMinutes: Int?
+    ) -> Bool {
+        guard estimatedDayFatigue(for: exercises) <= targetFatigueCap else {
+            return false
+        }
+
+        guard let targetSessionMinutes, targetSessionMinutes > 0 else {
+            return true
+        }
+
+        return estimatedSessionMinutes(for: proceduralTrainingDay(from: exercises)) <= targetSessionMinutes + 3
     }
 
     func repairCandidateDayNumbers(
