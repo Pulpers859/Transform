@@ -402,7 +402,7 @@ extension ClaudeService {
             let frequencyMiss = coverage.dayMatches < allocation.targetFrequency
             let meaningfulFrequencyMiss = coverage.meaningfulDayMatches < allocation.targetFrequency
             let directSetMiss = coverage.directSets + 1.0 < allocation.directSetTarget
-            let overDirectSetMiss = coverage.directSets > allocation.directSetTarget * 1.3
+            let overDirectSetMiss = coverage.directSets > allocation.directSetTarget * 1.3 + 0.5
             let slotMiss = coverage.exerciseMatches + 1 < allocation.targetExerciseSlots
                 && coverage.directSets + 0.5 < allocation.directSetTarget
             let weightedStimulusMiss = coverage.weightedStimulus + 1.0 < allocation.weightedStimulusTarget

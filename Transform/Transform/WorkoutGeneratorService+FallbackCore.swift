@@ -1210,12 +1210,12 @@ extension ClaudeService {
         case "Arms":
             return [
                 ("EZ-Bar Curl", "Biceps"),
-                ("Incline Dumbbell Curl", "Biceps"),
-                ("Hammer Curl", "Brachialis"),
-                ("Cable Curl", "Biceps"),
                 ("Rope Triceps Pressdown", "Triceps"),
+                ("Incline Dumbbell Curl", "Biceps"),
                 ("Overhead Cable Triceps Extension", "Triceps"),
-                ("Skull Crusher", "Triceps")
+                ("Hammer Curl", "Brachialis"),
+                ("Skull Crusher", "Triceps"),
+                ("Cable Curl", "Biceps")
             ]
         default:
             return genericExerciseCatalog()
