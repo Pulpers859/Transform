@@ -569,7 +569,7 @@ extension ClaudeService {
 
     func shouldAcceptAIOutput(despite issues: [String]) -> Bool {
         guard !issues.isEmpty else { return false }
-        return issues.allSatisfy { validationDisposition(for: $0) != .hardFailure }
+        return issues.allSatisfy { validationDisposition(for: $0) == .acceptableWarning }
     }
 
     func shouldAcceptAIOutput(
@@ -581,9 +581,7 @@ extension ClaudeService {
         if issues.allSatisfy({ validationDisposition(for: $0) == .acceptableWarning }) {
             return true
         }
-
-        guard attempt >= generationAttempts else { return false }
-        return issues.allSatisfy { validationDisposition(for: $0) != .hardFailure }
+        return false
     }
 
     func validationDisposition(for issue: String) -> ValidationIssueDisposition {

@@ -94,6 +94,7 @@ extension ClaudeService {
         originalUserPrompt: String
     ) -> [String: Any] {
         let issueBlock = issues.enumerated().map { "\($0.offset + 1). \($0.element)" }.joined(separator: "\n")
+        let tacticBlock = correctionTactics(for: issues)
 
         let systemPrompt = """
         You are the same expert coaching panel as before. Your previous call to the tool did not
@@ -105,6 +106,9 @@ extension ClaudeService {
         let userPrompt = """
         Issues to correct (preserve everything else):
         \(issueBlock)
+
+        Repair rules for this correction pass:
+        \(tacticBlock)
 
         Original assignment (for reference):
         \(originalUserPrompt)
@@ -120,6 +124,32 @@ extension ClaudeService {
             toolName: toolName,
             toolSchema: toolSchema
         )
+    }
+
+    func correctionTactics(for issues: [String]) -> String {
+        var rules: [String] = [
+            "- Preserve the program's real strengths, but the listed validator issues are not optional."
+        ]
+
+        if issues.contains(where: { $0.contains("overshot its direct-set target enough to create avoidable fatigue") || $0.contains("exceeds its focus-day direct-set cap") || $0.contains("exceeds its per-session direct-set cap") }) {
+            rules.append("- When a priority muscle overshoots its weekly direct-set target or a session cap, reduce or remove redundant same-muscle accessories until the weekly and per-session blueprint caps are satisfied.")
+            rules.append("- Preserve the prime hypertrophy slot first; trim later duplicate isolation work before cutting the main focus lift.")
+            rules.append("- Do not count a second or third near-identical lateral-delt or rear-delt isolation as automatically helpful. If the blueprint says 10 weekly direct sets, 18 is wrong.")
+        }
+
+        if issues.contains(where: { $0.contains("low-value filler") || $0.contains("does not clearly support") }) {
+            rules.append("- Remove off-theme filler before touching the day's prime movement or the blueprint's intended support work.")
+        }
+
+        if issues.contains(where: { $0.contains("minimum viable stimulus threshold") || $0.contains("missed its frequency target") || $0.contains("missed its direct-set target") }) {
+            rules.append("- If frequency or direct-set targets are short, add stimulus with the smallest coherent change possible instead of bloating the whole session.")
+        }
+
+        if issues.contains(where: { $0.contains("session budget") || $0.contains("too crowded") || $0.contains("fatigue load") }) {
+            rules.append("- Keep shift-work recovery in mind: prefer a tighter 5-6 movement session over extra accessories that create fatigue without new value.")
+        }
+
+        return rules.joined(separator: "\n")
     }
 
     // MARK: - Prompts
