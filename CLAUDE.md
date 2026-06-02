@@ -26,6 +26,15 @@
 - Use `.claude/skills/transform-context-compact` when reviving old work or preparing a handoff.
 - Use `repomix` only for external full-repo handoffs, not normal local work.
 
+## Skill-First Workflow
+- In this repo, treat the repo-local skills as the default operating path, not an optional extra.
+- At the start of a fresh session in `C:\Dev\Transform_clean`, first apply `transform-handoff` unless the task is already deep in a single known file.
+- If resuming prior work, long threads, generator investigations, or mixed context, apply `transform-context-compact` before broader repo exploration.
+- For generator, validator, blueprint, fallback, retry, or API-cost work, automatically apply `transform-generator-audit`.
+- For GitHub Actions, Xcode build, scheme, workflow, or local-vs-CI mismatch work, automatically apply `transform-ci-triage`.
+- If more than one repo skill could apply, prefer the smallest combination that fits the task instead of loading everything.
+- Do not wait for the user to explicitly name these skills when the task clearly matches them.
+
 ## Repo Skills
 - `transform-handoff`: repo orientation, stale-copy warnings, branch workflow, hotspots.
 - `transform-generator-audit`: workout generator, validator, fallback, prompt drift, retry waste.
