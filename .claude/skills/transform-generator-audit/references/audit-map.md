@@ -8,8 +8,8 @@
 
 ## Read first
 
-- `2_PROJECT_HANDOFF.md`
-- `3_TRANSFORM_CLEAN_HANDOFF.md`
+- `docs/2_PROJECT_HANDOFF.md`
+- `docs/3_TRANSFORM_CLEAN_HANDOFF.md`
 - `Transform/Transform/CLAUDE.md`
 - `Transform/Transform/EvidenceProfile.md`
 

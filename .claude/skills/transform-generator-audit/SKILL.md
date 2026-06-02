@@ -57,4 +57,4 @@ Use this skill to review the Transform workout-generation stack with the app's r
 
 - Read `references/audit-map.md` for file hotspots, failure patterns, and current audit questions.
 - When a task depends on the programming contract, read `Transform/Transform/EvidenceProfile.md`.
-- When a task depends on current repo operating rules, read `2_PROJECT_HANDOFF.md` and `3_TRANSFORM_CLEAN_HANDOFF.md`.
+- When a task depends on current repo operating rules, read `docs/2_PROJECT_HANDOFF.md` and `docs/3_TRANSFORM_CLEAN_HANDOFF.md`.

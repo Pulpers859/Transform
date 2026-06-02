@@ -143,6 +143,6 @@ git checkout dev
 - On macOS, prefer real Xcode or simulator validation.
 
 ## Recommended Repo-Local Companion Files
-- `PROJECT_HANDOFF.md` in the repo root
+- `docs/2_PROJECT_HANDOFF.md` (handoff docs live in the `docs/` folder)
 - `CLAUDE.md` in the app source tree when app-specific product rules need to live close to the code
 - `EvidenceProfile.md` as the programming contract for workout generation
