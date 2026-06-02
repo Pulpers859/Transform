@@ -564,7 +564,8 @@ extension ClaudeService {
             issues.append("All days are rest days.")
         }
 
-        return Array(Set(issues)).sorted()
+        var seen = Set<String>()
+        return issues.filter { seen.insert($0).inserted }
     }
 
     func shouldAcceptAIOutput(despite issues: [String]) -> Bool {
@@ -580,6 +581,9 @@ extension ClaudeService {
         guard !issues.isEmpty else { return false }
         if issues.allSatisfy({ validationDisposition(for: $0) == .acceptableWarning }) {
             return true
+        }
+        if attempt >= generationAttempts {
+            return issues.allSatisfy({ validationDisposition(for: $0) != .hardFailure })
         }
         return false
     }
