@@ -183,6 +183,19 @@ extension ClaudeService {
                 for: focusIntent,
                 allowedCap: focusCap
             )
+            balanced = trimExcessPriorityExerciseMatches(
+                in: balanced,
+                for: focusIntent,
+                maxMatches: focusExerciseTargetCount(for: focusIntent)
+            )
+        }
+
+        for supportIntent in supportIntents {
+            balanced = trimExcessPriorityExerciseMatches(
+                in: balanced,
+                for: supportIntent,
+                maxMatches: 1
+            )
         }
 
         balanced = rebalanceDayFatigue(
@@ -215,6 +228,88 @@ extension ClaudeService {
         }
 
         return balanced
+    }
+
+    func trimExcessPriorityExerciseMatches(
+        in exercises: [WorkoutExerciseResponse],
+        for intent: MusclePriorityIntent,
+        maxMatches: Int
+    ) -> [WorkoutExerciseResponse] {
+        guard maxMatches >= 0 else { return exercises }
+
+        var trimmed = exercises
+        let minimumExerciseCount = 5
+
+        func matchingIndices(in source: [WorkoutExerciseResponse]) -> [Int] {
+            source.indices.filter { index in
+                directPrioritySetContribution(
+                    exerciseName: source[index].exerciseName,
+                    muscleTarget: source[index].muscleTarget,
+                    intent: intent,
+                    sets: source[index].sets
+                ) > 0
+            }
+        }
+
+        while matchingIndices(in: trimmed).count > maxMatches, trimmed.count > minimumExerciseCount {
+            let candidates = matchingIndices(in: trimmed)
+            guard let removalIndex = candidates.max(by: { lhs, rhs in
+                priorityExerciseRemovalScore(
+                    for: trimmed[lhs],
+                    at: lhs,
+                    intent: intent
+                ) < priorityExerciseRemovalScore(
+                    for: trimmed[rhs],
+                    at: rhs,
+                    intent: intent
+                )
+            }) else {
+                break
+            }
+            trimmed.remove(at: removalIndex)
+        }
+
+        return trimmed
+    }
+
+    func priorityExerciseRemovalScore(
+        for exercise: WorkoutExerciseResponse,
+        at index: Int,
+        intent: MusclePriorityIntent
+    ) -> Int {
+        let role = proceduralExerciseRole(for: exercise.exerciseName, muscleTarget: exercise.muscleTarget)
+        let kind = focusStimulusKind(
+            exerciseName: exercise.exerciseName,
+            muscleTarget: exercise.muscleTarget,
+            focusArea: intent.area
+        )
+
+        var score = index * 10
+        score += exercise.sets * 2
+
+        switch kind {
+        case .support:
+            score += 20
+        case .secondary:
+            score += 10
+        case .prime:
+            score -= 20
+        case .none:
+            score += 30
+        }
+
+        switch role {
+        case .accessory:
+            score += 8
+        case .secondary:
+            score += 4
+        case .anchor:
+            score -= 8
+        case .core:
+            score += 2
+        }
+
+        return score
     }
 
     func estimatedDayFatigue(for exercises: [WorkoutExerciseResponse]) -> Int {

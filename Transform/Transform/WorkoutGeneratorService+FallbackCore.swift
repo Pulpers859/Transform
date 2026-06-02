@@ -262,6 +262,20 @@ extension ClaudeService {
                     continue
                 }
 
+                if remainingFrequencyShortfall > 0,
+                   coverage.directSets + 0.01 >= allocation.directSetTarget,
+                   let redistributed = redistributePriorityVolumeForFrequency(
+                        in: repaired,
+                        allocation: allocation,
+                        blueprint: blueprint,
+                        dayStart: dayStart,
+                        weekNumber: weekNumber
+                   ) {
+                    repaired = redistributed
+                    changed = true
+                    break
+                }
+
                 let candidateDays = repairCandidateDayNumbersExpanded(
                     for: allocation,
                     blueprint: blueprint,
@@ -338,8 +352,10 @@ extension ClaudeService {
 
                     if needsSupplementalExercise
                         && (remainingDirectShortfall > 0.01
-                            || remainingWeightedShortfall > 0.01
-                            || remainingFrequencyShortfall > 0) {
+                            || remainingWeightedShortfall > 0.01) {
+                        let minimumDirectGainNeeded = startedWithoutExposure && remainingFrequencyShortfall > 0
+                            ? minimumMeaningfulPriorityExposureSets(for: allocation.area)
+                            : 0
                         let injected = injectAccessoryExercise(
                             into: exercises,
                             for: allocation,
@@ -347,6 +363,8 @@ extension ClaudeService {
                             targetFatigueCap: targetFatigueCap,
                             dayStyle: dayStyle,
                             targetSessionMinutes: targetSessionMinutes,
+                            remainingSessionDirectCapacity: remainingSessionDirectCapacity,
+                            minimumDirectGainNeeded: minimumDirectGainNeeded,
                             weeklyVariationKeys: weeklyVariationKeys,
                             variationCap: variationCap
                         )
@@ -424,6 +442,9 @@ extension ClaudeService {
                             overridingDayNumber: dayNumber,
                             exercises: exercises
                         )
+                        let minimumDirectGainNeeded = startedWithoutExposure && remainingFrequencyShortfall > 0
+                            ? minimumMeaningfulPriorityExposureSets(for: allocation.area)
+                            : 0
                         let injected = injectAccessoryExercise(
                             into: exercises,
                             for: allocation,
@@ -431,6 +452,8 @@ extension ClaudeService {
                             targetFatigueCap: targetFatigueCap,
                             dayStyle: dayStyle,
                             targetSessionMinutes: targetSessionMinutes,
+                            remainingSessionDirectCapacity: remainingSessionDirectCapacity,
+                            minimumDirectGainNeeded: minimumDirectGainNeeded,
                             weeklyVariationKeys: updatedWeeklyVariationKeys,
                             variationCap: variationCap
                         )
@@ -511,6 +534,161 @@ extension ClaudeService {
         return updatedDays
     }
 
+    func redistributePriorityVolumeForFrequency(
+        in days: [WorkoutDayResponse],
+        allocation: BlueprintPriorityAllocation,
+        blueprint: ProgramBlueprint,
+        dayStart: Int,
+        weekNumber: Int
+    ) -> [WorkoutDayResponse]? {
+        let intent = priorityIntent(for: allocation)
+        let meaningfulThreshold = minimumMeaningfulPriorityExposureSets(for: allocation.area)
+        var updatedDays = days
+
+        let recipientDayNumbers = repairCandidateDayNumbersExpanded(
+            for: allocation,
+            blueprint: blueprint,
+            dayStart: dayStart,
+            existingDays: days,
+            needsFrequencyExpansion: true
+        ).filter { dayNumber in
+            guard let day = updatedDays.first(where: { $0.dayNumber == dayNumber }), !day.isRestDay else {
+                return false
+            }
+            return directSets(on: day, forFocusArea: allocation.area) <= 0.01
+        }
+
+        for recipientDayNumber in recipientDayNumbers {
+            guard let recipientIndex = updatedDays.firstIndex(where: { $0.dayNumber == recipientDayNumber }) else {
+                continue
+            }
+            let recipientDay = updatedDays[recipientIndex]
+            guard let relativeRecipientIndex = relativeBlueprintDayIndex(for: recipientDayNumber, dayStart: dayStart),
+                  let recipientPlan = blueprint.dayPlans.first(where: { $0.dayIndex == relativeRecipientIndex }) else {
+                continue
+            }
+
+            let recipientCapacity = allowedPerSessionDirectSetCap(
+                for: allocation,
+                dayNumber: recipientDayNumber,
+                blueprint: blueprint,
+                dayStart: dayStart
+            ) - directSets(on: recipientDay, forFocusArea: allocation.area)
+            guard recipientCapacity > 0.01 else { continue }
+
+            let donorCandidates = updatedDays.enumerated()
+                .filter { index, day in
+                    guard !day.isRestDay, day.dayNumber != recipientDayNumber else { return false }
+                    return directSets(on: day, forFocusArea: allocation.area) > meaningfulThreshold + 0.01
+                }
+                .sorted { lhs, rhs in
+                    let lhsDirect = directSets(on: lhs.element, forFocusArea: allocation.area)
+                    let rhsDirect = directSets(on: rhs.element, forFocusArea: allocation.area)
+                    if lhsDirect != rhsDirect { return lhsDirect > rhsDirect }
+                    return lhs.element.dayNumber < rhs.element.dayNumber
+                }
+
+            for (donorIndex, donorDay) in donorCandidates {
+                let donorDayDirectSets = directSets(on: donorDay, forFocusArea: allocation.area)
+                let donorMatchingIndices = donorDay.exercises.indices
+                    .filter { index in
+                        directPrioritySetContribution(
+                            exerciseName: donorDay.exercises[index].exerciseName,
+                            muscleTarget: donorDay.exercises[index].muscleTarget,
+                            intent: intent,
+                            sets: donorDay.exercises[index].sets
+                        ) > 0
+                    }
+                    .sorted { lhs, rhs in
+                        priorityContributionPerSet(for: donorDay.exercises[lhs], intent: intent)
+                            > priorityContributionPerSet(for: donorDay.exercises[rhs], intent: intent)
+                    }
+
+                for donorExerciseIndex in donorMatchingIndices {
+                    let donorExercise = donorDay.exercises[donorExerciseIndex]
+                    let perSetGain = priorityContributionPerSet(for: donorExercise, intent: intent)
+                    guard perSetGain > 0 else { continue }
+                    guard exerciseMatchesDayStyle(donorExercise, style: recipientPlan.style) else { continue }
+
+                    let donorReducibleSets = donorExercise.sets - minimumSetFloor(for: donorExercise)
+                    guard donorReducibleSets > 0 else { continue }
+
+                    let maxRecipientSets = Int(floor((recipientCapacity + 0.01) / perSetGain))
+                    let minimumMeaningfulSets = max(1, Int(ceil((meaningfulThreshold - 0.01) / perSetGain)))
+                    let setsToShift = min(donorReducibleSets, maxRecipientSets)
+                    guard setsToShift >= minimumMeaningfulSets else { continue }
+
+                    let directGain = Double(setsToShift) * perSetGain
+                    guard donorDayDirectSets - directGain + 0.01 >= meaningfulThreshold else { continue }
+
+                    var donorExercises = donorDay.exercises
+                    var recipientExercises = recipientDay.exercises
+
+                    donorExercises[donorExerciseIndex] = exerciseResponse(
+                        donorExercise,
+                        withSets: donorExercise.sets - setsToShift
+                    )
+
+                    if let existingRecipientIndex = recipientExercises.firstIndex(where: { exercise in
+                        normalizeExerciseName(exercise.exerciseName) == normalizeExerciseName(donorExercise.exerciseName)
+                    }) {
+                        recipientExercises[existingRecipientIndex] = exerciseResponse(
+                            recipientExercises[existingRecipientIndex],
+                            withSets: recipientExercises[existingRecipientIndex].sets + setsToShift
+                        )
+                    } else {
+                        recipientExercises.append(
+                            WorkoutExerciseResponse(
+                                exerciseName: donorExercise.exerciseName,
+                                sets: setsToShift,
+                                reps: donorExercise.reps,
+                                tempo: donorExercise.tempo,
+                                restSeconds: donorExercise.restSeconds,
+                                notes: proceduralExerciseNotes(
+                                    weekNumber: weekNumber,
+                                    exerciseName: donorExercise.exerciseName,
+                                    muscleTarget: donorExercise.muscleTarget,
+                                    index: recipientExercises.count,
+                                    focus: allocation.area
+                                ),
+                                muscleTarget: donorExercise.muscleTarget
+                            )
+                        )
+                    }
+
+                    guard recipientExercises.count <= 8,
+                          canAccommodatePriorityRepair(
+                            recipientExercises,
+                            targetFatigueCap: recipientPlan.targetFatigueCap,
+                            targetSessionMinutes: recipientPlan.targetSessionMinutes
+                          ) else {
+                        continue
+                    }
+
+                    updatedDays[donorIndex] = WorkoutDayResponse(
+                        dayNumber: donorDay.dayNumber,
+                        dayName: donorDay.dayName,
+                        muscleGroups: donorDay.muscleGroups,
+                        isRestDay: donorDay.isRestDay,
+                        notes: donorDay.notes,
+                        exercises: donorExercises
+                    )
+                    updatedDays[recipientIndex] = WorkoutDayResponse(
+                        dayNumber: recipientDay.dayNumber,
+                        dayName: recipientDay.dayName,
+                        muscleGroups: recipientDay.muscleGroups,
+                        isRestDay: recipientDay.isRestDay,
+                        notes: recipientDay.notes,
+                        exercises: recipientExercises
+                    )
+                    return updatedDays
+                }
+            }
+        }
+
+        return nil
+    }
+
     func repairCandidateDayNumbersExpanded(
         for allocation: BlueprintPriorityAllocation,
         blueprint: ProgramBlueprint,
@@ -573,6 +751,8 @@ extension ClaudeService {
         targetFatigueCap: Int,
         dayStyle: String,
         targetSessionMinutes: Int?,
+        remainingSessionDirectCapacity: Double,
+        minimumDirectGainNeeded: Double,
         weeklyVariationKeys: Set<String>,
         variationCap: Int
     ) -> (exercises: [WorkoutExerciseResponse], directGain: Double)? {
@@ -621,23 +801,30 @@ extension ClaudeService {
                 continue
             }
 
-            let sets = proceduralSets(for: weekNumber, exerciseName: candidate.name, muscleTarget: candidate.target)
+            let defaultSets = proceduralSets(for: weekNumber, exerciseName: candidate.name, muscleTarget: candidate.target)
             let reps = proceduralRepRange(for: weekNumber, exerciseName: candidate.name, muscleTarget: candidate.target)
-            let newExercise = WorkoutExerciseResponse(
+            let probeExercise = WorkoutExerciseResponse(
                 exerciseName: candidate.name,
-                sets: sets,
+                sets: defaultSets,
                 reps: reps,
                 tempo: proceduralTempo(for: weekNumber, exerciseName: candidate.name, muscleTarget: candidate.target, reps: reps),
                 restSeconds: proceduralRestSeconds(for: candidate.name, muscleTarget: candidate.target),
                 notes: proceduralExerciseNotes(weekNumber: weekNumber, exerciseName: candidate.name, muscleTarget: candidate.target, index: exercises.count, focus: allocation.area),
                 muscleTarget: candidate.target
             )
-            let directGain = directPrioritySetContribution(
-                exerciseName: newExercise.exerciseName,
-                muscleTarget: newExercise.muscleTarget,
-                intent: intent,
-                sets: newExercise.sets
-            )
+            let perSetGain = priorityContributionPerSet(for: probeExercise, intent: intent)
+            guard perSetGain > 0,
+                  remainingSessionDirectCapacity + 0.01 >= perSetGain else {
+                continue
+            }
+
+            let maxInjectableSets = Int(floor((remainingSessionDirectCapacity + 0.01) / perSetGain))
+            let cappedSets = min(defaultSets, maxInjectableSets)
+            guard cappedSets >= minimumSetFloor(for: probeExercise) else { continue }
+
+            let newExercise = exerciseResponse(probeExercise, withSets: cappedSets)
+            let directGain = perSetGain * Double(cappedSets)
+            guard directGain + 0.01 >= minimumDirectGainNeeded else { continue }
             guard directGain > 0 else { continue }
 
             var updated = exercises
@@ -1005,8 +1192,8 @@ extension ClaudeService {
                 ("Chest-Supported Row", "Upper Back"),
                 ("Lat Pulldown", "Lats"),
                 ("Cable Fly", "Chest"),
+                ("Reverse Pec Deck", "Rear Deltoids"),
                 ("Cable Lateral Raise", "Lateral Deltoids"),
-                ("Hammer Curl", "Biceps"),
                 ("Cable Triceps Pressdown", "Triceps")
             ]
         case "Legs":

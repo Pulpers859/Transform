@@ -583,6 +583,8 @@ extension ClaudeService {
         usageCounts: [String: Int],
         weeklyStyles: [String]
     ) -> [String] {
+        let supportLimit = maximumCompanionSupportAreas(for: style, focus: focus)
+
         allocations
             .filter { allocation in
                 allocation.preferredStyles.contains(style)
@@ -600,8 +602,20 @@ extension ClaudeService {
                     weeklyStyles: weeklyStyles
                 )
             }
-            .prefix(1)
+            .prefix(supportLimit)
             .map(\.area)
+    }
+
+    func maximumCompanionSupportAreas(
+        for style: String,
+        focus: BlueprintPriorityAllocation?
+    ) -> Int {
+        switch canonicalTrainingStyle(style) {
+        case "Upper":
+            return focus == nil ? 1 : 2
+        default:
+            return 1
+        }
     }
 
     func supportNeedScore(
