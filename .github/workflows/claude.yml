@@ -17,10 +17,9 @@ permissions:
 jobs:
   claude:
     if: >-
-      (github.event_name == 'issue_comment' ||
+      github.event_name == 'issue_comment' ||
       github.event_name == 'pull_request_review_comment' ||
-      github.event_name == 'pull_request_review') &&
-      (secrets.ANTHROPIC_API_KEY != '' || secrets.CLAUDE_CODE_OAUTH_TOKEN != '')
+      github.event_name == 'pull_request_review'
     runs-on: ubuntu-latest
 
     steps:
