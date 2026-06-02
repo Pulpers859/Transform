@@ -289,7 +289,7 @@ extension ClaudeService {
                     )
                     let currentDirectSets = directSets(on: day, forFocusArea: allocation.area)
                     var remainingSessionDirectCapacity = max(0, allowedCap - currentDirectSets)
-                    guard remainingSessionDirectCapacity > 0.01 || remainingFrequencyShortfall > 0 else { continue }
+                    guard remainingSessionDirectCapacity > 0.01 else { continue }
 
                     let targetFatigueCap = relativeBlueprintDayIndex(for: dayNumber, dayStart: dayStart)
                         .flatMap { relativeDayIndex in
@@ -317,6 +317,13 @@ extension ClaudeService {
                     let dayStyle = relativeBlueprintDayIndex(for: dayNumber, dayStart: dayStart)
                         .flatMap { idx in blueprint.dayPlans.first(where: { $0.dayIndex == idx })?.style }
                         ?? ""
+                    let weeklyVariationKeys = priorityVariationNames(
+                        for: allocation,
+                        in: repaired,
+                        overridingDayNumber: dayNumber,
+                        exercises: exercises
+                    )
+                    let variationCap = maximumUsefulVariationCount(for: allocation)
 
                     let existingPotentialGain = additionalRepairPotentialGain(
                         for: exercises,
@@ -339,7 +346,9 @@ extension ClaudeService {
                             weekNumber: weekNumber,
                             targetFatigueCap: targetFatigueCap,
                             dayStyle: dayStyle,
-                            targetSessionMinutes: targetSessionMinutes
+                            targetSessionMinutes: targetSessionMinutes,
+                            weeklyVariationKeys: weeklyVariationKeys,
+                            variationCap: variationCap
                         )
                         if let injected {
                             exercises = injected.exercises
@@ -409,13 +418,21 @@ extension ClaudeService {
 
                     if (remainingDirectShortfall > 0.01 || remainingWeightedShortfall > 0.01),
                        remainingSessionDirectCapacity > 0.01 {
+                        let updatedWeeklyVariationKeys = priorityVariationNames(
+                            for: allocation,
+                            in: repaired,
+                            overridingDayNumber: dayNumber,
+                            exercises: exercises
+                        )
                         let injected = injectAccessoryExercise(
                             into: exercises,
                             for: allocation,
                             weekNumber: weekNumber,
                             targetFatigueCap: targetFatigueCap,
                             dayStyle: dayStyle,
-                            targetSessionMinutes: targetSessionMinutes
+                            targetSessionMinutes: targetSessionMinutes,
+                            weeklyVariationKeys: updatedWeeklyVariationKeys,
+                            variationCap: variationCap
                         )
                         if let injected {
                             exercises = injected.exercises
@@ -522,7 +539,31 @@ extension ClaudeService {
         }
 
         candidates.append(contentsOf: extraDays)
-        return candidates
+
+        var seen = Set<Int>()
+        let uniqueCandidates = candidates.filter { candidate in
+            guard !seen.contains(candidate) else { return false }
+            seen.insert(candidate)
+            return true
+        }
+        return uniqueCandidates.sorted { lhs, rhs in
+            let lhsDirectSets = existingDays.first(where: { $0.dayNumber == lhs })
+                .map { directSets(on: $0, forFocusArea: allocation.area) }
+                ?? 0
+            let rhsDirectSets = existingDays.first(where: { $0.dayNumber == rhs })
+                .map { directSets(on: $0, forFocusArea: allocation.area) }
+                ?? 0
+            let lhsHasExposure = lhsDirectSets > 0.01
+            let rhsHasExposure = rhsDirectSets > 0.01
+
+            if needsFrequencyExpansion, lhsHasExposure != rhsHasExposure {
+                return !lhsHasExposure && rhsHasExposure
+            }
+            if lhsDirectSets != rhsDirectSets {
+                return lhsDirectSets < rhsDirectSets
+            }
+            return lhs < rhs
+        }
     }
 
     func injectAccessoryExercise(
@@ -531,7 +572,9 @@ extension ClaudeService {
         weekNumber: Int,
         targetFatigueCap: Int,
         dayStyle: String,
-        targetSessionMinutes: Int?
+        targetSessionMinutes: Int?,
+        weeklyVariationKeys: Set<String>,
+        variationCap: Int
     ) -> (exercises: [WorkoutExerciseResponse], directGain: Double)? {
         let intent = priorityIntent(for: allocation)
         let catalog = priorityAccessoryCatalog(for: intent)
@@ -545,9 +588,39 @@ extension ClaudeService {
                 tempo: "2-0-1-0", restSeconds: 60, notes: "", muscleTarget: entry.target
             )
             return exerciseMatchesDayStyle(probe, style: canonicalStyle)
+        }.sorted { lhs, rhs in
+            let lhsExistingVariation = weeklyVariationKeys.contains(normalizeExerciseName(lhs.name))
+            let rhsExistingVariation = weeklyVariationKeys.contains(normalizeExerciseName(rhs.name))
+            if lhsExistingVariation != rhsExistingVariation {
+                return lhsExistingVariation && !rhsExistingVariation
+            }
+
+            let lhsKind = focusStimulusKind(
+                exerciseName: lhs.name,
+                muscleTarget: lhs.target,
+                focusArea: allocation.area
+            )
+            let rhsKind = focusStimulusKind(
+                exerciseName: rhs.name,
+                muscleTarget: rhs.target,
+                focusArea: allocation.area
+            )
+            let lhsCredit = focusStimulusCredit(for: lhsKind)
+            let rhsCredit = focusStimulusCredit(for: rhsKind)
+            if lhsCredit != rhsCredit {
+                return lhsCredit > rhsCredit
+            }
+
+            return normalizeExerciseName(lhs.name) < normalizeExerciseName(rhs.name)
         }
 
         for candidate in candidates {
+            let candidateKey = normalizeExerciseName(candidate.name)
+            let wouldIntroduceNewVariation = !weeklyVariationKeys.contains(candidateKey)
+            if wouldIntroduceNewVariation && weeklyVariationKeys.count >= variationCap {
+                continue
+            }
+
             let sets = proceduralSets(for: weekNumber, exerciseName: candidate.name, muscleTarget: candidate.target)
             let reps = proceduralRepRange(for: weekNumber, exerciseName: candidate.name, muscleTarget: candidate.target)
             let newExercise = WorkoutExerciseResponse(
@@ -605,6 +678,35 @@ extension ClaudeService {
         }
 
         return nil
+    }
+
+    func priorityVariationNames(
+        for allocation: BlueprintPriorityAllocation,
+        in days: [WorkoutDayResponse],
+        overridingDayNumber: Int? = nil,
+        exercises overrideExercises: [WorkoutExerciseResponse]? = nil
+    ) -> Set<String> {
+        let intent = priorityIntent(for: allocation)
+        var names = Set<String>()
+
+        for day in days where !day.isRestDay {
+            let exercises = (day.dayNumber == overridingDayNumber && overrideExercises != nil)
+                ? (overrideExercises ?? day.exercises)
+                : day.exercises
+
+            for exercise in exercises {
+                let contribution = directPrioritySetContribution(
+                    exerciseName: exercise.exerciseName,
+                    muscleTarget: exercise.muscleTarget,
+                    intent: intent,
+                    sets: exercise.sets
+                )
+                guard contribution > 0 else { continue }
+                names.insert(normalizeExerciseName(exercise.exerciseName))
+            }
+        }
+
+        return names
     }
 
     func additionalRepairPotentialGain(
