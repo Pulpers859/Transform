@@ -1,0 +1,4 @@
+interface:
+  display_name: "Transform CI Triage"
+  short_description: "Debug Transform GitHub Actions and Xcode build drift."
+  default_prompt: "Use this skill to diagnose Transform GitHub Actions failures, Xcode build problems, and workflow drift before changing CI or app code."

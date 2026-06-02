@@ -14,7 +14,9 @@ Secrets.plist
 Packages/
 
 # Local tooling / agent artifacts
-.claude/
+.claude/*
+!.claude/skills/
+!.claude/skills/**
 _refactor_backups/
 
 # Logs / temp

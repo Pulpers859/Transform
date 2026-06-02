@@ -1,0 +1,4 @@
+interface:
+  display_name: "Transform Handoff"
+  short_description: "Orient Claude Code to the real Transform repo before editing."
+  default_prompt: "Use this skill at the start of a Transform task to confirm the real repo, stale-copy risks, branch workflow, and likely hotspots before making changes."

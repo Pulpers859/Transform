@@ -1,0 +1,4 @@
+interface:
+  display_name: "Transform Generator Audit"
+  short_description: "Audit workout generation, validator drift, and retry waste."
+  default_prompt: "Use this skill when reviewing the Transform workout generator, validator, fallback, or Generator Workshop output so issues are mapped to the correct layer before changes are made."

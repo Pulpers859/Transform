@@ -1,0 +1,4 @@
+interface:
+  display_name: "Transform Context Compact"
+  short_description: "Keep Transform context lean and handoffs compact."
+  default_prompt: "Use this skill when a Transform task risks bloating context or when you need a compact handoff. Rebuild only the minimum project state, pick the right repo skill, and summarize the result tightly."
