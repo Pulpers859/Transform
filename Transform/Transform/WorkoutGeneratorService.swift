@@ -135,6 +135,36 @@ extension ClaudeService {
                 if issues.isEmpty {
                     return labeledProgramResponse(cleaned, sourceLabel: aiSourceLabel)
                 }
+
+                if attempt >= generationAttempts {
+                    let (trimmedDays, didTrim) = trimOvershootExercises(
+                        days: cleaned.days,
+                        blueprint: blueprint
+                    )
+                    if didTrim {
+                        let trimmed = WorkoutProgramResponse(
+                            programName: cleaned.programName,
+                            programSummary: cleaned.programSummary,
+                            splitType: cleaned.splitType,
+                            daysPerWeek: cleaned.daysPerWeek,
+                            days: trimmedDays
+                        )
+                        let trimmedIssues = validateProgramResponse(trimmed, blueprint: blueprint)
+                        if trimmedIssues.isEmpty {
+                            print("[WorkoutGeneratorService] Week 1 overshoot trimmed — all issues resolved")
+                            return labeledProgramResponse(trimmed, sourceLabel: aiSourceLabel)
+                        }
+                        if shouldAcceptAIOutput(
+                            despite: trimmedIssues,
+                            attempt: attempt,
+                            generationAttempts: generationAttempts
+                        ) {
+                            print("[WorkoutGeneratorService] Week 1 accepted after overshoot trim with warnings: \(trimmedIssues.joined(separator: " | "))")
+                            return labeledProgramResponse(trimmed, sourceLabel: aiSourceLabel)
+                        }
+                    }
+                }
+
                 if shouldAcceptAIOutput(
                     despite: issues,
                     attempt: attempt,
@@ -300,6 +330,40 @@ extension ClaudeService {
                 if issues.isEmpty {
                     return labeledWeekResponse(cleaned, sourceLabel: aiSourceLabel)
                 }
+
+                if attempt >= generationAttempts {
+                    let (trimmedDays, didTrim) = trimOvershootExercises(
+                        days: cleaned.days,
+                        blueprint: blueprint,
+                        dayStart: dayStart
+                    )
+                    if didTrim {
+                        let trimmed = WorkoutWeekResponse(
+                            weekSummary: cleaned.weekSummary,
+                            days: trimmedDays
+                        )
+                        let trimmedIssues = validateWeekResponse(
+                            trimmed,
+                            dayStart: dayStart,
+                            dayEnd: dayEnd,
+                            previousWeekDays: hasValidPreviousWeek ? previousWeekDays : nil,
+                            blueprint: blueprint
+                        )
+                        if trimmedIssues.isEmpty {
+                            print("[WorkoutGeneratorService] Week \(weekNumber) overshoot trimmed — all issues resolved")
+                            return labeledWeekResponse(trimmed, sourceLabel: aiSourceLabel)
+                        }
+                        if shouldAcceptAIOutput(
+                            despite: trimmedIssues,
+                            attempt: attempt,
+                            generationAttempts: generationAttempts
+                        ) {
+                            print("[WorkoutGeneratorService] Week \(weekNumber) accepted after overshoot trim with warnings: \(trimmedIssues.joined(separator: " | "))")
+                            return labeledWeekResponse(trimmed, sourceLabel: aiSourceLabel)
+                        }
+                    }
+                }
+
                 if shouldAcceptAIOutput(
                     despite: issues,
                     attempt: attempt,
@@ -523,6 +587,63 @@ extension ClaudeService {
                                 replayInputJSON: nil,
                                 response: labeled
                             )
+                        }
+
+                        if attempt >= generationAttempts {
+                            let (trimmedDays, didTrim) = trimOvershootExercises(
+                                days: cleaned.days,
+                                blueprint: blueprint
+                            )
+                            if didTrim {
+                                let trimmedProgram = WorkoutProgramResponse(
+                                    programName: cleaned.programName,
+                                    programSummary: cleaned.programSummary,
+                                    splitType: cleaned.splitType,
+                                    daysPerWeek: cleaned.daysPerWeek,
+                                    days: trimmedDays
+                                )
+                                let trimmedIssues = validateProgramResponse(trimmedProgram, blueprint: blueprint)
+                                let trimmedPayload = try? encodeDebugJSONString(trimmedProgram)
+                                if trimmedIssues.isEmpty || shouldAcceptAIOutput(
+                                    despite: trimmedIssues,
+                                    attempt: attempt,
+                                    generationAttempts: generationAttempts
+                                ) {
+                                    attempts.append(
+                                        WorkoutGeneratorDebugAttempt(
+                                            attemptNumber: attempt,
+                                            rawPayload: jsonString,
+                                            sanitizedPayload: trimmedPayload,
+                                            validatorIssues: trimmedIssues,
+                                            outcome: trimmedIssues.isEmpty
+                                                ? "Accepted after overshoot trim"
+                                                : "Accepted after overshoot trim with warnings"
+                                        )
+                                    )
+                                    let labeled = labeledProgramResponse(trimmedProgram, sourceLabel: aiSourceLabel)
+                                    return try debugProgramReport(
+                                        stage: .weekOne,
+                                        mode: mode,
+                                        weekNumber: 1,
+                                        sourceLabel: aiSourceLabel,
+                                        acceptedWithWarnings: !trimmedIssues.isEmpty,
+                                        usedFallback: false,
+                                        displayTitle: labeled.programName,
+                                        splitType: labeled.splitType,
+                                        analysisSummary: analysisSummary,
+                                        trainingIntentSummary: intentSummary,
+                                        blueprintSummary: blueprintSummary,
+                                        previousWeekReference: nil,
+                                        systemPrompt: systemPrompt,
+                                        userPrompt: userPrompt,
+                                        warnings: [],
+                                        finalIssues: trimmedIssues,
+                                        attempts: attempts,
+                                        replayInputJSON: nil,
+                                        response: labeled
+                                    )
+                                }
+                            }
                         }
 
                         if shouldAcceptAIOutput(
@@ -910,6 +1031,66 @@ extension ClaudeService {
                                 replayInputJSON: nil,
                                 response: labeled
                             )
+                        }
+
+                        if attempt >= generationAttempts {
+                            let (trimmedDays, didTrim) = trimOvershootExercises(
+                                days: cleaned.days,
+                                blueprint: blueprint,
+                                dayStart: dayStart
+                            )
+                            if didTrim {
+                                let trimmedWeek = WorkoutWeekResponse(
+                                    weekSummary: cleaned.weekSummary,
+                                    days: trimmedDays
+                                )
+                                let trimmedIssues = validateWeekResponse(
+                                    trimmedWeek,
+                                    dayStart: dayStart,
+                                    dayEnd: dayEnd,
+                                    previousWeekDays: hasValidPreviousWeek ? previousWeekDays : nil,
+                                    blueprint: blueprint
+                                )
+                                let trimmedPayload = try? encodeDebugJSONString(trimmedWeek)
+                                if trimmedIssues.isEmpty || shouldAcceptAIOutput(
+                                    despite: trimmedIssues,
+                                    attempt: attempt,
+                                    generationAttempts: generationAttempts
+                                ) {
+                                    attempts.append(
+                                        WorkoutGeneratorDebugAttempt(
+                                            attemptNumber: attempt,
+                                            rawPayload: jsonString,
+                                            sanitizedPayload: trimmedPayload,
+                                            validatorIssues: trimmedIssues,
+                                            outcome: trimmedIssues.isEmpty
+                                                ? "Accepted after overshoot trim"
+                                                : "Accepted after overshoot trim with warnings"
+                                        )
+                                    )
+                                    let labeled = labeledWeekResponse(trimmedWeek, sourceLabel: aiSourceLabel)
+                                    return try debugWeekReport(
+                                        mode: mode,
+                                        weekNumber: weekNumber,
+                                        sourceLabel: aiSourceLabel,
+                                        acceptedWithWarnings: !trimmedIssues.isEmpty,
+                                        usedFallback: false,
+                                        displayTitle: programName,
+                                        splitType: splitType,
+                                        analysisSummary: analysisSummary,
+                                        trainingIntentSummary: intentSummary,
+                                        blueprintSummary: blueprintSummary,
+                                        previousWeekReference: previousWeekReference,
+                                        systemPrompt: systemPrompt,
+                                        userPrompt: userPrompt,
+                                        warnings: warnings,
+                                        finalIssues: trimmedIssues,
+                                        attempts: attempts,
+                                        replayInputJSON: nil,
+                                        response: labeled
+                                    )
+                                }
+                            }
                         }
 
                         if shouldAcceptAIOutput(

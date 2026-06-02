@@ -402,7 +402,8 @@ extension ClaudeService {
             let frequencyMiss = coverage.dayMatches < allocation.targetFrequency
             let meaningfulFrequencyMiss = coverage.meaningfulDayMatches < allocation.targetFrequency
             let directSetMiss = coverage.directSets + 1.0 < allocation.directSetTarget
-            let overDirectSetMiss = coverage.directSets > allocation.directSetTarget * 1.3 + 0.5
+            let severeOverDirectSetMiss = coverage.directSets > allocation.directSetTarget * 1.6 + 1.0
+            let overDirectSetMiss = !severeOverDirectSetMiss && coverage.directSets > allocation.directSetTarget * 1.3 + 0.5
             let slotMiss = coverage.exerciseMatches + 1 < allocation.targetExerciseSlots
                 && coverage.directSets + 0.5 < allocation.directSetTarget
             let weightedStimulusMiss = coverage.weightedStimulus + 1.0 < allocation.weightedStimulusTarget
@@ -424,7 +425,11 @@ extension ClaudeService {
                     "Blueprint priority '\(coverage.label)' missed its direct-set target (\(formatStimulusValue(coverage.directSets))/\(formatStimulusValue(allocation.directSetTarget)))."
                 )
             }
-            if overDirectSetMiss {
+            if severeOverDirectSetMiss {
+                issues.append(
+                    "Blueprint priority '\(coverage.label)' severely overshot its direct-set target (\(formatStimulusValue(coverage.directSets))/\(formatStimulusValue(allocation.directSetTarget))). The weekly volume is dangerously above the evidence-based range and must be restructured."
+                )
+            } else if overDirectSetMiss {
                 issues.append(
                     "Blueprint priority '\(coverage.label)' overshot its direct-set target enough to create avoidable fatigue (\(formatStimulusValue(coverage.directSets))/\(formatStimulusValue(allocation.directSetTarget))). Trim redundant work instead of stacking junk volume."
                 )
@@ -583,9 +588,33 @@ extension ClaudeService {
             return true
         }
         if attempt >= generationAttempts {
-            return issues.allSatisfy({ validationDisposition(for: $0) != .hardFailure })
+            if issues.contains(where: { validationDisposition(for: $0) == .hardFailure }) {
+                return false
+            }
+            if hasCompoundPriorityViolation(in: issues) {
+                return false
+            }
+            return true
         }
         return false
+    }
+
+    func hasCompoundPriorityViolation(in issues: [String]) -> Bool {
+        let overshootLabels = Set(issues.compactMap {
+            extractPriorityLabel(from: $0, keyword: "overshot its direct-set target")
+        })
+        let variationLabels = Set(issues.compactMap {
+            extractPriorityLabel(from: $0, keyword: "uses too many weekly exercise variations")
+        })
+        return !overshootLabels.isDisjoint(with: variationLabels)
+    }
+
+    func extractPriorityLabel(from issue: String, keyword: String) -> String? {
+        guard issue.contains(keyword) else { return nil }
+        guard let openQuote = issue.firstIndex(of: "'") else { return nil }
+        let afterOpen = issue.index(after: openQuote)
+        guard let closeQuote = issue[afterOpen...].firstIndex(of: "'") else { return nil }
+        return String(issue[afterOpen..<closeQuote])
     }
 
     func validationDisposition(for issue: String) -> ValidationIssueDisposition {
@@ -709,6 +738,112 @@ extension ClaudeService {
         }
 
         return issues
+    }
+
+    // MARK: - Overshoot Trim Correction
+
+    func trimOvershootExercises(
+        days: [WorkoutDayResponse],
+        blueprint: ProgramBlueprint,
+        dayStart: Int = 1
+    ) -> (days: [WorkoutDayResponse], didTrim: Bool) {
+        var mutableDays = days
+        var didTrim = false
+
+        for allocation in blueprint.priorityAllocations {
+            let report = buildWeekStimulusReport(from: mutableDays)
+            let coverage = priorityCoverage(for: allocation, stimulusReport: report)
+            let ceiling = allocation.directSetTarget * 1.3 + 0.5
+            guard coverage.directSets > ceiling else { continue }
+
+            var excess = coverage.directSets - ceiling
+            let allocatedDays = allocatedDayNumbers(for: allocation, blueprint: blueprint, dayStart: dayStart)
+
+            var targets: [(dayIndex: Int, exerciseIndex: Int, creditPerSet: Double, sets: Int, onAllocatedDay: Bool)] = []
+            for (di, day) in mutableDays.enumerated() where !day.isRestDay {
+                for (ei, exercise) in day.exercises.enumerated() {
+                    let credit = directSetCredit(for: exercise, area: allocation.area)
+                    guard credit > 0 else { continue }
+                    targets.append((
+                        dayIndex: di,
+                        exerciseIndex: ei,
+                        creditPerSet: credit / Double(max(1, exercise.sets)),
+                        sets: exercise.sets,
+                        onAllocatedDay: allocatedDays.contains(day.dayNumber)
+                    ))
+                }
+            }
+
+            targets.sort { lhs, rhs in
+                if lhs.onAllocatedDay != rhs.onAllocatedDay { return !lhs.onAllocatedDay }
+                return lhs.sets > rhs.sets
+            }
+
+            for target in targets {
+                guard excess > 0 else { break }
+                let day = mutableDays[target.dayIndex]
+                let exercise = day.exercises[target.exerciseIndex]
+                guard exercise.sets > 2 else { continue }
+
+                let setsToTrim = min(exercise.sets - 2, Int(ceil(excess / target.creditPerSet)))
+                guard setsToTrim > 0 else { continue }
+
+                let newExercise = WorkoutExerciseResponse(
+                    exerciseName: exercise.exerciseName,
+                    sets: exercise.sets - setsToTrim,
+                    reps: exercise.reps,
+                    tempo: exercise.tempo,
+                    restSeconds: exercise.restSeconds,
+                    notes: exercise.notes,
+                    muscleTarget: exercise.muscleTarget
+                )
+                var newExercises = day.exercises
+                newExercises[target.exerciseIndex] = newExercise
+                mutableDays[target.dayIndex] = WorkoutDayResponse(
+                    dayNumber: day.dayNumber,
+                    dayName: day.dayName,
+                    muscleGroups: day.muscleGroups,
+                    isRestDay: day.isRestDay,
+                    notes: day.notes,
+                    exercises: newExercises
+                )
+                excess -= Double(setsToTrim) * target.creditPerSet
+                didTrim = true
+            }
+        }
+
+        return (mutableDays, didTrim)
+    }
+
+    func allocatedDayNumbers(
+        for allocation: BlueprintPriorityAllocation,
+        blueprint: ProgramBlueprint,
+        dayStart: Int
+    ) -> Set<Int> {
+        let aliases = Set(stimulusAreaAliases(for: allocation.area).map(normalizedPriorityText))
+        var dayNumbers = Set<Int>()
+
+        for plan in blueprint.dayPlans where !plan.isRestDay {
+            let dayNumber = blueprintDayNumber(plan.dayIndex, dayStart: dayStart)
+
+            if let focusArea = plan.focusArea {
+                let focusAliases = Set(stimulusAreaAliases(for: focusArea).map(normalizedPriorityText))
+                if !aliases.isDisjoint(with: focusAliases) {
+                    dayNumbers.insert(dayNumber)
+                    continue
+                }
+            }
+
+            for supportArea in plan.supportAreas {
+                let supportAliases = Set(stimulusAreaAliases(for: supportArea).map(normalizedPriorityText))
+                if !aliases.isDisjoint(with: supportAliases) {
+                    dayNumbers.insert(dayNumber)
+                    break
+                }
+            }
+        }
+
+        return dayNumbers
     }
 
 }
