@@ -141,6 +141,10 @@ extension ClaudeService {
             rules.append("- Remove off-theme filler before touching the day's prime movement or the blueprint's intended support work.")
         }
 
+        if issues.contains(where: { $0.contains("already reached its weekly target") }) {
+            rules.append("- When a priority muscle has already reached its weekly direct-set target from its designated focus/support days, do not add more volume for that muscle on other days. Replace the redundant exercise with work that serves an unmet need.")
+        }
+
         if issues.contains(where: { $0.contains("minimum viable stimulus threshold") || $0.contains("missed its frequency target") || $0.contains("missed its direct-set target") }) {
             rules.append("- If frequency or direct-set targets are short, add stimulus with the smallest coherent change possible instead of bloating the whole session.")
         }

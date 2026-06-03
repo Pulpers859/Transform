@@ -396,14 +396,19 @@ extension ClaudeService {
             )
         }
 
+        let recoveryTight = blueprint.calibration.recoveryConstrained || blueprint.calibration.poorNutritionAdherence
+        let severeMultiplier = recoveryTight ? 1.35 : 1.6
+        let moderateMultiplier = recoveryTight ? 1.15 : 1.3
+        let moderateBuffer = recoveryTight ? 0.0 : 0.5
+
         for allocation in blueprint.priorityAllocations {
             let coverage = priorityCoverage(for: allocation, stimulusReport: stimulusReport)
             let peakDirectSession = peakDirectSession(for: allocation, stimulusReport: stimulusReport)
             let frequencyMiss = coverage.dayMatches < allocation.targetFrequency
             let meaningfulFrequencyMiss = coverage.meaningfulDayMatches < allocation.targetFrequency
             let directSetMiss = coverage.directSets + 1.0 < allocation.directSetTarget
-            let severeOverDirectSetMiss = coverage.directSets > allocation.directSetTarget * 1.6 + 1.0
-            let overDirectSetMiss = !severeOverDirectSetMiss && coverage.directSets > allocation.directSetTarget * 1.3 + 0.5
+            let severeOverDirectSetMiss = coverage.directSets > allocation.directSetTarget * severeMultiplier + 1.0
+            let overDirectSetMiss = !severeOverDirectSetMiss && coverage.directSets > allocation.directSetTarget * moderateMultiplier + moderateBuffer
             let slotMiss = coverage.exerciseMatches + 1 < allocation.targetExerciseSlots
                 && coverage.directSets + 0.5 < allocation.directSetTarget
             let weightedStimulusMiss = coverage.weightedStimulus + 1.0 < allocation.weightedStimulusTarget
@@ -677,6 +682,7 @@ extension ClaudeService {
             "excessive elbow joint stress",
             "excessive lower-back stress",
             "excessive knee joint stress",
+            "already reached its weekly target",
             "notes describe a low-fatigue",
             "notes describe a shoulder-friendly",
             "notes claim",
@@ -832,11 +838,14 @@ extension ClaudeService {
     ) -> (days: [WorkoutDayResponse], didTrim: Bool) {
         var mutableDays = days
         var didTrim = false
+        let recoveryTight = blueprint.calibration.recoveryConstrained || blueprint.calibration.poorNutritionAdherence
+        let trimMultiplier = recoveryTight ? 1.15 : 1.3
+        let trimBuffer = recoveryTight ? 0.0 : 0.5
 
         for allocation in blueprint.priorityAllocations {
             let report = buildWeekStimulusReport(from: mutableDays)
             let coverage = priorityCoverage(for: allocation, stimulusReport: report)
-            let ceiling = allocation.directSetTarget * 1.3 + 0.5
+            let ceiling = allocation.directSetTarget * trimMultiplier + trimBuffer
             guard coverage.directSets > ceiling else { continue }
 
             var excess = coverage.directSets - ceiling

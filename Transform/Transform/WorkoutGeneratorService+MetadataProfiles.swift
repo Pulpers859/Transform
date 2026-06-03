@@ -148,6 +148,7 @@ extension ClaudeService {
         dayStart: Int
     ) -> [String] {
         var issues: [String] = []
+        let stimulusReport = buildWeekStimulusReport(from: days)
 
         for plan in blueprint.dayPlans {
             let actualDayNumber = blueprintDayNumber(plan.dayIndex, dayStart: dayStart)
@@ -249,6 +250,13 @@ extension ClaudeService {
             issues.append(contentsOf: validateNoteContradictions(
                 on: actualDay,
                 blueprint: blueprint,
+                dayStart: dayStart
+            ))
+            issues.append(contentsOf: validateRedundantPriorityVolume(
+                on: actualDay,
+                dayPlan: plan,
+                blueprint: blueprint,
+                stimulusReport: stimulusReport,
                 dayStart: dayStart
             ))
         }
@@ -461,6 +469,37 @@ extension ClaudeService {
             expectedStyle: expectedCanonical,
             focusArea: focusArea
         ))
+
+        return issues
+    }
+
+    func validateRedundantPriorityVolume(
+        on day: WorkoutDayResponse,
+        dayPlan: BlueprintDayPlan,
+        blueprint: ProgramBlueprint,
+        stimulusReport: WeekStimulusReport,
+        dayStart: Int
+    ) -> [String] {
+        guard !day.isRestDay else { return [] }
+        var issues: [String] = []
+
+        for allocation in blueprint.priorityAllocations {
+            let coverage = priorityCoverage(for: allocation, stimulusReport: stimulusReport)
+            guard coverage.directSets > allocation.directSetTarget else { continue }
+
+            let allocatedDays = allocatedDayNumbers(for: allocation, blueprint: blueprint, dayStart: dayStart)
+            guard !allocatedDays.contains(day.dayNumber) else { continue }
+
+            let redundantExercises = day.exercises.filter {
+                directSetCredit(for: $0, area: allocation.area) > 0
+            }
+            guard !redundantExercises.isEmpty else { continue }
+
+            let names = redundantExercises.prefix(2).map(\.exerciseName).joined(separator: ", ")
+            issues.append(
+                "Day \(day.dayNumber): \(allocation.area) already reached its weekly target (\(formatStimulusValue(coverage.directSets))/\(formatStimulusValue(allocation.directSetTarget))), but this non-focus day still adds volume via \(names). Remove or replace with work that serves an unmet target."
+            )
+        }
 
         return issues
     }
