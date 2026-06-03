@@ -595,7 +595,8 @@ struct WorkoutView: View {
                 currentWeek: 1,
                 maxWeeks: 4,
                 analysisJSON: analysisJSONString,
-                validatorWarnings: warningsText
+                validatorWarnings: warningsText,
+                lastGenerationBundle: generationResult.bundleText
             )
             modelContext.insert(program)
 
@@ -679,6 +680,7 @@ struct WorkoutView: View {
             }
             program.programJSON = weekJSON
             program.validatorWarnings = generationResult.validatorWarnings.joined(separator: "\n")
+            program.lastGenerationBundle = generationResult.bundleText
 
             WorkoutGenerationDiagnostics.markStage("saving generated week \(nextWeek) program to storage")
             guard PersistenceReporter.save(modelContext, operation: "generated next workout week") else {

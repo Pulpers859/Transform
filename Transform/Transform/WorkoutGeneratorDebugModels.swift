@@ -1,6 +1,7 @@
 import Foundation
 
 enum WorkoutGeneratorDebugMode: String, CaseIterable, Identifiable {
+    case lastGeneration = "Last Generation"
     case liveAI = "Live AI"
     case procedural = "Procedural"
     case validatorReplay = "Validator Replay"
@@ -13,6 +14,8 @@ enum WorkoutGeneratorDebugMode: String, CaseIterable, Identifiable {
 
     var description: String {
         switch self {
+        case .lastGeneration:
+            return "Shows the full debug bundle from the most recent production generation. No API call."
         case .liveAI:
             return "Runs the real AI generator with retries, validation, and fallback. Uses API credits."
         case .procedural:
@@ -24,6 +27,8 @@ enum WorkoutGeneratorDebugMode: String, CaseIterable, Identifiable {
 
     var actionTitle: String {
         switch self {
+        case .lastGeneration:
+            return "Load Last Generation"
         case .liveAI:
             return "Run Live AI"
         case .procedural:
@@ -75,6 +80,7 @@ struct WorkoutGeneratorDebugReport: Identifiable {
     let finalJSON: String
     let previewSummary: String
     let previewDays: [WorkoutDayResponse]
+    var storedBundleText: String? = nil
 
     var hasTerminalError: Bool {
         if let terminalError {
@@ -132,6 +138,9 @@ struct WorkoutGeneratorDebugReport: Identifiable {
     }
 
     var bundleText: String {
+        if let storedBundleText, !storedBundleText.isEmpty {
+            return storedBundleText
+        }
         var lines: [String] = [
             "Stage: \(stage.rawValue)",
             "Mode: \(mode.rawValue)",

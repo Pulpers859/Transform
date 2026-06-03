@@ -77,6 +77,65 @@ extension ClaudeService {
         weightedStimulusBonusIndirect: 3.0
     )
 
+    // MARK: - Production Bundle Text
+
+    func productionBundleText(
+        weekNumber: Int,
+        sourceLabel: String,
+        acceptedWithWarnings: Bool,
+        usedFallback: Bool,
+        displayTitle: String,
+        splitType: String,
+        analysisSummary: String,
+        trainingIntentSummary: String,
+        blueprintSummary: String,
+        systemPrompt: String,
+        userPrompt: String,
+        warnings: [String],
+        attemptTrace: [String],
+        finalJSON: String
+    ) -> String {
+        var lines: [String] = [
+            "Stage: Week \(weekNumber)",
+            "Mode: Live AI",
+            "Week: \(weekNumber)",
+            "Used API: Yes",
+            "Source: \(sourceLabel)",
+            "Accepted With Warnings: \(acceptedWithWarnings ? "Yes" : "No")",
+            "Used Fallback: \(usedFallback ? "Yes" : "No")",
+            "Title: \(displayTitle)",
+            "Split: \(splitType)",
+            "",
+            "Warnings:",
+            warnings.isEmpty ? "No warnings." : warnings.enumerated().map { "\($0.offset + 1). \($0.element)" }.joined(separator: "\n"),
+            "",
+            "Validator Issues:",
+            warnings.isEmpty ? "No validator issues." : warnings.enumerated().map { "\($0.offset + 1). \($0.element)" }.joined(separator: "\n"),
+            "",
+            "Analysis Summary:",
+            analysisSummary,
+            "",
+            "Training Intent:",
+            trainingIntentSummary,
+            "",
+            "Blueprint:",
+            blueprintSummary,
+            "",
+            "System Prompt:",
+            systemPrompt,
+            "",
+            "User Prompt:",
+            userPrompt,
+            "",
+            "Attempt Trace:",
+            attemptTrace.isEmpty ? "Clean pass — no correction attempts needed." : attemptTrace.joined(separator: "\n\n"),
+            "",
+            "Final JSON:",
+            finalJSON
+        ]
+        return lines.joined(separator: "\n")
+    }
+
     // MARK: - Generate Week 1 (Initial)
 
     func generateWeekOne(from analysisResult: BodyAnalysisResult) async throws -> WorkoutProgramGenerationResult {
@@ -113,6 +172,27 @@ extension ClaudeService {
         )
 
         var lastIssues: [String] = []
+        var attemptTrace: [String] = []
+
+        func buildBundle(response: WorkoutProgramResponse, warnings: [String], usedFallback: Bool) -> String {
+            let json = (try? encodeDebugJSONString(response)) ?? ""
+            return productionBundleText(
+                weekNumber: 1,
+                sourceLabel: usedFallback ? fallbackSourceLabel : aiSourceLabel,
+                acceptedWithWarnings: !warnings.isEmpty,
+                usedFallback: usedFallback,
+                displayTitle: response.programName,
+                splitType: response.splitType,
+                analysisSummary: analysisSummary,
+                trainingIntentSummary: intentSummary,
+                blueprintSummary: blueprintSummary,
+                systemPrompt: systemPrompt,
+                userPrompt: userPrompt,
+                warnings: warnings,
+                attemptTrace: attemptTrace,
+                finalJSON: json
+            )
+        }
 
         for attempt in 1...generationAttempts {
             try Task.checkCancellation()
@@ -133,9 +213,12 @@ extension ClaudeService {
                 let issues = validateProgramResponse(cleaned, blueprint: blueprint)
 
                 if issues.isEmpty {
+                    attemptTrace.append("Attempt \(attempt): Accepted — no issues")
+                    let labeled = labeledProgramResponse(cleaned, sourceLabel: aiSourceLabel)
                     return WorkoutProgramGenerationResult(
-                        response: labeledProgramResponse(cleaned, sourceLabel: aiSourceLabel),
-                        validatorWarnings: []
+                        response: labeled,
+                        validatorWarnings: [],
+                        bundleText: buildBundle(response: labeled, warnings: [], usedFallback: false)
                     )
                 }
 
@@ -155,9 +238,12 @@ extension ClaudeService {
                         let trimmedIssues = validateProgramResponse(trimmed, blueprint: blueprint)
                         if trimmedIssues.isEmpty {
                             print("[WorkoutGeneratorService] Week 1 overshoot trimmed — all issues resolved")
+                            attemptTrace.append("Attempt \(attempt): Accepted after overshoot trim — all issues resolved")
+                            let labeled = labeledProgramResponse(trimmed, sourceLabel: aiSourceLabel)
                             return WorkoutProgramGenerationResult(
-                                response: labeledProgramResponse(trimmed, sourceLabel: aiSourceLabel),
-                                validatorWarnings: []
+                                response: labeled,
+                                validatorWarnings: [],
+                                bundleText: buildBundle(response: labeled, warnings: [], usedFallback: false)
                             )
                         }
                         if shouldAcceptAIOutput(
@@ -166,9 +252,12 @@ extension ClaudeService {
                             generationAttempts: generationAttempts
                         ) {
                             print("[WorkoutGeneratorService] Week 1 accepted after overshoot trim with warnings: \(trimmedIssues.joined(separator: " | "))")
+                            attemptTrace.append("Attempt \(attempt): Accepted after overshoot trim with warnings\nIssues:\n\(trimmedIssues.map { "- \($0)" }.joined(separator: "\n"))")
+                            let labeled = labeledProgramResponse(trimmed, sourceLabel: aiSourceLabel)
                             return WorkoutProgramGenerationResult(
-                                response: labeledProgramResponse(trimmed, sourceLabel: aiSourceLabel),
-                                validatorWarnings: trimmedIssues
+                                response: labeled,
+                                validatorWarnings: trimmedIssues,
+                                bundleText: buildBundle(response: labeled, warnings: trimmedIssues, usedFallback: false)
                             )
                         }
                     }
@@ -180,12 +269,16 @@ extension ClaudeService {
                     generationAttempts: generationAttempts
                 ) {
                     print("[WorkoutGeneratorService] Week 1 accepted with heuristic validator warnings: \(issues.joined(separator: " | "))")
+                    attemptTrace.append("Attempt \(attempt): Accepted with warnings\nIssues:\n\(issues.map { "- \($0)" }.joined(separator: "\n"))")
+                    let labeled = labeledProgramResponse(cleaned, sourceLabel: aiSourceLabel)
                     return WorkoutProgramGenerationResult(
-                        response: labeledProgramResponse(cleaned, sourceLabel: aiSourceLabel),
-                        validatorWarnings: issues
+                        response: labeled,
+                        validatorWarnings: issues,
+                        bundleText: buildBundle(response: labeled, warnings: issues, usedFallback: false)
                     )
                 }
 
+                attemptTrace.append("Attempt \(attempt): Rejected by validator\nIssues:\n\(issues.map { "- \($0)" }.joined(separator: "\n"))")
                 lastIssues = issues
                 if attempt < generationAttempts {
                     requestBody = correctionRequestBody(
@@ -199,6 +292,7 @@ extension ClaudeService {
                     continue
                 }
             } catch {
+                attemptTrace.append("Attempt \(attempt): API error — \(error.localizedDescription)")
                 lastIssues = ["API error (attempt \(attempt)): \(error.localizedDescription)"]
 
                 if shouldAbortFallback(for: error) {
@@ -227,14 +321,16 @@ extension ClaudeService {
         }
 
         WorkoutGenerationDiagnostics.markStage("building procedural week 1 fallback")
+        let fallbackResponse = try validatedProceduralWeekOneProgram(
+            from: analysisResult,
+            trainingIntent: trainingIntent,
+            blueprint: blueprint,
+            diagnostic: lastIssues.joined(separator: " | ")
+        )
         return WorkoutProgramGenerationResult(
-            response: try validatedProceduralWeekOneProgram(
-                from: analysisResult,
-                trainingIntent: trainingIntent,
-                blueprint: blueprint,
-                diagnostic: lastIssues.joined(separator: " | ")
-            ),
-            validatorWarnings: lastIssues
+            response: fallbackResponse,
+            validatorWarnings: lastIssues,
+            bundleText: buildBundle(response: fallbackResponse, warnings: lastIssues, usedFallback: true)
         )
     }
 
@@ -318,6 +414,34 @@ extension ClaudeService {
         )
 
         var lastIssues: [String] = []
+        var attemptTrace: [String] = []
+
+        func buildWeekBundle(weekSummary: String, days: [WorkoutDayResponse], warnings: [String], usedFallback: Bool) -> String {
+            let fakeProgram = WorkoutProgramResponse(
+                programName: programName,
+                programSummary: weekSummary,
+                splitType: splitType,
+                daysPerWeek: days.filter { !$0.isRestDay }.count,
+                days: days
+            )
+            let json = (try? encodeDebugJSONString(fakeProgram)) ?? ""
+            return productionBundleText(
+                weekNumber: weekNumber,
+                sourceLabel: usedFallback ? fallbackSourceLabel : aiSourceLabel,
+                acceptedWithWarnings: !warnings.isEmpty,
+                usedFallback: usedFallback,
+                displayTitle: programName,
+                splitType: splitType,
+                analysisSummary: analysisSummary,
+                trainingIntentSummary: intentSummary,
+                blueprintSummary: blueprintSummary,
+                systemPrompt: systemPrompt,
+                userPrompt: userPrompt,
+                warnings: warnings,
+                attemptTrace: attemptTrace,
+                finalJSON: json
+            )
+        }
 
         for attempt in 1...generationAttempts {
             try Task.checkCancellation()
@@ -343,9 +467,12 @@ extension ClaudeService {
                 )
 
                 if issues.isEmpty {
+                    attemptTrace.append("Attempt \(attempt): Accepted — no issues")
+                    let labeled = labeledWeekResponse(cleaned, sourceLabel: aiSourceLabel)
                     return WorkoutWeekGenerationResult(
-                        response: labeledWeekResponse(cleaned, sourceLabel: aiSourceLabel),
-                        validatorWarnings: []
+                        response: labeled,
+                        validatorWarnings: [],
+                        bundleText: buildWeekBundle(weekSummary: labeled.weekSummary, days: labeled.days, warnings: [], usedFallback: false)
                     )
                 }
 
@@ -369,9 +496,12 @@ extension ClaudeService {
                         )
                         if trimmedIssues.isEmpty {
                             print("[WorkoutGeneratorService] Week \(weekNumber) overshoot trimmed — all issues resolved")
+                            attemptTrace.append("Attempt \(attempt): Accepted after overshoot trim — all issues resolved")
+                            let labeled = labeledWeekResponse(trimmed, sourceLabel: aiSourceLabel)
                             return WorkoutWeekGenerationResult(
-                                response: labeledWeekResponse(trimmed, sourceLabel: aiSourceLabel),
-                                validatorWarnings: []
+                                response: labeled,
+                                validatorWarnings: [],
+                                bundleText: buildWeekBundle(weekSummary: labeled.weekSummary, days: labeled.days, warnings: [], usedFallback: false)
                             )
                         }
                         if shouldAcceptAIOutput(
@@ -380,9 +510,12 @@ extension ClaudeService {
                             generationAttempts: generationAttempts
                         ) {
                             print("[WorkoutGeneratorService] Week \(weekNumber) accepted after overshoot trim with warnings: \(trimmedIssues.joined(separator: " | "))")
+                            attemptTrace.append("Attempt \(attempt): Accepted after overshoot trim with warnings\nIssues:\n\(trimmedIssues.map { "- \($0)" }.joined(separator: "\n"))")
+                            let labeled = labeledWeekResponse(trimmed, sourceLabel: aiSourceLabel)
                             return WorkoutWeekGenerationResult(
-                                response: labeledWeekResponse(trimmed, sourceLabel: aiSourceLabel),
-                                validatorWarnings: trimmedIssues
+                                response: labeled,
+                                validatorWarnings: trimmedIssues,
+                                bundleText: buildWeekBundle(weekSummary: labeled.weekSummary, days: labeled.days, warnings: trimmedIssues, usedFallback: false)
                             )
                         }
                     }
@@ -394,12 +527,16 @@ extension ClaudeService {
                     generationAttempts: generationAttempts
                 ) {
                     print("[WorkoutGeneratorService] Week \(weekNumber) accepted with heuristic validator warnings: \(issues.joined(separator: " | "))")
+                    attemptTrace.append("Attempt \(attempt): Accepted with warnings\nIssues:\n\(issues.map { "- \($0)" }.joined(separator: "\n"))")
+                    let labeled = labeledWeekResponse(cleaned, sourceLabel: aiSourceLabel)
                     return WorkoutWeekGenerationResult(
-                        response: labeledWeekResponse(cleaned, sourceLabel: aiSourceLabel),
-                        validatorWarnings: issues
+                        response: labeled,
+                        validatorWarnings: issues,
+                        bundleText: buildWeekBundle(weekSummary: labeled.weekSummary, days: labeled.days, warnings: issues, usedFallback: false)
                     )
                 }
 
+                attemptTrace.append("Attempt \(attempt): Rejected by validator\nIssues:\n\(issues.map { "- \($0)" }.joined(separator: "\n"))")
                 lastIssues = issues
                 if attempt < generationAttempts {
                     requestBody = correctionRequestBody(
@@ -413,6 +550,7 @@ extension ClaudeService {
                     continue
                 }
             } catch {
+                attemptTrace.append("Attempt \(attempt): API error — \(error.localizedDescription)")
                 lastIssues = ["API error (attempt \(attempt)): \(error.localizedDescription)"]
 
                 if shouldAbortFallback(for: error) {
@@ -440,19 +578,21 @@ extension ClaudeService {
             print("[WorkoutGeneratorService] Week \(weekNumber) fallback activated after issues: \(lastIssues.joined(separator: " | "))")
         }
 
+        let fallbackResponse = try validatedProceduralWeek(
+            weekNumber: weekNumber,
+            dayStart: dayStart,
+            dayEnd: dayEnd,
+            splitType: splitType,
+            programName: programName,
+            trainingIntent: trainingIntent,
+            blueprint: blueprint,
+            previousWeekDays: hasValidPreviousWeek ? previousWeekDays : nil,
+            diagnostic: lastIssues.joined(separator: " | ")
+        )
         return WorkoutWeekGenerationResult(
-            response: try validatedProceduralWeek(
-                weekNumber: weekNumber,
-                dayStart: dayStart,
-                dayEnd: dayEnd,
-                splitType: splitType,
-                programName: programName,
-                trainingIntent: trainingIntent,
-                blueprint: blueprint,
-                previousWeekDays: hasValidPreviousWeek ? previousWeekDays : nil,
-                diagnostic: lastIssues.joined(separator: " | ")
-            ),
-            validatorWarnings: lastIssues
+            response: fallbackResponse,
+            validatorWarnings: lastIssues,
+            bundleText: buildWeekBundle(weekSummary: fallbackResponse.weekSummary, days: fallbackResponse.days, warnings: lastIssues, usedFallback: true)
         )
     }
 

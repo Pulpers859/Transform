@@ -9,7 +9,7 @@ struct WorkoutGeneratorLabView: View {
     @FocusState private var focusedEditor: EditorField?
 
     @State private var selectedStage: WorkoutGeneratorDebugStage = .weekOne
-    @State private var selectedMode: WorkoutGeneratorDebugMode = .procedural
+    @State private var selectedMode: WorkoutGeneratorDebugMode = .lastGeneration
     @State private var selectedAnalysisSourceIndex = 0
     @State private var targetWeekNumber = 2
     @State private var splitType = ""
@@ -71,6 +71,10 @@ struct WorkoutGeneratorLabView: View {
     }
 
     var canRun: Bool {
+        if selectedMode == .lastGeneration {
+            return currentProgram?.lastGenerationBundle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+        }
+
         if decodedAnalysis == nil {
             return false
         }
@@ -536,6 +540,11 @@ struct WorkoutGeneratorLabView: View {
     }
 
     func runLab() async {
+        if selectedMode == .lastGeneration {
+            await loadLastGenerationReport()
+            return
+        }
+
         guard let analysis = decodedAnalysis else {
             presentError("The analysis JSON could not be decoded into a valid BodyAnalysisResult.")
             return
@@ -574,6 +583,54 @@ struct WorkoutGeneratorLabView: View {
         } catch {
             presentError(error.localizedDescription)
         }
+    }
+
+    @MainActor
+    func loadLastGenerationReport() async {
+        guard let program = currentProgram else {
+            presentError("No current program found.")
+            return
+        }
+
+        let bundle = program.lastGenerationBundle
+        guard !bundle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            presentError("No stored generation report. Generate a workout first.")
+            return
+        }
+
+        let warnings = program.validatorWarnings
+            .components(separatedBy: "\n")
+            .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+
+        let previewDays = ClaudeService.shared.decodePreviousWeekDays(from: program.programJSON)
+
+        var lastReport = WorkoutGeneratorDebugReport(
+            stage: program.currentWeek == 1 ? .weekOne : .nextWeek,
+            mode: .lastGeneration,
+            weekNumber: program.currentWeek,
+            usedAPI: true,
+            sourceLabel: ClaudeService.shared.sourceLabel(from: program.programSummary, fallback: "[AI Coach]"),
+            acceptedWithWarnings: !warnings.isEmpty,
+            usedFallback: program.programSummary.contains("[Recovery Engine]"),
+            displayTitle: program.programName,
+            splitType: program.splitType,
+            analysisSummary: "(stored in bundle)",
+            trainingIntentSummary: "(stored in bundle)",
+            blueprintSummary: "(stored in bundle)",
+            previousWeekReference: nil,
+            systemPrompt: "(stored in bundle)",
+            userPrompt: "(stored in bundle)",
+            warnings: warnings,
+            finalIssues: warnings,
+            attempts: [],
+            replayInputJSON: nil,
+            terminalError: nil,
+            finalJSON: program.programJSON,
+            previewSummary: program.programSummary,
+            previewDays: previewDays
+        )
+        lastReport.storedBundleText = bundle
+        report = lastReport
     }
 
     func seedStateIfNeeded(force: Bool) {

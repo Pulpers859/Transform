@@ -20,6 +20,7 @@ class WorkoutProgram {
     var maxWeeks: Int = 4
     var analysisJSON: String = ""
     var validatorWarnings: String = ""
+    var lastGenerationBundle: String = ""
 
     @Relationship(deleteRule: .cascade, inverse: \WorkoutDay.program)
     var days: [WorkoutDay] = []
@@ -36,7 +37,8 @@ class WorkoutProgram {
         currentWeek: Int = 1,
         maxWeeks: Int = 4,
         analysisJSON: String = "",
-        validatorWarnings: String = ""
+        validatorWarnings: String = "",
+        lastGenerationBundle: String = ""
     ) {
         self.id = UUID()
         self.createdDate = .now
@@ -52,6 +54,7 @@ class WorkoutProgram {
         self.maxWeeks = maxWeeks
         self.analysisJSON = analysisJSON
         self.validatorWarnings = validatorWarnings
+        self.lastGenerationBundle = lastGenerationBundle
     }
 
     var sortedDays: [WorkoutDay] {
@@ -424,11 +427,13 @@ enum ExerciseWeightStore {
 struct WorkoutProgramGenerationResult {
     let response: WorkoutProgramResponse
     let validatorWarnings: [String]
+    let bundleText: String
 }
 
 struct WorkoutWeekGenerationResult {
     let response: WorkoutWeekResponse
     let validatorWarnings: [String]
+    let bundleText: String
 }
 
 // MARK: - JSON Codable Structs for API Response Parsing
