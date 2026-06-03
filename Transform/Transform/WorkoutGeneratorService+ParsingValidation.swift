@@ -812,6 +812,63 @@ extension ClaudeService {
             }
         }
 
+        for allocation in blueprint.priorityAllocations {
+            let maxPasses = 4
+            for _ in 0..<maxPasses {
+                let report = buildWeekStimulusReport(from: mutableDays)
+                guard let peak = peakDirectSession(for: allocation, stimulusReport: report) else { break }
+                let allowedCap = allowedPerSessionDirectSetCap(
+                    for: allocation,
+                    dayNumber: peak.dayNumber,
+                    blueprint: blueprint,
+                    dayStart: dayStart
+                )
+                guard peak.directSets > allowedCap + 0.01 else { break }
+                guard let dayIndex = mutableDays.firstIndex(where: { $0.dayNumber == peak.dayNumber }) else { break }
+                let day = mutableDays[dayIndex]
+
+                var sessionTargets: [(exerciseIndex: Int, creditPerSet: Double, sets: Int)] = []
+                for (ei, exercise) in day.exercises.enumerated() {
+                    let credit = directSetCredit(for: exercise, area: allocation.area)
+                    guard credit > 0, exercise.sets > 2 else { continue }
+                    sessionTargets.append((
+                        exerciseIndex: ei,
+                        creditPerSet: credit / Double(max(1, exercise.sets)),
+                        sets: exercise.sets
+                    ))
+                }
+
+                sessionTargets.sort { lhs, rhs in
+                    if lhs.creditPerSet != rhs.creditPerSet { return lhs.creditPerSet < rhs.creditPerSet }
+                    return lhs.sets > rhs.sets
+                }
+
+                guard let target = sessionTargets.first else { break }
+                let exercise = day.exercises[target.exerciseIndex]
+
+                let trimmedExercise = WorkoutExerciseResponse(
+                    exerciseName: exercise.exerciseName,
+                    sets: exercise.sets - 1,
+                    reps: exercise.reps,
+                    tempo: exercise.tempo,
+                    restSeconds: exercise.restSeconds,
+                    notes: exercise.notes,
+                    muscleTarget: exercise.muscleTarget
+                )
+                var updatedExercises = day.exercises
+                updatedExercises[target.exerciseIndex] = trimmedExercise
+                mutableDays[dayIndex] = WorkoutDayResponse(
+                    dayNumber: day.dayNumber,
+                    dayName: day.dayName,
+                    muscleGroups: day.muscleGroups,
+                    isRestDay: day.isRestDay,
+                    notes: day.notes,
+                    exercises: updatedExercises
+                )
+                didTrim = true
+            }
+        }
+
         return (mutableDays, didTrim)
     }
 

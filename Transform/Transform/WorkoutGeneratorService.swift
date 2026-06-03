@@ -69,7 +69,7 @@ extension ClaudeService {
         maxSessionPriorityFatigue: 18,
         // EvidenceProfile.md CONC-001 [confidence: low-moderate]
         focusSessionDirectSetShareByPriority: [
-            "High": 0.8,
+            "High": 0.75,
             "Medium": 0.7,
             "Low": 0.65
         ],

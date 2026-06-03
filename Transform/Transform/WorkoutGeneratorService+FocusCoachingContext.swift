@@ -73,7 +73,7 @@ extension ClaudeService {
                 return .support
             }
         case let value where value.contains("upper chest") || value.contains("clavicular"):
-            if containsAny(combinedText, keywords: ["incline press", "incline dumbbell press", "incline barbell press", "low incline", "incline fly", "reverse grip", "machine incline"]) {
+            if containsAny(combinedText, keywords: ["incline press", "incline dumbbell press", "incline barbell press", "low incline", "incline fly", "incline cable fly", "incline machine fly", "reverse grip", "machine incline"]) {
                 return .prime
             }
             if containsAny(combinedText, keywords: ["bench press", "chest press", "pec deck", "fly", "dip"]) {
