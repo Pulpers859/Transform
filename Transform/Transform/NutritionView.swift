@@ -7,6 +7,7 @@ struct NutritionView: View {
     @Query(sort: \NutritionEntry.date, order: .reverse) private var allEntries: [NutritionEntry]
     @Query(sort: \BodyAnalysisSession.date, order: .reverse) private var analysisSessions: [BodyAnalysisSession]
     @Query(sort: \SavedNutritionProtocol.updatedAt, order: .reverse) private var savedNutritionProtocols: [SavedNutritionProtocol]
+    @Query(sort: \WeightEntry.date, order: .reverse) private var weightEntries: [WeightEntry]
 
     @State private var selectedDate = Date()
     @State private var showAddSheet = false
@@ -23,6 +24,7 @@ struct NutritionView: View {
     @State private var nutritionErrorMessage = ""
     @State private var generationProgress: String = ""
     @State private var nutritionGenerationTask: Task<Void, Never>?
+    @AppStorage("nutrition_shift_work_mode") private var shiftWorkModeRaw = ShiftWorkNutritionMode.normal.rawValue
 
     let mealOrder = ["Breakfast", "Lunch", "Dinner", "Snack"]
 
@@ -68,6 +70,46 @@ struct NutritionView: View {
         return min(base, activeMacroTargets.carbsG)
     }
 
+    var selectedShiftWorkMode: ShiftWorkNutritionMode {
+        ShiftWorkNutritionMode(rawValue: shiftWorkModeRaw) ?? .normal
+    }
+
+    var adherenceMetrics: NutritionAdherenceMetrics {
+        let lookback = 30
+        let cutoff = Calendar.current.date(byAdding: .day, value: -lookback, to: Date()) ?? Date()
+        let recentNutritionDays = nutritionDaySummaries(since: cutoff)
+        let recentWeightPoints = weightEntries
+            .filter { $0.date >= cutoff }
+            .map { AnalysisLoggedWeightPoint(date: $0.date, weightLbs: $0.weightLbs) }
+        return NutritionAdherenceMetricsBuilder.build(
+            nutritionDays: recentNutritionDays,
+            weightPoints: recentWeightPoints,
+            macroTargets: activeMacroTargets,
+            lookbackDays: lookback
+        )
+    }
+
+    private func nutritionDaySummaries(since startDate: Date) -> [AnalysisLoggedNutritionDay] {
+        let calendar = Calendar.current
+        let grouped = allEntries
+            .filter { $0.date >= startDate }
+            .reduce(into: [Date: AnalysisLoggedNutritionDay]()) { partialResult, entry in
+                let day = calendar.startOfDay(for: entry.date)
+                let existing = partialResult[day] ?? AnalysisLoggedNutritionDay(
+                    date: day, calories: 0, proteinG: 0, carbsG: 0, fatG: 0, fiberG: 0, mealCount: 0
+                )
+                partialResult[day] = AnalysisLoggedNutritionDay(
+                    date: day,
+                    calories: existing.calories + entry.calories,
+                    proteinG: existing.proteinG + entry.proteinG,
+                    carbsG: existing.carbsG + entry.carbsG,
+                    fatG: existing.fatG + entry.fatG,
+                    fiberG: existing.fiberG + entry.fiberG,
+                    mealCount: existing.mealCount + 1
+                )
+            }
+        return grouped.values.sorted { $0.date < $1.date }
+    }
 
     var body: some View {
         NavigationStack {
@@ -76,6 +118,7 @@ struct NutritionView: View {
                     dateNavigator
                     macroRingsCard
                     macroBarCard
+                    AdherenceSnapshotCard(metrics: adherenceMetrics)
                     groceryPlannerCard
                     mealLogSection
                 }
@@ -331,6 +374,29 @@ struct NutritionView: View {
                 Text("Run a Body Analysis first — this protocol is generated from its expert recommendations.")
                     .font(.caption2)
                     .foregroundStyle(.red)
+            }
+
+            HStack {
+                Text("Schedule Mode")
+                    .font(.caption.bold())
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Picker("Schedule Mode", selection: $shiftWorkModeRaw) {
+                    ForEach(ShiftWorkNutritionMode.allCases) { mode in
+                        Text(mode.displayName).tag(mode.rawValue)
+                    }
+                }
+                .pickerStyle(.menu)
+                .tint(.orange)
+            }
+
+            if selectedShiftWorkMode != .normal {
+                Text(selectedShiftWorkMode.mealTimingGuidance)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .padding(8)
+                    .background(Color(.tertiarySystemBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
             }
 
             Button {
@@ -632,7 +698,13 @@ struct NutritionView: View {
     }
 
     private func buildNutritionProtocol(from analysis: BodyAnalysisResult) async throws -> NutritionProtocolBuildResult {
-        let program = try await ClaudeService.shared.generateNutritionWeekOne(from: analysis)
+        let metrics = adherenceMetrics
+        let shiftMode = selectedShiftWorkMode
+        let program = try await ClaudeService.shared.generateNutritionWeekOne(
+            from: analysis,
+            adherenceMetrics: metrics,
+            shiftWorkMode: shiftMode
+        )
         var followupWeeks: [NutritionWeekResponse] = []
         var warningMessage: String?
         guard let initialWeekJSON = encodeWeekToJSON(program.weekOne) else {
@@ -653,7 +725,9 @@ struct NutritionView: View {
                 let nextWeek = try await ClaudeService.shared.generateNutritionNextWeek(
                     weekNumber: week,
                     previousWeekJSON: previousWeekJSON,
-                    analysisResult: analysis
+                    analysisResult: analysis,
+                    adherenceMetrics: metrics,
+                    shiftWorkMode: shiftMode
                 )
                 try Task.checkCancellation()
                 followupWeeks.append(nextWeek)

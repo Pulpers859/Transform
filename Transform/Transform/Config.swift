@@ -23,6 +23,9 @@ enum Config {
     static let defaultAnalysisCheckInStressSchedule = ""
     static let defaultAnalysisCheckInSorenessPain = ""
     static let defaultAnalysisCheckInNutritionAdherence = ""
+    static let defaultAnalysisCheckInHungerLevel = 0
+    static let defaultAnalysisCheckInEnergyLevel = 0
+    static let defaultAnalysisCheckInCravingsLevel = 0
 
     static let defaultCalorieTarget = 2200
     static let defaultProteinTargetG = 190.0
@@ -134,6 +137,9 @@ enum AppSettingsKeys {
     static let analysisCheckInStressSchedule = "analysis_checkin_stress_schedule"
     static let analysisCheckInSorenessPain = "analysis_checkin_soreness_pain"
     static let analysisCheckInNutritionAdherence = "analysis_checkin_nutrition_adherence"
+    static let analysisCheckInHungerLevel = "analysis_checkin_hunger_level"
+    static let analysisCheckInEnergyLevel = "analysis_checkin_energy_level"
+    static let analysisCheckInCravingsLevel = "analysis_checkin_cravings_level"
 
     static let calorieTarget = "nutrition_calorie_target"
     static let proteinTarget = "nutrition_protein_target"
@@ -189,6 +195,9 @@ struct AnalysisCheckIn {
     let stressSchedule: String
     let sorenessPain: String
     let nutritionAdherence: String
+    let hungerLevel: Int
+    let energyLevel: Int
+    let cravingsLevel: Int
 
     var promptDescription: String {
         snapshot?.promptDescription ?? """
@@ -205,7 +214,10 @@ struct AnalysisCheckIn {
             recoverySleep: recoverySleep,
             stressSchedule: stressSchedule,
             sorenessPain: sorenessPain,
-            nutritionAdherence: nutritionAdherence
+            nutritionAdherence: nutritionAdherence,
+            hungerLevel: hungerLevel > 0 ? hungerLevel : nil,
+            energyLevel: energyLevel > 0 ? energyLevel : nil,
+            cravingsLevel: cravingsLevel > 0 ? cravingsLevel : nil
         )
         return snapshot.hasMeaningfulContent ? snapshot : nil
     }
@@ -263,7 +275,10 @@ enum AppSettingsStore {
             recoverySleep: string(for: AppSettingsKeys.analysisCheckInRecoverySleep, default: Config.defaultAnalysisCheckInRecoverySleep),
             stressSchedule: string(for: AppSettingsKeys.analysisCheckInStressSchedule, default: Config.defaultAnalysisCheckInStressSchedule),
             sorenessPain: string(for: AppSettingsKeys.analysisCheckInSorenessPain, default: Config.defaultAnalysisCheckInSorenessPain),
-            nutritionAdherence: string(for: AppSettingsKeys.analysisCheckInNutritionAdherence, default: Config.defaultAnalysisCheckInNutritionAdherence)
+            nutritionAdherence: string(for: AppSettingsKeys.analysisCheckInNutritionAdherence, default: Config.defaultAnalysisCheckInNutritionAdherence),
+            hungerLevel: integer(for: AppSettingsKeys.analysisCheckInHungerLevel, default: Config.defaultAnalysisCheckInHungerLevel, min: 0, max: 10),
+            energyLevel: integer(for: AppSettingsKeys.analysisCheckInEnergyLevel, default: Config.defaultAnalysisCheckInEnergyLevel, min: 0, max: 10),
+            cravingsLevel: integer(for: AppSettingsKeys.analysisCheckInCravingsLevel, default: Config.defaultAnalysisCheckInCravingsLevel, min: 0, max: 10)
         )
     }
 

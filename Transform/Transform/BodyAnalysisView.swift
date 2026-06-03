@@ -31,6 +31,9 @@ struct BodyAnalysisView: View {
     @AppStorage(AppSettingsKeys.analysisCheckInStressSchedule) private var analysisCheckInStressSchedule = Config.defaultAnalysisCheckInStressSchedule
     @AppStorage(AppSettingsKeys.analysisCheckInSorenessPain) private var analysisCheckInSorenessPain = Config.defaultAnalysisCheckInSorenessPain
     @AppStorage(AppSettingsKeys.analysisCheckInNutritionAdherence) private var analysisCheckInNutritionAdherence = Config.defaultAnalysisCheckInNutritionAdherence
+    @AppStorage(AppSettingsKeys.analysisCheckInHungerLevel) private var analysisCheckInHungerLevel = Config.defaultAnalysisCheckInHungerLevel
+    @AppStorage(AppSettingsKeys.analysisCheckInEnergyLevel) private var analysisCheckInEnergyLevel = Config.defaultAnalysisCheckInEnergyLevel
+    @AppStorage(AppSettingsKeys.analysisCheckInCravingsLevel) private var analysisCheckInCravingsLevel = Config.defaultAnalysisCheckInCravingsLevel
 
     let poses = ["Front", "Back", "Side (Left)", "Side (Right)"]
 
@@ -52,6 +55,9 @@ struct BodyAnalysisView: View {
             analysisCheckInSorenessPain,
             analysisCheckInNutritionAdherence
         ].contains { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            || analysisCheckInHungerLevel > 0
+            || analysisCheckInEnergyLevel > 0
+            || analysisCheckInCravingsLevel > 0
     }
 
     var previousAnalysisSession: BodyAnalysisSession? {
@@ -363,6 +369,18 @@ struct BodyAnalysisView: View {
                 )
             }
 
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Wellness Ratings")
+                    .font(.subheadline.bold())
+                Text("Rate 1–10 or leave at 0 (not set). These help the analysis calibrate nutrition and recovery recommendations.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                checkInRating("Hunger", value: $analysisCheckInHungerLevel, lowLabel: "Never hungry", highLabel: "Ravenous")
+                checkInRating("Energy", value: $analysisCheckInEnergyLevel, lowLabel: "Exhausted", highLabel: "Great energy")
+                checkInRating("Cravings", value: $analysisCheckInCravingsLevel, lowLabel: "None", highLabel: "Intense")
+            }
+
             Text("This check-in persists until you clear or overwrite it, so keep it current before running a new analysis.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -384,6 +402,35 @@ struct BodyAnalysisView: View {
                 .background(Color(.tertiarySystemBackground))
                 .clipShape(RoundedRectangle(cornerRadius: 12))
         }
+    }
+
+    @ViewBuilder
+    func checkInRating(_ title: String, value: Binding<Int>, lowLabel: String, highLabel: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(title)
+                    .font(.caption.bold())
+                Spacer()
+                Text(value.wrappedValue > 0 ? "\(value.wrappedValue)/10" : "Not set")
+                    .font(.caption.bold())
+                    .foregroundStyle(value.wrappedValue > 0 ? .primary : .secondary)
+            }
+            HStack(spacing: 4) {
+                Text(lowLabel)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 70, alignment: .leading)
+                Stepper("", value: value, in: 0...10, step: 1)
+                    .labelsHidden()
+                Text(highLabel)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 70, alignment: .trailing)
+            }
+        }
+        .padding(10)
+        .background(Color(.tertiarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 
     func progressContextCard(snapshot: AnalysisProgressSnapshot) -> some View {
@@ -601,6 +648,9 @@ struct BodyAnalysisView: View {
         analysisCheckInStressSchedule = Config.defaultAnalysisCheckInStressSchedule
         analysisCheckInSorenessPain = Config.defaultAnalysisCheckInSorenessPain
         analysisCheckInNutritionAdherence = Config.defaultAnalysisCheckInNutritionAdherence
+        analysisCheckInHungerLevel = Config.defaultAnalysisCheckInHungerLevel
+        analysisCheckInEnergyLevel = Config.defaultAnalysisCheckInEnergyLevel
+        analysisCheckInCravingsLevel = Config.defaultAnalysisCheckInCravingsLevel
     }
 
     func weightPoints(since startDate: Date) -> [AnalysisLoggedWeightPoint] {
@@ -620,14 +670,18 @@ struct BodyAnalysisView: View {
                     calories: 0,
                     proteinG: 0,
                     carbsG: 0,
-                    fatG: 0
+                    fatG: 0,
+                    fiberG: 0,
+                    mealCount: 0
                 )
                 partialResult[day] = AnalysisLoggedNutritionDay(
                     date: day,
                     calories: existing.calories + entry.calories,
                     proteinG: existing.proteinG + entry.proteinG,
                     carbsG: existing.carbsG + entry.carbsG,
-                    fatG: existing.fatG + entry.fatG
+                    fatG: existing.fatG + entry.fatG,
+                    fiberG: existing.fiberG + entry.fiberG,
+                    mealCount: existing.mealCount + 1
                 )
             }
 

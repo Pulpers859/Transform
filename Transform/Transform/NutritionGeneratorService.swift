@@ -1,5 +1,38 @@
 import Foundation
 
+// MARK: - Shift-Work Nutrition Modes
+
+enum ShiftWorkNutritionMode: String, CaseIterable, Identifiable {
+    case normal = "normal"
+    case nightShift = "night_shift"
+    case sleepRestricted = "sleep_restricted"
+    case postShiftRecovery = "post_shift_recovery"
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .normal: return "Normal Day"
+        case .nightShift: return "Night Shift"
+        case .sleepRestricted: return "Sleep Restricted"
+        case .postShiftRecovery: return "Post-Shift Recovery"
+        }
+    }
+
+    var mealTimingGuidance: String {
+        switch self {
+        case .normal:
+            return "Standard waking schedule. Anchor meals around training — pre-workout carbs/protein 2-3 hours before, post-workout protein within 60 minutes."
+        case .nightShift:
+            return "Night-shift schedule. Anchor protein meals around waking, pre-shift, mid-shift, and post-shift. Avoid high glycemic-index meals in the final 2 hours before planned sleep. Batch-prep all shift meals. Keep an emergency protein option (shake, tuna packet) in your bag."
+        case .sleepRestricted:
+            return "Sleep-restricted day. Front-load protein and slow carbs at the first meal. Avoid large meals before any recovery nap. Prioritize hydration and electrolytes. No aggressive deficit — keep calories near maintenance. Caffeine cut-off 6 hours before planned sleep."
+        case .postShiftRecovery:
+            return "Post-shift recovery day. Prioritize hydration, protein within 60 min of waking, moderate carbs, anti-inflammatory food choices (fatty fish, berries, leafy greens). No training-day carb loading. Keep meals easy to digest and batch-prep friendly."
+        }
+    }
+}
+
 // MARK: - Nutrition Program Response Models
 
 struct NutritionProgramResponse: Codable {
@@ -77,13 +110,25 @@ extension ClaudeService {
 
     // MARK: - Generate Nutrition Week 1
 
-    func generateNutritionWeekOne(from analysisResult: BodyAnalysisResult) async throws -> NutritionProgramResponse {
+    func generateNutritionWeekOne(
+        from analysisResult: BodyAnalysisResult,
+        adherenceMetrics: NutritionAdherenceMetrics? = nil,
+        shiftWorkMode: ShiftWorkNutritionMode = .normal
+    ) async throws -> NutritionProgramResponse {
         let context = nutritionAnalysisContext(from: analysisResult)
         let macroLine = macroTargetLine(from: analysisResult.macroTargets)
         let config = nutritionWeekOneConfig
         let toolSchema = nutritionProgramToolSchema()
-        let systemPrompt = nutritionWeekOneSystemPrompt()
-        let userPrompt = nutritionWeekOneUserPrompt(context: context, macroLine: macroLine)
+
+        let useAdherenceFirst = adherenceMetrics?.isAdherenceFirst == true
+        let systemPrompt = useAdherenceFirst
+            ? nutritionAdherenceFocusedSystemPrompt()
+            : nutritionWeekOneSystemPrompt()
+        let adherenceBlock = adherenceContextBlock(from: adherenceMetrics)
+        let shiftBlock = shiftWorkContextBlock(mode: shiftWorkMode)
+        let userPrompt = useAdherenceFirst
+            ? nutritionAdherenceFocusedUserPrompt(context: context, macroLine: macroLine, adherenceBlock: adherenceBlock, shiftBlock: shiftBlock)
+            : nutritionWeekOneUserPrompt(context: context, macroLine: macroLine, adherenceBlock: adherenceBlock, shiftBlock: shiftBlock)
 
         var requestBody = nutritionStructuredRequestBody(
             config: config,
@@ -104,7 +149,7 @@ extension ClaudeService {
                 )
                 let decoded = try decodeNutritionPayload(NutritionProgramResponse.self, from: jsonString)
                 let cleaned = sanitizeNutritionProgram(decoded)
-                let issues = validateNutritionProgram(cleaned)
+                let issues = validateNutritionProgram(cleaned, macroTargets: analysisResult.macroTargets)
                 if issues.isEmpty {
                     return labeledNutritionProgram(cleaned, sourceLabel: nutritionAISourceLabel)
                 }
@@ -151,18 +196,24 @@ extension ClaudeService {
     func generateNutritionNextWeek(
         weekNumber: Int,
         previousWeekJSON: String,
-        analysisResult: BodyAnalysisResult
+        analysisResult: BodyAnalysisResult,
+        adherenceMetrics: NutritionAdherenceMetrics? = nil,
+        shiftWorkMode: ShiftWorkNutritionMode = .normal
     ) async throws -> NutritionWeekResponse {
         let context = nutritionAnalysisContext(from: analysisResult)
         let macroLine = macroTargetLine(from: analysisResult.macroTargets)
         let config = nutritionNextWeekConfig
         let toolSchema = nutritionWeekToolSchema(weekNumber: weekNumber)
         let systemPrompt = nutritionNextWeekSystemPrompt(weekNumber: weekNumber)
+        let adherenceBlock = adherenceContextBlock(from: adherenceMetrics)
+        let shiftBlock = shiftWorkContextBlock(mode: shiftWorkMode)
         let userPrompt = nutritionNextWeekUserPrompt(
             weekNumber: weekNumber,
             previousWeekJSON: previousWeekJSON,
             analysisContext: context,
-            macroLine: macroLine
+            macroLine: macroLine,
+            adherenceBlock: adherenceBlock,
+            shiftBlock: shiftBlock
         )
 
         var requestBody = nutritionStructuredRequestBody(
@@ -184,7 +235,7 @@ extension ClaudeService {
                 )
                 let decoded = try decodeNutritionPayload(NutritionWeekResponse.self, from: jsonString)
                 let cleaned = sanitizeNutritionWeek(decoded, expectedWeek: weekNumber)
-                let issues = validateNutritionWeek(cleaned, expectedWeek: weekNumber)
+                let issues = validateNutritionWeek(cleaned, expectedWeek: weekNumber, macroTargets: analysisResult.macroTargets)
                 if issues.isEmpty {
                     return labeledNutritionWeek(cleaned, sourceLabel: nutritionAISourceLabel)
                 }
@@ -355,14 +406,31 @@ extension ClaudeService {
         - Respect the provided macro targets within ~±10% for the daily totals.
         - Training Day carbs ≈ Rest Day carbs + 20-40%.
         - Protein stays roughly constant across Training/Rest days.
+        - Fat must not drop below ~40g/day (hormonal and satiety floor).
         - Weekly grocery list must be sufficient to execute BOTH templates across 7 days.
         - Keep choices practical and shift-work friendly (batch-prep friendly, quick reheats).
+        - Meal calorie and protein sums must approximately match the daily template totals.
+
+        Fiber guidance:
+        - Target: ~14g per 1000 kcal, minimum 30g floor.
+        - If the adherence context indicates current fiber is under 20g, ramp by ~5g/week
+          from current level. Do NOT jump to 30g+ from a low baseline — it causes GI distress.
+
+        Decision rules — include 2-3 of these in coachNotes as "if/then" contingency rules:
+        - "If you miss a meal: hit 40-50g protein at the next feeding and keep calories controlled.
+          Do not try to 'make up' the full missed meal later."
+        - "If you are starving after a shift: eat protein + high-volume carbs first, then decide
+          if you still need extra food."
+        - "If sleep was under 5 hours: do not attempt an aggressive deficit that day. Hit protein
+          and eat at roughly maintenance."
+        - "If a shift runs long and you miss your meal prep window: use your emergency stack
+          (protein shake, tuna packet, Greek yogurt)."
 
         Always call the emit_nutrition_program tool. Never respond with free text.
         """
     }
 
-    private func nutritionWeekOneUserPrompt(context: String, macroLine: String) -> String {
+    private func nutritionWeekOneUserPrompt(context: String, macroLine: String, adherenceBlock: String, shiftBlock: String) -> String {
         """
         Build Week 1 of this individual's 4-week nutrition protocol. Treat the analysis below as the
         north star — every meal, every grocery item, every rationale should be traceable back to it.
@@ -372,6 +440,8 @@ extension ClaudeService {
         --- end Body Analysis ---
 
         Daily macro targets from analysis: \(macroLine)
+        \(adherenceBlock)
+        \(shiftBlock)
 
         Requirements:
         - Name the program meaningfully (reference the analysis, not a generic label).
@@ -401,6 +471,21 @@ extension ClaudeService {
         Structure, voice, quality bar: same as Week 1 (5 training days + 2 rest days, 2 templates
         × 4 meals, weekly grocery list, expert-panel voice, rationales tied to analysis).
 
+        Quality constraints:
+        - Respect macro targets within ~±10% for daily totals.
+        - Training Day carbs must be higher than Rest Day carbs.
+        - Fat must not drop below ~40g/day.
+        - Meal calorie and protein sums must approximately match daily template totals.
+
+        Fiber guidance:
+        - If adherence context indicates fiber is low, ramp by ~5g/week from previous week's
+          level. Do NOT jump to high targets in a single week.
+
+        Decision rules — include 1-2 contingency rules in coachNotes relevant to this week's phase:
+        - Miss a meal → hit protein at the next feeding, do not over-compensate.
+        - Short sleep → eat at maintenance, prioritize protein.
+        - Missed meal prep → use emergency stack.
+
         Phase guidance for Week \(weekNumber):
         \(nutritionPhaseGuidance(for: weekNumber))
 
@@ -412,7 +497,9 @@ extension ClaudeService {
         weekNumber: Int,
         previousWeekJSON: String,
         analysisContext: String,
-        macroLine: String
+        macroLine: String,
+        adherenceBlock: String,
+        shiftBlock: String
     ) -> String {
         """
         Generate Week \(weekNumber) of the 4-week nutrition protocol.
@@ -422,6 +509,8 @@ extension ClaudeService {
         --- end Body Analysis ---
 
         Daily macro targets from analysis: \(macroLine)
+        \(adherenceBlock)
+        \(shiftBlock)
 
         --- Previous week (progression reference ONLY — don't copy) ---
         \(previousWeekJSON)
@@ -466,6 +555,136 @@ extension ClaudeService {
         default:
             return "Apply sensible weekly progression based on the previous week and the analysis priorities."
         }
+    }
+
+    // MARK: - Adherence-Focused Prompts
+
+    private func nutritionAdherenceFocusedSystemPrompt() -> String {
+        """
+        You are a multi-disciplinary nutrition panel designing Week 1 of a personalized 4-week
+        nutrition protocol for a specific individual whose nutrition LOGGING IS POOR. The panel includes:
+        - a sports dietitian (Helms / McDonald school) who sets macros and meal architecture,
+        - a metabolic-health specialist who handles shift-work circadian concerns,
+        - a behavioral coach who makes the plan realistic and sustainable.
+
+        CRITICAL CONTEXT: This user's nutrition logging data is very limited. You CANNOT trust
+        calorie averages or macro compliance rates because too few days were logged. The primary
+        intervention is behavioral — build a system that makes consistent eating and logging possible,
+        not one that optimizes macros the user won't track.
+
+        Adherence-first hierarchy for this protocol:
+        1. Consistent food logging (every meal, every day — even rough estimates)
+        2. Protein floor (~1g per lb bodyweight, distributed across 4 meals)
+        3. Pre-planned work/shift meals (batch-prep, low-friction options)
+        4. Emergency protein options always available (shake, tuna packet, Greek yogurt)
+        5. Regular weigh-ins (3-7 mornings per week)
+        6. Do NOT adjust calories aggressively until 10+ valid logging days exist
+
+        Structure:
+        - Assume 5 training days, 2 rest days per week.
+        - Build TWO daily templates: Training Day and Rest Day.
+        - Each daily template must have EXACTLY 4 meals: Breakfast, Lunch, Dinner, Snack.
+        - Keep meals SIMPLE, batch-prep friendly, and repeatable. Templates beat variety when
+          adherence is the bottleneck.
+        - Each meal should be dead-simple to log (clear portions, countable items).
+        - timingNote should focus on WHEN and HOW to prep/pack, not complex periodization.
+        - Weekly grocery list: simple, minimal variety, high-protein staples.
+
+        Voice:
+        - Be direct about why this is an adherence-focused plan, not a performance-optimized one.
+        - coachNotes should explain: "We are starting with logging consistency and protein because
+          that is the current bottleneck. Advanced macro adjustments come after tracking is reliable."
+        - No sugarcoating, but no shaming either.
+
+        Total plan quality bar:
+        - Respect the provided macro targets within ~±15% for daily totals (wider tolerance for
+          adherence-first plans).
+        - Protein stays roughly constant across Training/Rest days.
+        - Fat must not drop below ~40g/day (hormonal and satiety floor).
+        - Keep choices practical: fewer unique ingredients, more repeatable meals.
+        - Meal calorie and protein sums must approximately match the daily template totals.
+
+        Fiber guidance:
+        - If the adherence context shows low fiber (<20g), do NOT set a high fiber target yet.
+          Start with current level + 5g and ramp weekly. GI distress kills adherence.
+
+        Decision rules — include 2-3 of these in coachNotes as simple "if/then" contingency rules:
+        - "If you miss a meal: hit protein at the next feeding. Do not try to make up the full
+          meal later."
+        - "If starving after a shift: eat protein + volume first, then reassess."
+        - "If sleep was under 5 hours: hit protein and eat at roughly maintenance."
+        - "If you miss meal prep: use your emergency stack (shake, tuna packet, yogurt)."
+
+        Always call the emit_nutrition_program tool. Never respond with free text.
+        """
+    }
+
+    private func nutritionAdherenceFocusedUserPrompt(context: String, macroLine: String, adherenceBlock: String, shiftBlock: String) -> String {
+        """
+        Build Week 1 of this individual's 4-week nutrition protocol. This person's nutrition logging
+        is very limited, so this must be an ADHERENCE-FIRST plan — simple, repeatable, easy to log.
+
+        --- Body Analysis ---
+        \(context)
+        --- end Body Analysis ---
+
+        Daily macro targets from analysis: \(macroLine)
+        \(adherenceBlock)
+        \(shiftBlock)
+
+        Requirements:
+        - Name the program to reflect the adherence-first approach (e.g., "Adherence Foundation Protocol").
+        - programSummary: ONE sentence explaining this is an adherence-focused protocol because
+          nutrition logging is the current bottleneck.
+        - proteinCoverageNote: ONE sentence on hitting the protein floor with simple, repeatable meals.
+        - weekOne.phaseFocus: "Week 1 — Build logging habit and protein floor"
+        - weekOne.coachNotes: 2-3 sentences explaining WHY this plan is simpler than a full macro
+          protocol and what the user needs to do before earning more advanced adjustments.
+        - Training Day and Rest Day templates: simple, batch-prep meals. Fewer unique ingredients.
+        - Weekly grocery list: minimal, high-protein staples.
+
+        Call the emit_nutrition_program tool with your answer.
+        """
+    }
+
+    private func adherenceContextBlock(from metrics: NutritionAdherenceMetrics?) -> String {
+        guard let m = metrics else { return "" }
+        var lines: [String] = [
+            "--- Nutrition Adherence Context ---",
+            "Data quality: \(m.dataQuality.rawValue) (\(m.loggedDays) logged, \(m.validDays) valid of \(m.lookbackDays) days, \(Int((m.loggedDayRatio * 100).rounded()))%)"
+        ]
+        if m.incompleteDays > 0 {
+            lines.append("Incomplete days detected: \(m.incompleteDays) days with <1000 kcal or <2 meals — likely missing meals.")
+        }
+        if let avg = m.averageCalories { lines.append("Average calories (valid days only): \(avg) kcal") }
+        if let rate = m.calorieHitRate { lines.append("Calorie hit rate (within ±10%): \(Int((rate * 100).rounded()))%") }
+        if let avg = m.averageProteinG { lines.append("Average protein (valid days only): \(Int(avg.rounded()))g") }
+        if let rate = m.proteinHitRate { lines.append("Protein hit rate (≥90% target): \(Int((rate * 100).rounded()))%") }
+        if let fiber = m.averageFiberG {
+            lines.append("Estimated average fiber: ~\(Int(fiber.rounded()))g/day")
+            if fiber < 20 {
+                lines.append("Fiber is low — ramp gradually (+5g/week) to avoid GI distress. Do NOT jump straight to 30g+.")
+            }
+        }
+        if let change = m.weeklyWeightChangeLbs {
+            let direction = m.weightTrendDirection.rawValue.lowercased()
+            lines.append("Weight trend: \(direction), ~\(String(format: "%.1f", abs(change))) lb/week")
+        }
+        if let bottleneck = m.primaryBottleneck { lines.append("Primary bottleneck: \(bottleneck)") }
+        lines.append("--- end Adherence Context ---")
+        return "\n" + lines.joined(separator: "\n")
+    }
+
+    private func shiftWorkContextBlock(mode: ShiftWorkNutritionMode) -> String {
+        guard mode != .normal else { return "" }
+        return """
+
+        --- Current Schedule Mode ---
+        Mode: \(mode.displayName)
+        Meal timing guidance: \(mode.mealTimingGuidance)
+        Adapt all meal timingNotes to reflect this schedule mode.
+        --- end Schedule Mode ---
+        """
     }
 
     // MARK: - Tool Schemas
@@ -702,7 +921,7 @@ extension ClaudeService {
 
     // MARK: - Validation
 
-    private func validateNutritionProgram(_ program: NutritionProgramResponse) -> [String] {
+    private func validateNutritionProgram(_ program: NutritionProgramResponse, macroTargets: AnalysisMacroTargets?) -> [String] {
         var issues: [String] = []
         if program.programName.count < 3 {
             issues.append("programName is too short.")
@@ -710,11 +929,11 @@ extension ClaudeService {
         if program.programSummary.count < 20 {
             issues.append("programSummary should be at least one full sentence.")
         }
-        issues.append(contentsOf: validateNutritionWeek(program.weekOne, expectedWeek: 1))
+        issues.append(contentsOf: validateNutritionWeek(program.weekOne, expectedWeek: 1, macroTargets: macroTargets))
         return issues
     }
 
-    private func validateNutritionWeek(_ week: NutritionWeekResponse, expectedWeek: Int) -> [String] {
+    private func validateNutritionWeek(_ week: NutritionWeekResponse, expectedWeek: Int, macroTargets: AnalysisMacroTargets?) -> [String] {
         var issues: [String] = []
         if week.weekNumber != expectedWeek {
             issues.append("weekNumber must be \(expectedWeek).")
@@ -732,6 +951,56 @@ extension ClaudeService {
         let groceryItemCount = week.weeklyGrocery.reduce(0) { $0 + $1.items.count }
         if groceryItemCount < 8 {
             issues.append("weeklyGrocery has too few items to cover 7 days of meals.")
+        }
+
+        // Nutrition-specific validators
+        if let targets = macroTargets {
+            let calTarget = targets.calories
+            let proTarget = Int(targets.proteinG.rounded())
+            let fatTarget = Int(targets.fatG.rounded())
+
+            let trainCalDrift = abs(week.dailyCaloriesTraining - calTarget)
+            if trainCalDrift > Int(Double(calTarget) * 0.20) {
+                issues.append("Training-day calories (\(week.dailyCaloriesTraining)) are >20% off target (\(calTarget)).")
+            }
+
+            let restCalDrift = abs(week.dailyCaloriesRest - calTarget)
+            if restCalDrift > Int(Double(calTarget) * 0.25) {
+                issues.append("Rest-day calories (\(week.dailyCaloriesRest)) are >25% off target (\(calTarget)).")
+            }
+
+            let proDrift = abs(week.dailyProteinG - proTarget)
+            if proDrift > Int(Double(proTarget) * 0.15) {
+                issues.append("Daily protein (\(week.dailyProteinG)g) is >15% off target (\(proTarget)g).")
+            }
+
+            let fatFloor = max(40, Int(Double(fatTarget) * 0.60))
+            if week.dailyFatG < fatFloor {
+                issues.append("Daily fat (\(week.dailyFatG)g) is below safe floor (\(fatFloor)g) — hormonal and satiety concerns.")
+            }
+
+            if week.dailyCarbsGTraining <= week.dailyCarbsGRest {
+                issues.append("Training-day carbs (\(week.dailyCarbsGTraining)g) should be higher than rest-day carbs (\(week.dailyCarbsGRest)g).")
+            }
+        }
+
+        issues.append(contentsOf: validateTemplateMacroConsistency(week.trainingDay, weekMacros: (cal: week.dailyCaloriesTraining, pro: week.dailyProteinG), label: "Training"))
+        issues.append(contentsOf: validateTemplateMacroConsistency(week.restDay, weekMacros: (cal: week.dailyCaloriesRest, pro: week.dailyProteinG), label: "Rest"))
+
+        return issues
+    }
+
+    private func validateTemplateMacroConsistency(_ template: DailyNutritionTemplate, weekMacros: (cal: Int, pro: Int), label: String) -> [String] {
+        var issues: [String] = []
+        let mealCalTotal = template.meals.reduce(0) { $0 + $1.approxCalories }
+        let mealProTotal = template.meals.reduce(0) { $0 + $1.approxProteinG }
+
+        if abs(mealCalTotal - template.totalCalories) > Int(Double(template.totalCalories) * 0.15) {
+            issues.append("\(label) template: meal calorie sum (\(mealCalTotal)) doesn't match totalCalories (\(template.totalCalories)) within 15%.")
+        }
+
+        if abs(mealProTotal - template.totalProteinG) > Int(Double(template.totalProteinG) * 0.15) {
+            issues.append("\(label) template: meal protein sum (\(mealProTotal)g) doesn't match totalProteinG (\(template.totalProteinG)g) within 15%.")
         }
 
         return issues

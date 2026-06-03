@@ -424,3 +424,223 @@ struct NutritionGroceryCategoryCard: View {
         .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 }
+
+// MARK: - Adherence Snapshot Card
+
+struct AdherenceSnapshotCard: View {
+    let metrics: NutritionAdherenceMetrics
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            headerRow
+            loggedDaysRow
+
+            if metrics.validDays >= 3 {
+                complianceSection
+            }
+
+            if let range = metrics.proteinPerFeedingRange {
+                proteinDistributionRow(range: range)
+            }
+
+            if metrics.weightDataPoints >= 2 {
+                Divider()
+                weightTrendSection
+            }
+
+            if metrics.primaryBottleneck != nil || metrics.nextActionRecommendation != nil {
+                Divider()
+                actionSection
+            }
+        }
+        .padding()
+        .background(Color(.secondarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+    }
+
+    private var headerRow: some View {
+        HStack(alignment: .center) {
+            Label("Adherence Snapshot", systemImage: "chart.bar.fill")
+                .font(.headline)
+                .foregroundStyle(.orange)
+            Spacer()
+            Text(metrics.dataQuality.rawValue)
+                .font(.caption.bold())
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(qualityColor.opacity(0.15))
+                .foregroundStyle(qualityColor)
+                .clipShape(Capsule())
+        }
+    }
+
+    private var loggedDaysRow: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text("Logged Days (last \(metrics.lookbackDays)d)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text("\(metrics.loggedDays) logged, \(metrics.validDays) valid")
+                    .font(.caption.bold())
+                    .foregroundStyle(qualityColor)
+            }
+            if metrics.hasIncompleteDayWarning {
+                HStack(spacing: 4) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.caption2)
+                        .foregroundStyle(.orange)
+                    Text("\(metrics.incompleteDays) days look incomplete (<1000 kcal or <2 meals) — missing dinner or snacks?")
+                        .font(.caption2)
+                        .foregroundStyle(.orange)
+                }
+            }
+        }
+    }
+
+    private var complianceSection: some View {
+        VStack(spacing: 6) {
+            if let rate = metrics.calorieHitRate {
+                complianceRow(label: "Calorie Compliance", rate: rate, detail: "within ±10% of target")
+            }
+            if let rate = metrics.proteinHitRate {
+                complianceRow(label: "Protein Compliance", rate: rate, detail: "≥90% of target")
+            }
+        }
+    }
+
+    private func complianceRow(label: String, rate: Double, detail: String) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack {
+                Text(label)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text("\(Int((rate * 100).rounded()))%")
+                    .font(.caption.bold())
+                    .foregroundStyle(rate >= 0.6 ? Color.green : (rate >= 0.4 ? Color.yellow : Color.red))
+            }
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(Color.gray.opacity(0.15))
+                        .frame(height: 6)
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(rate >= 0.6 ? Color.green : (rate >= 0.4 ? Color.yellow : Color.red))
+                        .frame(width: geo.size.width * min(rate, 1.0), height: 6)
+                }
+            }
+            .frame(height: 6)
+            Text(detail)
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+        }
+    }
+
+    private func proteinDistributionRow(range: (low: Int, high: Int)) -> some View {
+        HStack {
+            Image(systemName: "fork.knife")
+                .font(.caption2)
+                .foregroundStyle(.red)
+            Text("Target: ~\(range.low)–\(range.high)g protein × 3–5 feedings")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var weightTrendSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("Weight Trend")
+                    .font(.caption.bold())
+                Spacer()
+                Text(metrics.weightTrendStatus.rawValue)
+                    .font(.caption.bold())
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(trendStatusColor.opacity(0.15))
+                    .foregroundStyle(trendStatusColor)
+                    .clipShape(Capsule())
+            }
+
+            if let avg = metrics.currentWeeklyAverageWeight {
+                HStack {
+                    Text("Weekly avg")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Text("\(String(format: "%.1f", avg)) lb")
+                        .font(.caption.bold())
+                }
+            }
+
+            if let change = metrics.weeklyWeightChangeLbs {
+                HStack {
+                    Text("Rate")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Text("\(change > 0 ? "+" : "")\(String(format: "%.1f", change)) lb/week")
+                        .font(.caption.bold())
+                        .foregroundStyle(change > 0.2 ? Color.red : (change < -0.2 ? Color.green : Color.primary))
+                }
+            }
+
+            if let range = metrics.targetWeightLossRangeLbs {
+                HStack {
+                    Text("Target loss range")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Text("\(String(format: "%.1f", range.low))–\(String(format: "%.1f", range.high)) lb/week")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Text("Consider adjusting after 2+ consistent weeks off target.")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+        }
+    }
+
+    private var actionSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if let bottleneck = metrics.primaryBottleneck {
+                VStack(alignment: .leading, spacing: 3) {
+                    Label("Primary Bottleneck", systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption.bold())
+                        .foregroundStyle(.red)
+                    Text(bottleneck)
+                        .font(.caption)
+                }
+            }
+            if let action = metrics.nextActionRecommendation {
+                VStack(alignment: .leading, spacing: 3) {
+                    Label("Next Step", systemImage: "arrow.right.circle.fill")
+                        .font(.caption.bold())
+                        .foregroundStyle(.green)
+                    Text(action)
+                        .font(.caption)
+                }
+            }
+        }
+    }
+
+    private var qualityColor: Color {
+        switch metrics.dataQuality {
+        case .veryLow, .low: return .red
+        case .moderate: return .yellow
+        case .good, .excellent: return .green
+        }
+    }
+
+    private var trendStatusColor: Color {
+        switch metrics.weightTrendStatus {
+        case .onTrack: return .green
+        case .tooFast, .gaining: return .red
+        case .tooSlow: return .yellow
+        case .unknown: return .gray
+        }
+    }
+}

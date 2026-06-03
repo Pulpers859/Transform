@@ -392,9 +392,53 @@ struct AnalysisCheckInSnapshot: Codable {
     let stressSchedule: String
     let sorenessPain: String
     let nutritionAdherence: String
+    let hungerLevel: Int?
+    let energyLevel: Int?
+    let cravingsLevel: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case trainingContext, bodyweightTrend, recoverySleep
+        case stressSchedule, sorenessPain, nutritionAdherence
+        case hungerLevel, energyLevel, cravingsLevel
+    }
+
+    init(
+        trainingContext: String,
+        bodyweightTrend: String,
+        recoverySleep: String,
+        stressSchedule: String,
+        sorenessPain: String,
+        nutritionAdherence: String,
+        hungerLevel: Int? = nil,
+        energyLevel: Int? = nil,
+        cravingsLevel: Int? = nil
+    ) {
+        self.trainingContext = trainingContext
+        self.bodyweightTrend = bodyweightTrend
+        self.recoverySleep = recoverySleep
+        self.stressSchedule = stressSchedule
+        self.sorenessPain = sorenessPain
+        self.nutritionAdherence = nutritionAdherence
+        self.hungerLevel = hungerLevel
+        self.energyLevel = energyLevel
+        self.cravingsLevel = cravingsLevel
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        trainingContext = try container.decodeIfPresent(String.self, forKey: .trainingContext) ?? ""
+        bodyweightTrend = try container.decodeIfPresent(String.self, forKey: .bodyweightTrend) ?? ""
+        recoverySleep = try container.decodeIfPresent(String.self, forKey: .recoverySleep) ?? ""
+        stressSchedule = try container.decodeIfPresent(String.self, forKey: .stressSchedule) ?? ""
+        sorenessPain = try container.decodeIfPresent(String.self, forKey: .sorenessPain) ?? ""
+        nutritionAdherence = try container.decodeIfPresent(String.self, forKey: .nutritionAdherence) ?? ""
+        hungerLevel = try container.decodeIfPresent(Int.self, forKey: .hungerLevel)
+        energyLevel = try container.decodeIfPresent(Int.self, forKey: .energyLevel)
+        cravingsLevel = try container.decodeIfPresent(Int.self, forKey: .cravingsLevel)
+    }
 
     private var lines: [(String, String)] {
-        [
+        var result: [(String, String)] = [
             ("Current Training Context", trainingContext),
             ("Bodyweight / Visual Trend", bodyweightTrend),
             ("Recovery / Sleep Last 7 Days", recoverySleep),
@@ -402,10 +446,15 @@ struct AnalysisCheckInSnapshot: Codable {
             ("Soreness / Pain Flags", sorenessPain),
             ("Nutrition Adherence / Appetite", nutritionAdherence)
         ]
+        if let h = hungerLevel, h > 0 { result.append(("Hunger Level", "\(h)/10")) }
+        if let e = energyLevel, e > 0 { result.append(("Energy Level", "\(e)/10")) }
+        if let c = cravingsLevel, c > 0 { result.append(("Cravings Level", "\(c)/10")) }
+        return result
     }
 
     var hasMeaningfulContent: Bool {
         lines.contains { !$0.1.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            || [hungerLevel, energyLevel, cravingsLevel].contains { ($0 ?? 0) > 0 }
     }
 
     var promptDescription: String {
@@ -435,27 +484,42 @@ struct AnalysisCheckInSnapshot: Codable {
     }
 
     var compactSummaryItems: [String] {
-        [
+        var items: [String?] = [
             compactLine(label: "Training", value: trainingContext),
             compactLine(label: "Bodyweight", value: bodyweightTrend),
             compactLine(label: "Recovery", value: recoverySleep),
             compactLine(label: "Pain", value: sorenessPain)
-        ].compactMap { $0 }
+        ]
+        let wellness = wellnessCompactLine
+        if let wellness { items.append(wellness) }
+        return items.compactMap { $0 }
     }
 
     var generationSummaryItems: [String] {
-        [
+        var items: [String?] = [
             compactLine(label: "Current training", value: trainingContext, limit: 75),
             compactLine(label: "Bodyweight/visual trend", value: bodyweightTrend, limit: 70),
             compactLine(label: "Recovery this week", value: recoverySleep, limit: 65),
             compactLine(label: "Pain/soreness flags", value: sorenessPain, limit: 65)
-        ].compactMap { $0 }
+        ]
+        let wellness = wellnessCompactLine
+        if let wellness { items.append(wellness) }
+        return items.compactMap { $0 }
     }
 
     var detailSummaryItems: [String] {
         lines.compactMap { label, value in
             compactLine(label: label, value: value)
         }
+    }
+
+    private var wellnessCompactLine: String? {
+        var parts: [String] = []
+        if let h = hungerLevel, h > 0 { parts.append("Hunger \(h)/10") }
+        if let e = energyLevel, e > 0 { parts.append("Energy \(e)/10") }
+        if let c = cravingsLevel, c > 0 { parts.append("Cravings \(c)/10") }
+        guard !parts.isEmpty else { return nil }
+        return "Wellness: " + parts.joined(separator: ", ")
     }
 }
 
@@ -569,6 +633,16 @@ struct AnalysisLoggedNutritionDay {
     let proteinG: Double
     let carbsG: Double
     let fatG: Double
+    let fiberG: Double
+    let mealCount: Int
+
+    var isValid: Bool {
+        calories >= 1000 && proteinG > 0 && mealCount >= 2
+    }
+
+    var isIncomplete: Bool {
+        calories > 0 && calories < 1000 && mealCount < 3
+    }
 }
 
 struct AnalysisExerciseProgressSnapshot {
@@ -910,5 +984,325 @@ private func uniqueOrderedAnalysisValues(_ values: [String]) -> [String] {
         guard !seen.contains(key) else { return nil }
         seen.insert(key)
         return trimmed
+    }
+}
+
+// MARK: - Nutrition Adherence Metrics
+
+enum AdherenceDataQuality: String, CaseIterable {
+    case veryLow = "Very Low"
+    case low = "Low"
+    case moderate = "Moderate"
+    case good = "Good"
+    case excellent = "Excellent"
+
+    init(loggedDayRatio: Double) {
+        switch loggedDayRatio {
+        case ..<0.20: self = .veryLow
+        case ..<0.40: self = .low
+        case ..<0.60: self = .moderate
+        case ..<0.80: self = .good
+        default:       self = .excellent
+        }
+    }
+}
+
+enum WeightTrendDirection: String {
+    case losing = "Losing"
+    case gaining = "Gaining"
+    case stable = "Stable"
+    case unknown = "Unknown"
+}
+
+enum WeightTrendStatus: String {
+    case onTrack = "On track"
+    case tooFast = "Losing too fast"
+    case tooSlow = "Not losing"
+    case gaining = "Gaining"
+    case unknown = "Insufficient data"
+}
+
+struct NutritionAdherenceMetrics {
+    let lookbackDays: Int
+    let loggedDays: Int
+    let validDays: Int
+    let incompleteDays: Int
+    let loggedDayRatio: Double
+    let validDayRatio: Double
+
+    let averageCalories: Int?
+    let calorieHitRate: Double?
+    let averageProteinG: Double?
+    let proteinHitRate: Double?
+    let proteinPerMealG: Int?
+    let proteinPerFeedingRange: (low: Int, high: Int)?
+
+    let averageFiberG: Double?
+
+    let weightDataPoints: Int
+    let currentWeeklyAverageWeight: Double?
+    let weeklyWeightChangeLbs: Double?
+    let weeklyWeightChangePct: Double?
+    let weightTrendDirection: WeightTrendDirection
+    let targetWeightLossRangeLbs: (low: Double, high: Double)?
+    let weightTrendStatus: WeightTrendStatus
+
+    let dataQuality: AdherenceDataQuality
+    let primaryBottleneck: String?
+    let nextActionRecommendation: String?
+
+    var isAdherenceFirst: Bool {
+        dataQuality == .veryLow || dataQuality == .low
+    }
+
+    var hasIncompleteDayWarning: Bool {
+        incompleteDays > 0 && incompleteDays >= validDays
+    }
+}
+
+enum NutritionAdherenceMetricsBuilder {
+
+    static func build(
+        nutritionDays: [AnalysisLoggedNutritionDay],
+        weightPoints: [AnalysisLoggedWeightPoint],
+        macroTargets: DailyMacroTargets,
+        lookbackDays: Int = 30
+    ) -> NutritionAdherenceMetrics {
+
+        let loggedDays = nutritionDays.count
+        let validDays = nutritionDays.filter(\.isValid)
+        let incompleteDays = nutritionDays.filter(\.isIncomplete)
+        let ratio = lookbackDays > 0 ? Double(loggedDays) / Double(lookbackDays) : 0
+        let validRatio = lookbackDays > 0 ? Double(validDays.count) / Double(lookbackDays) : 0
+        let quality = AdherenceDataQuality(loggedDayRatio: ratio)
+
+        let (avgCal, calHit, avgPro, proHit) = complianceMetrics(
+            from: validDays,
+            targets: macroTargets
+        )
+
+        let proteinPerMeal: Int? = macroTargets.proteinG >= 40
+            ? Int((macroTargets.proteinG / 4.0).rounded())
+            : nil
+
+        let proteinPerFeedingRange: (low: Int, high: Int)?
+        if macroTargets.proteinG >= 40 {
+            let perThree = Int((macroTargets.proteinG / 3.0).rounded())
+            let perFive = Int((macroTargets.proteinG / 5.0).rounded())
+            proteinPerFeedingRange = (low: perFive, high: perThree)
+        } else {
+            proteinPerFeedingRange = nil
+        }
+
+        let avgFiber: Double?
+        if validDays.count >= 3 {
+            avgFiber = validDays.reduce(0.0) { $0 + $1.fiberG } / Double(validDays.count)
+        } else {
+            avgFiber = nil
+        }
+
+        let (weightCount, weeklyAvg, weeklyChange, weeklyPct, direction) = weightTrendMetrics(from: weightPoints)
+
+        let targetRange: (low: Double, high: Double)?
+        if let avg = weeklyAvg {
+            targetRange = (avg * 0.0025, avg * 0.0075)
+        } else {
+            targetRange = nil
+        }
+
+        let trendStatus = classifyWeightTrend(
+            weeklyChangeLbs: weeklyChange,
+            targetRange: targetRange
+        )
+
+        let bottleneck = identifyBottleneck(
+            quality: quality,
+            loggedDays: loggedDays,
+            validDays: validDays.count,
+            incompleteDays: incompleteDays.count,
+            lookbackDays: lookbackDays,
+            proHit: proHit,
+            calHit: calHit,
+            direction: direction,
+            weeklyPct: weeklyPct
+        )
+
+        let nextAction = recommendNextAction(
+            quality: quality,
+            validDays: validDays.count,
+            incompleteDays: incompleteDays.count,
+            proHit: proHit,
+            calHit: calHit,
+            direction: direction
+        )
+
+        return NutritionAdherenceMetrics(
+            lookbackDays: lookbackDays,
+            loggedDays: loggedDays,
+            validDays: validDays.count,
+            incompleteDays: incompleteDays.count,
+            loggedDayRatio: ratio,
+            validDayRatio: validRatio,
+            averageCalories: avgCal,
+            calorieHitRate: calHit,
+            averageProteinG: avgPro,
+            proteinHitRate: proHit,
+            proteinPerMealG: proteinPerMeal,
+            proteinPerFeedingRange: proteinPerFeedingRange,
+            averageFiberG: avgFiber,
+            weightDataPoints: weightCount,
+            currentWeeklyAverageWeight: weeklyAvg,
+            weeklyWeightChangeLbs: weeklyChange,
+            weeklyWeightChangePct: weeklyPct,
+            weightTrendDirection: direction,
+            targetWeightLossRangeLbs: targetRange,
+            weightTrendStatus: trendStatus,
+            dataQuality: quality,
+            primaryBottleneck: bottleneck,
+            nextActionRecommendation: nextAction
+        )
+    }
+
+    // MARK: - Compliance
+
+    private static func complianceMetrics(
+        from days: [AnalysisLoggedNutritionDay],
+        targets: DailyMacroTargets
+    ) -> (avgCal: Int?, calHitRate: Double?, avgPro: Double?, proHitRate: Double?) {
+        guard days.count >= 3 else { return (nil, nil, nil, nil) }
+
+        let count = Double(days.count)
+        let avgCal = Int((Double(days.reduce(0) { $0 + $1.calories }) / count).rounded())
+        let avgPro = days.reduce(0.0) { $0 + $1.proteinG } / count
+
+        let calLow = Double(targets.calories) * 0.90
+        let calHigh = Double(targets.calories) * 1.10
+        let calHitDays = days.filter { Double($0.calories) >= calLow && Double($0.calories) <= calHigh }.count
+        let calHitRate = Double(calHitDays) / count
+
+        let proThreshold = targets.proteinG * 0.90
+        let proHitDays = days.filter { $0.proteinG >= proThreshold }.count
+        let proHitRate = Double(proHitDays) / count
+
+        return (avgCal, calHitRate, avgPro, proHitRate)
+    }
+
+    // MARK: - Weight Trend
+
+    private static func weightTrendMetrics(
+        from points: [AnalysisLoggedWeightPoint]
+    ) -> (count: Int, weeklyAvg: Double?, weeklyChangeLbs: Double?, weeklyChangePct: Double?, direction: WeightTrendDirection) {
+        let sorted = points.sorted { $0.date < $1.date }
+        guard sorted.count >= 2 else {
+            let avg = sorted.first.map(\.weightLbs)
+            return (sorted.count, avg, nil, nil, .unknown)
+        }
+
+        let recentSevenDays = sorted.suffix(7)
+        let weeklyAvg = recentSevenDays.reduce(0.0) { $0 + $1.weightLbs } / Double(recentSevenDays.count)
+
+        guard let first = sorted.first, let last = sorted.last else {
+            return (sorted.count, weeklyAvg, nil, nil, .unknown)
+        }
+
+        let elapsedDays = max(Calendar.current.dateComponents([.day], from: first.date, to: last.date).day ?? 1, 1)
+        let delta = last.weightLbs - first.weightLbs
+        let weeklyChange = delta / Double(elapsedDays) * 7.0
+        let weeklyPct = weeklyAvg > 0 ? (weeklyChange / weeklyAvg) * 100.0 : nil
+
+        let direction: WeightTrendDirection
+        if delta < -0.3 {
+            direction = .losing
+        } else if delta > 0.3 {
+            direction = .gaining
+        } else {
+            direction = .stable
+        }
+
+        return (sorted.count, weeklyAvg, weeklyChange, weeklyPct, direction)
+    }
+
+    private static func classifyWeightTrend(
+        weeklyChangeLbs: Double?,
+        targetRange: (low: Double, high: Double)?
+    ) -> WeightTrendStatus {
+        guard let change = weeklyChangeLbs, let range = targetRange else { return .unknown }
+        let lossPerWeek = -change
+        if change > 0.2 { return .gaining }
+        if lossPerWeek < range.low * 0.5 { return .tooSlow }
+        if lossPerWeek > range.high * 1.5 { return .tooFast }
+        return .onTrack
+    }
+
+    // MARK: - Bottleneck & Recommendation
+
+    private static func identifyBottleneck(
+        quality: AdherenceDataQuality,
+        loggedDays: Int,
+        validDays: Int,
+        incompleteDays: Int,
+        lookbackDays: Int,
+        proHit: Double?,
+        calHit: Double?,
+        direction: WeightTrendDirection,
+        weeklyPct: Double?
+    ) -> String? {
+        if quality == .veryLow || quality == .low {
+            return "Nutrition logging is the bottleneck — only \(loggedDays) of \(lookbackDays) days logged. Averages and compliance rates are unreliable."
+        }
+        if incompleteDays > 0 && incompleteDays >= validDays {
+            return "Most logged days appear incomplete (<1000 kcal or <2 meals). \(incompleteDays) of \(loggedDays) days may be missing meals — compliance rates are based on \(validDays) valid days only."
+        }
+        if let pro = proHit, pro < 0.5 {
+            return "Protein is consistently below target — hitting 90%+ on only \(Int((pro * 100).rounded()))% of valid days."
+        }
+        if let cal = calHit, cal < 0.4 {
+            return "Calorie consistency is low — within 10% of target on only \(Int((cal * 100).rounded()))% of valid days."
+        }
+        if direction == .gaining, let pct = weeklyPct, pct > 0.5 {
+            return "Bodyweight is trending up while the goal likely requires maintenance or a deficit."
+        }
+        if let pct = weeklyPct, pct < -1.0 {
+            return "Weight is dropping faster than 1% per week — risking muscle loss and performance decline."
+        }
+        return nil
+    }
+
+    private static func recommendNextAction(
+        quality: AdherenceDataQuality,
+        validDays: Int,
+        incompleteDays: Int,
+        proHit: Double?,
+        calHit: Double?,
+        direction: WeightTrendDirection
+    ) -> String? {
+        switch quality {
+        case .veryLow:
+            return "Log every meal for 7 consecutive days, even rough estimates. Tracking consistency unlocks everything else."
+        case .low:
+            if incompleteDays > 0 {
+                return "Some days look incomplete — log all meals including dinner/snacks. A partial day skews your averages."
+            }
+            return "Push logging to at least 5 of the next 7 days. Focus on capturing protein amounts — calories will follow."
+        case .moderate:
+            if incompleteDays > validDays {
+                return "Most logged days are incomplete (<1000 kcal or missing meals). Log complete days to unlock accurate compliance data."
+            }
+            if let pro = proHit, pro < 0.5 {
+                return "Protein is the gap. Add a protein source to your weakest meal and keep a backup shake available."
+            }
+            return "Logging is getting consistent. Lock in 80%+ days to enable meaningful calorie adjustments."
+        case .good, .excellent:
+            if let pro = proHit, pro < 0.6 {
+                return "Add a protein source to your lowest-protein meal or add a shake to close the gap."
+            }
+            if let cal = calHit, cal < 0.5 {
+                return "Calories are inconsistent. Use meal templates on work days to reduce decision fatigue."
+            }
+            if direction == .gaining {
+                return "If the goal is fat loss, consider reducing daily intake by 150–200 kcal or adding 2,000 daily steps."
+            }
+            return nil
+        }
     }
 }
