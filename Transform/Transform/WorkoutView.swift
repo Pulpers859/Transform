@@ -256,12 +256,45 @@ struct WorkoutView: View {
                     }
                 }
             }
+
+            validatorWarningsBanner(program)
         }
         .padding(16)
         .background(Color(.secondarySystemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 16))
         .onLongPressGesture(minimumDuration: 1.2) {
             openGeneratorLab()
+        }
+    }
+
+    @ViewBuilder
+    func validatorWarningsBanner(_ program: WorkoutProgram) -> some View {
+        let warnings = program.validatorWarnings
+            .components(separatedBy: "\n")
+            .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        if !warnings.isEmpty {
+            DisclosureGroup {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(Array(warnings.enumerated()), id: \.offset) { index, warning in
+                        Text("\(index + 1). \(warning)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .padding(.top, 4)
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.caption2)
+                        .foregroundStyle(.yellow)
+                    Text("\(warnings.count) validator warning\(warnings.count == 1 ? "" : "s")")
+                        .font(.caption.bold())
+                        .foregroundStyle(.yellow)
+                }
+            }
+            .padding(10)
+            .background(Color.yellow.opacity(0.08))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
         }
     }
 
@@ -524,7 +557,8 @@ struct WorkoutView: View {
         }
 
         do {
-            let response = try await ClaudeService.shared.generateWeekOne(from: result)
+            let generationResult = try await ClaudeService.shared.generateWeekOne(from: result)
+            let response = generationResult.response
             try Task.checkCancellation()
             WorkoutGenerationDiagnostics.markStage("encoding generated week 1 program")
 
@@ -548,6 +582,7 @@ struct WorkoutView: View {
                 modelContext.delete(program)
             }
 
+            let warningsText = generationResult.validatorWarnings.joined(separator: "\n")
             let program = WorkoutProgram(
                 programName: response.programName,
                 programSummary: response.programSummary,
@@ -559,7 +594,8 @@ struct WorkoutView: View {
                 programJSON: weekJSON,
                 currentWeek: 1,
                 maxWeeks: 4,
-                analysisJSON: analysisJSONString
+                analysisJSON: analysisJSONString,
+                validatorWarnings: warningsText
             )
             modelContext.insert(program)
 
@@ -609,13 +645,14 @@ struct WorkoutView: View {
 
         do {
             WorkoutGenerationDiagnostics.markStage("requesting week \(nextWeek) program from AI")
-            let response = try await ClaudeService.shared.generateNextWeek(
+            let generationResult = try await ClaudeService.shared.generateNextWeek(
                 weekNumber: nextWeek,
                 previousWeekJSON: program.programJSON,
                 analysisJSON: program.analysisJSON,
                 splitType: program.splitType,
                 programName: program.programName
             )
+            let response = generationResult.response
             try Task.checkCancellation()
             WorkoutGenerationDiagnostics.markStage("encoding generated week \(nextWeek) program")
 
@@ -630,6 +667,7 @@ struct WorkoutView: View {
             let priorTotalDays = program.totalDays
             let priorSummary = program.programSummary
             let priorProgramJSON = program.programJSON
+            let priorWarnings = program.validatorWarnings
 
             WorkoutGenerationDiagnostics.markStage("inserting generated week \(nextWeek) program")
             insertDays(from: response.days, into: program)
@@ -640,6 +678,7 @@ struct WorkoutView: View {
                 program.programSummary = response.weekSummary
             }
             program.programJSON = weekJSON
+            program.validatorWarnings = generationResult.validatorWarnings.joined(separator: "\n")
 
             WorkoutGenerationDiagnostics.markStage("saving generated week \(nextWeek) program to storage")
             guard PersistenceReporter.save(modelContext, operation: "generated next workout week") else {
@@ -648,6 +687,7 @@ struct WorkoutView: View {
                 program.totalDays = priorTotalDays
                 program.programSummary = priorSummary
                 program.programJSON = priorProgramJSON
+                program.validatorWarnings = priorWarnings
                 errorMessage = "Could not save the generated week. Please try again."
                 showError = true
                 UINotificationFeedbackGenerator().notificationOccurred(.error)

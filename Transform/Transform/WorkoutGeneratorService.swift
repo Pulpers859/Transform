@@ -79,7 +79,7 @@ extension ClaudeService {
 
     // MARK: - Generate Week 1 (Initial)
 
-    func generateWeekOne(from analysisResult: BodyAnalysisResult) async throws -> WorkoutProgramResponse {
+    func generateWeekOne(from analysisResult: BodyAnalysisResult) async throws -> WorkoutProgramGenerationResult {
         WorkoutGenerationDiagnostics.markStage("building week 1 analysis context")
         let analysisSummary = analysisContext(from: analysisResult)
         let trainingIntent = trainingIntentPlan(from: analysisResult)
@@ -133,7 +133,10 @@ extension ClaudeService {
                 let issues = validateProgramResponse(cleaned, blueprint: blueprint)
 
                 if issues.isEmpty {
-                    return labeledProgramResponse(cleaned, sourceLabel: aiSourceLabel)
+                    return WorkoutProgramGenerationResult(
+                        response: labeledProgramResponse(cleaned, sourceLabel: aiSourceLabel),
+                        validatorWarnings: []
+                    )
                 }
 
                 if attempt >= generationAttempts {
@@ -152,7 +155,10 @@ extension ClaudeService {
                         let trimmedIssues = validateProgramResponse(trimmed, blueprint: blueprint)
                         if trimmedIssues.isEmpty {
                             print("[WorkoutGeneratorService] Week 1 overshoot trimmed — all issues resolved")
-                            return labeledProgramResponse(trimmed, sourceLabel: aiSourceLabel)
+                            return WorkoutProgramGenerationResult(
+                                response: labeledProgramResponse(trimmed, sourceLabel: aiSourceLabel),
+                                validatorWarnings: []
+                            )
                         }
                         if shouldAcceptAIOutput(
                             despite: trimmedIssues,
@@ -160,7 +166,10 @@ extension ClaudeService {
                             generationAttempts: generationAttempts
                         ) {
                             print("[WorkoutGeneratorService] Week 1 accepted after overshoot trim with warnings: \(trimmedIssues.joined(separator: " | "))")
-                            return labeledProgramResponse(trimmed, sourceLabel: aiSourceLabel)
+                            return WorkoutProgramGenerationResult(
+                                response: labeledProgramResponse(trimmed, sourceLabel: aiSourceLabel),
+                                validatorWarnings: trimmedIssues
+                            )
                         }
                     }
                 }
@@ -171,7 +180,10 @@ extension ClaudeService {
                     generationAttempts: generationAttempts
                 ) {
                     print("[WorkoutGeneratorService] Week 1 accepted with heuristic validator warnings: \(issues.joined(separator: " | "))")
-                    return labeledProgramResponse(cleaned, sourceLabel: aiSourceLabel)
+                    return WorkoutProgramGenerationResult(
+                        response: labeledProgramResponse(cleaned, sourceLabel: aiSourceLabel),
+                        validatorWarnings: issues
+                    )
                 }
 
                 lastIssues = issues
@@ -215,11 +227,14 @@ extension ClaudeService {
         }
 
         WorkoutGenerationDiagnostics.markStage("building procedural week 1 fallback")
-        return try validatedProceduralWeekOneProgram(
-            from: analysisResult,
-            trainingIntent: trainingIntent,
-            blueprint: blueprint,
-            diagnostic: lastIssues.joined(separator: " | ")
+        return WorkoutProgramGenerationResult(
+            response: try validatedProceduralWeekOneProgram(
+                from: analysisResult,
+                trainingIntent: trainingIntent,
+                blueprint: blueprint,
+                diagnostic: lastIssues.joined(separator: " | ")
+            ),
+            validatorWarnings: lastIssues
         )
     }
 
@@ -247,7 +262,7 @@ extension ClaudeService {
         analysisJSON: String,
         splitType: String,
         programName: String
-    ) async throws -> WorkoutWeekResponse {
+    ) async throws -> WorkoutWeekGenerationResult {
         let dayStart = ((weekNumber - 1) * 7) + 1
         let dayEnd = weekNumber * 7
 
@@ -328,7 +343,10 @@ extension ClaudeService {
                 )
 
                 if issues.isEmpty {
-                    return labeledWeekResponse(cleaned, sourceLabel: aiSourceLabel)
+                    return WorkoutWeekGenerationResult(
+                        response: labeledWeekResponse(cleaned, sourceLabel: aiSourceLabel),
+                        validatorWarnings: []
+                    )
                 }
 
                 if attempt >= generationAttempts {
@@ -351,7 +369,10 @@ extension ClaudeService {
                         )
                         if trimmedIssues.isEmpty {
                             print("[WorkoutGeneratorService] Week \(weekNumber) overshoot trimmed — all issues resolved")
-                            return labeledWeekResponse(trimmed, sourceLabel: aiSourceLabel)
+                            return WorkoutWeekGenerationResult(
+                                response: labeledWeekResponse(trimmed, sourceLabel: aiSourceLabel),
+                                validatorWarnings: []
+                            )
                         }
                         if shouldAcceptAIOutput(
                             despite: trimmedIssues,
@@ -359,7 +380,10 @@ extension ClaudeService {
                             generationAttempts: generationAttempts
                         ) {
                             print("[WorkoutGeneratorService] Week \(weekNumber) accepted after overshoot trim with warnings: \(trimmedIssues.joined(separator: " | "))")
-                            return labeledWeekResponse(trimmed, sourceLabel: aiSourceLabel)
+                            return WorkoutWeekGenerationResult(
+                                response: labeledWeekResponse(trimmed, sourceLabel: aiSourceLabel),
+                                validatorWarnings: trimmedIssues
+                            )
                         }
                     }
                 }
@@ -370,7 +394,10 @@ extension ClaudeService {
                     generationAttempts: generationAttempts
                 ) {
                     print("[WorkoutGeneratorService] Week \(weekNumber) accepted with heuristic validator warnings: \(issues.joined(separator: " | "))")
-                    return labeledWeekResponse(cleaned, sourceLabel: aiSourceLabel)
+                    return WorkoutWeekGenerationResult(
+                        response: labeledWeekResponse(cleaned, sourceLabel: aiSourceLabel),
+                        validatorWarnings: issues
+                    )
                 }
 
                 lastIssues = issues
@@ -413,16 +440,19 @@ extension ClaudeService {
             print("[WorkoutGeneratorService] Week \(weekNumber) fallback activated after issues: \(lastIssues.joined(separator: " | "))")
         }
 
-        return try validatedProceduralWeek(
-            weekNumber: weekNumber,
-            dayStart: dayStart,
-            dayEnd: dayEnd,
-            splitType: splitType,
-            programName: programName,
-            trainingIntent: trainingIntent,
-            blueprint: blueprint,
-            previousWeekDays: hasValidPreviousWeek ? previousWeekDays : nil,
-            diagnostic: lastIssues.joined(separator: " | ")
+        return WorkoutWeekGenerationResult(
+            response: try validatedProceduralWeek(
+                weekNumber: weekNumber,
+                dayStart: dayStart,
+                dayEnd: dayEnd,
+                splitType: splitType,
+                programName: programName,
+                trainingIntent: trainingIntent,
+                blueprint: blueprint,
+                previousWeekDays: hasValidPreviousWeek ? previousWeekDays : nil,
+                diagnostic: lastIssues.joined(separator: " | ")
+            ),
+            validatorWarnings: lastIssues
         )
     }
 
