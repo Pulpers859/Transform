@@ -628,6 +628,9 @@ extension ClaudeService {
         )
 
         switch mode {
+        case .lastGeneration:
+            throw ClaudeError.parseError("Last Generation mode is handled by the Lab view and does not use the generator service.")
+
         case .procedural:
             let response = buildProceduralWeekOneProgram(
                 from: analysisResult,
@@ -1051,6 +1054,9 @@ extension ClaudeService {
         }
 
         switch mode {
+        case .lastGeneration:
+            throw ClaudeError.parseError("Last Generation mode is handled by the Lab view and does not use the generator service.")
+
         case .procedural:
             let response = buildProceduralWeek(
                 weekNumber: weekNumber,
