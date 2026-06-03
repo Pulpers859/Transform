@@ -581,7 +581,6 @@ struct ExerciseCard: View {
         pauseRestTimer()
         remainingRestSeconds = 0
         didCompleteRestTimer = true
-        showExpandedRestTimer = true
         UINotificationFeedbackGenerator().notificationOccurred(.success)
     }
 
