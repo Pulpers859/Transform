@@ -939,4 +939,77 @@ extension ClaudeService {
         )
     }
 
+    // MARK: - Week-over-Week Plan Diff
+
+    func weekDiff(
+        currentDays: [WorkoutDayResponse],
+        previousDays: [WorkoutDayResponse]
+    ) -> [WeekDiffEntry] {
+        let currentByStyle = groupedTrainingDaysByStyle(currentDays)
+        let previousByStyle = groupedTrainingDaysByStyle(previousDays)
+        var entries: [WeekDiffEntry] = []
+
+        for (style, currentStyleDays) in currentByStyle {
+            guard let previousStyleDays = previousByStyle[style] else { continue }
+
+            for index in 0..<min(currentStyleDays.count, previousStyleDays.count) {
+                let current = currentStyleDays[index]
+                let previous = previousStyleDays[index]
+
+                let currentKeys = Dictionary(
+                    current.exercises.map { (normalizeExerciseName($0.exerciseName), $0) },
+                    uniquingKeysWith: { first, _ in first }
+                )
+                let previousKeys = Dictionary(
+                    previous.exercises.map { (normalizeExerciseName($0.exerciseName), $0) },
+                    uniquingKeysWith: { first, _ in first }
+                )
+
+                for (key, exercise) in previousKeys where currentKeys[key] == nil {
+                    entries.append(WeekDiffEntry(
+                        dayNumber: current.dayNumber,
+                        dayName: current.dayName,
+                        kind: .removed,
+                        exerciseName: exercise.exerciseName,
+                        detail: "\(exercise.sets) sets × \(exercise.reps)"
+                    ))
+                }
+
+                for (key, exercise) in currentKeys where previousKeys[key] == nil {
+                    entries.append(WeekDiffEntry(
+                        dayNumber: current.dayNumber,
+                        dayName: current.dayName,
+                        kind: .added,
+                        exerciseName: exercise.exerciseName,
+                        detail: "\(exercise.sets) sets × \(exercise.reps)"
+                    ))
+                }
+
+                for (key, currentExercise) in currentKeys {
+                    guard let previousExercise = previousKeys[key] else { continue }
+                    if currentExercise.sets != previousExercise.sets {
+                        entries.append(WeekDiffEntry(
+                            dayNumber: current.dayNumber,
+                            dayName: current.dayName,
+                            kind: .setsChanged,
+                            exerciseName: currentExercise.exerciseName,
+                            detail: "\(previousExercise.sets) → \(currentExercise.sets) sets"
+                        ))
+                    }
+                    if currentExercise.reps != previousExercise.reps {
+                        entries.append(WeekDiffEntry(
+                            dayNumber: current.dayNumber,
+                            dayName: current.dayName,
+                            kind: .repsChanged,
+                            exerciseName: currentExercise.exerciseName,
+                            detail: "\(previousExercise.reps) → \(currentExercise.reps)"
+                        ))
+                    }
+                }
+            }
+        }
+
+        return entries.sorted { $0.dayNumber < $1.dayNumber }
+    }
+
 }

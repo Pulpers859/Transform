@@ -26,6 +26,7 @@ struct WorkoutView: View {
                     if let program = currentProgram {
                         programHeader(program)
                         weekSelector(program)
+                        weekDiffBanner(program)
                         weekDaysList(program)
                         if program.canGenerateNextWeek {
                             generateNextWeekButton(program)
@@ -344,6 +345,120 @@ struct WorkoutView: View {
                 }
             }
         }
+    }
+
+    // MARK: - Week Diff Banner
+
+    @ViewBuilder
+    func weekDiffBanner(_ program: WorkoutProgram) -> some View {
+        if selectedWeek >= 2 {
+            let currentWeekDays = program.sortedDays.filter { $0.weekNumber == selectedWeek }
+            let previousWeekDays = program.sortedDays.filter { $0.weekNumber == selectedWeek - 1 }
+
+            if !currentWeekDays.isEmpty && !previousWeekDays.isEmpty {
+                let currentResponses = currentWeekDays.map { day in
+                    WorkoutDayResponse(
+                        dayNumber: ((day.dayNumber - 1) % 7) + 1,
+                        dayName: day.dayName,
+                        muscleGroups: day.muscleGroups,
+                        isRestDay: day.isRestDay,
+                        notes: day.notes,
+                        exercises: day.sortedExercises.map { ex in
+                            WorkoutExerciseResponse(
+                                exerciseName: ex.exerciseName,
+                                sets: ex.sets,
+                                reps: ex.reps,
+                                tempo: ex.tempo,
+                                restSeconds: ex.restSeconds,
+                                notes: ex.notes,
+                                muscleTarget: ex.muscleTarget
+                            )
+                        }
+                    )
+                }
+                let previousResponses = previousWeekDays.map { day in
+                    WorkoutDayResponse(
+                        dayNumber: ((day.dayNumber - 1) % 7) + 1,
+                        dayName: day.dayName,
+                        muscleGroups: day.muscleGroups,
+                        isRestDay: day.isRestDay,
+                        notes: day.notes,
+                        exercises: day.sortedExercises.map { ex in
+                            WorkoutExerciseResponse(
+                                exerciseName: ex.exerciseName,
+                                sets: ex.sets,
+                                reps: ex.reps,
+                                tempo: ex.tempo,
+                                restSeconds: ex.restSeconds,
+                                notes: ex.notes,
+                                muscleTarget: ex.muscleTarget
+                            )
+                        }
+                    )
+                }
+
+                let diff = ClaudeService.shared.weekDiff(
+                    currentDays: currentResponses,
+                    previousDays: previousResponses
+                )
+
+                if !diff.isEmpty {
+                    DisclosureGroup {
+                        VStack(alignment: .leading, spacing: 8) {
+                            ForEach(diff) { entry in
+                                HStack(spacing: 8) {
+                                    diffIcon(entry.kind)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(entry.exerciseName)
+                                            .font(.caption.bold())
+                                        Text("\(entry.kind.rawValue) — \(entry.detail)")
+                                            .font(.caption2)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    Spacer()
+                                    Text("D\(entry.dayNumber)")
+                                        .font(.caption2.bold())
+                                        .foregroundStyle(.tertiary)
+                                }
+                            }
+                        }
+                        .padding(.top, 4)
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "arrow.triangle.2.circlepath")
+                                .font(.caption2)
+                                .foregroundStyle(.cyan)
+                            Text("\(diff.count) change\(diff.count == 1 ? "" : "s") from Week \(selectedWeek - 1)")
+                                .font(.caption.bold())
+                                .foregroundStyle(.cyan)
+                        }
+                    }
+                    .padding(10)
+                    .background(Color.cyan.opacity(0.08))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                }
+            }
+        }
+    }
+
+    func diffIcon(_ kind: ClaudeService.WeekDiffKind) -> some View {
+        Group {
+            switch kind {
+            case .added:
+                Image(systemName: "plus.circle.fill")
+                    .foregroundStyle(.green)
+            case .removed:
+                Image(systemName: "minus.circle.fill")
+                    .foregroundStyle(.red)
+            case .setsChanged:
+                Image(systemName: "arrow.up.arrow.down.circle.fill")
+                    .foregroundStyle(.orange)
+            case .repsChanged:
+                Image(systemName: "arrow.left.arrow.right.circle.fill")
+                    .foregroundStyle(.purple)
+            }
+        }
+        .font(.caption)
     }
 
     // MARK: - Week Days List

@@ -245,6 +245,12 @@ extension ClaudeService {
                 on: actualDay,
                 injuryRiskFocus: blueprint.injuryRiskFocus
             ))
+            issues.append(contentsOf: validateJointStressBudget(on: actualDay))
+            issues.append(contentsOf: validateNoteContradictions(
+                on: actualDay,
+                blueprint: blueprint,
+                dayStart: dayStart
+            ))
         }
 
         return issues
@@ -620,6 +626,156 @@ extension ClaudeService {
         return [
             "Day \(day.dayNumber) includes shoulder pressing that is not clearly adapted to the impingement/internal-rotation risk in the analysis (\(names)). Use more shoulder-friendly setup cues or choose a better-aligned press variation."
         ]
+    }
+
+    // MARK: - Joint-Stress Budget
+
+    struct JointStressBudget {
+        var shoulder: Double = 0
+        var elbow: Double = 0
+        var lowerBack: Double = 0
+        var knee: Double = 0
+    }
+
+    func exerciseJointStress(for exercise: WorkoutExerciseResponse) -> JointStressBudget {
+        let metadata = exerciseMetadata(for: exercise)
+        let name = normalizedPriorityText(exercise.exerciseName)
+        let pattern = normalizedPriorityText(metadata.movementPattern)
+        let sets = Double(exercise.sets)
+
+        var stress = JointStressBudget()
+
+        let shoulderBase = Double(metadata.shoulderRisk)
+        if containsAny(pattern, keywords: ["horizontal press", "incline press", "vertical press", "close-grip press", "dip", "fly"]) {
+            stress.shoulder += shoulderBase * sets * 0.5
+        } else if containsAny(pattern, keywords: ["row", "vertical pull", "pullover", "face pull"]) {
+            stress.shoulder += max(1, shoulderBase) * sets * 0.2
+        } else if containsAny(pattern, keywords: ["lateral raise", "upright row", "rear delt fly"]) {
+            stress.shoulder += shoulderBase * sets * 0.3
+        }
+
+        if containsAny(pattern, keywords: ["curl", "extension", "pressdown", "close-grip press"]) {
+            stress.elbow += sets * 0.4
+        }
+        if containsAny(name, keywords: ["skull crusher", "preacher curl", "jm press"]) {
+            stress.elbow += sets * 0.3
+        }
+        if containsAny(pattern, keywords: ["horizontal press", "incline press", "vertical press", "dip"]) {
+            stress.elbow += sets * 0.2
+        }
+
+        if containsAny(pattern, keywords: ["hinge", "squat"]) && metadata.equipment != "Machine" {
+            stress.lowerBack += Double(metadata.fatigueCost) * sets * 0.4
+        }
+        if containsAny(pattern, keywords: ["row"]) && !containsAny(name, keywords: ["chest supported", "machine", "cable", "seated cable"]) {
+            stress.lowerBack += sets * 0.3
+        }
+        if containsAny(name, keywords: ["good morning"]) {
+            stress.lowerBack += sets * 0.5
+        }
+
+        if containsAny(pattern, keywords: ["squat", "press", "lunge", "split squat", "extension"]) && containsAny(normalizedPriorityText(metadata.primaryAreas.joined(separator: " ")), keywords: ["quad", "glute"]) {
+            stress.knee += Double(metadata.fatigueCost) * sets * 0.3
+        }
+
+        return stress
+    }
+
+    func sessionJointStress(for day: WorkoutDayResponse) -> JointStressBudget {
+        guard !day.isRestDay else { return JointStressBudget() }
+        return day.exercises.reduce(into: JointStressBudget()) { total, exercise in
+            let stress = exerciseJointStress(for: exercise)
+            total.shoulder += stress.shoulder
+            total.elbow += stress.elbow
+            total.lowerBack += stress.lowerBack
+            total.knee += stress.knee
+        }
+    }
+
+    func validateJointStressBudget(on day: WorkoutDayResponse) -> [String] {
+        guard !day.isRestDay else { return [] }
+        let stress = sessionJointStress(for: day)
+        var issues: [String] = []
+
+        if stress.shoulder > 18 {
+            issues.append(
+                "Day \(day.dayNumber) accumulates excessive shoulder joint stress (\(String(format: "%.0f", stress.shoulder)) vs 18 budget). Swap a compound press for a machine or cable alternative, or drop a redundant pressing slot."
+            )
+        }
+        if stress.elbow > 14 {
+            issues.append(
+                "Day \(day.dayNumber) accumulates excessive elbow joint stress (\(String(format: "%.0f", stress.elbow)) vs 14 budget). Reduce overlapping curl/extension work or swap a barbell movement for a cable variant."
+            )
+        }
+        if stress.lowerBack > 14 {
+            issues.append(
+                "Day \(day.dayNumber) accumulates excessive lower-back stress (\(String(format: "%.0f", stress.lowerBack)) vs 14 budget). Replace a free-weight hinge or row with a chest-supported or machine alternative."
+            )
+        }
+        if stress.knee > 14 {
+            issues.append(
+                "Day \(day.dayNumber) accumulates excessive knee joint stress (\(String(format: "%.0f", stress.knee)) vs 14 budget). Consider swapping a compound squat for a machine press or reducing heavy quad work."
+            )
+        }
+
+        return issues
+    }
+
+    // MARK: - Contradiction Detection
+
+    func validateNoteContradictions(on day: WorkoutDayResponse, blueprint: ProgramBlueprint, dayStart: Int) -> [String] {
+        guard !day.isRestDay else { return [] }
+        let note = normalizedPriorityText(day.notes)
+        let dayName = normalizedPriorityText(day.dayName)
+        let combined = "\(note) \(dayName)"
+        var issues: [String] = []
+
+        if containsAny(combined, keywords: ["low fatigue", "low-fatigue", "recovery", "deload", "easy"]) {
+            let heavyCompoundCount = day.exercises.filter { exercise in
+                let metadata = exerciseMetadata(for: exercise)
+                return metadata.fatigueCost >= 3
+            }.count
+            if heavyCompoundCount >= 2 {
+                issues.append(
+                    "Day \(day.dayNumber) notes describe a low-fatigue or recovery session, but it includes \(heavyCompoundCount) heavy compounds. Align the exercise selection with the session intent."
+                )
+            }
+        }
+
+        if containsAny(combined, keywords: ["shoulder friendly", "shoulder-friendly"]) {
+            let riskyCount = day.exercises.filter { exercise in
+                let metadata = exerciseMetadata(for: exercise)
+                return metadata.shoulderRisk >= 3
+            }.count
+            if riskyCount >= 2 {
+                issues.append(
+                    "Day \(day.dayNumber) notes describe a shoulder-friendly session, but it includes \(riskyCount) high shoulder-risk exercises. Choose lower-risk pressing or isolation alternatives."
+                )
+            }
+        }
+
+        let matchedPlan = blueprint.dayPlans.first {
+            blueprintDayNumber($0.dayIndex, dayStart: dayStart) == day.dayNumber && !$0.isRestDay
+        }
+        if let focusArea = matchedPlan?.focusArea {
+            let focusText = normalizedPriorityText(focusArea)
+            if containsAny(combined, keywords: [focusText, "\(focusText) focus", "\(focusText) emphasis"]) {
+                let primeCount = day.exercises.filter { exercise in
+                    focusStimulusKind(
+                        exerciseName: exercise.exerciseName,
+                        muscleTarget: exercise.muscleTarget,
+                        focusArea: focusArea
+                    ) == .prime
+                }.count
+                if primeCount == 0 {
+                    issues.append(
+                        "Day \(day.dayNumber) notes claim \(focusArea) emphasis, but the session contains no prime hypertrophy exercises for that area. The notes contradict the actual programming."
+                    )
+                }
+            }
+        }
+
+        return issues
     }
 
     func focusIntentForArea(_ area: String?, within trainingIntent: TrainingIntentPlan) -> MusclePriorityIntent? {

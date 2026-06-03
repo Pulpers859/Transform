@@ -636,7 +636,8 @@ extension ClaudeService {
         [
             "undershot its targeted exercise-slot goal",
             "undershot its weighted stimulus target",
-            "Too few anchor lifts carried over"
+            "Too few anchor lifts carried over",
+            "substitution significantly increases shoulder risk"
         ]
     }
 
@@ -671,7 +672,18 @@ extension ClaudeService {
             "notes are empty or too short",
             "notes do not include a concrete progression cue",
             "the generated day reads as",
-            "is supposed to emphasize quads"
+            "is supposed to emphasize quads",
+            "excessive shoulder joint stress",
+            "excessive elbow joint stress",
+            "excessive lower-back stress",
+            "excessive knee joint stress",
+            "notes describe a low-fatigue",
+            "notes describe a shoulder-friendly",
+            "notes claim",
+            "notes contradict the actual programming",
+            "was replaced with a poor substitute",
+            "substitution changes the primary muscle target",
+            "substitution significantly increases fatigue"
         ]
     }
 
@@ -692,6 +704,7 @@ extension ClaudeService {
 
         var comparableDayCount = 0
         var continuityDayCount = 0
+        var substituteIssues: [String] = []
 
         let currentByStyle = groupedTrainingDaysByStyle(currentWeekDays)
         let previousByStyle = groupedTrainingDaysByStyle(previousWeekDays)
@@ -708,33 +721,103 @@ extension ClaudeService {
                         muscleGroups: currentDays[index].muscleGroups
                     ) ?? "Unknown"
                 )
-                let currentSet = Set(
-                    retainedAnchorExercises(from: currentDays[index].exercises, style: style)
-                        .prefix(2)
-                        .map { normalizeExerciseName($0.exerciseName) }
-                )
-                let previousSet = Set(
-                    retainedAnchorExercises(from: previousDays[index].exercises, style: style)
-                        .prefix(2)
-                        .map { normalizeExerciseName($0.exerciseName) }
-                )
+                let currentAnchors = retainedAnchorExercises(from: currentDays[index].exercises, style: style).prefix(3)
+                let previousAnchors = retainedAnchorExercises(from: previousDays[index].exercises, style: style).prefix(3)
 
-                // EvidenceProfile.md CONT-001 [confidence: moderate]
-                // Compare like-for-like sessions, not raw calendar positions. A shifted
-                // rest day should not make a coherent progression look random.
-                if currentSet.intersection(previousSet).count >= 1 {
+                let currentKeys = Set(currentAnchors.map { normalizeExerciseName($0.exerciseName) })
+                let previousKeys = Set(previousAnchors.map { normalizeExerciseName($0.exerciseName) })
+
+                if currentKeys.intersection(previousKeys).count >= 1 {
                     continuityDayCount += 1
+                }
+
+                let droppedKeys = previousKeys.subtracting(currentKeys)
+                for droppedKey in droppedKeys {
+                    guard let previousExercise = previousAnchors.first(where: {
+                        normalizeExerciseName($0.exerciseName) == droppedKey
+                    }) else { continue }
+
+                    let previousMeta = exerciseMetadata(for: previousExercise)
+                    let bestReplacement = currentDays[index].exercises
+                        .filter { !previousKeys.contains(normalizeExerciseName($0.exerciseName)) }
+                        .min { lhs, rhs in
+                            substituteDistance(from: previousMeta, to: exerciseMetadata(for: lhs))
+                                < substituteDistance(from: previousMeta, to: exerciseMetadata(for: rhs))
+                        }
+
+                    if let replacement = bestReplacement {
+                        let replacementMeta = exerciseMetadata(for: replacement)
+                        substituteIssues.append(contentsOf: validateSubstituteQuality(
+                            original: previousExercise,
+                            replacement: replacement,
+                            originalMeta: previousMeta,
+                            replacementMeta: replacementMeta,
+                            dayNumber: currentDays[index].dayNumber
+                        ))
+                    }
                 }
             }
         }
 
         var issues: [String] = []
         if comparableDayCount >= 4 {
-            // Allow up to half the days to rotate freely; only flag when barely any
-            // anchor lifts carry over.
             if continuityDayCount < max(1, comparableDayCount / 3) {
                 issues.append("Too few anchor lifts carried over from last week. Keep 1-2 anchor lifts per day for progression tracking.")
             }
+        }
+        issues.append(contentsOf: substituteIssues)
+
+        return issues
+    }
+
+    func substituteDistance(from original: ExerciseMetadata, to candidate: ExerciseMetadata) -> Double {
+        var distance = 0.0
+
+        let origPrimary = Set(original.primaryAreas.map(normalizedPriorityText))
+        let candPrimary = Set(candidate.primaryAreas.map(normalizedPriorityText))
+        if origPrimary.isDisjoint(with: candPrimary) {
+            distance += 10.0
+        }
+
+        if normalizedPriorityText(original.movementPattern) != normalizedPriorityText(candidate.movementPattern) {
+            distance += 3.0
+        }
+
+        distance += abs(Double(original.fatigueCost - candidate.fatigueCost)) * 2.0
+        distance += abs(Double(original.shoulderRisk - candidate.shoulderRisk))
+
+        return distance
+    }
+
+    func validateSubstituteQuality(
+        original: WorkoutExerciseResponse,
+        replacement: WorkoutExerciseResponse,
+        originalMeta: ExerciseMetadata,
+        replacementMeta: ExerciseMetadata,
+        dayNumber: Int
+    ) -> [String] {
+        var issues: [String] = []
+
+        let origPrimary = Set(originalMeta.primaryAreas.map(normalizedPriorityText))
+        let replPrimary = Set(replacementMeta.primaryAreas.map(normalizedPriorityText))
+        if origPrimary.isDisjoint(with: replPrimary) {
+            issues.append(
+                "Day \(dayNumber): '\(original.exerciseName)' was replaced with '\(replacement.exerciseName)', but the substitution changes the primary muscle target from \(originalMeta.primaryAreas.joined(separator: "/")) to \(replacementMeta.primaryAreas.joined(separator: "/")). Keep substitutes within the same muscle group."
+            )
+        }
+
+        let fatigueDelta = replacementMeta.fatigueCost - originalMeta.fatigueCost
+        if fatigueDelta >= 2 {
+            issues.append(
+                "Day \(dayNumber): '\(original.exerciseName)' was replaced with '\(replacement.exerciseName)', but the substitution significantly increases fatigue cost (\(originalMeta.fatigueCost) → \(replacementMeta.fatigueCost)). Prefer similar or lower fatigue alternatives."
+            )
+        }
+
+        let riskDelta = replacementMeta.shoulderRisk - originalMeta.shoulderRisk
+        if riskDelta >= 2 {
+            issues.append(
+                "Day \(dayNumber): '\(original.exerciseName)' was replaced with '\(replacement.exerciseName)', but the substitution significantly increases shoulder risk (\(originalMeta.shoulderRisk) → \(replacementMeta.shoulderRisk)). Prefer lower-risk alternatives."
+            )
         }
 
         return issues

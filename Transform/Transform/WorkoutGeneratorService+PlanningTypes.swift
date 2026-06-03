@@ -226,4 +226,20 @@ extension ClaudeService {
         case core
     }
 
+    struct WeekDiffEntry: Identifiable {
+        let id = UUID()
+        let dayNumber: Int
+        let dayName: String
+        let kind: WeekDiffKind
+        let exerciseName: String
+        let detail: String
+    }
+
+    enum WeekDiffKind: String {
+        case added = "Added"
+        case removed = "Removed"
+        case setsChanged = "Sets Changed"
+        case repsChanged = "Reps Changed"
+    }
+
 }
