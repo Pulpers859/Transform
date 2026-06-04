@@ -14,12 +14,27 @@ struct AddMeasurementSheet: View {
     @State private var leftArmText = ""
     @State private var rightThighText = ""
     @State private var leftThighText = ""
+    @State private var rightCalfText = ""
+    @State private var leftCalfText = ""
     @State private var bodyFatText = ""
     @State private var notes = ""
     @State private var selectedDate = Date()
     @State private var alsoSaveWeightEntry = false
     @State private var validationMessage = ""
     @State private var showValidationAlert = false
+    @State private var showAdvanced = false
+    @State private var selectedTiming = "morning_fasted"
+    @State private var isStandardMeasurement = true
+    @State private var validationIssues: [MeasurementValidator.Issue] = []
+
+    let timingOptions = [
+        ("morning_fasted", "Morning (fasted)"),
+        ("morning_postmeal", "Morning (post-meal)"),
+        ("post_training", "Post-Training"),
+        ("post_shift", "Post-Shift"),
+        ("evening", "Evening"),
+        ("other", "Other")
+    ]
 
     var hasValidWeightInput: Bool {
         guard let weight = Double(weightText) else { return false }
@@ -33,10 +48,8 @@ struct AddMeasurementSheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Date") {
-                    DatePicker("Date", selection: $selectedDate, displayedComponents: .date)
-                        .datePickerStyle(.compact)
-                }
+                protocolSection
+                dateSection
 
                 Section("Body Weight") {
                     HStack {
@@ -51,16 +64,9 @@ struct AddMeasurementSheet: View {
                         .foregroundStyle(.secondary)
                 }
 
-                Section("Measurements (inches)") {
-                    MeasurementField(label: "Chest", text: $chestText)
-                    MeasurementField(label: "Waist", text: $waistText)
-                    MeasurementField(label: "Hips", text: $hipsText)
-                    MeasurementField(label: "Neck", text: $neckText)
-                    MeasurementField(label: "Right Arm", text: $rightArmText)
-                    MeasurementField(label: "Left Arm", text: $leftArmText)
-                    MeasurementField(label: "Right Thigh", text: $rightThighText)
-                    MeasurementField(label: "Left Thigh", text: $leftThighText)
-                }
+                coreMeasurementsSection
+                advancedMeasurementsSection
+                contextSection
 
                 Section("Body Fat %") {
                     HStack {
@@ -74,6 +80,10 @@ struct AddMeasurementSheet: View {
                 Section("Notes") {
                     TextField("Optional notes...", text: $notes, axis: .vertical)
                         .lineLimit(3...6)
+                }
+
+                if !validationIssues.isEmpty {
+                    validationSection
                 }
             }
             .navigationTitle("Log Measurements")
@@ -93,13 +103,162 @@ struct AddMeasurementSheet: View {
             } message: {
                 Text(validationMessage)
             }
+            .onChange(of: waistText) { _, _ in runLiveValidation() }
+            .onChange(of: chestText) { _, _ in runLiveValidation() }
+            .onChange(of: neckText) { _, _ in runLiveValidation() }
+            .onChange(of: hipsText) { _, _ in runLiveValidation() }
+            .onChange(of: rightArmText) { _, _ in runLiveValidation() }
+            .onChange(of: leftArmText) { _, _ in runLiveValidation() }
+            .onChange(of: rightThighText) { _, _ in runLiveValidation() }
+            .onChange(of: leftThighText) { _, _ in runLiveValidation() }
+            .onChange(of: rightCalfText) { _, _ in runLiveValidation() }
+            .onChange(of: leftCalfText) { _, _ in runLiveValidation() }
         }
     }
 
+    // MARK: - Protocol Section
+
+    var protocolSection: some View {
+        Section {
+            VStack(alignment: .leading, spacing: 8) {
+                Label("Measurement Protocol", systemImage: "checkmark.shield")
+                    .font(.subheadline.bold())
+                    .foregroundStyle(.orange)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    protocolRow("Measure in the morning if possible")
+                    protocolRow("Stand relaxed, not vacuumed or flexed")
+                    protocolRow("Tape snug but not compressing skin")
+                    protocolRow("Waist at navel after normal exhale")
+                    protocolRow("Take each measurement twice if unsure")
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    func protocolRow(_ text: String) -> some View {
+        HStack(alignment: .top, spacing: 6) {
+            Image(systemName: "circle.fill")
+                .font(.system(size: 4))
+                .padding(.top, 5)
+            Text(text)
+        }
+    }
+
+    var dateSection: some View {
+        Section("Date") {
+            DatePicker("Date", selection: $selectedDate, displayedComponents: .date)
+                .datePickerStyle(.compact)
+        }
+    }
+
+    // MARK: - Core Measurements
+
+    var coreMeasurementsSection: some View {
+        Section {
+            MeasurementField(label: "Waist (at navel)", text: $waistText)
+            MeasurementField(label: "Neck", text: $neckText)
+            MeasurementField(label: "Hips", text: $hipsText)
+        } header: {
+            Text("Core Measurements (inches)")
+        } footer: {
+            Text("Core measurements are enough for recomposition tracking. Waist at navel is the most important single measurement.")
+        }
+    }
+
+    // MARK: - Advanced Measurements
+
+    var advancedMeasurementsSection: some View {
+        Section {
+            DisclosureGroup("Advanced Measurements", isExpanded: $showAdvanced) {
+                MeasurementField(label: "Chest", text: $chestText)
+                MeasurementField(label: "Right Arm", text: $rightArmText)
+                MeasurementField(label: "Left Arm", text: $leftArmText)
+                MeasurementField(label: "Right Thigh", text: $rightThighText)
+                MeasurementField(label: "Left Thigh", text: $leftThighText)
+                MeasurementField(label: "Right Calf", text: $rightCalfText)
+                MeasurementField(label: "Left Calf", text: $leftCalfText)
+            }
+        } footer: {
+            Text("Optional for proportion tracking. Not needed every session.")
+        }
+    }
+
+    // MARK: - Context
+
+    var contextSection: some View {
+        Section {
+            Picker("Timing", selection: $selectedTiming) {
+                ForEach(timingOptions, id: \.0) { option in
+                    Text(option.1).tag(option.0)
+                }
+            }
+
+            Toggle("Standard measurement", isOn: $isStandardMeasurement)
+
+            if !isStandardMeasurement {
+                Text("Non-standard measurements are flagged in trend analysis so they don't create false progress or regression signals.")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
+        } header: {
+            Text("Measurement Context")
+        } footer: {
+            Text("Timing and standardization help the trend engine filter noise from real changes.")
+        }
+    }
+
+    // MARK: - Validation
+
+    var validationSection: some View {
+        Section("Validation Notes") {
+            ForEach(Array(validationIssues.enumerated()), id: \.offset) { _, issue in
+                HStack(alignment: .top, spacing: 8) {
+                    Circle()
+                        .fill(severityColor(issue.severity))
+                        .frame(width: 8, height: 8)
+                        .padding(.top, 5)
+                    Text(issue.message)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    func severityColor(_ severity: AnalysisValidationSeverity) -> Color {
+        switch severity {
+        case .critical: return .red
+        case .error: return .red
+        case .warning: return .orange
+        case .info: return .blue
+        }
+    }
+
+    // MARK: - Logic
+
     var allMeasurementsEmpty: Bool {
         [chestText, waistText, hipsText, neckText,
-         rightArmText, leftArmText, rightThighText, leftThighText, bodyFatText]
-            .allSatisfy { $0.isEmpty }
+         rightArmText, leftArmText, rightThighText, leftThighText,
+         rightCalfText, leftCalfText, bodyFatText]
+            .allSatisfy { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    }
+
+    func runLiveValidation() {
+        validationIssues = MeasurementValidator.validate(
+            waistIn: Double(waistText),
+            neckIn: Double(neckText),
+            hipsIn: Double(hipsText),
+            chestIn: Double(chestText),
+            rightArmIn: Double(rightArmText),
+            leftArmIn: Double(leftArmText),
+            rightThighIn: Double(rightThighText),
+            leftThighIn: Double(leftThighText),
+            rightCalfIn: Double(rightCalfText),
+            leftCalfIn: Double(leftCalfText)
+        )
     }
 
     func save() {
@@ -139,8 +298,12 @@ struct AddMeasurementSheet: View {
             m.leftArmIn = Double(leftArmText)
             m.rightThighIn = Double(rightThighText)
             m.leftThighIn = Double(leftThighText)
+            m.rightCalfIn = Double(rightCalfText)
+            m.leftCalfIn = Double(leftCalfText)
             m.bodyFatPct = Double(bodyFatText)
             m.notes = trimmedNotes
+            m.measurementTiming = selectedTiming
+            m.isStandardMeasurement = isStandardMeasurement
             modelContext.insert(m)
         }
 
@@ -161,7 +324,9 @@ struct AddMeasurementSheet: View {
             ("Right Arm", rightArmText),
             ("Left Arm", leftArmText),
             ("Right Thigh", rightThighText),
-            ("Left Thigh", leftThighText)
+            ("Left Thigh", leftThighText),
+            ("Right Calf", rightCalfText),
+            ("Left Calf", leftCalfText)
         ]
 
         for (label, rawValue) in inchFields {

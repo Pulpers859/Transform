@@ -28,12 +28,35 @@ class MeasurementEntry {
     var rightArmIn: Double?
     var leftThighIn: Double?
     var rightThighIn: Double?
+    var leftCalfIn: Double?
+    var rightCalfIn: Double?
     var bodyFatPct: Double?
     var notes: String = ""
+    var measurementTiming: String?
+    var isStandardMeasurement: Bool = true
 
     init(date: Date = .now) {
         self.date = date
         self.notes = ""
+    }
+
+    var hasCoreMeasurements: Bool {
+        waistIn != nil || neckIn != nil || hipsIn != nil
+    }
+
+    var hasAdvancedMeasurements: Bool {
+        chestIn != nil || leftArmIn != nil || rightArmIn != nil
+            || leftThighIn != nil || rightThighIn != nil
+            || leftCalfIn != nil || rightCalfIn != nil
+    }
+
+    var filledFieldCount: Int {
+        let fields: [Double?] = [
+            chestIn, waistIn, hipsIn, neckIn,
+            leftArmIn, rightArmIn, leftThighIn, rightThighIn,
+            leftCalfIn, rightCalfIn, bodyFatPct
+        ]
+        return fields.compactMap({ $0 }).count
     }
 }
 

@@ -8,6 +8,7 @@ struct BodyAnalysisView: View {
     @Query(sort: \NutritionEntry.date, order: .reverse) private var nutritionEntries: [NutritionEntry]
     @Query(sort: \ExerciseWeightEntry.loggedAt, order: .reverse) private var exerciseWeightEntries: [ExerciseWeightEntry]
     @Query(sort: \ExercisePerformanceLog.loggedAt, order: .reverse) private var exercisePerformanceLogs: [ExercisePerformanceLog]
+    @Query(sort: \MeasurementEntry.date, order: .reverse) private var measurementEntries: [MeasurementEntry]
 
     // Multi-photo state
     @State private var photos: [AnalysisPhoto] = []
@@ -92,8 +93,48 @@ struct BodyAnalysisView: View {
         )
     }
 
+    var measurementTrendSnapshot: MeasurementTrendSnapshot? {
+        let entries = measurementEntries.map { m in
+            MeasurementTrendInput(
+                date: m.date,
+                waistIn: m.waistIn,
+                neckIn: m.neckIn,
+                hipsIn: m.hipsIn,
+                chestIn: m.chestIn,
+                rightArmIn: m.rightArmIn,
+                leftArmIn: m.leftArmIn,
+                rightThighIn: m.rightThighIn,
+                leftThighIn: m.leftThighIn,
+                isStandard: m.isStandardMeasurement,
+                bodyweightLbs: nil
+            )
+        }
+        guard !entries.isEmpty else { return nil }
+
+        let wPoints = weightEntries.map {
+            AnalysisLoggedWeightPoint(date: $0.date, weightLbs: $0.weightLbs)
+        }
+
+        let nutritionDayCount = nutritionDaySummaries(
+            since: Calendar.current.date(byAdding: .day, value: -90, to: .now) ?? .now
+        ).count
+
+        return MeasurementTrendSnapshotBuilder.build(
+            entries: entries,
+            weightPoints: wPoints,
+            nutritionDayCount: nutritionDayCount
+        )
+    }
+
+    var analysisMeasurementSnapshot: AnalysisMeasurementSnapshot? {
+        guard let trend = measurementTrendSnapshot else { return nil }
+        return AnalysisMeasurementSnapshot(trend: trend)
+    }
+
     var currentAnalysisInputContext: AnalysisInputContext {
-        Config.analysisInputContext.withProgress(automaticProgressSnapshot)
+        Config.analysisInputContext
+            .withProgress(automaticProgressSnapshot)
+            .withMeasurements(analysisMeasurementSnapshot)
     }
 
     var body: some View {
@@ -104,6 +145,9 @@ struct BodyAnalysisView: View {
                     checkInCard
                     if let automaticProgressSnapshot {
                         progressContextCard(snapshot: automaticProgressSnapshot)
+                    }
+                    if let trend = measurementTrendSnapshot {
+                        measurementContextCard(trend: trend)
                     }
                     if !photos.isEmpty {
                         photoQualityCard
@@ -454,6 +498,108 @@ struct BodyAnalysisView: View {
                 isExpanded: $showProgressContextDetails
             )
         }
+    }
+
+    func measurementContextCard(trend: MeasurementTrendSnapshot) -> some View {
+        SectionCardLike {
+            HStack {
+                Label("Measurement Trend", systemImage: "ruler")
+                    .font(.headline)
+                    .foregroundStyle(.purple)
+                Spacer()
+                measurementConfidenceBadge(trend.progressConfidence)
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                if let waist = trend.latestWaistIn {
+                    HStack {
+                        Text("Waist")
+                            .font(.caption.bold())
+                        Spacer()
+                        Text(String(format: "%.1f in", waist))
+                            .font(.caption)
+                        if let change = trend.waistChangeIn, abs(change) > 0.05 {
+                            let sign = change > 0 ? "+" : ""
+                            Text("\(sign)\(String(format: "%.1f", change))")
+                                .font(.caption.bold())
+                                .foregroundStyle(change < 0 ? .green : .red)
+                        }
+                    }
+                }
+
+                if let weight = trend.latestWeightLbs {
+                    HStack {
+                        Text("Weight")
+                            .font(.caption.bold())
+                        Spacer()
+                        Text(String(format: "%.1f lb", weight))
+                            .font(.caption)
+                        if let change = trend.weightChangeLbs, abs(change) > 0.1 {
+                            let sign = change > 0 ? "+" : ""
+                            Text("\(sign)\(String(format: "%.1f", change))")
+                                .font(.caption.bold())
+                                .foregroundStyle(change < 0 ? .green : .red)
+                        }
+                    }
+                }
+            }
+
+            HStack(spacing: 6) {
+                measurementInterpretationBadge(trend.interpretation)
+                Spacer()
+                Text("\(trend.sessionsCount) session(s)")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+
+            if trend.sessionsCount >= 2, let ratio = trend.waistToWeightRatio {
+                Text(ratio)
+                    .font(.caption)
+                    .foregroundStyle(.purple)
+            }
+
+            Text("This measurement data will be included in the analysis prompt to sharpen body composition assessment.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    func measurementConfidenceBadge(_ confidence: ProgressConfidence) -> some View {
+        let color: Color = {
+            switch confidence {
+            case .high: return .green
+            case .moderate: return .orange
+            case .low: return .yellow
+            case .insufficient: return .secondary
+            }
+        }()
+        return Text(confidence.rawValue)
+            .font(.caption2.bold())
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(color.opacity(0.15))
+            .foregroundStyle(color)
+            .clipShape(Capsule())
+    }
+
+    func measurementInterpretationBadge(_ interpretation: MeasurementInterpretation) -> some View {
+        let color: Color = {
+            switch interpretation {
+            case .likelyFatLoss: return .green
+            case .likelyRecomposition: return .blue
+            case .likelyMassGain: return .orange
+            case .possibleNoise: return .yellow
+            case .insufficientData: return .secondary
+            case .stableNoChange: return .secondary
+            }
+        }()
+        return Text(interpretation.rawValue)
+            .font(.caption.bold())
+            .padding(.horizontal, 10)
+            .padding(.vertical, 4)
+            .background(color.opacity(0.12))
+            .foregroundStyle(color)
+            .clipShape(Capsule())
     }
 
     @ViewBuilder

@@ -216,6 +216,31 @@ struct AnalysisInputContext: Codable {
     let profile: AnalysisProfileSnapshot
     let checkIn: AnalysisCheckInSnapshot?
     let progress: AnalysisProgressSnapshot?
+    let measurements: AnalysisMeasurementSnapshot?
+
+    enum CodingKeys: String, CodingKey {
+        case profile, checkIn, progress, measurements
+    }
+
+    init(
+        profile: AnalysisProfileSnapshot,
+        checkIn: AnalysisCheckInSnapshot?,
+        progress: AnalysisProgressSnapshot?,
+        measurements: AnalysisMeasurementSnapshot? = nil
+    ) {
+        self.profile = profile
+        self.checkIn = checkIn
+        self.progress = progress
+        self.measurements = measurements
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        profile = try container.decode(AnalysisProfileSnapshot.self, forKey: .profile)
+        checkIn = try container.decodeIfPresent(AnalysisCheckInSnapshot.self, forKey: .checkIn)
+        progress = try container.decodeIfPresent(AnalysisProgressSnapshot.self, forKey: .progress)
+        measurements = try container.decodeIfPresent(AnalysisMeasurementSnapshot.self, forKey: .measurements)
+    }
 
     var promptDescription: String {
         var sections: [String] = [profile.promptDescription]
@@ -224,6 +249,9 @@ struct AnalysisInputContext: Codable {
         }
         if let progress {
             sections.append(progress.promptDescription)
+        }
+        if let measurements {
+            sections.append(measurements.promptDescription)
         }
         return sections.joined(separator: "\n\n")
     }
@@ -235,6 +263,9 @@ struct AnalysisInputContext: Codable {
         }
         if let progress {
             parts.append(progress.summaryDescription)
+        }
+        if let measurements {
+            parts.append(measurements.summaryDescription)
         }
         return parts.joined(separator: "\n")
     }
@@ -261,9 +292,16 @@ struct AnalysisInputContext: Codable {
             }
         }
 
+        if let measurements {
+            let measurementItems = measurements.generationSummaryItems
+            if !measurementItems.isEmpty {
+                sections.append("Measurement trend:\n" + measurementItems.map { "- \($0)" }.joined(separator: "\n"))
+            }
+        }
+
         let summary = sections.joined(separator: "\n\n").trimmingCharacters(in: .whitespacesAndNewlines)
         guard !summary.isEmpty else { return "(none saved with this analysis)" }
-        return summary.truncatedForAnalysisUI(1400)
+        return summary.truncatedForAnalysisUI(1600)
     }
 
     var compactSummaryItems: [String] {
@@ -274,7 +312,10 @@ struct AnalysisInputContext: Codable {
         if let progress {
             items.append(contentsOf: progress.compactSummaryItems)
         }
-        return Array(items.prefix(4))
+        if let measurements {
+            items.append(contentsOf: measurements.compactSummaryItems)
+        }
+        return Array(items.prefix(5))
     }
 
     var detailSections: [AnalysisContextSection] {
@@ -285,6 +326,9 @@ struct AnalysisInputContext: Codable {
         if let progress, !progress.detailSummaryItems.isEmpty {
             sections.append(AnalysisContextSection(title: "Progress Since Prior Analysis", items: progress.detailSummaryItems))
         }
+        if let measurements, !measurements.detailSummaryItems.isEmpty {
+            sections.append(AnalysisContextSection(title: "Measurement Trend", items: measurements.detailSummaryItems))
+        }
         return sections
     }
 }
@@ -294,7 +338,17 @@ extension AnalysisInputContext {
         AnalysisInputContext(
             profile: profile,
             checkIn: checkIn,
-            progress: progress
+            progress: progress,
+            measurements: measurements
+        )
+    }
+
+    func withMeasurements(_ measurements: AnalysisMeasurementSnapshot?) -> AnalysisInputContext {
+        AnalysisInputContext(
+            profile: profile,
+            checkIn: checkIn,
+            progress: progress,
+            measurements: measurements
         )
     }
 }
@@ -1636,5 +1690,529 @@ enum NutritionAdherenceMetricsBuilder {
             }
             return nil
         }
+    }
+}
+
+// MARK: - Measurement Trend Engine
+
+enum MeasurementInterpretation: String, Codable {
+    case likelyFatLoss = "Likely Fat Loss"
+    case likelyRecomposition = "Likely Recomposition"
+    case likelyMassGain = "Likely Mass Gain"
+    case possibleNoise = "Possible Water/Bloat Noise"
+    case insufficientData = "Insufficient Data"
+    case stableNoChange = "Stable — No Meaningful Change"
+}
+
+enum MeasurementDataQuality: String, Codable {
+    case excellent = "Excellent"
+    case good = "Good"
+    case moderate = "Moderate"
+    case limited = "Limited"
+    case insufficient = "Insufficient"
+}
+
+enum ProgressConfidence: String, Codable {
+    case high = "High"
+    case moderate = "Moderate"
+    case low = "Low"
+    case insufficient = "Insufficient"
+}
+
+struct MeasurementTrendSnapshot: Codable {
+    let lookbackDays: Int
+    let sessionsCount: Int
+    let standardSessionsCount: Int
+
+    let latestWaistIn: Double?
+    let waistChangeIn: Double?
+    let waistChangeRatePerWeek: Double?
+
+    let latestWeightLbs: Double?
+    let weightChangeLbs: Double?
+    let weightChangeRatePerWeek: Double?
+
+    let chestChangeIn: Double?
+    let armChangeIn: Double?
+    let thighChangeIn: Double?
+
+    let dataQuality: MeasurementDataQuality
+    let interpretation: MeasurementInterpretation
+    let progressConfidence: ProgressConfidence
+    let confidenceReason: String
+
+    var waistToWeightRatio: String? {
+        guard let waistChange = waistChangeIn, let weightChange = weightChangeLbs else { return nil }
+        if abs(weightChange) < 0.3 && abs(waistChange) > 0.3 {
+            return waistChange < 0 ? "Waist decreasing while weight stable — recomposition signal" : "Waist increasing while weight stable — possible fat gain or bloat"
+        }
+        if weightChange < -0.3 && waistChange < -0.3 {
+            return "Both decreasing — fat loss pattern"
+        }
+        if weightChange > 0.3 && waistChange < -0.3 {
+            return "Weight up, waist down — strong recomposition signal"
+        }
+        if weightChange > 0.3 && waistChange > 0.3 {
+            return "Both increasing — surplus/mass gain pattern"
+        }
+        return nil
+    }
+}
+
+struct AnalysisMeasurementSnapshot: Codable {
+    let trend: MeasurementTrendSnapshot
+
+    var promptDescription: String {
+        var lines: [String] = [
+            "Measurement trend since last analysis (data from \(trend.sessionsCount) session(s) over \(trend.lookbackDays) day(s)):"
+        ]
+
+        if let waist = trend.latestWaistIn {
+            var waistLine = "- Waist at navel: \(formatInches(waist)) in"
+            if let change = trend.waistChangeIn {
+                waistLine += " (\(signedInches(change)) in change)"
+            }
+            lines.append(waistLine)
+        }
+
+        if let weight = trend.latestWeightLbs {
+            var weightLine = "- Bodyweight: \(String(format: "%.1f", weight)) lb"
+            if let change = trend.weightChangeLbs {
+                weightLine += " (\(signedWeight(change)) lb change)"
+            }
+            lines.append(weightLine)
+        }
+
+        if let chest = trend.chestChangeIn {
+            lines.append("- Chest change: \(signedInches(chest)) in")
+        }
+        if let arm = trend.armChangeIn {
+            lines.append("- Arm change: \(signedInches(arm)) in")
+        }
+
+        lines.append("- Data quality: \(trend.dataQuality.rawValue) (\(trend.standardSessionsCount) standard-timing session(s))")
+        lines.append("- Interpretation: \(trend.interpretation.rawValue)")
+
+        if let ratio = trend.waistToWeightRatio {
+            lines.append("- Waist-to-weight signal: \(ratio)")
+        }
+
+        lines.append("- Progress confidence: \(trend.progressConfidence.rawValue) — \(trend.confidenceReason)")
+
+        lines.append("")
+        lines.append("Use this measurement data to sharpen body composition assessment. If waist is trending down while weight is stable or rising, this is a recomposition signal — do not recommend calorie cuts. If scale weight is flat but waist is dropping, maintain current macros.")
+
+        return lines.joined(separator: "\n")
+    }
+
+    var summaryDescription: String {
+        var parts: [String] = ["Measurement trend:"]
+        if let waist = trend.latestWaistIn {
+            var line = "Waist: \(formatInches(waist)) in"
+            if let change = trend.waistChangeIn {
+                line += " (\(signedInches(change)))"
+            }
+            parts.append("- \(line)")
+        }
+        parts.append("- Interpretation: \(trend.interpretation.rawValue)")
+        parts.append("- Confidence: \(trend.progressConfidence.rawValue)")
+        return parts.joined(separator: "\n")
+    }
+
+    var compactSummaryItems: [String] {
+        var items: [String] = []
+        if let waist = trend.latestWaistIn {
+            var text = "Waist: \(formatInches(waist)) in"
+            if let change = trend.waistChangeIn {
+                text += " (\(signedInches(change)))"
+            }
+            items.append(text)
+        }
+        items.append("Progress: \(trend.progressConfidence.rawValue) confidence")
+        return items
+    }
+
+    var generationSummaryItems: [String] {
+        var items: [String] = []
+        if let waist = trend.latestWaistIn {
+            var text = "Waist: \(formatInches(waist)) in"
+            if let change = trend.waistChangeIn {
+                text += " (\(signedInches(change)) over \(trend.lookbackDays) days)"
+            }
+            items.append(text)
+        }
+        if let weight = trend.latestWeightLbs, let change = trend.weightChangeLbs {
+            items.append("Weight: \(String(format: "%.1f", weight)) lb (\(signedWeight(change)))")
+        }
+        items.append("Interpretation: \(trend.interpretation.rawValue)")
+        items.append("Confidence: \(trend.progressConfidence.rawValue) — \(trend.confidenceReason.truncatedForAnalysisUI(70))")
+        return items
+    }
+
+    var detailSummaryItems: [String] {
+        var items: [String] = []
+        items.append("Sessions: \(trend.sessionsCount) over \(trend.lookbackDays) day(s)")
+        if let waist = trend.latestWaistIn {
+            var line = "Waist at navel: \(formatInches(waist)) in"
+            if let change = trend.waistChangeIn { line += " (\(signedInches(change)) change)" }
+            items.append(line)
+        }
+        if let weight = trend.latestWeightLbs {
+            var line = "Bodyweight: \(String(format: "%.1f", weight)) lb"
+            if let change = trend.weightChangeLbs { line += " (\(signedWeight(change)) change)" }
+            items.append(line)
+        }
+        if let chest = trend.chestChangeIn { items.append("Chest change: \(signedInches(chest)) in") }
+        if let arm = trend.armChangeIn { items.append("Arm change: \(signedInches(arm)) in") }
+        if let thigh = trend.thighChangeIn { items.append("Thigh change: \(signedInches(thigh)) in") }
+        items.append("Data quality: \(trend.dataQuality.rawValue)")
+        items.append("Interpretation: \(trend.interpretation.rawValue)")
+        if let ratio = trend.waistToWeightRatio { items.append("Waist-to-weight: \(ratio)") }
+        items.append("Progress confidence: \(trend.progressConfidence.rawValue)")
+        return items
+    }
+
+    private func formatInches(_ value: Double) -> String {
+        if abs(value.rounded() - value) < 0.05 {
+            return String(Int(value.rounded()))
+        }
+        return String(format: "%.1f", value)
+    }
+
+    private func signedInches(_ value: Double) -> String {
+        let formatted = formatInches(abs(value))
+        if value > 0.05 { return "+\(formatted)" }
+        if value < -0.05 { return "-\(formatted)" }
+        return "0"
+    }
+
+    private func signedWeight(_ value: Double) -> String {
+        let formatted = String(format: "%.1f", abs(value))
+        if value > 0.05 { return "+\(formatted)" }
+        if value < -0.05 { return "-\(formatted)" }
+        return "0"
+    }
+}
+
+struct MeasurementTrendInput {
+    let date: Date
+    let waistIn: Double?
+    let neckIn: Double?
+    let hipsIn: Double?
+    let chestIn: Double?
+    let rightArmIn: Double?
+    let leftArmIn: Double?
+    let rightThighIn: Double?
+    let leftThighIn: Double?
+    let isStandard: Bool
+    let bodyweightLbs: Double?
+}
+
+enum MeasurementTrendSnapshotBuilder {
+
+    static func build(
+        entries: [MeasurementTrendInput],
+        weightPoints: [AnalysisLoggedWeightPoint],
+        nutritionDayCount: Int = 0,
+        lookbackDays: Int = 90
+    ) -> MeasurementTrendSnapshot {
+        let sorted = entries.sorted { $0.date < $1.date }
+
+        guard sorted.count >= 2 else {
+            let latest = sorted.last
+            let latestWeight = weightPoints.sorted(by: { $0.date < $1.date }).last
+            return MeasurementTrendSnapshot(
+                lookbackDays: lookbackDays,
+                sessionsCount: sorted.count,
+                standardSessionsCount: sorted.filter(\.isStandard).count,
+                latestWaistIn: latest?.waistIn,
+                waistChangeIn: nil,
+                waistChangeRatePerWeek: nil,
+                latestWeightLbs: latestWeight?.weightLbs ?? latest?.bodyweightLbs,
+                weightChangeLbs: nil,
+                weightChangeRatePerWeek: nil,
+                chestChangeIn: nil,
+                armChangeIn: nil,
+                thighChangeIn: nil,
+                dataQuality: sorted.isEmpty ? .insufficient : .limited,
+                interpretation: .insufficientData,
+                progressConfidence: .insufficient,
+                confidenceReason: sorted.isEmpty ? "No measurement sessions recorded" : "Only one measurement session — need at least two for trend analysis"
+            )
+        }
+
+        let first = sorted.first!
+        let last = sorted.last!
+        let elapsedDays = max(Calendar.current.dateComponents([.day], from: first.date, to: last.date).day ?? 1, 1)
+        let standardCount = sorted.filter(\.isStandard).count
+
+        let waistChange = delta(from: first.waistIn, to: last.waistIn)
+        let waistRate = waistChange.map { $0 / Double(elapsedDays) * 7.0 }
+        let chestChange = delta(from: first.chestIn, to: last.chestIn)
+        let armChange = averageArmDelta(first: first, last: last)
+        let thighChange = averageThighDelta(first: first, last: last)
+
+        let weightSorted = weightPoints.sorted { $0.date < $1.date }
+        let latestWeight = weightSorted.last?.weightLbs ?? last.bodyweightLbs
+        let weightChange: Double?
+        let weightRate: Double?
+        if weightSorted.count >= 2, let wFirst = weightSorted.first, let wLast = weightSorted.last {
+            let wDays = max(Calendar.current.dateComponents([.day], from: wFirst.date, to: wLast.date).day ?? 1, 1)
+            weightChange = wLast.weightLbs - wFirst.weightLbs
+            weightRate = (wLast.weightLbs - wFirst.weightLbs) / Double(wDays) * 7.0
+        } else {
+            weightChange = nil
+            weightRate = nil
+        }
+
+        let quality = classifyDataQuality(
+            sessions: sorted.count,
+            standardSessions: standardCount,
+            elapsedDays: elapsedDays,
+            hasWaist: last.waistIn != nil
+        )
+
+        let interpretation = interpretTrend(
+            waistChange: waistChange,
+            weightChange: weightChange,
+            elapsedDays: elapsedDays,
+            nonStandardCount: sorted.count - standardCount
+        )
+
+        let (confidence, reason) = classifyConfidence(
+            sessions: sorted.count,
+            standardSessions: standardCount,
+            weightPoints: weightPoints.count,
+            nutritionDayCount: nutritionDayCount,
+            elapsedDays: elapsedDays,
+            hasWaist: last.waistIn != nil
+        )
+
+        return MeasurementTrendSnapshot(
+            lookbackDays: lookbackDays,
+            sessionsCount: sorted.count,
+            standardSessionsCount: standardCount,
+            latestWaistIn: last.waistIn,
+            waistChangeIn: waistChange,
+            waistChangeRatePerWeek: waistRate,
+            latestWeightLbs: latestWeight,
+            weightChangeLbs: weightChange,
+            weightChangeRatePerWeek: weightRate,
+            chestChangeIn: chestChange,
+            armChangeIn: armChange,
+            thighChangeIn: thighChange,
+            dataQuality: quality,
+            interpretation: interpretation,
+            progressConfidence: confidence,
+            confidenceReason: reason
+        )
+    }
+
+    private static func delta(from first: Double?, to last: Double?) -> Double? {
+        guard let f = first, let l = last else { return nil }
+        return l - f
+    }
+
+    private static func averageArmDelta(first: MeasurementTrendInput, last: MeasurementTrendInput) -> Double? {
+        let firstAvg = averageOfPresent(first.rightArmIn, first.leftArmIn)
+        let lastAvg = averageOfPresent(last.rightArmIn, last.leftArmIn)
+        guard let f = firstAvg, let l = lastAvg else { return nil }
+        return l - f
+    }
+
+    private static func averageThighDelta(first: MeasurementTrendInput, last: MeasurementTrendInput) -> Double? {
+        let firstAvg = averageOfPresent(first.rightThighIn, first.leftThighIn)
+        let lastAvg = averageOfPresent(last.rightThighIn, last.leftThighIn)
+        guard let f = firstAvg, let l = lastAvg else { return nil }
+        return l - f
+    }
+
+    private static func averageOfPresent(_ a: Double?, _ b: Double?) -> Double? {
+        switch (a, b) {
+        case let (a?, b?): return (a + b) / 2.0
+        case let (a?, nil): return a
+        case let (nil, b?): return b
+        case (nil, nil): return nil
+        }
+    }
+
+    private static func classifyDataQuality(
+        sessions: Int,
+        standardSessions: Int,
+        elapsedDays: Int,
+        hasWaist: Bool
+    ) -> MeasurementDataQuality {
+        if sessions < 2 { return .insufficient }
+        if sessions >= 4 && standardSessions >= 3 && hasWaist && elapsedDays >= 14 { return .excellent }
+        if sessions >= 3 && standardSessions >= 2 && hasWaist { return .good }
+        if sessions >= 2 && hasWaist { return .moderate }
+        return .limited
+    }
+
+    private static func interpretTrend(
+        waistChange: Double?,
+        weightChange: Double?,
+        elapsedDays: Int,
+        nonStandardCount: Int
+    ) -> MeasurementInterpretation {
+        guard let waist = waistChange else {
+            guard let weight = weightChange else { return .insufficientData }
+            if weight < -1.0 { return .likelyFatLoss }
+            if weight > 1.0 { return .likelyMassGain }
+            return .stableNoChange
+        }
+
+        let weight = weightChange ?? 0
+
+        if abs(waist) < 0.3 && abs(weight) < 0.5 {
+            return .stableNoChange
+        }
+
+        if elapsedDays < 5 && abs(waist) > 1.0 {
+            return .possibleNoise
+        }
+        if nonStandardCount > 0 && abs(waist) > 1.5 && elapsedDays < 10 {
+            return .possibleNoise
+        }
+
+        if weight > 0.3 && waist < -0.3 {
+            return .likelyRecomposition
+        }
+        if abs(weight) <= 0.5 && waist < -0.3 {
+            return .likelyRecomposition
+        }
+        if weight < -0.5 && waist < -0.3 {
+            return .likelyFatLoss
+        }
+        if weight > 0.5 && waist > 0.3 {
+            return .likelyMassGain
+        }
+        if weight < -0.5 && abs(waist) <= 0.3 {
+            return .likelyFatLoss
+        }
+
+        return .stableNoChange
+    }
+
+    private static func classifyConfidence(
+        sessions: Int,
+        standardSessions: Int,
+        weightPoints: Int,
+        nutritionDayCount: Int,
+        elapsedDays: Int,
+        hasWaist: Bool
+    ) -> (ProgressConfidence, String) {
+        var score = 0
+        var reasons: [String] = []
+
+        if sessions >= 4 { score += 2; reasons.append("\(sessions) measurement sessions") }
+        else if sessions >= 2 { score += 1; reasons.append("\(sessions) measurement sessions") }
+        else { reasons.append("only \(sessions) measurement session(s)") }
+
+        if standardSessions >= 3 { score += 1; reasons.append("consistent timing") }
+        else if standardSessions == 0 && sessions > 0 { reasons.append("no standard-timing sessions") }
+
+        if weightPoints >= 5 { score += 1; reasons.append("\(weightPoints) weight logs") }
+        else if weightPoints >= 2 { reasons.append("\(weightPoints) weight logs") }
+        else { reasons.append("sparse weight data") }
+
+        if nutritionDayCount >= 15 { score += 1; reasons.append("good nutrition logging") }
+        else if nutritionDayCount >= 5 { reasons.append("\(nutritionDayCount) nutrition days logged") }
+
+        if hasWaist { score += 1 }
+
+        if elapsedDays >= 21 { score += 1 }
+        else if elapsedDays < 7 { reasons.append("very short tracking window") }
+
+        let reason = reasons.prefix(3).joined(separator: ", ")
+
+        switch score {
+        case 6...: return (.high, reason)
+        case 4...5: return (.moderate, reason)
+        case 2...3: return (.low, reason)
+        default: return (.insufficient, reason)
+        }
+    }
+}
+
+// MARK: - Measurement Validation
+
+enum MeasurementValidator {
+
+    struct Issue {
+        let field: String
+        let message: String
+        let severity: AnalysisValidationSeverity
+    }
+
+    static func validate(
+        waistIn: Double?,
+        neckIn: Double?,
+        hipsIn: Double?,
+        chestIn: Double?,
+        rightArmIn: Double?,
+        leftArmIn: Double?,
+        rightThighIn: Double?,
+        leftThighIn: Double?,
+        rightCalfIn: Double?,
+        leftCalfIn: Double?
+    ) -> [Issue] {
+        var issues: [Issue] = []
+
+        issues.append(contentsOf: checkRange("Waist", waistIn, plausibleRange: 20...60))
+        issues.append(contentsOf: checkRange("Neck", neckIn, plausibleRange: 10...25))
+        issues.append(contentsOf: checkRange("Hips", hipsIn, plausibleRange: 25...65))
+        issues.append(contentsOf: checkRange("Chest", chestIn, plausibleRange: 25...65))
+        issues.append(contentsOf: checkRange("Right Arm", rightArmIn, plausibleRange: 8...25))
+        issues.append(contentsOf: checkRange("Left Arm", leftArmIn, plausibleRange: 8...25))
+        issues.append(contentsOf: checkRange("Right Thigh", rightThighIn, plausibleRange: 15...40))
+        issues.append(contentsOf: checkRange("Left Thigh", leftThighIn, plausibleRange: 15...40))
+        issues.append(contentsOf: checkRange("Right Calf", rightCalfIn, plausibleRange: 10...25))
+        issues.append(contentsOf: checkRange("Left Calf", leftCalfIn, plausibleRange: 10...25))
+
+        issues.append(contentsOf: checkAsymmetry("Arms", left: leftArmIn, right: rightArmIn, threshold: 1.5))
+        issues.append(contentsOf: checkAsymmetry("Thighs", left: leftThighIn, right: rightThighIn, threshold: 2.0))
+        issues.append(contentsOf: checkAsymmetry("Calves", left: leftCalfIn, right: rightCalfIn, threshold: 1.5))
+
+        issues.append(contentsOf: checkUnitConfusion("Waist", waistIn, cmThreshold: 60))
+        issues.append(contentsOf: checkUnitConfusion("Chest", chestIn, cmThreshold: 60))
+        issues.append(contentsOf: checkUnitConfusion("Hips", hipsIn, cmThreshold: 60))
+
+        return issues
+    }
+
+    private static func checkRange(_ label: String, _ value: Double?, plausibleRange: ClosedRange<Double>) -> [Issue] {
+        guard let v = value else { return [] }
+        if !plausibleRange.contains(v) {
+            return [Issue(
+                field: label,
+                message: "\(label) of \(String(format: "%.1f", v)) in seems implausible (expected \(String(format: "%.0f", plausibleRange.lowerBound))–\(String(format: "%.0f", plausibleRange.upperBound)) in).",
+                severity: .warning
+            )]
+        }
+        return []
+    }
+
+    private static func checkAsymmetry(_ label: String, left: Double?, right: Double?, threshold: Double) -> [Issue] {
+        guard let l = left, let r = right else { return [] }
+        let diff = abs(l - r)
+        if diff > threshold {
+            return [Issue(
+                field: label,
+                message: "\(label) differ by \(String(format: "%.1f", diff)) in — possible entry error unless known asymmetry.",
+                severity: .info
+            )]
+        }
+        return []
+    }
+
+    private static func checkUnitConfusion(_ label: String, _ value: Double?, cmThreshold: Double) -> [Issue] {
+        guard let v = value, v > cmThreshold else { return [] }
+        let possibleInches = v / 2.54
+        return [Issue(
+            field: label,
+            message: "\(label) of \(String(format: "%.1f", v)) — did you enter centimeters? That would be \(String(format: "%.1f", possibleInches)) in.",
+            severity: .warning
+        )]
     }
 }

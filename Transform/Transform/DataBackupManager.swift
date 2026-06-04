@@ -99,8 +99,46 @@ struct MeasurementSnapshot: Codable {
     let rightArmIn: Double?
     let leftThighIn: Double?
     let rightThighIn: Double?
+    let leftCalfIn: Double?
+    let rightCalfIn: Double?
     let bodyFatPct: Double?
     let notes: String
+    let measurementTiming: String?
+    let isStandardMeasurement: Bool?
+
+    init(
+        date: Date,
+        chestIn: Double?,
+        waistIn: Double?,
+        hipsIn: Double?,
+        neckIn: Double?,
+        leftArmIn: Double?,
+        rightArmIn: Double?,
+        leftThighIn: Double?,
+        rightThighIn: Double?,
+        leftCalfIn: Double? = nil,
+        rightCalfIn: Double? = nil,
+        bodyFatPct: Double?,
+        notes: String,
+        measurementTiming: String? = nil,
+        isStandardMeasurement: Bool? = nil
+    ) {
+        self.date = date
+        self.chestIn = chestIn
+        self.waistIn = waistIn
+        self.hipsIn = hipsIn
+        self.neckIn = neckIn
+        self.leftArmIn = leftArmIn
+        self.rightArmIn = rightArmIn
+        self.leftThighIn = leftThighIn
+        self.rightThighIn = rightThighIn
+        self.leftCalfIn = leftCalfIn
+        self.rightCalfIn = rightCalfIn
+        self.bodyFatPct = bodyFatPct
+        self.notes = notes
+        self.measurementTiming = measurementTiming
+        self.isStandardMeasurement = isStandardMeasurement
+    }
 }
 
 struct NutritionSnapshot: Codable {
@@ -233,8 +271,12 @@ private extension MeasurementSnapshot {
             rightArmIn: entry.rightArmIn,
             leftThighIn: entry.leftThighIn,
             rightThighIn: entry.rightThighIn,
+            leftCalfIn: entry.leftCalfIn,
+            rightCalfIn: entry.rightCalfIn,
             bodyFatPct: entry.bodyFatPct,
-            notes: entry.notes
+            notes: entry.notes,
+            measurementTiming: entry.measurementTiming,
+            isStandardMeasurement: entry.isStandardMeasurement
         )
     }
 
@@ -252,8 +294,12 @@ private extension MeasurementSnapshot {
         entry.rightArmIn = rightArmIn
         entry.leftThighIn = leftThighIn
         entry.rightThighIn = rightThighIn
+        entry.leftCalfIn = leftCalfIn
+        entry.rightCalfIn = rightCalfIn
         entry.bodyFatPct = bodyFatPct
         entry.notes = notes
+        entry.measurementTiming = measurementTiming
+        entry.isStandardMeasurement = isStandardMeasurement ?? true
         return entry
     }
 }

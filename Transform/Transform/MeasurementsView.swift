@@ -18,6 +18,7 @@ struct MeasurementsView: View {
         case waist = "Waist"
         case chest = "Chest"
         case arms = "Arms"
+        case thighs = "Thighs"
     }
 
     var latestWeight: WeightEntry? { weightEntries.first }
@@ -31,10 +32,41 @@ struct MeasurementsView: View {
         return current - previous
     }
 
+    var measurementTrend: MeasurementTrendSnapshot? {
+        let entries = measurements.map { m in
+            MeasurementTrendInput(
+                date: m.date,
+                waistIn: m.waistIn,
+                neckIn: m.neckIn,
+                hipsIn: m.hipsIn,
+                chestIn: m.chestIn,
+                rightArmIn: m.rightArmIn,
+                leftArmIn: m.leftArmIn,
+                rightThighIn: m.rightThighIn,
+                leftThighIn: m.leftThighIn,
+                isStandard: m.isStandardMeasurement,
+                bodyweightLbs: nil
+            )
+        }
+        guard !entries.isEmpty else { return nil }
+
+        let weightPoints = weightEntries.map {
+            AnalysisLoggedWeightPoint(date: $0.date, weightLbs: $0.weightLbs)
+        }
+
+        return MeasurementTrendSnapshotBuilder.build(
+            entries: entries,
+            weightPoints: weightPoints
+        )
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 20) {
+                    if let trend = measurementTrend, trend.sessionsCount >= 2 {
+                        trendInterpretationCard(trend: trend)
+                    }
                     summaryCards
                     chartSection
                     historySection
@@ -87,6 +119,141 @@ struct MeasurementsView: View {
                 Text("This will permanently remove this entry.")
             }
         }
+    }
+
+    // MARK: - Trend Interpretation Card
+
+    func trendInterpretationCard(trend: MeasurementTrendSnapshot) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Label("Trend Analysis", systemImage: "chart.line.uptrend.xyaxis")
+                    .font(.subheadline.bold())
+                    .foregroundStyle(.orange)
+                Spacer()
+                confidenceBadge(trend.progressConfidence)
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                if let waist = trend.latestWaistIn {
+                    trendRow(
+                        label: "Waist",
+                        value: String(format: "%.1f in", waist),
+                        change: trend.waistChangeIn,
+                        unit: "in",
+                        invertDelta: true
+                    )
+                }
+
+                if let weight = trend.latestWeightLbs {
+                    trendRow(
+                        label: "Weight",
+                        value: String(format: "%.1f lb", weight),
+                        change: trend.weightChangeLbs,
+                        unit: "lb",
+                        invertDelta: true
+                    )
+                }
+
+                if let chest = trend.chestChangeIn {
+                    trendRow(label: "Chest", value: nil, change: chest, unit: "in", invertDelta: false)
+                }
+
+                if let arm = trend.armChangeIn {
+                    trendRow(label: "Arms", value: nil, change: arm, unit: "in", invertDelta: false)
+                }
+            }
+
+            Divider()
+
+            HStack(spacing: 8) {
+                interpretationBadge(trend.interpretation)
+                Spacer()
+                Text("\(trend.sessionsCount) session(s) over \(trend.lookbackDays) days")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+
+            if let ratio = trend.waistToWeightRatio {
+                Text(ratio)
+                    .font(.caption)
+                    .foregroundStyle(.purple)
+                    .padding(.top, 2)
+            }
+
+            Text(trend.confidenceReason)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+        .padding()
+        .background(Color(.secondarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+    }
+
+    func trendRow(label: String, value: String?, change: Double?, unit: String, invertDelta: Bool) -> some View {
+        HStack {
+            Text(label)
+                .font(.caption.bold())
+                .frame(width: 50, alignment: .leading)
+            if let value {
+                Text(value)
+                    .font(.caption)
+            }
+            Spacer()
+            if let change, abs(change) > 0.05 {
+                let sign = change > 0 ? "+" : ""
+                let color: Color = {
+                    if invertDelta {
+                        return change < 0 ? .green : .red
+                    }
+                    return change > 0 ? .green : .red
+                }()
+                Text("\(sign)\(String(format: "%.1f", change)) \(unit)")
+                    .font(.caption.bold())
+                    .foregroundStyle(color)
+            } else {
+                Text("No change")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    func confidenceBadge(_ confidence: ProgressConfidence) -> some View {
+        let color: Color = {
+            switch confidence {
+            case .high: return .green
+            case .moderate: return .orange
+            case .low: return .yellow
+            case .insufficient: return .secondary
+            }
+        }()
+        return Text(confidence.rawValue)
+            .font(.caption2.bold())
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(color.opacity(0.15))
+            .foregroundStyle(color)
+            .clipShape(Capsule())
+    }
+
+    func interpretationBadge(_ interpretation: MeasurementInterpretation) -> some View {
+        let color: Color = {
+            switch interpretation {
+            case .likelyFatLoss: return .green
+            case .likelyRecomposition: return .blue
+            case .likelyMassGain: return .orange
+            case .possibleNoise: return .yellow
+            case .insufficientData: return .secondary
+            case .stableNoChange: return .secondary
+            }
+        }()
+        return Text(interpretation.rawValue)
+            .font(.caption.bold())
+            .padding(.horizontal, 10)
+            .padding(.vertical, 4)
+            .background(color.opacity(0.12))
+            .foregroundStyle(color)
+            .clipShape(Capsule())
     }
 
     // MARK: - Summary Cards
@@ -219,6 +386,8 @@ struct MeasurementsView: View {
             measurementChart(keyPath: \.chestIn, label: "Chest (in)")
         case .arms:
             measurementChart(keyPath: \.rightArmIn, label: "Arm (in)")
+        case .thighs:
+            measurementChart(keyPath: \.rightThighIn, label: "Thigh (in)")
         }
     }
 
@@ -436,10 +605,17 @@ struct HistoryRowView: View {
                                     .font(.caption)
                                     .foregroundStyle(.orange)
                             }
-                            if measurement != nil {
-                                Label("Measurements", systemImage: "ruler")
-                                    .font(.caption)
-                                    .foregroundStyle(.purple)
+                            if let m = measurement {
+                                HStack(spacing: 4) {
+                                    Label("Measurements", systemImage: "ruler")
+                                        .font(.caption)
+                                        .foregroundStyle(.purple)
+                                    if !m.isStandardMeasurement {
+                                        Image(systemName: "exclamationmark.triangle.fill")
+                                            .font(.caption2)
+                                            .foregroundStyle(.yellow)
+                                    }
+                                }
                             }
                         }
                     }
@@ -453,11 +629,28 @@ struct HistoryRowView: View {
             if expanded, let m = measurement {
                 Divider()
                 MeasurementDetailGrid(measurement: m)
+                if let timing = m.measurementTiming {
+                    Text("Timing: \(timingDisplayName(timing))")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .padding(.top, 2)
+                }
             }
         }
         .padding(12)
         .background(Color(.secondarySystemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+
+    func timingDisplayName(_ timing: String) -> String {
+        switch timing {
+        case "morning_fasted": return "Morning (fasted)"
+        case "morning_postmeal": return "Morning (post-meal)"
+        case "post_training": return "Post-Training"
+        case "post_shift": return "Post-Shift"
+        case "evening": return "Evening"
+        default: return timing.capitalized
+        }
     }
 }
 
@@ -474,6 +667,8 @@ struct MeasurementDetailGrid: View {
             ("L Arm", measurement.leftArmIn),
             ("R Thigh", measurement.rightThighIn),
             ("L Thigh", measurement.leftThighIn),
+            ("R Calf", measurement.rightCalfIn),
+            ("L Calf", measurement.leftCalfIn),
             ("Body Fat", measurement.bodyFatPct)
         ]
     }
