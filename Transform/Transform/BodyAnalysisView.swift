@@ -857,9 +857,16 @@ struct SavedFullAnalysisView: View {
     let session: BodyAnalysisSession
     let result: BodyAnalysisResult
 
+    @State private var showDebugPanel = false
+    @State private var toastMessage: String?
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
+                if showDebugPanel {
+                    savedAnalysisDebugPanel
+                }
+
                 // Photo
                 if let image = UIImage(data: session.photoData) {
                     ZStack(alignment: .bottomTrailing) {
@@ -882,10 +889,90 @@ struct SavedFullAnalysisView: View {
 
                 // Reuse the same layout as BodyAnalysisResultView
                 AnalysisResultContent(result: result)
+                    .onLongPressGesture(minimumDuration: 1.2) {
+                        withAnimation { showDebugPanel.toggle() }
+                        UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+                    }
             }
             .padding()
         }
         .navigationTitle(session.date.formatted(date: .abbreviated, time: .omitted))
         .navigationBarTitleDisplayMode(.inline)
+        .overlay(alignment: .bottom) {
+            if let toast = toastMessage {
+                Text(toast)
+                    .font(.caption.bold())
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(.ultraThinMaterial)
+                    .clipShape(Capsule())
+                    .padding(.bottom, 20)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .onAppear {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                            withAnimation { toastMessage = nil }
+                        }
+                    }
+            }
+        }
+    }
+
+    var savedAnalysisDebugPanel: some View {
+        let poses = session.pose.components(separatedBy: " + ")
+        let report = BodyAnalysisValidator.validate(
+            result,
+            photoAngles: poses,
+            bodyweightLbs: MacroTargetResolver.profileBodyweightLbs()
+        )
+
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Label("Analysis Debug", systemImage: "ant.fill")
+                    .font(.subheadline.bold())
+                    .foregroundStyle(.purple)
+                Spacer()
+                Button {
+                    withAnimation { showDebugPanel = false }
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            ValidationReportCard(report: report)
+
+            HStack(spacing: 10) {
+                savedDebugCopyButton(title: "Copy JSON", payload: savedAnalysisJSON)
+            }
+        }
+        .padding()
+        .background(Color.purple.opacity(0.06))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+
+    func savedDebugCopyButton(title: String, payload: String) -> some View {
+        Button {
+            UIPasteboard.general.string = payload
+            withAnimation(.easeOut(duration: 0.2)) {
+                toastMessage = "\(title) copied"
+            }
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        } label: {
+            Text(title)
+                .font(.caption.bold())
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 10)
+                .background(Color.purple.opacity(0.12))
+                .foregroundStyle(.purple)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+        }
+    }
+
+    var savedAnalysisJSON: String {
+        guard let data = try? JSONEncoder().encode(result),
+              let json = String(data: data, encoding: .utf8) else {
+            return "(encoding failed)"
+        }
+        return json
     }
 }

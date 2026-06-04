@@ -8,12 +8,15 @@ struct BodyAnalysisResultView: View {
     var validationReport: AnalysisValidationReport? = nil
     let onSave: () -> Void
 
+    @State private var showDebugPanel = false
+    @State private var toastMessage: String?
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
 
-                if let report = validationReport, report.hasWarnings {
-                    ValidationReportCard(report: report)
+                if showDebugPanel {
+                    analysisDebugPanel
                 }
 
                 // Photo(s) display
@@ -62,6 +65,10 @@ struct BodyAnalysisResultView: View {
 
                 // Shared analysis content
                 AnalysisResultContent(result: result)
+                    .onLongPressGesture(minimumDuration: 1.2) {
+                        withAnimation { showDebugPanel.toggle() }
+                        UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+                    }
 
                 // Save button
                 Button(action: {
@@ -81,6 +88,138 @@ struct BodyAnalysisResultView: View {
         }
         .navigationTitle("Analysis Result")
         .navigationBarTitleDisplayMode(.inline)
+        .overlay(alignment: .bottom) {
+            if let toast = toastMessage {
+                Text(toast)
+                    .font(.caption.bold())
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(.ultraThinMaterial)
+                    .clipShape(Capsule())
+                    .padding(.bottom, 20)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .onAppear {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                            withAnimation { toastMessage = nil }
+                        }
+                    }
+            }
+        }
+    }
+
+    // MARK: - Debug Panel (long-press to reveal)
+
+    var analysisDebugPanel: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Label("Analysis Debug", systemImage: "ant.fill")
+                    .font(.subheadline.bold())
+                    .foregroundStyle(.purple)
+                Spacer()
+                Button {
+                    withAnimation { showDebugPanel = false }
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            if let report = validationReport {
+                ValidationReportCard(report: report)
+            } else {
+                Text("No validation report available.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            HStack(spacing: 10) {
+                debugCopyButton(title: "Copy JSON", payload: analysisJSONBundle)
+                debugCopyButton(title: "Copy Summary", payload: analysisSummaryBundle)
+            }
+        }
+        .padding()
+        .background(Color.purple.opacity(0.06))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+
+    func debugCopyButton(title: String, payload: String) -> some View {
+        Button {
+            UIPasteboard.general.string = payload
+            withAnimation(.easeOut(duration: 0.2)) {
+                toastMessage = "\(title) copied"
+            }
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        } label: {
+            Text(title)
+                .font(.caption.bold())
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 10)
+                .background(Color.purple.opacity(0.12))
+                .foregroundStyle(.purple)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+        }
+    }
+
+    var analysisJSONBundle: String {
+        guard let data = try? JSONEncoder().encode(result),
+              let json = String(data: data, encoding: .utf8) else {
+            return "(encoding failed)"
+        }
+        return json
+    }
+
+    var analysisSummaryBundle: String {
+        var lines: [String] = []
+        lines.append("=== BODY ANALYSIS DEBUG BUNDLE ===")
+        lines.append("Photos: \(photos.map(\.pose).joined(separator: ", "))")
+        lines.append("")
+        lines.append("--- Overall ---")
+        lines.append(result.overallAssessment)
+        lines.append("")
+        lines.append("--- Body Fat ---")
+        lines.append(result.estimatedBodyFat)
+        lines.append("")
+        lines.append("--- Top Leverage ---")
+        lines.append(result.topLeverageChange)
+        lines.append("")
+        lines.append("--- Priority Muscles ---")
+        lines.append(result.priorityMuscles.joined(separator: ", "))
+        lines.append("")
+
+        if let macros = result.macroTargets {
+            lines.append("--- Macro Targets ---")
+            lines.append("Calories: \(macros.calories), Protein: \(Int(macros.proteinG))g, Carbs: \(Int(macros.carbsG))g, Fat: \(Int(macros.fatG))g")
+            if let rationale = macros.macroRationale {
+                lines.append("Rationale: \(rationale)")
+            }
+            lines.append("")
+        }
+
+        if let intent = result.structuredTrainingIntent {
+            lines.append("--- Training Intent ---")
+            lines.append("Split: \(intent.splitRecommendation), Days: \(intent.weeklyTrainingDays)")
+            for p in intent.priorities {
+                lines.append("  \(p.area) [\(p.priorityLevel)]: \(p.weeklyDayTarget)d/wk, \(p.weeklyExerciseTarget) exercises, \(p.volumeBias) volume")
+            }
+            lines.append("")
+        }
+
+        lines.append("--- Regions ---")
+        for r in result.regionBreakdown {
+            lines.append("  \(r.region) [\(r.priority)]: \(r.assessment)")
+        }
+        lines.append("")
+
+        if let report = validationReport, !report.issues.isEmpty {
+            lines.append("--- Validation (\(report.issues.count) issues) ---")
+            for issue in report.sortedIssues {
+                lines.append("  [\(issue.severity.rawValue)] \(issue.field): \(issue.message)")
+            }
+        } else {
+            lines.append("--- Validation: CLEAN ---")
+        }
+
+        return lines.joined(separator: "\n")
     }
 }
 
