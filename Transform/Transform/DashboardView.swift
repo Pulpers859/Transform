@@ -149,34 +149,64 @@ struct DashboardView: View {
 
     // MARK: - Coaching Headline
 
+    var proteinRate: Double {
+        loggedDaysCount > 0 ? Double(proteinHitDays) / Double(loggedDaysCount) : 0
+    }
+
+    var proteinCaveat: String? {
+        guard loggedDaysCount >= 3, proteinRate < 0.5 else { return nil }
+        return "but protein is still the gap"
+    }
+
     var coachingHeadline: (String, Color) {
+        // Priority 1: Insufficient data
         if loggedDaysCount < 3 {
             return ("Log meals consistently — only \(loggedDaysCount)/7 days tracked this week", .orange)
         }
 
+        // Priority 2: Risk flags
         if let trend = dashboardMeasurementTrend {
+            if trend.interpretation == .likelyFatLoss,
+               let rate = trend.weightChangeRatePerWeek, rate < -2.0 {
+                return ("Fat loss is fast — consider slowing the deficit to protect performance", .orange)
+            }
+        }
+
+        if let daysAgo = analysisDaysAgo, daysAgo > 56 {
+            return ("AI targets are \(daysAgo) days old — consider re-analyzing before adjusting further", .orange)
+        }
+
+        // Priority 3: Major protein gap (standalone — before body trends)
+        if proteinRate < 0.35 && loggedDaysCount >= 3 {
+            return ("Protein is the priority — hitting target on only \(proteinHitDays)/\(loggedDaysCount) logged days", .orange)
+        }
+
+        // Priority 4: Body trends (with protein caveat when applicable)
+        if let trend = dashboardMeasurementTrend {
+            let caveat = proteinCaveat.map { " — \($0)" } ?? ""
             switch trend.interpretation {
             case .likelyRecomposition:
-                return ("Recomposition signal — waist trending down while weight stable. Stay the course.", .green)
+                return ("Waist trending down, weight stable\(caveat.isEmpty ? " — stay the course" : caveat)", caveat.isEmpty ? .green : .orange)
             case .likelyFatLoss:
-                if let rate = trend.weightChangeRatePerWeek, rate < -2.0 {
-                    return ("Fat loss is fast — consider slowing the deficit to protect performance", .orange)
-                }
-                return ("Fat loss tracking well — waist and weight both trending down", .green)
+                return ("Fat loss tracking well\(caveat.isEmpty ? " — waist and weight both down" : caveat)", caveat.isEmpty ? .green : .orange)
             case .possibleNoise:
-                return ("Recent measurement changes may be noise — keep logging for clarity", .secondary)
+                return ("Recent changes may be noise — keep logging for clarity", .secondary)
             case .likelyMassGain:
-                return ("Weight and waist both rising — review calorie targets if fat loss is the goal", .orange)
+                if trend.waistToWeightRatio != nil && trend.waistChangeIn.map({ $0 <= 0.1 }) == true {
+                    return ("Weight rising but waist controlled — check training performance before adjusting", .secondary)
+                }
+                return ("Weight and waist both rising — review targets if fat loss is the goal", .orange)
             default:
                 break
             }
         }
 
-        let proteinRate = loggedDaysCount > 0 ? Double(proteinHitDays) / Double(loggedDaysCount) : 0
+        // Priority 5: Moderate protein gap (no body trend to attach to)
         if proteinRate < 0.5 && loggedDaysCount >= 3 {
             return ("Protein is the gap — hitting target on only \(proteinHitDays)/\(loggedDaysCount) logged days", .orange)
         }
 
+        // Priority 6: Praise
         if proteinRate >= 0.7 && loggedDaysCount >= 5 {
             return ("Strong week — logging consistent, protein adherence solid", .green)
         }
@@ -265,10 +295,20 @@ struct DashboardView: View {
     // MARK: - Next Meal Name
 
     var nextMealName: String {
-        let hour = Calendar.current.component(.hour, from: Date())
+        let now = Date()
+
+        // If meals logged today, use gap-based logic
+        if let lastMeal = todayNutrition.sorted(by: { $0.date < $1.date }).last {
+            let hoursSinceLast = now.timeIntervalSince(lastMeal.date) / 3600
+            if hoursSinceLast < 2 {
+                return "Snack"
+            }
+        }
+
+        // Fill unlogged standard meals in order, regardless of clock time
         let loggedMeals = Set(todayNutrition.map { $0.mealName.lowercased() })
-        if !loggedMeals.contains("breakfast") && hour < 11 { return "Breakfast" }
-        if !loggedMeals.contains("lunch") && hour < 15 { return "Lunch" }
+        if !loggedMeals.contains("breakfast") { return "Breakfast" }
+        if !loggedMeals.contains("lunch") { return "Lunch" }
         if !loggedMeals.contains("dinner") { return "Dinner" }
         return "Snack"
     }
@@ -654,55 +694,27 @@ struct DashboardView: View {
             .padding(.vertical, 2)
 
         VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 8) {
+            HStack(spacing: 6) {
                 Image(systemName: "ruler")
                     .font(.caption2)
                     .foregroundStyle(.purple)
-                Text("Recomposition Context")
-                    .font(.system(size: 10, weight: .bold, design: .monospaced))
-                    .foregroundStyle(.purple)
-                    .tracking(1)
-                Spacer()
-                dashboardInterpretationBadge(trend.interpretation)
-            }
 
-            HStack(spacing: 16) {
+                dashboardInterpretationBadge(trend.interpretation)
+
                 if let waist = trend.latestWaistIn {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Waist")
+                    HStack(spacing: 2) {
+                        Text("Waist \(String(format: "%.1f", waist))")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
-                        HStack(spacing: 4) {
-                            Text(String(format: "%.1f", waist))
-                                .font(.caption.bold())
-                            Text("in")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                            if let change = trend.waistChangeIn, abs(change) > 0.05 {
-                                Text(String(format: "%+.1f", change))
-                                    .font(.caption2.bold())
-                                    .foregroundStyle(change < 0 ? .green : .red)
-                            }
+                        if let change = trend.waistChangeIn, abs(change) > 0.05 {
+                            Text(String(format: "%+.1f", change))
+                                .font(.caption2.bold())
+                                .foregroundStyle(change < 0 ? .green : .red)
                         }
                     }
                 }
 
-                if let rate = trend.weightChangeRatePerWeek {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Rate")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                        Text(String(format: "%+.1f lb/wk", rate))
-                            .font(.caption.bold())
-                    }
-                }
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Confidence")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                    dashboardConfidenceBadge(trend.progressConfidence)
-                }
+                dashboardConfidenceBadge(trend.progressConfidence)
 
                 Spacer()
             }
@@ -833,9 +845,16 @@ struct DashboardView: View {
             Spacer()
 
             if activeMacroTargets.source == .analysis {
-                Text("AI targets")
-                    .font(.caption2)
-                    .foregroundStyle(.orange.opacity(0.6))
+                if let daysAgo = analysisDaysAgo {
+                    let stale = daysAgo > 56
+                    Text("AI targets · \(daysAgo)d")
+                        .font(.caption2)
+                        .foregroundStyle(stale ? .red.opacity(0.7) : .orange.opacity(0.6))
+                } else {
+                    Text("AI targets")
+                        .font(.caption2)
+                        .foregroundStyle(.orange.opacity(0.6))
+                }
             } else {
                 Text("Config targets")
                     .font(.caption2)
