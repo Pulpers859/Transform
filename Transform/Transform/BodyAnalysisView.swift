@@ -162,6 +162,15 @@ struct BodyAnalysisView: View {
                 }
                 .padding()
             }
+            .scrollDismissesKeyboard(.interactively)
+            .toolbar {
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") {
+                        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                    }
+                }
+            }
             .navigationTitle("Body Analysis")
             .navigationDestination(isPresented: $showResult) {
                 if let result = analysisResult {
