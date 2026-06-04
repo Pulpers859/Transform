@@ -24,10 +24,20 @@ struct AppSettingsView: View {
     @AppStorage(AppSettingsKeys.carbTarget) private var carbTarget = String(format: "%.0f", Config.defaultCarbTargetG)
     @AppStorage(AppSettingsKeys.fatTarget) private var fatTarget = String(format: "%.0f", Config.defaultFatTargetG)
     @AppStorage(AppSettingsKeys.bodyWeightGoal) private var bodyWeightGoal = String(format: "%.0f", Config.defaultBodyWeightGoalLbs)
+    @AppStorage(AppSettingsKeys.appearanceMode) private var appearanceMode = 0
 
     var body: some View {
         NavigationStack {
             Form {
+                Section("Appearance") {
+                    Picker("Theme", selection: $appearanceMode) {
+                        Text("System").tag(0)
+                        Text("Light").tag(1)
+                        Text("Dark").tag(2)
+                    }
+                    .pickerStyle(.segmented)
+                }
+
                 Section("Body Analysis Profile") {
                     Text("These fields shape the body-analysis prompt and make the assessment smarter than photos alone. Leave a field blank only if you truly want that detail treated as unknown.")
                         .font(.caption)
@@ -132,5 +142,6 @@ struct AppSettingsView: View {
         carbTarget = String(format: "%.0f", Config.defaultCarbTargetG)
         fatTarget = String(format: "%.0f", Config.defaultFatTargetG)
         bodyWeightGoal = String(format: "%.0f", Config.defaultBodyWeightGoalLbs)
+        appearanceMode = 0
     }
 }

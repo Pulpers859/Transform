@@ -217,6 +217,7 @@ enum AppSettingsKeys {
     static let carbTarget = "nutrition_carb_target"
     static let fatTarget = "nutrition_fat_target"
     static let bodyWeightGoal = "body_weight_goal"
+    static let appearanceMode = "app_appearance_mode"
 }
 
 struct AnalysisClientProfile {

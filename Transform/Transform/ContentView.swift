@@ -5,9 +5,18 @@ import Combine
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.scenePhase) private var scenePhase
+    @AppStorage(AppSettingsKeys.appearanceMode) private var appearanceMode = 0
     let startupWarning: String?
     @State private var didShowStartupWarning = false
     @State private var appAlert: AppAlertContent?
+
+    var resolvedColorScheme: ColorScheme? {
+        switch appearanceMode {
+        case 1: return .light
+        case 2: return .dark
+        default: return nil
+        }
+    }
 
     init(startupWarning: String? = nil) {
         self.startupWarning = startupWarning
@@ -35,6 +44,7 @@ struct ContentView: View {
                     Label("Nutrition", systemImage: "fork.knife")
                 }
         }
+        .preferredColorScheme(resolvedColorScheme)
         .tint(.orange)
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .inactive || newPhase == .background {
