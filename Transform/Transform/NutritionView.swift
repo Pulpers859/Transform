@@ -332,6 +332,15 @@ struct NutritionView: View {
             )
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
+            if activeMacroTargets.wasAdjustedBySafetyFloor {
+                VStack(alignment: .leading, spacing: 2) {
+                    ForEach(activeMacroTargets.floorAdjustments, id: \.self) { adjustment in
+                        Text(adjustment)
+                    }
+                }
+                .font(.caption2)
+                .foregroundStyle(.orange)
+            }
         }
         .padding()
         .background(Color(.secondarySystemBackground))

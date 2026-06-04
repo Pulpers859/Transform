@@ -1178,6 +1178,11 @@ enum BodyAnalysisValidator {
                 severity: .error, field: "macroTargets",
                 message: "Macro math inconsistent: protein(\(Int(macros.proteinG)))×4 + carbs(\(Int(macros.carbsG)))×4 + fat(\(Int(macros.fatG)))×9 = \(Int(computedCalories)) kcal, but total is \(macros.calories) kcal (\(Int(deviation * 100))% off)."
             ))
+        } else if deviation > 0.08 {
+            issues.append(AnalysisValidationIssue(
+                severity: .warning, field: "macroTargets",
+                message: "Macro math drift: computed \(Int(computedCalories)) kcal vs stated \(macros.calories) kcal (\(Int(deviation * 100))% off). Not broken, but worth noting."
+            ))
         }
 
         if macros.calories < 1200 {
@@ -1800,7 +1805,15 @@ struct AnalysisMeasurementSnapshot: Codable {
         lines.append("- Progress confidence: \(trend.progressConfidence.rawValue) — \(trend.confidenceReason)")
 
         lines.append("")
-        lines.append("Use this measurement data to sharpen body composition assessment. If waist is trending down while weight is stable or rising, this is a recomposition signal — do not recommend calorie cuts. If scale weight is flat but waist is dropping, maintain current macros.")
+        if trend.dataQuality == .moderate || trend.dataQuality == .good || trend.dataQuality == .excellent {
+            if trend.interpretation == .likelyRecomposition {
+                lines.append("Use this measurement data to sharpen body composition assessment. Waist is meaningfully trending down while weight is stable or rising with Moderate+ data quality — this is a credible recomposition signal. Do not recommend calorie cuts unless recovery, appetite, adherence, or clinical performance context strongly supports a change. Maintain current macros.")
+            } else {
+                lines.append("Use this measurement data to sharpen body composition assessment. Data quality is sufficient for trend interpretation. Weight the measurement trend alongside photos, check-in context, and nutrition adherence when making macro recommendations.")
+            }
+        } else {
+            lines.append("Use this measurement data as supplemental context only. Data quality is \(trend.dataQuality.rawValue) — do not make strong coaching decisions (especially calorie changes) based on measurement trends alone. Prioritize photo assessment, check-in context, and nutrition adherence data instead.")
+        }
 
         return lines.joined(separator: "\n")
     }
@@ -1976,7 +1989,9 @@ enum MeasurementTrendSnapshotBuilder {
             waistChange: waistChange,
             weightChange: weightChange,
             elapsedDays: elapsedDays,
-            nonStandardCount: sorted.count - standardCount
+            nonStandardCount: sorted.count - standardCount,
+            standardCount: standardCount,
+            dataQuality: quality
         )
 
         let (confidence, reason) = classifyConfidence(
@@ -2049,11 +2064,19 @@ enum MeasurementTrendSnapshotBuilder {
         return .limited
     }
 
+    private static let meaningfulWaistChangeIn = 0.5
+    private static let noiseWaistChangeIn = 0.25
+    private static let meaningfulWeightChangeLbs = 0.5
+    private static let minimumElapsedDaysForTrend = 14
+    private static let minimumStandardSessionsForTrend = 2
+
     private static func interpretTrend(
         waistChange: Double?,
         weightChange: Double?,
         elapsedDays: Int,
-        nonStandardCount: Int
+        nonStandardCount: Int,
+        standardCount: Int,
+        dataQuality: MeasurementDataQuality
     ) -> MeasurementInterpretation {
         guard let waist = waistChange else {
             guard let weight = weightChange else { return .insufficientData }
@@ -2064,31 +2087,48 @@ enum MeasurementTrendSnapshotBuilder {
 
         let weight = weightChange ?? 0
 
-        if abs(waist) < 0.3 && abs(weight) < 0.5 {
+        if abs(waist) < noiseWaistChangeIn && abs(weight) < meaningfulWeightChangeLbs {
             return .stableNoChange
         }
 
-        if elapsedDays < 5 && abs(waist) > 1.0 {
+        if elapsedDays < 7 && abs(waist) > 1.0 {
             return .possibleNoise
         }
-        if nonStandardCount > 0 && abs(waist) > 1.5 && elapsedDays < 10 {
+        if nonStandardCount > 0 && abs(waist) > 1.0 && elapsedDays < 10 {
             return .possibleNoise
         }
 
-        if weight > 0.3 && waist < -0.3 {
-            return .likelyRecomposition
+        let hasMinimumBasis = elapsedDays >= minimumElapsedDaysForTrend
+            && standardCount >= minimumStandardSessionsForTrend
+            && (dataQuality == .moderate || dataQuality == .good || dataQuality == .excellent)
+
+        if abs(waist) >= meaningfulWaistChangeIn && hasMinimumBasis {
+            if weight > 0.3 && waist < -meaningfulWaistChangeIn {
+                return .likelyRecomposition
+            }
+            if abs(weight) <= meaningfulWeightChangeLbs && waist < -meaningfulWaistChangeIn {
+                return .likelyRecomposition
+            }
+            if weight < -meaningfulWeightChangeLbs && waist < -meaningfulWaistChangeIn {
+                return .likelyFatLoss
+            }
+            if weight > meaningfulWeightChangeLbs && waist > meaningfulWaistChangeIn {
+                return .likelyMassGain
+            }
         }
-        if abs(weight) <= 0.5 && waist < -0.3 {
-            return .likelyRecomposition
+
+        if abs(waist) >= noiseWaistChangeIn && abs(waist) < meaningfulWaistChangeIn {
+            return .stableNoChange
         }
-        if weight < -0.5 && waist < -0.3 {
+        if !hasMinimumBasis && abs(waist) >= meaningfulWaistChangeIn {
+            return .possibleNoise
+        }
+
+        if weight < -meaningfulWeightChangeLbs && abs(waist) <= noiseWaistChangeIn {
             return .likelyFatLoss
         }
-        if weight > 0.5 && waist > 0.3 {
+        if weight > meaningfulWeightChangeLbs && abs(waist) <= noiseWaistChangeIn {
             return .likelyMassGain
-        }
-        if weight < -0.5 && abs(waist) <= 0.3 {
-            return .likelyFatLoss
         }
 
         return .stableNoChange

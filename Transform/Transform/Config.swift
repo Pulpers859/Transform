@@ -92,18 +92,60 @@ struct DailyMacroTargets {
     let carbsG: Double
     let fatG: Double
     let source: MacroTargetSource
+    let floorAdjustments: [String]
+
+    init(
+        calories: Int,
+        proteinG: Double,
+        carbsG: Double,
+        fatG: Double,
+        source: MacroTargetSource,
+        floorAdjustments: [String] = []
+    ) {
+        self.calories = calories
+        self.proteinG = proteinG
+        self.carbsG = carbsG
+        self.fatG = fatG
+        self.source = source
+        self.floorAdjustments = floorAdjustments
+    }
+
+    var wasAdjustedBySafetyFloor: Bool {
+        !floorAdjustments.isEmpty
+    }
 }
 
 enum MacroTargetResolver {
     static func resolve(from analysis: BodyAnalysisResult?, bodyweightLbs: Double? = nil) -> DailyMacroTargets {
         if let macros = analysis?.macroTargets {
             let bw = bodyweightLbs ?? profileBodyweightLbs()
+            var adjustments: [String] = []
+
+            let calFloor = calorieFloor(bodyweightLbs: bw)
+            let proFloor = proteinFloor(bodyweightLbs: bw)
+            let fFloor = fatFloor(bodyweightLbs: bw)
+
+            let resolvedCalories = max(macros.calories, calFloor)
+            let resolvedProtein = max(macros.proteinG, proFloor)
+            let resolvedFat = max(macros.fatG, fFloor)
+
+            if macros.calories < calFloor {
+                adjustments.append("Calories raised from \(macros.calories) to \(calFloor) (safety floor: BW×10)")
+            }
+            if macros.proteinG < proFloor {
+                adjustments.append("Protein raised from \(Int(macros.proteinG))g to \(Int(proFloor))g (safety floor: 1.4 g/kg)")
+            }
+            if macros.fatG < fFloor {
+                adjustments.append("Fat raised from \(Int(macros.fatG))g to \(Int(fFloor))g (safety floor: 0.35 g/kg)")
+            }
+
             return DailyMacroTargets(
-                calories: max(macros.calories, calorieFloor(bodyweightLbs: bw)),
-                proteinG: max(macros.proteinG, proteinFloor(bodyweightLbs: bw)),
+                calories: resolvedCalories,
+                proteinG: resolvedProtein,
                 carbsG: max(macros.carbsG, 50),
-                fatG: max(macros.fatG, fatFloor(bodyweightLbs: bw)),
-                source: .analysis
+                fatG: resolvedFat,
+                source: .analysis,
+                floorAdjustments: adjustments
             )
         }
 

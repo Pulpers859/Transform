@@ -71,18 +71,33 @@ struct BodyAnalysisResultView: View {
                     }
 
                 // Save button
-                Button(action: {
-                    onSave()
-                }) {
-                    Label("Save Analysis", systemImage: "square.and.arrow.down")
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(.orange)
-                        .foregroundStyle(.white)
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
-                        .bold()
+                if let report = validationReport, !report.isUsable {
+                    VStack(spacing: 6) {
+                        Label("Cannot save — critical validation issues detected", systemImage: "exclamationmark.triangle.fill")
+                            .font(.caption.bold())
+                            .foregroundStyle(.red)
+                        Text("Long-press the result to open the debug panel and review issues. Re-run the analysis to try again.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding()
+                    .background(Color.red.opacity(0.08))
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .padding(.top, 8)
+                } else {
+                    Button(action: {
+                        onSave()
+                    }) {
+                        Label("Save Analysis", systemImage: "square.and.arrow.down")
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(.orange)
+                            .foregroundStyle(.white)
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                            .bold()
+                    }
+                    .padding(.top, 8)
                 }
-                .padding(.top, 8)
             }
             .padding()
         }
@@ -364,19 +379,30 @@ struct AnalysisResultContent: View {
                         if !result.dietRecommendations.isEmpty || !result.resolvedNutritionAssessment.isEmpty {
                             Divider()
                         }
+                        let resolved = MacroTargetResolver.resolve(from: result)
                         VStack(alignment: .leading, spacing: 6) {
                             Text("Recommended Macro Targets")
                                 .font(.subheadline.bold())
-                            Text("Calories: \(macros.calories) kcal/day")
-                            Text("Protein: \(Int(macros.proteinG)) g/day")
-                            Text("Carbs: \(Int(macros.carbsG)) g/day")
-                            Text("Fat: \(Int(macros.fatG)) g/day")
+                            Text("Calories: \(resolved.calories) kcal/day")
+                            Text("Protein: \(Int(resolved.proteinG)) g/day")
+                            Text("Carbs: \(Int(resolved.carbsG)) g/day")
+                            Text("Fat: \(Int(resolved.fatG)) g/day")
                             if let rationale = macros.macroRationale,
                                !rationale.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                                 Text(rationale)
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                                     .padding(.top, 2)
+                            }
+                            if resolved.wasAdjustedBySafetyFloor {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    ForEach(resolved.floorAdjustments, id: \.self) { adjustment in
+                                        Text(adjustment)
+                                    }
+                                }
+                                .font(.caption)
+                                .foregroundStyle(.orange)
+                                .padding(.top, 2)
                             }
                         }
                         .font(.subheadline)
