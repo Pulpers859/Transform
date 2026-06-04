@@ -8,6 +8,7 @@ struct DashboardView: View {
     @Query(sort: \WeightEntry.date, order: .reverse) private var weightEntries: [WeightEntry]
     @Query(sort: \NutritionEntry.date, order: .reverse) private var allNutrition: [NutritionEntry]
     @Query(sort: \BodyAnalysisSession.date, order: .reverse) private var analysisSessions: [BodyAnalysisSession]
+    @Query(sort: \MeasurementEntry.date, order: .reverse) private var measurementEntries: [MeasurementEntry]
 
     @State private var animateRings = false
     @State private var backupDocument = BackupDocument()
@@ -16,6 +17,7 @@ struct DashboardView: View {
     @State private var showBackupAlert = false
     @State private var backupMessage = ""
     @State private var showAddWeightSheet = false
+    @State private var showAddFoodSheet = false
     @State private var showSettings = false
 
     // MARK: - Computed Props
@@ -91,6 +93,97 @@ struct DashboardView: View {
         }
     }
 
+    // MARK: - Adherence Metrics
+
+    var last7DaysNutritionEntries: [NutritionEntry] {
+        let cutoff = Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date()
+        return allNutrition.filter { $0.date >= cutoff }
+    }
+
+    var loggedDaysCount: Int {
+        let calendar = Calendar.current
+        let days = Set(last7DaysNutritionEntries.map { calendar.startOfDay(for: $0.date) })
+        return days.count
+    }
+
+    var proteinHitDays: Int {
+        let calendar = Calendar.current
+        let threshold = activeMacroTargets.proteinG * 0.90
+        let grouped = Dictionary(grouping: last7DaysNutritionEntries) { calendar.startOfDay(for: $0.date) }
+        return grouped.values.filter { entries in
+            entries.reduce(0.0) { $0 + $1.proteinG } >= threshold
+        }.count
+    }
+
+    // MARK: - Measurement Trend
+
+    var dashboardMeasurementTrend: MeasurementTrendSnapshot? {
+        let entries = measurementEntries.map { m in
+            MeasurementTrendInput(
+                date: m.date,
+                waistIn: m.waistIn,
+                neckIn: m.neckIn,
+                hipsIn: m.hipsIn,
+                chestIn: m.chestIn,
+                rightArmIn: m.rightArmIn,
+                leftArmIn: m.leftArmIn,
+                rightThighIn: m.rightThighIn,
+                leftThighIn: m.leftThighIn,
+                isStandard: m.isStandardMeasurement,
+                bodyweightLbs: nil
+            )
+        }
+        guard entries.count >= 2 else { return nil }
+        let wPoints = weightEntries.map {
+            AnalysisLoggedWeightPoint(date: $0.date, weightLbs: $0.weightLbs)
+        }
+        return MeasurementTrendSnapshotBuilder.build(entries: entries, weightPoints: wPoints)
+    }
+
+    // MARK: - Analysis Freshness
+
+    var analysisDaysAgo: Int? {
+        guard let date = analysisSessions.first?.date else { return nil }
+        return Calendar.current.dateComponents([.day], from: date, to: Date()).day
+    }
+
+    // MARK: - Coaching Headline
+
+    var coachingHeadline: (String, Color) {
+        if loggedDaysCount < 3 {
+            return ("Log meals consistently — only \(loggedDaysCount)/7 days tracked this week", .orange)
+        }
+
+        if let trend = dashboardMeasurementTrend {
+            switch trend.interpretation {
+            case .likelyRecomposition:
+                return ("Recomposition signal — waist trending down while weight stable. Stay the course.", .green)
+            case .likelyFatLoss:
+                if let rate = trend.weightChangeRatePerWeek, rate < -2.0 {
+                    return ("Fat loss is fast — consider slowing the deficit to protect performance", .orange)
+                }
+                return ("Fat loss tracking well — waist and weight both trending down", .green)
+            case .possibleNoise:
+                return ("Recent measurement changes may be noise — keep logging for clarity", .secondary)
+            case .likelyMassGain:
+                return ("Weight and waist both rising — review calorie targets if fat loss is the goal", .orange)
+            default:
+                break
+            }
+        }
+
+        let proteinRate = loggedDaysCount > 0 ? Double(proteinHitDays) / Double(loggedDaysCount) : 0
+        if proteinRate < 0.5 && loggedDaysCount >= 3 {
+            return ("Protein is the gap — hitting target on only \(proteinHitDays)/\(loggedDaysCount) logged days", .orange)
+        }
+
+        if proteinRate >= 0.7 && loggedDaysCount >= 5 {
+            return ("Strong week — logging consistent, protein adherence solid", .green)
+        }
+
+        return ("Keep logging — consistency is what unlocks meaningful trends", .secondary)
+    }
+
     // MARK: - Body
 
     var body: some View {
@@ -104,8 +197,9 @@ struct DashboardView: View {
                             .padding(.bottom, 24)
 
                         VStack(spacing: 16) {
+                            coachingHeadlineCard
                             todayRingsCard
-                            weightCard
+                            weightAndRecompCard
                             weekCalorieChart
                             bottomPadding
                         }
@@ -154,6 +248,9 @@ struct DashboardView: View {
             .sheet(isPresented: $showAddWeightSheet) {
                 AddWeightSheet()
             }
+            .sheet(isPresented: $showAddFoodSheet) {
+                AddFoodSheet(selectedDate: .now, preselectedMeal: nextMealName)
+            }
             .sheet(isPresented: $showSettings) {
                 AppSettingsView()
             }
@@ -163,6 +260,17 @@ struct DashboardView: View {
                 }
             }
         }
+    }
+
+    // MARK: - Next Meal Name
+
+    var nextMealName: String {
+        let hour = Calendar.current.component(.hour, from: Date())
+        let loggedMeals = Set(todayNutrition.map { $0.mealName.lowercased() })
+        if !loggedMeals.contains("breakfast") && hour < 11 { return "Breakfast" }
+        if !loggedMeals.contains("lunch") && hour < 15 { return "Lunch" }
+        if !loggedMeals.contains("dinner") { return "Dinner" }
+        return "Snack"
     }
 
     // MARK: - Hero Header
@@ -280,11 +388,40 @@ struct DashboardView: View {
         }
     }
 
+    // MARK: - Coaching Headline Card
+
+    var coachingHeadlineCard: some View {
+        let (message, color) = coachingHeadline
+        return HStack(spacing: 10) {
+            RoundedRectangle(cornerRadius: 2)
+                .fill(color)
+                .frame(width: 3, height: 32)
+            Text(message)
+                .font(.caption)
+                .foregroundStyle(.primary)
+            Spacer()
+        }
+        .padding(12)
+        .background(Color(.secondarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+
     // MARK: - Today's Rings Card
 
     var todayRingsCard: some View {
         VStack(alignment: .leading, spacing: 16) {
-            sectionLabel("Today's Targets")
+            HStack {
+                sectionLabel("Today's Targets")
+                Spacer()
+                Button {
+                    showAddFoodSheet = true
+                } label: {
+                    Label("Log Meal", systemImage: "plus.circle.fill")
+                        .font(.caption.bold())
+                }
+                .buttonStyle(.bordered)
+                .tint(.orange)
+            }
 
             HStack(spacing: 20) {
                 ZStack {
@@ -339,10 +476,34 @@ struct DashboardView: View {
                 Spacer()
             }
             .padding(.top, 2)
+
+            adherenceLine
         }
         .padding(16)
         .background(Color(.secondarySystemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 16))
+    }
+
+    var adherenceLine: some View {
+        HStack(spacing: 12) {
+            HStack(spacing: 4) {
+                Image(systemName: "fork.knife")
+                    .font(.caption2)
+                    .foregroundStyle(.orange)
+                Text("Logged: \(loggedDaysCount)/7 days")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            HStack(spacing: 4) {
+                Image(systemName: "flame.fill")
+                    .font(.caption2)
+                    .foregroundStyle(.red)
+                Text("Protein: \(proteinHitDays)/\(max(loggedDaysCount, 1)) days")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+        }
     }
 
     func ringLegendRow(color: Color, label: String, value: String, target: String, unit: String) -> some View {
@@ -362,9 +523,9 @@ struct DashboardView: View {
         }
     }
 
-    // MARK: - Weight Card
+    // MARK: - Weight + Recomp Card
 
-    var weightCard: some View {
+    var weightAndRecompCard: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
                 sectionLabel("Body Weight")
@@ -420,6 +581,10 @@ struct DashboardView: View {
                     }
                 }
                 .frame(height: 6)
+            }
+
+            if let trend = dashboardMeasurementTrend, trend.latestWaistIn != nil {
+                recompContextSection(trend: trend)
             }
 
             if weightSparkline.count > 1 {
@@ -483,6 +648,110 @@ struct DashboardView: View {
         .clipShape(RoundedRectangle(cornerRadius: 16))
     }
 
+    @ViewBuilder
+    func recompContextSection(trend: MeasurementTrendSnapshot) -> some View {
+        Divider()
+            .padding(.vertical, 2)
+
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Image(systemName: "ruler")
+                    .font(.caption2)
+                    .foregroundStyle(.purple)
+                Text("Recomposition Context")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .foregroundStyle(.purple)
+                    .tracking(1)
+                Spacer()
+                dashboardInterpretationBadge(trend.interpretation)
+            }
+
+            HStack(spacing: 16) {
+                if let waist = trend.latestWaistIn {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Waist")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                        HStack(spacing: 4) {
+                            Text(String(format: "%.1f", waist))
+                                .font(.caption.bold())
+                            Text("in")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                            if let change = trend.waistChangeIn, abs(change) > 0.05 {
+                                Text(String(format: "%+.1f", change))
+                                    .font(.caption2.bold())
+                                    .foregroundStyle(change < 0 ? .green : .red)
+                            }
+                        }
+                    }
+                }
+
+                if let rate = trend.weightChangeRatePerWeek {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Rate")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                        Text(String(format: "%+.1f lb/wk", rate))
+                            .font(.caption.bold())
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Confidence")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    dashboardConfidenceBadge(trend.progressConfidence)
+                }
+
+                Spacer()
+            }
+
+            if let signal = trend.waistToWeightRatio {
+                Text(signal)
+                    .font(.caption2)
+                    .foregroundStyle(.purple)
+            }
+        }
+    }
+
+    func dashboardInterpretationBadge(_ interpretation: MeasurementInterpretation) -> some View {
+        let color: Color = {
+            switch interpretation {
+            case .likelyFatLoss: return .green
+            case .likelyRecomposition: return .blue
+            case .likelyMassGain: return .orange
+            case .possibleNoise: return .yellow
+            case .insufficientData, .stableNoChange: return .secondary
+            }
+        }()
+        return Text(interpretation.rawValue)
+            .font(.system(size: 9, weight: .bold))
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(color.opacity(0.12))
+            .foregroundStyle(color)
+            .clipShape(Capsule())
+    }
+
+    func dashboardConfidenceBadge(_ confidence: ProgressConfidence) -> some View {
+        let color: Color = {
+            switch confidence {
+            case .high: return .green
+            case .moderate: return .orange
+            case .low: return .yellow
+            case .insufficient: return .secondary
+            }
+        }()
+        return Text(confidence.rawValue)
+            .font(.system(size: 9, weight: .bold))
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(color.opacity(0.12))
+            .foregroundStyle(color)
+            .clipShape(Capsule())
+    }
+
     // MARK: - Week Calorie Chart
 
     var weekCalorieChart: some View {
@@ -530,19 +799,49 @@ struct DashboardView: View {
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
             }
-            if activeMacroTargets.source == .analysis {
-                Text("Targets source: latest AI body analysis")
-                    .font(.caption2)
-                    .foregroundStyle(Color.orange.opacity(0.4))
-            } else {
-                Text("Targets source: fallback settings")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-            }
+
+            analysisFreshnessLine
         }
         .padding(16)
         .background(Color(.secondarySystemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 16))
+    }
+
+    var analysisFreshnessLine: some View {
+        HStack(spacing: 4) {
+            if let daysAgo = analysisDaysAgo {
+                let color: Color = daysAgo <= 30 ? .green : (daysAgo <= 45 ? .orange : .red)
+                Image(systemName: "sparkles")
+                    .font(.caption2)
+                    .foregroundStyle(color)
+                Text("Last analysis: \(daysAgo) day(s) ago")
+                    .font(.caption2)
+                    .foregroundStyle(color)
+                if daysAgo > 42 {
+                    Text("· Consider re-analyzing")
+                        .font(.caption2)
+                        .foregroundStyle(.orange)
+                }
+            } else {
+                Image(systemName: "sparkles")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                Text("No body analysis yet")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+
+            if activeMacroTargets.source == .analysis {
+                Text("AI targets")
+                    .font(.caption2)
+                    .foregroundStyle(.orange.opacity(0.6))
+            } else {
+                Text("Config targets")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+        }
     }
 
     func last7DaysCalories() -> [(Date, Double)] {
