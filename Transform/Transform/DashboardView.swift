@@ -600,9 +600,12 @@ struct DashboardView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Spacer()
-                    Text("\(Int(weightProgress * 100))% there")
-                        .font(.caption.bold())
-                        .foregroundStyle(.orange)
+                    if let current = currentWeight {
+                        let remaining = abs(current - Config.bodyWeightGoalLbs)
+                        Text(String(format: "%.1f lb to goal", remaining))
+                            .font(.caption.bold())
+                            .foregroundStyle(.orange)
+                    }
                 }
 
                 GeometryReader { geo in
@@ -627,6 +630,25 @@ struct DashboardView: View {
 
             if let trend = dashboardMeasurementTrend, trend.latestWaistIn != nil {
                 recompContextSection(trend: trend)
+            } else if dashboardMeasurementTrend == nil || dashboardMeasurementTrend?.latestWaistIn == nil {
+                Divider().padding(.vertical, 2)
+                NavigationLink {
+                    MeasurementsView()
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "ruler")
+                            .font(.caption2)
+                            .foregroundStyle(.purple.opacity(0.6))
+                        Text("Add waist measurement to unlock recomp context")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+                .buttonStyle(.plain)
             }
 
             if weightSparkline.count > 1 {
@@ -798,8 +820,12 @@ struct DashboardView: View {
             }
             .chartXAxis {
                 AxisMarks(values: .stride(by: .day)) { value in
-                    AxisValueLabel(format: .dateTime.weekday(.narrow))
-                        .font(.caption2)
+                    if let date = value.as(Date.self) {
+                        AxisValueLabel {
+                            Text(Calendar.current.isDateInToday(date) ? "Today" : date.formatted(.dateTime.weekday(.abbreviated)))
+                                .font(.caption2)
+                        }
+                    }
                 }
             }
             .chartYAxis {
