@@ -1,5 +1,60 @@
 import Foundation
 
+enum WorkoutReadinessMode: String, CaseIterable, Identifiable {
+    case normal = "normal"
+    case sleepRestricted = "sleep_restricted"
+    case postNightShift = "post_night_shift"
+    case postCall = "post_call"
+    case highStressClinicalBlock = "high_stress_clinical"
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .normal: return "Normal"
+        case .sleepRestricted: return "Sleep Restricted"
+        case .postNightShift: return "Post-Night Shift"
+        case .postCall: return "Post-Call"
+        case .highStressClinicalBlock: return "High-Stress Block"
+        }
+    }
+
+    var volumeScale: Double {
+        switch self {
+        case .normal: return 1.0
+        case .sleepRestricted: return 0.90
+        case .postNightShift: return 0.85
+        case .postCall: return 0.80
+        case .highStressClinicalBlock: return 0.90
+        }
+    }
+
+    var sessionTimeCap: Int {
+        switch self {
+        case .normal: return 75
+        case .sleepRestricted: return 65
+        case .postNightShift: return 60
+        case .postCall: return 55
+        case .highStressClinicalBlock: return 65
+        }
+    }
+
+    var programmingGuidance: String {
+        switch self {
+        case .normal:
+            return ""
+        case .sleepRestricted:
+            return "Sleep is restricted — reduce grinder sets, favor moderate RPE (7-8), keep compound movement patterns stable but cut accessory volume."
+        case .postNightShift:
+            return "Post-night shift — avoid heavy axial loading (heavy squats, deadlifts). Favor machine-based and cable work. Cap RPE at 7-8. Prioritize pump and technique over intensity."
+        case .postCall:
+            return "Post-call recovery session — use pump and technique bias. Cap RPE at 6-7. Favor familiar exercises with low novelty. Session should feel restorative, not depleting."
+        case .highStressClinicalBlock:
+            return "High-stress clinical block — keep exercise selection stable and familiar. Lower novelty and failure exposure. Maintain training frequency but reduce volume per session."
+        }
+    }
+}
+
 extension ClaudeService {
     struct TrainingIntentPlan {
         let splitRecommendation: String
@@ -45,6 +100,7 @@ extension ClaudeService {
         let poorNutritionAdherence: Bool
         let recoveryConstrained: Bool
         let recompositionGoal: Bool
+        let readinessMode: WorkoutReadinessMode
         let weeklyVolumeScale: Double
         let reduceExerciseSlotComplexity: Bool
         let defaultSessionTimeCapMinutes: Int

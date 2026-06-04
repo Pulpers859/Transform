@@ -921,19 +921,22 @@ struct AnalysisMacroTargets: Codable {
     let proteinG: Double
     let carbsG: Double
     let fatG: Double
+    let macroRationale: String?
 
     enum CodingKeys: String, CodingKey {
         case calories
         case proteinG
         case carbsG
         case fatG
+        case macroRationale
     }
 
-    init(calories: Int, proteinG: Double, carbsG: Double, fatG: Double) {
+    init(calories: Int, proteinG: Double, carbsG: Double, fatG: Double, macroRationale: String? = nil) {
         self.calories = calories
         self.proteinG = proteinG
         self.carbsG = carbsG
         self.fatG = fatG
+        self.macroRationale = macroRationale
     }
 
     init(from decoder: Decoder) throws {
@@ -947,6 +950,7 @@ struct AnalysisMacroTargets: Codable {
         proteinG = proteinValue
         carbsG = carbsValue
         fatG = fatValue
+        macroRationale = try container.decodeIfPresent(String.self, forKey: .macroRationale)
     }
 
     private static func decodeNumericValue(_ container: KeyedDecodingContainer<CodingKeys>, key: CodingKeys) throws -> Double {

@@ -105,6 +105,7 @@ struct BodyAnalysisView: View {
                         progressContextCard(snapshot: automaticProgressSnapshot)
                     }
                     if !photos.isEmpty {
+                        photoQualityCard
                         analyzeButton
                         if !canUseAI {
                             Text(Config.anthropicKeyInlineHelpText)
@@ -461,6 +462,53 @@ struct BodyAnalysisView: View {
         .padding()
         .background(Color(.secondarySystemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 16))
+    }
+
+    // MARK: - Photo Quality Card
+
+    var photoQualityCard: some View {
+        let provided = Set(photos.map(\.pose))
+        let allPoses = Set(poses)
+        let missing = allPoses.subtracting(provided)
+
+        return VStack(alignment: .leading, spacing: 10) {
+            Label("Photo Quality Check", systemImage: "checklist")
+                .font(.subheadline.bold())
+                .foregroundStyle(.orange)
+
+            VStack(alignment: .leading, spacing: 6) {
+                qualityRow(label: "Full body visible", met: true)
+                qualityRow(label: "Relaxed, not flexing", met: true)
+                qualityRow(label: "Front angle", met: provided.contains("Front"))
+                qualityRow(label: "Back angle", met: provided.contains("Back"))
+                qualityRow(label: "Side angle(s)", met: provided.contains("Side (Left)") || provided.contains("Side (Right)"))
+            }
+
+            if !missing.isEmpty {
+                let missingNames = missing.sorted().joined(separator: ", ")
+                Text("Missing: \(missingNames) — assessment will be less confident for those regions.")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            } else {
+                Text("All four angles covered — full confidence available.")
+                    .font(.caption)
+                    .foregroundStyle(.green)
+            }
+        }
+        .padding()
+        .background(Color(.secondarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+
+    func qualityRow(label: String, met: Bool) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: met ? "checkmark.circle.fill" : "circle")
+                .foregroundStyle(met ? .green : .secondary)
+                .font(.caption)
+            Text(label)
+                .font(.caption)
+                .foregroundStyle(met ? .primary : .secondary)
+        }
     }
 
     // MARK: - Analyze Button

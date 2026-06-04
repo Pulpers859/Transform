@@ -227,6 +227,13 @@ struct AnalysisResultContent: View {
                             Text("Protein: \(Int(macros.proteinG)) g/day")
                             Text("Carbs: \(Int(macros.carbsG)) g/day")
                             Text("Fat: \(Int(macros.fatG)) g/day")
+                            if let rationale = macros.macroRationale,
+                               !rationale.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                Text(rationale)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .padding(.top, 2)
+                            }
                         }
                         .font(.subheadline)
                         .foregroundStyle(.primary)

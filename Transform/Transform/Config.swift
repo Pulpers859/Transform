@@ -95,13 +95,14 @@ struct DailyMacroTargets {
 }
 
 enum MacroTargetResolver {
-    static func resolve(from analysis: BodyAnalysisResult?) -> DailyMacroTargets {
+    static func resolve(from analysis: BodyAnalysisResult?, bodyweightLbs: Double? = nil) -> DailyMacroTargets {
         if let macros = analysis?.macroTargets {
+            let bw = bodyweightLbs ?? profileBodyweightLbs()
             return DailyMacroTargets(
-                calories: max(macros.calories, 1200),
-                proteinG: max(macros.proteinG, 60),
+                calories: max(macros.calories, calorieFloor(bodyweightLbs: bw)),
+                proteinG: max(macros.proteinG, proteinFloor(bodyweightLbs: bw)),
                 carbsG: max(macros.carbsG, 50),
-                fatG: max(macros.fatG, 25),
+                fatG: max(macros.fatG, fatFloor(bodyweightLbs: bw)),
                 source: .analysis
             )
         }
@@ -113,6 +114,34 @@ enum MacroTargetResolver {
             fatG: Config.fatTargetG,
             source: .config
         )
+    }
+
+    private static func profileBodyweightLbs() -> Double? {
+        let raw = AppSettingsStore.analysisClientProfile.currentWeight
+        let scanner = Scanner(string: raw)
+        guard let value = scanner.scanDouble(), value > 50 else { return nil }
+        let remaining = raw[scanner.currentIndex...].trimmingCharacters(in: .whitespaces).lowercased()
+        if remaining.hasPrefix("kg") {
+            return value * 2.205
+        }
+        return value
+    }
+
+    private static func calorieFloor(bodyweightLbs: Double?) -> Int {
+        guard let bw = bodyweightLbs else { return 1200 }
+        return max(1200, Int(bw * 10))
+    }
+
+    private static func proteinFloor(bodyweightLbs: Double?) -> Double {
+        guard let bw = bodyweightLbs else { return 60 }
+        let kg = bw / 2.205
+        return max(60, kg * 1.4)
+    }
+
+    private static func fatFloor(bodyweightLbs: Double?) -> Double {
+        guard let bw = bodyweightLbs else { return 25 }
+        let kg = bw / 2.205
+        return max(25, kg * 0.35)
     }
 }
 

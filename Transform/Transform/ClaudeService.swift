@@ -81,6 +81,7 @@ class ClaudeService {
 
         You are reviewing \(photos.count) photo(s) from these angles: \(poseList).
         \(photos.count > 1 ? "Cross-reference all views to produce a comprehensive assessment. Note differences visible between angles." : "Assess what is visible and note limitations from having only one angle.")
+        \(ClaudeService.photoQualityContext(poses: photos.map(\.pose)))
 
         HARD SCOPE LIMITS:
         - This is a photo-based physique analysis, not a medical evaluation.
@@ -110,6 +111,7 @@ class ClaudeService {
         - Volume recs should reference MEV/MAV ranges where relevant
         - Diet recs must be specific to this user's stated goal and lifestyle constraints — not generic
         - Include concrete daily macro targets tailored to this client
+        - macroTargets must include a macroRationale explaining which inputs controlled the target (weight trend, goal rate, recovery constraints, adherence level, training demand, shift-work schedule). If the data is insufficient to set confident targets, say so.
         - Identify the #1 highest-leverage change for visible transformation
         - Metabolic health notes should stay conservative and focus on practical recovery/energy-management implications, not disease claims
         - Psychological/adherence insights should address realistic plan design and consistency strategies grounded in the user's stated context
@@ -121,6 +123,16 @@ class ClaudeService {
         - preferredStyles should use only: Push, Pull, Legs, Lower, Upper, Arms
         - weeklyDayTarget and weeklyExerciseTarget should reflect realistic weekly exposure for hypertrophy, not arbitrary numbers
         - analysisLimitations must explicitly state what this photo-only assessment can and cannot support confidently
+
+        CONFIDENCE BY DOMAIN:
+        Each domain assessment has different inherent confidence from photo-based analysis.
+        State your confidence explicitly within each assessment field:
+        - trainingAssessment: state confidence (typically medium-high for visible musculature)
+        - nutritionAssessment: state confidence (typically medium — body composition is visible but intake is not)
+        - recoveryRiskAssessment: state confidence (typically low-medium — posture/presentation can suggest but not confirm)
+        - adherenceAssessment: state confidence (typically low — adherence cannot be assessed from photos; state what context informed your observations)
+        - estimatedBodyFat: state confidence (typically medium — visual landmarks are useful but not validated against criterion methods like DXA)
+        Use phrasing like "Confidence: medium-high based on clear multi-angle visibility" or "Confidence: low — this inference requires training logs to confirm."
 
         You MUST respond with ONLY valid JSON. No preamble, no markdown, no text outside JSON.
 
@@ -151,7 +163,8 @@ class ClaudeService {
             "calories": 2300,
             "proteinG": 210,
             "carbsG": 220,
-            "fatG": 70
+            "fatG": 70,
+            "macroRationale": "1-2 sentences explaining which inputs controlled these targets (weight trend, goal rate, recovery, adherence, training demand)"
           },
           "posturalNotes": "Visible presentation/posture observations and how they may affect training setup; non-diagnostic wording",
           "estimatedBodyFat": "e.g. 16-18%",
@@ -308,5 +321,36 @@ class ClaudeService {
         }
 
         return String(cleaned[startIndex..<endIndex])
+    }
+
+    // MARK: - Photo Quality Context
+
+    static func photoQualityContext(poses: [String]) -> String {
+        let allPoses = Set(["Front", "Back", "Side (Left)", "Side (Right)"])
+        let provided = Set(poses)
+        let missing = allPoses.subtracting(provided)
+
+        guard !missing.isEmpty else {
+            return "Photo coverage: all four standard angles provided. Full assessment confidence is available."
+        }
+
+        var limitations: [String] = []
+        if missing.contains("Back") {
+            limitations.append("back development, lat width, rear delt, and posterior posture")
+        }
+        if missing.contains("Front") {
+            limitations.append("anterior development, chest detail, and frontal body composition")
+        }
+        if missing.contains("Side (Left)") || missing.contains("Side (Right)") {
+            let missingSides = missing.filter { $0.hasPrefix("Side") }
+            if missingSides.count == 2 {
+                limitations.append("lateral proportions, arm thickness, and side-profile posture")
+            } else {
+                limitations.append("one side profile — asymmetry assessment is limited")
+            }
+        }
+
+        let limitationText = limitations.joined(separator: "; ")
+        return "Photo coverage: \(poses.count) of 4 angles. Missing: \(missing.sorted().joined(separator: ", ")). Reduce confidence for: \(limitationText). State these limitations in analysisLimitations."
     }
 }
