@@ -59,8 +59,8 @@ struct DashboardView: View {
         }
 
         let span = maxValue - minValue
-        let minimumVisibleSpan = 4.0
-        let paddedSpan = max(span * 1.35, minimumVisibleSpan)
+        let minimumVisibleSpan = 6.0
+        let paddedSpan = max(span * 1.6, minimumVisibleSpan)
         let center = (maxValue + minValue) / 2
         return (center - paddedSpan / 2)...(center + paddedSpan / 2)
     }
@@ -639,8 +639,16 @@ struct DashboardView: View {
                         x: .value("Date", entry.date),
                         y: .value("Weight", entry.weightLbs)
                     )
+                    .foregroundStyle(Color.orange.opacity(0.8))
+                    .lineStyle(StrokeStyle(lineWidth: 1.5))
+                    .interpolationMethod(.monotone)
+
+                    PointMark(
+                        x: .value("Date", entry.date),
+                        y: .value("Weight", entry.weightLbs)
+                    )
                     .foregroundStyle(Color.orange)
-                    .interpolationMethod(.catmullRom)
+                    .symbolSize(12)
 
                     AreaMark(
                         x: .value("Date", entry.date),
@@ -648,12 +656,12 @@ struct DashboardView: View {
                     )
                     .foregroundStyle(
                         LinearGradient(
-                            colors: [.orange.opacity(0.3), .clear],
+                            colors: [.orange.opacity(0.1), .clear],
                             startPoint: .top,
                             endPoint: .bottom
                         )
                     )
-                    .interpolationMethod(.catmullRom)
+                    .interpolationMethod(.monotone)
                 }
                 .chartXAxis {
                     AxisMarks(values: .automatic(desiredCount: 4)) { value in
