@@ -116,7 +116,7 @@ enum MacroTargetResolver {
         )
     }
 
-    private static func profileBodyweightLbs() -> Double? {
+    static func profileBodyweightLbs() -> Double? {
         let raw = AppSettingsStore.analysisClientProfile.currentWeight
         let scanner = Scanner(string: raw)
         guard let value = scanner.scanDouble(), value > 50 else { return nil }

@@ -5,11 +5,16 @@ import SwiftUI
 struct BodyAnalysisResultView: View {
     let result: BodyAnalysisResult
     let photos: [AnalysisPhoto]
+    var validationReport: AnalysisValidationReport? = nil
     let onSave: () -> Void
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
+
+                if let report = validationReport, report.hasWarnings {
+                    ValidationReportCard(report: report)
+                }
 
                 // Photo(s) display
                 if photos.count == 1, let photo = photos.first {
@@ -415,6 +420,94 @@ struct CompactContextCard: View {
                         .foregroundStyle(.orange)
                 }
             }
+        }
+    }
+}
+
+// MARK: - Validation Report Card
+
+struct ValidationReportCard: View {
+    let report: AnalysisValidationReport
+    @State private var isExpanded = false
+
+    private var headerColor: Color {
+        switch report.highestSeverity {
+        case .critical, .error: return .red
+        case .warning: return .orange
+        default: return .secondary
+        }
+    }
+
+    private var headerIcon: String {
+        switch report.highestSeverity {
+        case .critical: return "xmark.octagon.fill"
+        case .error: return "exclamationmark.triangle.fill"
+        case .warning: return "exclamationmark.circle.fill"
+        default: return "info.circle.fill"
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Button {
+                withAnimation { isExpanded.toggle() }
+            } label: {
+                HStack {
+                    Image(systemName: headerIcon)
+                        .foregroundStyle(headerColor)
+                    Text(headerText)
+                        .font(.subheadline.bold())
+                        .foregroundStyle(.primary)
+                    Spacer()
+                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .buttonStyle(.plain)
+
+            if isExpanded {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(report.sortedIssues) { issue in
+                        HStack(alignment: .top, spacing: 8) {
+                            Circle()
+                                .fill(severityColor(issue.severity))
+                                .frame(width: 8, height: 8)
+                                .padding(.top, 5)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("[\(issue.severity.rawValue)] \(issue.field)")
+                                    .font(.caption.bold())
+                                    .foregroundStyle(severityColor(issue.severity))
+                                Text(issue.message)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        .padding()
+        .background(headerColor.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+
+    private var headerText: String {
+        let counts = Dictionary(grouping: report.issues, by: \.severity)
+        var parts: [String] = []
+        if let c = counts[.critical]?.count, c > 0 { parts.append("\(c) critical") }
+        if let e = counts[.error]?.count, e > 0 { parts.append("\(e) error\(e > 1 ? "s" : "")") }
+        if let w = counts[.warning]?.count, w > 0 { parts.append("\(w) warning\(w > 1 ? "s" : "")") }
+        if let i = counts[.info]?.count, i > 0 { parts.append("\(i) info") }
+        return "Validation: \(parts.joined(separator: ", "))"
+    }
+
+    private func severityColor(_ severity: AnalysisValidationSeverity) -> Color {
+        switch severity {
+        case .critical: return .red
+        case .error: return .red.opacity(0.8)
+        case .warning: return .orange
+        case .info: return .secondary
         }
     }
 }

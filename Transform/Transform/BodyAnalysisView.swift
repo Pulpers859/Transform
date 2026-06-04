@@ -18,6 +18,7 @@ struct BodyAnalysisView: View {
 
     @State private var isAnalyzing = false
     @State private var analysisResult: BodyAnalysisResult?
+    @State private var validationReport: AnalysisValidationReport?
     @State private var showResult = false
     @State private var errorMessage: String?
     @State private var showError = false
@@ -125,6 +126,7 @@ struct BodyAnalysisView: View {
                     BodyAnalysisResultView(
                         result: result,
                         photos: photos,
+                        validationReport: validationReport,
                         onSave: { saveSession(result: result) }
                     )
                 }
@@ -617,7 +619,13 @@ struct BodyAnalysisView: View {
             )
             try Task.checkCancellation()
             guard !Task.isCancelled else { return }
+            let report = BodyAnalysisValidator.validate(
+                result,
+                photoAngles: photos.map(\.pose),
+                bodyweightLbs: MacroTargetResolver.profileBodyweightLbs()
+            )
             analysisResult = result
+            validationReport = report
             showResult = true
             UINotificationFeedbackGenerator().notificationOccurred(.success)
         } catch is CancellationError {

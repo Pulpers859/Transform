@@ -991,6 +991,334 @@ private func uniqueOrderedAnalysisValues(_ values: [String]) -> [String] {
     }
 }
 
+// MARK: - Body Analysis Validation
+
+enum AnalysisValidationSeverity: String, Comparable {
+    case info = "Info"
+    case warning = "Warning"
+    case error = "Error"
+    case critical = "Critical"
+
+    private var rank: Int {
+        switch self {
+        case .info: return 0
+        case .warning: return 1
+        case .error: return 2
+        case .critical: return 3
+        }
+    }
+
+    static func < (lhs: Self, rhs: Self) -> Bool { lhs.rank < rhs.rank }
+}
+
+struct AnalysisValidationIssue: Identifiable {
+    let id = UUID()
+    let severity: AnalysisValidationSeverity
+    let field: String
+    let message: String
+}
+
+struct AnalysisValidationReport {
+    let issues: [AnalysisValidationIssue]
+
+    var isUsable: Bool {
+        !issues.contains { $0.severity == .critical }
+    }
+
+    var hasWarnings: Bool {
+        issues.contains { $0.severity >= .warning }
+    }
+
+    var highestSeverity: AnalysisValidationSeverity? {
+        issues.map(\.severity).max()
+    }
+
+    var sortedIssues: [AnalysisValidationIssue] {
+        issues.sorted { $0.severity > $1.severity }
+    }
+}
+
+enum BodyAnalysisValidator {
+
+    static func validate(
+        _ result: BodyAnalysisResult,
+        photoAngles: [String],
+        bodyweightLbs: Double? = nil
+    ) -> AnalysisValidationReport {
+        var issues: [AnalysisValidationIssue] = []
+
+        issues.append(contentsOf: checkRequiredFields(result))
+        issues.append(contentsOf: checkMacroConsistency(result, bodyweightLbs: bodyweightLbs))
+        issues.append(contentsOf: checkMacroRationale(result))
+        issues.append(contentsOf: checkDiagnosticLanguage(result))
+        issues.append(contentsOf: checkPhotoAngleContradictions(result, photoAngles: photoAngles))
+        issues.append(contentsOf: checkTrainingIntentRealism(result))
+
+        return AnalysisValidationReport(issues: issues)
+    }
+
+    // MARK: - Required Fields
+
+    private static func checkRequiredFields(_ result: BodyAnalysisResult) -> [AnalysisValidationIssue] {
+        var issues: [AnalysisValidationIssue] = []
+
+        if result.overallAssessment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            issues.append(AnalysisValidationIssue(
+                severity: .critical, field: "overallAssessment",
+                message: "Overall assessment is empty — the analysis produced no usable summary."
+            ))
+        }
+        if result.regionBreakdown.isEmpty {
+            issues.append(AnalysisValidationIssue(
+                severity: .error, field: "regionBreakdown",
+                message: "No region breakdown was provided — physique detail is missing."
+            ))
+        }
+        if result.priorityMuscles.isEmpty {
+            issues.append(AnalysisValidationIssue(
+                severity: .error, field: "priorityMuscles",
+                message: "No priority muscles were identified — workout targeting will lack direction."
+            ))
+        }
+        if result.estimatedBodyFat.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            issues.append(AnalysisValidationIssue(
+                severity: .warning, field: "estimatedBodyFat",
+                message: "No body fat estimate was provided."
+            ))
+        }
+        if result.topLeverageChange.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            issues.append(AnalysisValidationIssue(
+                severity: .warning, field: "topLeverageChange",
+                message: "No highest-leverage change was identified."
+            ))
+        }
+        if result.structuredTrainingIntent == nil {
+            issues.append(AnalysisValidationIssue(
+                severity: .error, field: "structuredTrainingIntent",
+                message: "No structured training intent — the workout generator will fall back to priority muscle extraction."
+            ))
+        }
+        if result.macroTargets == nil {
+            issues.append(AnalysisValidationIssue(
+                severity: .error, field: "macroTargets",
+                message: "No macro targets were provided — nutrition will use config defaults."
+            ))
+        }
+
+        return issues
+    }
+
+    // MARK: - Macro Consistency
+
+    private static func checkMacroConsistency(
+        _ result: BodyAnalysisResult,
+        bodyweightLbs: Double?
+    ) -> [AnalysisValidationIssue] {
+        guard let macros = result.macroTargets else { return [] }
+        var issues: [AnalysisValidationIssue] = []
+
+        let computedCalories = macros.proteinG * 4 + macros.carbsG * 4 + macros.fatG * 9
+        let deviation = abs(computedCalories - Double(macros.calories)) / max(Double(macros.calories), 1)
+        if deviation > 0.15 {
+            issues.append(AnalysisValidationIssue(
+                severity: .error, field: "macroTargets",
+                message: "Macro math inconsistent: protein(\(Int(macros.proteinG)))×4 + carbs(\(Int(macros.carbsG)))×4 + fat(\(Int(macros.fatG)))×9 = \(Int(computedCalories)) kcal, but total is \(macros.calories) kcal (\(Int(deviation * 100))% off)."
+            ))
+        }
+
+        if macros.calories < 1200 {
+            issues.append(AnalysisValidationIssue(
+                severity: .critical, field: "macroTargets.calories",
+                message: "AI recommended \(macros.calories) kcal — dangerously low and will be floor-clamped."
+            ))
+        }
+        if macros.proteinG < 60 {
+            issues.append(AnalysisValidationIssue(
+                severity: .critical, field: "macroTargets.proteinG",
+                message: "AI recommended \(Int(macros.proteinG))g protein — implausibly low and will be floor-clamped."
+            ))
+        }
+        if macros.fatG < 25 {
+            issues.append(AnalysisValidationIssue(
+                severity: .error, field: "macroTargets.fatG",
+                message: "AI recommended \(Int(macros.fatG))g fat — below hormonal safety floor."
+            ))
+        }
+
+        if let bw = bodyweightLbs {
+            let kg = bw / 2.205
+            let proteinPerKg = macros.proteinG / kg
+            if proteinPerKg < 1.2 {
+                issues.append(AnalysisValidationIssue(
+                    severity: .warning, field: "macroTargets.proteinG",
+                    message: "Protein is \(String(format: "%.1f", proteinPerKg)) g/kg — below typical hypertrophy range (1.4–2.0 g/kg)."
+                ))
+            }
+            if proteinPerKg > 3.5 {
+                issues.append(AnalysisValidationIssue(
+                    severity: .warning, field: "macroTargets.proteinG",
+                    message: "Protein is \(String(format: "%.1f", proteinPerKg)) g/kg — unusually high, may be a calculation error."
+                ))
+            }
+        }
+
+        return issues
+    }
+
+    // MARK: - Macro Rationale
+
+    private static func checkMacroRationale(_ result: BodyAnalysisResult) -> [AnalysisValidationIssue] {
+        guard let macros = result.macroTargets else { return [] }
+        let rationale = macros.macroRationale?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if rationale.isEmpty {
+            return [AnalysisValidationIssue(
+                severity: .warning, field: "macroTargets.macroRationale",
+                message: "No macro rationale provided — cannot audit what drove the target recommendation."
+            )]
+        }
+        return []
+    }
+
+    // MARK: - Diagnostic Language
+
+    private static let diagnosticPhrases = [
+        "you have anterior pelvic tilt",
+        "you have posterior pelvic tilt",
+        "you have shoulder impingement",
+        "you have low testosterone",
+        "you have gynecomastia",
+        "you have scoliosis",
+        "you have kyphosis",
+        "you have lordosis",
+        "diagnosed with",
+        "you suffer from",
+        "clinical signs of",
+        "pathological",
+        "you need to see a doctor",
+        "you need medical attention"
+    ]
+
+    private static func checkDiagnosticLanguage(_ result: BodyAnalysisResult) -> [AnalysisValidationIssue] {
+        var issues: [AnalysisValidationIssue] = []
+
+        let fieldsToCheck: [(String, String)] = [
+            ("posturalNotes", result.posturalNotes),
+            ("injuryRiskNotes", result.injuryRiskNotes),
+            ("metabolicHealthNotes", result.metabolicHealthNotes),
+            ("recoveryRiskAssessment", result.recoveryRiskAssessment),
+            ("overallAssessment", result.overallAssessment)
+        ]
+
+        for (field, text) in fieldsToCheck {
+            let lower = text.lowercased()
+            for phrase in diagnosticPhrases {
+                if lower.contains(phrase) {
+                    issues.append(AnalysisValidationIssue(
+                        severity: .error, field: field,
+                        message: "Diagnostic language detected: \"\(phrase)\". Photo analysis must not diagnose medical conditions."
+                    ))
+                    break
+                }
+            }
+        }
+
+        return issues
+    }
+
+    // MARK: - Photo-Angle Contradictions
+
+    private static func checkPhotoAngleContradictions(
+        _ result: BodyAnalysisResult,
+        photoAngles: [String]
+    ) -> [AnalysisValidationIssue] {
+        let angles = Set(photoAngles.map { $0.lowercased() })
+        var issues: [AnalysisValidationIssue] = []
+
+        let hasBack = angles.contains("back")
+        let hasSide = angles.contains(where: { $0.contains("side") })
+
+        if !hasBack {
+            let backRegions = result.regionBreakdown.filter { region in
+                let name = region.region.lowercased()
+                return (name.contains("back") || name.contains("lat") || name.contains("rear delt")
+                    || name.contains("posterior"))
+                    && region.priority == "High"
+            }
+            for region in backRegions {
+                issues.append(AnalysisValidationIssue(
+                    severity: .warning, field: "regionBreakdown",
+                    message: "'\(region.region)' marked High priority without a back photo — confidence should be reduced."
+                ))
+            }
+        }
+
+        if !hasSide {
+            let sideRegions = result.regionBreakdown.filter { region in
+                let name = region.region.lowercased()
+                return name.contains("posture") || name.contains("presentation")
+            }
+            for region in sideRegions where region.priority == "High" {
+                issues.append(AnalysisValidationIssue(
+                    severity: .warning, field: "regionBreakdown",
+                    message: "'\(region.region)' marked High priority without side photos — lateral posture assessment is limited."
+                ))
+            }
+        }
+
+        return issues
+    }
+
+    // MARK: - Training Intent Realism
+
+    private static func checkTrainingIntentRealism(_ result: BodyAnalysisResult) -> [AnalysisValidationIssue] {
+        guard let intent = result.structuredTrainingIntent else { return [] }
+        var issues: [AnalysisValidationIssue] = []
+
+        if intent.weeklyTrainingDays < 4 || intent.weeklyTrainingDays > 6 {
+            issues.append(AnalysisValidationIssue(
+                severity: .error, field: "structuredTrainingIntent.weeklyTrainingDays",
+                message: "Weekly training days is \(intent.weeklyTrainingDays) — must be 4-6."
+            ))
+        }
+
+        let validStyles = Set(["Push", "Pull", "Legs", "Lower", "Upper", "Arms"])
+
+        for priority in intent.priorities {
+            let area = priority.area
+
+            if priority.weeklyDayTarget > 3 {
+                issues.append(AnalysisValidationIssue(
+                    severity: .error, field: "structuredTrainingIntent.priorities",
+                    message: "'\(area)' has weeklyDayTarget=\(priority.weeklyDayTarget) — exceeds realistic maximum of 3."
+                ))
+            }
+            if priority.weeklyExerciseTarget > 5 {
+                issues.append(AnalysisValidationIssue(
+                    severity: .error, field: "structuredTrainingIntent.priorities",
+                    message: "'\(area)' has weeklyExerciseTarget=\(priority.weeklyExerciseTarget) — exceeds realistic maximum of 5."
+                ))
+            }
+
+            let invalidStyles = priority.preferredStyles.filter { !validStyles.contains($0) }
+            if !invalidStyles.isEmpty {
+                issues.append(AnalysisValidationIssue(
+                    severity: .warning, field: "structuredTrainingIntent.priorities",
+                    message: "'\(area)' uses invalid preferredStyles: \(invalidStyles.joined(separator: ", ")). Allowed: Push, Pull, Legs, Lower, Upper, Arms."
+                ))
+            }
+
+            if priority.preferredMovementPatterns.isEmpty {
+                issues.append(AnalysisValidationIssue(
+                    severity: .info, field: "structuredTrainingIntent.priorities",
+                    message: "'\(area)' has no preferredMovementPatterns — exercise selection will be less targeted."
+                ))
+            }
+        }
+
+        return issues
+    }
+}
+
 // MARK: - Nutrition Adherence Metrics
 
 enum AdherenceDataQuality: String, CaseIterable {
