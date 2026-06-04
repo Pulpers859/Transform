@@ -146,9 +146,7 @@ struct BodyAnalysisView: View {
                     if let automaticProgressSnapshot {
                         progressContextCard(snapshot: automaticProgressSnapshot)
                     }
-                    if let trend = measurementTrendSnapshot {
-                        measurementContextCard(trend: trend)
-                    }
+                    measurementsSection
                     if !photos.isEmpty {
                         photoQualityCard
                         analyzeButton
@@ -497,6 +495,33 @@ struct BodyAnalysisView: View {
                 ],
                 isExpanded: $showProgressContextDetails
             )
+        }
+    }
+
+    var measurementsSection: some View {
+        VStack(spacing: 8) {
+            if let trend = measurementTrendSnapshot {
+                measurementContextCard(trend: trend)
+            }
+            NavigationLink {
+                MeasurementsView()
+            } label: {
+                HStack {
+                    Image(systemName: "ruler")
+                        .font(.caption)
+                        .foregroundStyle(.purple)
+                    Text(measurementEntries.isEmpty ? "Add Circumference Measurements" : "View All Measurements")
+                        .font(.caption.bold())
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(12)
+                .background(Color(.secondarySystemBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+            }
+            .buttonStyle(.plain)
         }
     }
 

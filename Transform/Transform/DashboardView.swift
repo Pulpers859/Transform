@@ -294,23 +294,25 @@ struct DashboardView: View {
 
     // MARK: - Next Meal Name
 
+    var proteinRemainingG: Double {
+        activeMacroTargets.proteinG - todayProtein
+    }
+
     var nextMealName: String {
         let now = Date()
 
-        // If meals logged today, use gap-based logic
         if let lastMeal = todayNutrition.sorted(by: { $0.date < $1.date }).last {
             let hoursSinceLast = now.timeIntervalSince(lastMeal.date) / 3600
             if hoursSinceLast < 2 {
-                return "Snack"
+                return proteinRemainingG > 30 ? "Protein Snack" : "Snack"
             }
         }
 
-        // Fill unlogged standard meals in order, regardless of clock time
         let loggedMeals = Set(todayNutrition.map { $0.mealName.lowercased() })
         if !loggedMeals.contains("breakfast") { return "Breakfast" }
         if !loggedMeals.contains("lunch") { return "Lunch" }
         if !loggedMeals.contains("dinner") { return "Dinner" }
-        return "Snack"
+        return proteinRemainingG > 30 ? "Protein Snack" : "Snack"
     }
 
     // MARK: - Hero Header
