@@ -47,6 +47,11 @@ final class AnthropicClient {
         let data = try await performRequest(body: body, timeout: timeout, requestKind: "text", context: context)
 
         let apiResponse = try JSONDecoder().decode(AnthropicResponse.self, from: data)
+
+        if apiResponse.stopReason == "max_tokens" {
+            throw ClaudeError.parseError("Response truncated: model hit max_tokens before finishing. The output JSON is incomplete.")
+        }
+
         let text = apiResponse.content
             .compactMap { $0.type == .text ? $0.text : nil }
             .joined()
@@ -441,6 +446,12 @@ final class AnthropicClient {
 
 struct AnthropicResponse: Codable {
     let content: [ContentBlock]
+    let stopReason: String?
+
+    enum CodingKeys: String, CodingKey {
+        case content
+        case stopReason = "stop_reason"
+    }
 }
 
 struct ContentBlock: Codable {

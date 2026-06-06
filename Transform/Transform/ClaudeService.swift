@@ -222,7 +222,7 @@ class ClaudeService {
 
         let requestBody: [String: Any] = [
             "model": Config.claudeModel,
-            "max_tokens": 4096,
+            "max_tokens": 8192,
             "cache_control": ["type": "ephemeral"],
             "system": systemPrompt,
             "messages": [
