@@ -1840,7 +1840,7 @@ extension ClaudeService {
         case "push":
             return ["chest", "shoulder", "tricep", "press", "fly", "dip", "lateral raise"]
         case "pull":
-            return ["back", "lat", "row", "pulldown", "rear delt", "bicep", "face pull"]
+            return ["back", "lat", "row", "pulldown", "rear delt", "bicep", "brachialis", "face pull"]
         case "upper":
             return ["chest", "back", "lat", "shoulder", "delt", "rear delt", "tricep", "bicep", "row", "press", "pulldown", "lateral raise", "face pull", "core", "abs", "oblique"]
         default:

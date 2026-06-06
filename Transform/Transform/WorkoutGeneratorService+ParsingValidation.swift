@@ -753,13 +753,16 @@ extension ClaudeService {
 
                     if let replacement = bestReplacement {
                         let replacementMeta = exerciseMetadata(for: replacement)
-                        substituteIssues.append(contentsOf: validateSubstituteQuality(
-                            original: previousExercise,
-                            replacement: replacement,
-                            originalMeta: previousMeta,
-                            replacementMeta: replacementMeta,
-                            dayNumber: currentDays[index].dayNumber
-                        ))
+                        let distance = substituteDistance(from: previousMeta, to: replacementMeta)
+                        if distance < 8.0 {
+                            substituteIssues.append(contentsOf: validateSubstituteQuality(
+                                original: previousExercise,
+                                replacement: replacement,
+                                originalMeta: previousMeta,
+                                replacementMeta: replacementMeta,
+                                dayNumber: currentDays[index].dayNumber
+                            ))
+                        }
                     }
                 }
             }
