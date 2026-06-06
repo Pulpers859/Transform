@@ -51,6 +51,8 @@ enum Config {
         anthropicKeyStatus.startupAlertMessage
     }
 
+    static let defaultAnalysisGoalDetail = ""
+
     static let claudeModel = "claude-opus-4-8"
     static let claudeModelLite = "claude-sonnet-4-6"
 
@@ -62,6 +64,54 @@ enum Config {
     static var analysisClientProfilePrompt: String { AppSettingsStore.analysisClientProfile.promptDescription }
     static var analysisCheckInPrompt: String { AppSettingsStore.analysisCheckIn.promptDescription }
     static var analysisInputContext: AnalysisInputContext { AppSettingsStore.analysisInputContext }
+}
+
+enum SexOption: String, CaseIterable, Identifiable {
+    case notSpecified = ""
+    case male = "Male"
+    case female = "Female"
+    case nonBinary = "Non-binary"
+    case preferNotToSay = "Prefer not to say"
+    var id: String { rawValue }
+    var label: String { self == .notSpecified ? "Not specified" : rawValue }
+}
+
+enum WeightUnit: String, CaseIterable, Identifiable {
+    case lb = "lb"
+    case kg = "kg"
+    var id: String { rawValue }
+}
+
+enum ActivityLevel: String, CaseIterable, Identifiable {
+    case notSpecified = ""
+    case sedentary = "Sedentary"
+    case lightlyActive = "Lightly active"
+    case moderatelyActive = "Moderately active"
+    case veryActive = "Very active"
+    case extremelyActive = "Extremely active"
+    var id: String { rawValue }
+    var label: String { self == .notSpecified ? "Not specified" : rawValue }
+    var hint: String {
+        switch self {
+        case .notSpecified: return ""
+        case .sedentary: return "Mostly sitting, minimal movement"
+        case .lightlyActive: return "Some walking, light daily movement"
+        case .moderatelyActive: return "Regular movement, on feet part of day"
+        case .veryActive: return "Physically demanding job or high daily movement"
+        case .extremelyActive: return "Heavy labor or athletic lifestyle"
+        }
+    }
+}
+
+enum GoalCategory: String, CaseIterable, Identifiable {
+    case notSpecified = ""
+    case fatLoss = "Fat loss"
+    case muscleGain = "Muscle gain"
+    case recomposition = "Body recomposition"
+    case strength = "Strength"
+    case generalHealth = "General health and fitness"
+    var id: String { rawValue }
+    var label: String { self == .notSpecified ? "Not specified" : rawValue }
 }
 
 enum PersonalProfileSeed {
@@ -79,6 +129,9 @@ enum PersonalProfileSeed {
     static let activityLevel = "High daily activity from long clinical shifts and time on feet"
     static let primaryGoal = "Body recomposition with visible abs and aesthetic proportions while maintaining performance for demanding clinical shifts"
     static let lifestyleConstraints = "Shift-work schedule with variable sleep and meal timing"
+    static let weightValue = "195"
+    static let weightUnit = "lb"
+    static let goalDetail = "Visible abs and aesthetic proportions while maintaining performance for demanding clinical shifts"
 }
 
 enum MacroTargetSource {
@@ -159,14 +212,17 @@ enum MacroTargetResolver {
     }
 
     static func profileBodyweightLbs() -> Double? {
-        let raw = AppSettingsStore.analysisClientProfile.currentWeight
+        let defaults = UserDefaults.standard
+        if let valueStr = defaults.string(forKey: AppSettingsKeys.analysisWeightValue)?.trimmingCharacters(in: .whitespacesAndNewlines),
+           let value = Double(valueStr), value > 50 {
+            let unit = defaults.string(forKey: AppSettingsKeys.analysisWeightUnit) ?? "lb"
+            return unit == "kg" ? value * 2.205 : value
+        }
+        let raw = defaults.string(forKey: AppSettingsKeys.analysisCurrentWeight) ?? ""
         let scanner = Scanner(string: raw)
         guard let value = scanner.scanDouble(), value > 50 else { return nil }
         let remaining = raw[scanner.currentIndex...].trimmingCharacters(in: .whitespaces).lowercased()
-        if remaining.hasPrefix("kg") {
-            return value * 2.205
-        }
-        return value
+        return remaining.hasPrefix("kg") ? value * 2.205 : value
     }
 
     private static func calorieFloor(bodyweightLbs: Double?) -> Int {
@@ -202,6 +258,9 @@ enum AppSettingsKeys {
     static let analysisActivityLevel = "analysis_profile_activity_level"
     static let analysisPrimaryGoal = "analysis_profile_primary_goal"
     static let analysisLifestyleConstraints = "analysis_profile_lifestyle_constraints"
+    static let analysisWeightValue = "analysis_profile_weight_value"
+    static let analysisWeightUnit = "analysis_profile_weight_unit"
+    static let analysisGoalDetail = "analysis_profile_goal_detail"
     static let analysisCheckInTrainingContext = "analysis_checkin_training_context"
     static let analysisCheckInBodyweightTrend = "analysis_checkin_bodyweight_trend"
     static let analysisCheckInRecoverySleep = "analysis_checkin_recovery_sleep"
@@ -319,6 +378,55 @@ enum AppSettingsStore {
         for (key, value) in seededValues where defaults.object(forKey: key) == nil {
             defaults.set(value, forKey: key)
         }
+
+        migrateToStructuredFieldsIfNeeded()
+    }
+
+    private static func migrateToStructuredFieldsIfNeeded() {
+        if defaults.object(forKey: AppSettingsKeys.analysisWeightValue) == nil {
+            let raw = defaults.string(forKey: AppSettingsKeys.analysisCurrentWeight) ?? ""
+            let scanner = Scanner(string: raw)
+            if let value = scanner.scanDouble(), value > 0 {
+                let tail = raw[scanner.currentIndex...].trimmingCharacters(in: .whitespaces).lowercased()
+                let unit = tail.hasPrefix("kg") ? "kg" : "lb"
+                defaults.set(String(format: "%.0f", value), forKey: AppSettingsKeys.analysisWeightValue)
+                defaults.set(unit, forKey: AppSettingsKeys.analysisWeightUnit)
+            }
+        }
+
+        if let current = defaults.string(forKey: AppSettingsKeys.analysisActivityLevel),
+           !current.isEmpty,
+           ActivityLevel(rawValue: current) == nil {
+            let lower = current.lowercased()
+            let mapped: ActivityLevel
+            if lower.contains("sedentary") { mapped = .sedentary }
+            else if lower.contains("extremely") || lower.contains("heavy labor") { mapped = .extremelyActive }
+            else if lower.contains("very") || lower.contains("high") || lower.contains("demanding") || lower.contains("on feet") { mapped = .veryActive }
+            else if lower.contains("moderate") || lower.contains("regular") { mapped = .moderatelyActive }
+            else if lower.contains("light") { mapped = .lightlyActive }
+            else { mapped = .notSpecified }
+            if mapped != .notSpecified {
+                defaults.set(mapped.rawValue, forKey: AppSettingsKeys.analysisActivityLevel)
+            }
+        }
+
+        if defaults.object(forKey: AppSettingsKeys.analysisGoalDetail) == nil {
+            let current = defaults.string(forKey: AppSettingsKeys.analysisPrimaryGoal) ?? ""
+            if !current.isEmpty, GoalCategory(rawValue: current) == nil {
+                let lower = current.lowercased()
+                let category: GoalCategory
+                if lower.contains("recomp") { category = .recomposition }
+                else if lower.contains("fat loss") || lower.contains("cut") || lower.contains("lean out") { category = .fatLoss }
+                else if lower.contains("muscle") || lower.contains("hypertrophy") || lower.contains("bulk") { category = .muscleGain }
+                else if lower.contains("strength") || lower.contains("power") { category = .strength }
+                else if lower.contains("health") || lower.contains("general") { category = .generalHealth }
+                else { category = .notSpecified }
+                if category != .notSpecified {
+                    defaults.set(current, forKey: AppSettingsKeys.analysisGoalDetail)
+                    defaults.set(category.rawValue, forKey: AppSettingsKeys.analysisPrimaryGoal)
+                }
+            }
+        }
     }
 
     static var analysisClientProfile: AnalysisClientProfile {
@@ -327,7 +435,7 @@ enum AppSettingsStore {
             sex: string(for: AppSettingsKeys.analysisSex, default: Config.defaultAnalysisSex),
             build: string(for: AppSettingsKeys.analysisBuild, default: Config.defaultAnalysisBuild),
             height: string(for: AppSettingsKeys.analysisHeight, default: Config.defaultAnalysisHeight),
-            currentWeight: string(for: AppSettingsKeys.analysisCurrentWeight, default: Config.defaultAnalysisCurrentWeight),
+            currentWeight: composedWeightString(),
             occupation: string(for: AppSettingsKeys.analysisOccupation, default: Config.defaultAnalysisOccupation),
             trainingFrequency: string(for: AppSettingsKeys.analysisTrainingFrequency, default: Config.defaultAnalysisTrainingFrequency),
             trainingAge: string(for: AppSettingsKeys.analysisTrainingAge, default: Config.defaultAnalysisTrainingAge),
@@ -335,9 +443,27 @@ enum AppSettingsStore {
             averageSleep: string(for: AppSettingsKeys.analysisAverageSleep, default: Config.defaultAnalysisAverageSleep),
             painHistory: string(for: AppSettingsKeys.analysisPainHistory, default: Config.defaultAnalysisPainHistory),
             activityLevel: string(for: AppSettingsKeys.analysisActivityLevel, default: Config.defaultAnalysisActivityLevel),
-            primaryGoal: string(for: AppSettingsKeys.analysisPrimaryGoal, default: Config.defaultAnalysisPrimaryGoal),
+            primaryGoal: composedGoalString(),
             lifestyleConstraints: string(for: AppSettingsKeys.analysisLifestyleConstraints, default: Config.defaultAnalysisLifestyleConstraints)
         )
+    }
+
+    private static func composedWeightString() -> String {
+        let value = string(for: AppSettingsKeys.analysisWeightValue, default: "")
+        guard !value.isEmpty else {
+            return string(for: AppSettingsKeys.analysisCurrentWeight, default: Config.defaultAnalysisCurrentWeight)
+        }
+        let unit = string(for: AppSettingsKeys.analysisWeightUnit, default: WeightUnit.lb.rawValue)
+        return "\(value) \(unit)"
+    }
+
+    private static func composedGoalString() -> String {
+        let category = string(for: AppSettingsKeys.analysisPrimaryGoal, default: "")
+        let detail = string(for: AppSettingsKeys.analysisGoalDetail, default: "")
+        if category.isEmpty && detail.isEmpty { return "" }
+        if detail.isEmpty { return category }
+        if category.isEmpty { return detail }
+        return "\(category) — \(detail)"
     }
 
     static var analysisCheckIn: AnalysisCheckIn {
