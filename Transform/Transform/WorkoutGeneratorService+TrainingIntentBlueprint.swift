@@ -881,6 +881,7 @@ extension ClaudeService {
             profile?.averageSleep ?? "",
             profile?.lifestyleConstraints ?? "",
             checkIn?.recoverySleep ?? "",
+            UserDefaults.standard.string(forKey: AppSettingsKeys.derivedSleepTrendSummary) ?? "",
             checkIn?.stressSchedule ?? "",
             analysis.metabolicHealthNotes,
             analysis.recoveryRiskAssessment
@@ -894,6 +895,9 @@ extension ClaudeService {
                     "shift-work",
                     "variable sleep",
                     "poor sleep",
+                    "under 5 hours",
+                    "post-call recovery",
+                    "high variability",
                     "long clinical shifts",
                     "stressful shifts",
                     "high stress"

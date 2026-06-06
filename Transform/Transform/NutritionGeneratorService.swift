@@ -1079,6 +1079,9 @@ extension ClaudeService {
         let dietRecs = analysis.dietRecommendations.joined(separator: " | ")
         let inputContextSummary = analysis.inputContext?.generationSummary
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let currentSleepContext = UserDefaults.standard
+            .string(forKey: AppSettingsKeys.derivedSleepTrendSummary)?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let regions: String
         if analysis.regionBreakdown.isEmpty {
             regions = "(none provided)"
@@ -1100,6 +1103,9 @@ extension ClaudeService {
 
         User profile, check-in, and progress context:
         \(inputContextSummary.isEmpty ? "(none saved with this analysis)" : inputContextSummary)
+
+        Current sleep context from dated episode logs:
+        \(currentSleepContext.isEmpty ? "(no recent sleep episodes logged)" : currentSleepContext)
 
         Region breakdown:
         \(regions)

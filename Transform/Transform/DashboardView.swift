@@ -9,7 +9,7 @@ struct DashboardView: View {
     @Query(sort: \NutritionEntry.date, order: .reverse) private var allNutrition: [NutritionEntry]
     @Query(sort: \BodyAnalysisSession.date, order: .reverse) private var analysisSessions: [BodyAnalysisSession]
     @Query(sort: \MeasurementEntry.date, order: .reverse) private var measurementEntries: [MeasurementEntry]
-    @Query(sort: \SleepEntry.date, order: .reverse) private var sleepEntries: [SleepEntry]
+    @Query(sort: \SleepEntry.date, order: .reverse) private var sleepEpisodes: [SleepEntry]
 
     @State private var animateRings = false
     @State private var backupDocument = BackupDocument()
@@ -96,12 +96,12 @@ struct DashboardView: View {
     }
 
     var sleepTrend: SleepTrendSnapshot? {
-        SleepTrendBuilder.build(from: sleepEntries)
+        SleepTrendBuilder.build(from: sleepEpisodes)
     }
 
     var sleepEntriesChangeToken: String {
-        sleepEntries.map {
-            "\($0.persistentModelID)-\($0.date.timeIntervalSince1970)-\($0.durationHours)-\($0.qualityRating)-\($0.shiftTypeRaw)-\($0.notes)"
+        sleepEpisodes.map {
+            "\($0.persistentModelID)-\($0.resolvedStartDate.timeIntervalSince1970)-\($0.resolvedEndDate.timeIntervalSince1970)-\($0.qualityRating)-\($0.shiftTypeRaw)-\($0.episodeTypeRaw)-\($0.notes)"
         }
         .joined(separator: "|")
     }
@@ -189,12 +189,22 @@ struct DashboardView: View {
             return ("AI targets are \(daysAgo) days old — consider re-analyzing before adjusting further", .orange)
         }
 
-        // Priority 3: Major protein gap (standalone — before body trends)
+        // Priority 3: Acute recovery constraint
+        if let sleepTrend, sleepTrend.acuteLoggedDays >= 2 {
+            if sleepTrend.threeDayAverageHours < 5 {
+                return ("Acute sleep restriction — keep today's training submaximal and trim low-priority fatigue", .orange)
+            }
+            if sleepTrend.hasRecentPostCallRecovery || sleepTrend.underFiveHours > 0 {
+                return ("Recovery is constrained — prioritize technique, hydration, and an achievable session today", .orange)
+            }
+        }
+
+        // Priority 4: Major protein gap (standalone — before body trends)
         if proteinRate < 0.35 && loggedDaysCount >= 3 {
             return ("Protein is the priority — hitting target on only \(proteinHitDays)/\(loggedDaysCount) logged days", .orange)
         }
 
-        // Priority 4: Body trends (with protein caveat when applicable)
+        // Priority 5: Body trends (with protein caveat when applicable)
         if let trend = dashboardMeasurementTrend {
             let caveat = proteinCaveat.map { " — \($0)" } ?? ""
             switch trend.interpretation {
@@ -214,12 +224,12 @@ struct DashboardView: View {
             }
         }
 
-        // Priority 5: Moderate protein gap (no body trend to attach to)
+        // Priority 6: Moderate protein gap (no body trend to attach to)
         if proteinRate < 0.5 && loggedDaysCount >= 3 {
             return ("Protein is the gap — hitting target on only \(proteinHitDays)/\(loggedDaysCount) logged days", .orange)
         }
 
-        // Priority 6: Praise
+        // Priority 7: Praise
         if proteinRate >= 0.7 && loggedDaysCount >= 5 {
             return ("Strong week — logging consistent, protein adherence solid", .green)
         }
@@ -242,8 +252,8 @@ struct DashboardView: View {
                         VStack(spacing: 16) {
                             coachingHeadlineCard
                             todayRingsCard
-                            sleepRecoveryCard
                             weightAndRecompCard
+                            sleepRecoveryCard
                             weekCalorieChart
                             bottomPadding
                         }
@@ -299,7 +309,7 @@ struct DashboardView: View {
                 AppSettingsView()
             }
             .sheet(item: $sleepEditorRequest) { request in
-                SleepEntryEditor(entry: request.entry)
+                SleepEntryEditor(episode: request.episode)
             }
             .onAppear {
                 SleepTrendStore.refresh(using: modelContext)
@@ -589,14 +599,14 @@ struct DashboardView: View {
     // MARK: - Sleep & Recovery
 
     var sleepRecoveryCard: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 12) {
             HStack {
                 sectionLabel("Sleep & Recovery")
                 Spacer()
                 Button {
-                    sleepEditorRequest = SleepEditorRequest(entry: todaySleepEntry)
+                    sleepEditorRequest = SleepEditorRequest(episode: nil)
                 } label: {
-                    Label(todaySleepEntry == nil ? "Log Sleep" : "Edit Today", systemImage: "plus.circle.fill")
+                    Label("Log Sleep", systemImage: "plus.circle.fill")
                         .font(.caption.bold())
                 }
                 .buttonStyle(.bordered)
@@ -604,12 +614,18 @@ struct DashboardView: View {
             }
 
             if let trend = sleepTrend {
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Text(SleepFormatting.duration(trend.averageHours))
-                        .font(.system(size: 38, weight: .black, design: .rounded))
-                    Text("average")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                HStack(alignment: .center, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("\(SleepFormatting.duration(trend.sevenDayAverageHours)) average")
+                            .font(.title3.bold())
+                        Text(
+                            trend.acuteLoggedDays > 0
+                                ? "Recent 3-day: \(SleepFormatting.duration(trend.threeDayAverageHours)) · \(trend.acuteLoggedDays)/3 logged"
+                                : "No sleep logged in the last 3 days"
+                        )
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                     Spacer()
                     VStack(alignment: .trailing, spacing: 3) {
                         Text("Quality \(String(format: "%.1f", trend.averageQuality))/5")
@@ -620,49 +636,23 @@ struct DashboardView: View {
                     }
                 }
 
-                Chart(trend.entries) { entry in
-                    BarMark(
-                        x: .value("Day", entry.date, unit: .day),
-                        y: .value("Hours", entry.durationHours)
-                    )
-                    .foregroundStyle(entry.durationHours < 6 ? Color.orange : Color.blue)
-                    .cornerRadius(4)
-
-                    RuleMark(y: .value("Reference", 7))
-                        .foregroundStyle(Color.blue.opacity(0.35))
-                        .lineStyle(StrokeStyle(lineWidth: 1, dash: [4]))
-                }
-                .chartXAxis {
-                    AxisMarks(values: .stride(by: .day)) { value in
-                        if let date = value.as(Date.self) {
-                            AxisValueLabel {
-                                Text(date.formatted(.dateTime.weekday(.narrow)))
-                                    .font(.caption2)
-                            }
-                        }
-                    }
-                }
-                .chartYAxis {
-                    AxisMarks(position: .trailing, values: [4, 6, 8, 10]) {
-                        AxisValueLabel()
-                            .font(.caption2)
-                    }
-                }
-                .chartYScale(domain: 0...12)
-                .frame(height: 110)
-
                 HStack(spacing: 12) {
                     Label(
-                        "\(trend.shortSleepDays) under 6h",
-                        systemImage: trend.shortSleepDays > 0 ? "exclamationmark.triangle.fill" : "checkmark.circle.fill"
+                        "\(trend.underSixHours) short",
+                        systemImage: trend.underSixHours > 0 ? "exclamationmark.triangle.fill" : "checkmark.circle.fill"
                     )
-                    .foregroundStyle(trend.shortSleepDays > 0 ? .orange : .green)
+                    .foregroundStyle(trend.underSixHours > 0 ? .orange : .green)
 
                     Label(
-                        String(format: "%.1fh variability", trend.variabilityHours),
+                        "\(trend.variabilityLabel) variability",
                         systemImage: "waveform.path.ecg"
                     )
                     .foregroundStyle(.secondary)
+
+                    if trend.hasRecentPostCallRecovery {
+                        Label("Post-call", systemImage: "cross.case.fill")
+                            .foregroundStyle(.blue)
+                    }
 
                     Spacer()
                 }
@@ -701,10 +691,6 @@ struct DashboardView: View {
         .padding(16)
         .background(Color(.secondarySystemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 16))
-    }
-
-    var todaySleepEntry: SleepEntry? {
-        sleepEntries.first { Calendar.current.isDateInToday($0.date) }
     }
 
     // MARK: - Weight + Recomp Card

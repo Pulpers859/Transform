@@ -418,7 +418,7 @@ struct BodyAnalysisView: View {
                 )
                 if !derivedSleepTrendSummary.isEmpty {
                     VStack(alignment: .leading, spacing: 4) {
-                        Label("Sleep log added automatically", systemImage: "bed.double.fill")
+                        Label("Sleep episodes added automatically", systemImage: "bed.double.fill")
                             .font(.caption.bold())
                             .foregroundStyle(.blue)
                         Text(derivedSleepTrendSummary)

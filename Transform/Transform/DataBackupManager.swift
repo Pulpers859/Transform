@@ -98,6 +98,9 @@ struct SleepSnapshot: Codable {
     let qualityRating: Int
     let shiftTypeRaw: String
     let notes: String
+    let startDate: Date?
+    let endDate: Date?
+    let episodeTypeRaw: String?
 }
 
 struct MeasurementSnapshot: Codable {
@@ -277,20 +280,32 @@ private extension SleepSnapshot {
             durationHours: entry.durationHours,
             qualityRating: entry.qualityRating,
             shiftTypeRaw: entry.shiftTypeRaw,
-            notes: entry.notes
+            notes: entry.notes,
+            startDate: entry.startDate,
+            endDate: entry.endDate,
+            episodeTypeRaw: entry.episodeTypeRaw
         )
     }
 
     var dedupeKey: String {
-        Calendar.current.startOfDay(for: date).timeIntervalSince1970.description
+        let resolvedEnd = endDate ?? (
+            Calendar.current.date(bySettingHour: 8, minute: 0, second: 0, of: date) ?? date
+        )
+        let resolvedStart = startDate ?? resolvedEnd.addingTimeInterval(-durationHours * 3600)
+        return "\(resolvedStart.timeIntervalSince1970)-\(resolvedEnd.timeIntervalSince1970)-\(episodeTypeRaw ?? SleepEpisodeType.mainSleep.rawValue)"
     }
 
     func makeModel() -> SleepEntry {
+        let resolvedEnd = endDate ?? (
+            Calendar.current.date(bySettingHour: 8, minute: 0, second: 0, of: date) ?? date
+        )
+        let resolvedStart = startDate ?? resolvedEnd.addingTimeInterval(-durationHours * 3600)
         SleepEntry(
-            date: date,
-            durationHours: durationHours,
+            startDate: resolvedStart,
+            endDate: resolvedEnd,
             qualityRating: qualityRating,
             shiftType: SleepShiftType(rawValue: shiftTypeRaw) ?? .off,
+            episodeType: SleepEpisodeType(rawValue: episodeTypeRaw ?? "") ?? .mainSleep,
             notes: notes
         )
     }
@@ -726,8 +741,8 @@ private extension LegacyNutritionSnapshot {
 final class DataBackupManager {
     static let shared = DataBackupManager()
     private init() {}
-    let currentBackupVersion = 5
-    private let supportedBackupVersions: Set<Int> = [1, 2, 3, 4, 5]
+    let currentBackupVersion = 6
+    private let supportedBackupVersions: Set<Int> = [1, 2, 3, 4, 5, 6]
 
     func exportDocument(using modelContext: ModelContext) throws -> BackupDocument {
         let payload = try buildPayload(using: modelContext)

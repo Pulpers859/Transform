@@ -1,12 +1,22 @@
 import Foundation
 import SwiftData
 import SwiftUI
-import Charts
+
+enum SleepEpisodeType: String, CaseIterable, Identifiable {
+    case mainSleep = "Main Sleep"
+    case nap = "Nap"
+    case recoverySleep = "Post-Call Recovery"
+
+    var id: String { rawValue }
+}
 
 enum SleepShiftType: String, CaseIterable, Identifiable {
     case day = "Day Shift"
     case night = "Night Shift"
+    case onCall = "On Call"
+    case postNight = "Post-Night Shift"
     case postCall = "Post-Call"
+    case disrupted = "Travel / Disrupted"
     case off = "Off / No Shift"
 
     var id: String { rawValue }
@@ -21,71 +31,147 @@ enum SleepFormatting {
     }
 }
 
+struct DailySleepSummary: Identifiable {
+    let date: Date
+    let episodes: [SleepEntry]
+    let totalHours: Double
+    let mainSleepHours: Double
+    let napHours: Double
+    let averageQuality: Double
+
+    var id: Date { date }
+}
+
 struct SleepTrendSnapshot {
-    let entries: [SleepEntry]
-    let averageHours: Double
+    let days: [DailySleepSummary]
+    let sevenDayAverageHours: Double
+    let threeDayAverageHours: Double
     let averageQuality: Double
     let variabilityHours: Double
-    let shortSleepDays: Int
+    let underSixHours: Int
+    let underFiveHours: Int
+    let qualityDurationMismatchDays: Int
+    let hasRecentPostCallRecovery: Bool
+    let shiftCounts: [SleepShiftType: Int]
+    let acuteLoggedDays: Int
 
-    var loggedDays: Int { entries.count }
+    var loggedDays: Int { days.count }
+
+    var variabilityLabel: String {
+        switch variabilityHours {
+        case ..<0.75: return "Low"
+        case ..<1.5: return "Moderate"
+        default: return "High"
+        }
+    }
 
     var promptSummary: String {
-        guard !entries.isEmpty else { return "" }
-        let shiftCounts = Dictionary(grouping: entries, by: \.shiftType).mapValues(\.count)
+        guard !days.isEmpty else { return "" }
         let shiftText = shiftCounts
             .sorted { $0.value > $1.value }
             .map { "\($0.key.rawValue): \($0.value)" }
             .joined(separator: ", ")
+        let mismatchText = qualityDurationMismatchDays > 0
+            ? " \(qualityDurationMismatchDays) day(s) had duration-quality mismatch, so do not infer recovery from hours alone."
+            : ""
+        let postCallText = hasRecentPostCallRecovery
+            ? " A post-call recovery episode occurred within the last 3 days."
+            : ""
+        let acuteText = acuteLoggedDays > 0
+            ? String(format: "3-day average %.1f hours across %d logged day(s)", threeDayAverageHours, acuteLoggedDays)
+            : "3-day average unavailable because no recent days were logged"
+
         return String(
-            format: "Dated sleep log, last 7 days: %.1f hours average across %d logged days, average quality %.1f/5, day-to-day variability %.1f hours, %d night(s) under 6 hours. Shift context: %@.",
-            averageHours,
+            format: "Dated sleep episodes aggregated by wake date: %@; 7-day average %.1f hours across %d logged days; quality %.1f/5; variability %.1f hours (%@); %d day(s) under 6 hours and %d under 5 hours. Shift context: %@.%@%@",
+            acuteText,
+            sevenDayAverageHours,
             loggedDays,
             averageQuality,
             variabilityHours,
-            shortSleepDays,
-            shiftText
+            variabilityLabel,
+            underSixHours,
+            underFiveHours,
+            shiftText,
+            mismatchText,
+            postCallText
         )
     }
 }
 
 enum SleepTrendBuilder {
-    static func build(from allEntries: [SleepEntry], now: Date = .now) -> SleepTrendSnapshot? {
+    static func build(from episodes: [SleepEntry], now: Date = .now) -> SleepTrendSnapshot? {
         let calendar = Calendar.current
         let today = calendar.startOfDay(for: now)
         let cutoff = calendar.date(byAdding: .day, value: -6, to: today) ?? today
         let tomorrow = calendar.date(byAdding: .day, value: 1, to: today) ?? now
-        let recent = allEntries
-            .filter { $0.date >= cutoff && $0.date < tomorrow }
-            .sorted { $0.date < $1.date }
-        guard !recent.isEmpty else { return nil }
+        let recentEpisodes = episodes.filter {
+            let wakeDate = $0.resolvedEndDate
+            return wakeDate >= cutoff && wakeDate < tomorrow
+        }
 
-        let durations = recent.map(\.durationHours)
-        let averageHours = durations.reduce(0, +) / Double(durations.count)
-        let variance = durations
-            .map { pow($0 - averageHours, 2) }
-            .reduce(0, +) / Double(durations.count)
-        let qualities = recent.map { Double($0.qualityRating) }
+        let grouped = Dictionary(grouping: recentEpisodes) {
+            calendar.startOfDay(for: $0.resolvedEndDate)
+        }
+        let days = grouped.map { date, dayEpisodes in
+            let duration = dayEpisodes.reduce(0) { $0 + $1.resolvedDurationHours }
+            let weightedQuality = dayEpisodes.reduce(0.0) {
+                $0 + Double($1.qualityRating) * max($1.resolvedDurationHours, 0.25)
+            } / max(dayEpisodes.reduce(0.0) { $0 + max($1.resolvedDurationHours, 0.25) }, 0.25)
+            return DailySleepSummary(
+                date: date,
+                episodes: dayEpisodes.sorted { $0.resolvedStartDate < $1.resolvedStartDate },
+                totalHours: duration,
+                mainSleepHours: dayEpisodes
+                    .filter { $0.episodeType == .mainSleep }
+                    .reduce(0) { $0 + $1.resolvedDurationHours },
+                napHours: dayEpisodes
+                    .filter { $0.episodeType == .nap }
+                    .reduce(0) { $0 + $1.resolvedDurationHours },
+                averageQuality: weightedQuality
+            )
+        }
+        .sorted { $0.date < $1.date }
+        guard !days.isEmpty else { return nil }
+
+        let totals = days.map(\.totalHours)
+        let sevenDayAverage = totals.reduce(0, +) / Double(totals.count)
+        let threeDayCutoff = calendar.date(byAdding: .day, value: -2, to: today) ?? today
+        let acuteDays = days.filter { $0.date >= threeDayCutoff }
+        let threeDayAverage = acuteDays.isEmpty
+            ? 0
+            : acuteDays.map(\.totalHours).reduce(0, +) / Double(acuteDays.count)
+        let variance = totals.map { pow($0 - sevenDayAverage, 2) }.reduce(0, +) / Double(totals.count)
+        let averageQuality = days.map(\.averageQuality).reduce(0, +) / Double(days.count)
+        let qualityDurationMismatch = days.filter {
+            ($0.totalHours >= 7 && $0.averageQuality <= 2) || ($0.totalHours < 6 && $0.averageQuality >= 4)
+        }.count
+        let recentPostCall = recentEpisodes.contains {
+            $0.resolvedEndDate >= threeDayCutoff
+                && ($0.episodeType == .recoverySleep || $0.shiftType == .postCall)
+        }
+        let shiftCounts = Dictionary(grouping: recentEpisodes, by: \.shiftType).mapValues(\.count)
 
         return SleepTrendSnapshot(
-            entries: recent,
-            averageHours: averageHours,
-            averageQuality: qualities.reduce(0, +) / Double(qualities.count),
+            days: days,
+            sevenDayAverageHours: sevenDayAverage,
+            threeDayAverageHours: threeDayAverage,
+            averageQuality: averageQuality,
             variabilityHours: sqrt(variance),
-            shortSleepDays: recent.filter { $0.durationHours < 6 }.count
+            underSixHours: days.filter { $0.totalHours < 6 }.count,
+            underFiveHours: days.filter { $0.totalHours < 5 }.count,
+            qualityDurationMismatchDays: qualityDurationMismatch,
+            hasRecentPostCallRecovery: recentPostCall,
+            shiftCounts: shiftCounts,
+            acuteLoggedDays: acuteDays.count
         )
     }
 }
 
 enum SleepTrendStore {
-    static var currentSummary: String {
-        UserDefaults.standard.string(forKey: AppSettingsKeys.derivedSleepTrendSummary) ?? ""
-    }
-
     static func refresh(using modelContext: ModelContext) {
         do {
-            let entries = try modelContext.fetch(FetchDescriptor<SleepEntry>())
-            let summary = SleepTrendBuilder.build(from: entries)?.promptSummary ?? ""
+            let episodes = try modelContext.fetch(FetchDescriptor<SleepEntry>())
+            let summary = SleepTrendBuilder.build(from: episodes)?.promptSummary ?? ""
             UserDefaults.standard.set(summary, forKey: AppSettingsKeys.derivedSleepTrendSummary)
         } catch {
             print("[SleepTrend] Could not refresh derived sleep context: \(error.localizedDescription)")
@@ -93,48 +179,86 @@ enum SleepTrendStore {
     }
 }
 
+enum SleepEpisodeMigration {
+    static func migrateIfNeeded(using modelContext: ModelContext) throws {
+        let entries = try modelContext.fetch(FetchDescriptor<SleepEntry>())
+        var changed = false
+        for entry in entries where entry.startDate == nil || entry.endDate == nil {
+            let proposedEnd = Calendar.current.date(
+                bySettingHour: 8,
+                minute: 0,
+                second: 0,
+                of: entry.date
+            ) ?? entry.date
+            let end = min(proposedEnd, Date())
+            let start = end.addingTimeInterval(-max(entry.durationHours, 0.5) * 3600)
+            entry.updateTiming(start: start, end: end)
+            entry.episodeType = .mainSleep
+            changed = true
+        }
+        if changed {
+            try modelContext.save()
+        }
+    }
+}
+
 struct SleepEditorRequest: Identifiable {
     let id = UUID()
-    let entry: SleepEntry?
+    let episode: SleepEntry?
 }
 
 struct SleepEntryEditor: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
-    @Query(sort: \SleepEntry.date, order: .reverse) private var sleepEntries: [SleepEntry]
+    @Query(sort: \SleepEntry.date, order: .reverse) private var existingEpisodes: [SleepEntry]
 
-    let entry: SleepEntry?
+    let episode: SleepEntry?
 
-    @State private var selectedDate = Date()
-    @State private var hours = 7.0
+    @State private var wakeDate = Date()
+    @State private var durationHours = 7.0
     @State private var quality = 3
     @State private var shiftType = SleepShiftType.off
+    @State private var episodeType = SleepEpisodeType.mainSleep
     @State private var notes = ""
-    @State private var conflictingEntry: SleepEntry?
+    @State private var validationMessage = ""
+    @State private var showValidationAlert = false
     @FocusState private var notesFocused: Bool
+
+    var calculatedStart: Date {
+        wakeDate.addingTimeInterval(-durationHours * 3600)
+    }
 
     var body: some View {
         NavigationStack {
             Form {
                 Section {
-                    DatePicker("Sleep date", selection: $selectedDate, in: ...Date(), displayedComponents: .date)
+                    Picker("Episode", selection: $episodeType) {
+                        ForEach(SleepEpisodeType.allCases) { type in
+                            Text(type.rawValue).tag(type)
+                        }
+                    }
+
+                    DatePicker("Woke at", selection: $wakeDate, in: ...Date(), displayedComponents: [.date, .hourAndMinute])
 
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
                             Text("Duration")
                             Spacer()
-                            Text(SleepFormatting.duration(hours))
+                            Text(SleepFormatting.duration(durationHours))
                                 .font(.headline)
                                 .foregroundStyle(.blue)
                         }
-                        Slider(value: $hours, in: 0.5...16, step: 0.25)
+                        Slider(value: $durationHours, in: 0.25...16, step: 0.25)
                             .tint(.blue)
+                        Text("\(calculatedStart.formatted(date: .abbreviated, time: .shortened)) → \(wakeDate.formatted(date: .omitted, time: .shortened))")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
 
                     Picker("Sleep quality", selection: $quality) {
-                        Text("1 - Very poor").tag(1)
+                        Text("1 - Terrible").tag(1)
                         Text("2 - Poor").tag(2)
-                        Text("3 - Fair").tag(3)
+                        Text("3 - Okay").tag(3)
                         Text("4 - Good").tag(4)
                         Text("5 - Excellent").tag(5)
                     }
@@ -145,32 +269,19 @@ struct SleepEntryEditor: View {
                         }
                     }
                 } header: {
-                    Text("Sleep")
+                    Text("Sleep Episode")
                 } footer: {
-                    Text("Use the date you woke from the main sleep period. Naps can be mentioned in the note.")
+                    Text("Log each main sleep, nap, or post-call recovery period separately. Trends combine episodes by the date you woke.")
                 }
 
                 Section("Optional Note") {
-                    TextField("Awakenings, nap, unusual fatigue...", text: $notes, axis: .vertical)
+                    TextField("Awakenings, unusual fatigue, interruption...", text: $notes, axis: .vertical)
                         .lineLimit(2...4)
                         .focused($notesFocused)
                 }
-
-                if conflictingEntry != nil {
-                    Section {
-                        Label(
-                            entry == nil
-                                ? "An entry already exists for this date. Saving will update it."
-                                : "An entry already exists for this date. Saving will merge into that date and remove the original entry.",
-                            systemImage: "exclamationmark.triangle.fill"
-                        )
-                        .font(.caption)
-                        .foregroundStyle(.orange)
-                    }
-                }
             }
             .scrollDismissesKeyboard(.interactively)
-            .navigationTitle(entry == nil ? "Log Sleep" : "Edit Sleep")
+            .navigationTitle(episode == nil ? "Log Sleep" : "Edit Sleep")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -186,61 +297,67 @@ struct SleepEntryEditor: View {
                 }
             }
             .onAppear {
-                if let entry {
-                    selectedDate = entry.date
-                    hours = entry.durationHours
-                    quality = entry.qualityRating
-                    shiftType = entry.shiftType
-                    notes = entry.notes
-                } else {
-                    selectedDate = Calendar.current.startOfDay(for: .now)
-                    syncConflict()
+                guard let episode else {
+                    wakeDate = .now
+                    return
+                }
+                wakeDate = episode.resolvedEndDate
+                durationHours = episode.resolvedDurationHours
+                quality = episode.qualityRating
+                shiftType = episode.shiftType
+                episodeType = episode.episodeType
+                notes = episode.notes
+            }
+            .onChange(of: episodeType) { oldValue, newValue in
+                guard episode == nil else { return }
+                if oldValue == .mainSleep && newValue == .nap && durationHours > 3 {
+                    durationHours = 1
+                } else if newValue == .recoverySleep && durationHours > 6 {
+                    durationHours = 4
+                } else if oldValue != .mainSleep && newValue == .mainSleep && durationHours < 3 {
+                    durationHours = 7
                 }
             }
-            .onChange(of: selectedDate) { _, _ in syncConflict() }
+            .alert("Overlapping Sleep Episode", isPresented: $showValidationAlert) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(validationMessage)
+            }
         }
-    }
-
-    private func syncConflict() {
-        let target = Calendar.current.startOfDay(for: selectedDate)
-        conflictingEntry = sleepEntries.first { candidate in
-            if let entry, candidate === entry { return false }
-            return Calendar.current.isDate(candidate.date, inSameDayAs: target)
-        }
-        guard entry == nil, let conflictingEntry else { return }
-        hours = conflictingEntry.durationHours
-        quality = conflictingEntry.qualityRating
-        shiftType = conflictingEntry.shiftType
-        notes = conflictingEntry.notes
     }
 
     private func save() {
-        let target = conflictingEntry ?? entry
-        let normalizedDate = Calendar.current.startOfDay(for: selectedDate)
         let trimmedNotes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
+        let start = calculatedStart
+        if existingEpisodes.contains(where: { candidate in
+            if let episode, candidate === episode { return false }
+            return start < candidate.resolvedEndDate && wakeDate > candidate.resolvedStartDate
+        }) {
+            validationMessage = "This time overlaps another recorded sleep episode. Edit the existing episode or adjust these times before saving."
+            showValidationAlert = true
+            return
+        }
 
-        if let target {
-            target.date = normalizedDate
-            target.durationHours = hours
-            target.qualityRating = quality
-            target.shiftType = shiftType
-            target.notes = trimmedNotes
-            if let entry, target !== entry {
-                modelContext.delete(entry)
-            }
+        if let episode {
+            episode.updateTiming(start: start, end: wakeDate)
+            episode.qualityRating = quality
+            episode.shiftType = shiftType
+            episode.episodeType = episodeType
+            episode.notes = trimmedNotes
         } else {
             modelContext.insert(
                 SleepEntry(
-                    date: normalizedDate,
-                    durationHours: hours,
+                    startDate: start,
+                    endDate: wakeDate,
                     qualityRating: quality,
                     shiftType: shiftType,
+                    episodeType: episodeType,
                     notes: trimmedNotes
                 )
             )
         }
 
-        guard PersistenceReporter.save(modelContext, operation: "sleep entry") else {
+        guard PersistenceReporter.save(modelContext, operation: "sleep episode") else {
             modelContext.rollback()
             return
         }
@@ -252,40 +369,79 @@ struct SleepEntryEditor: View {
 
 struct SleepHistoryView: View {
     @Environment(\.modelContext) private var modelContext
-    @Query(sort: \SleepEntry.date, order: .reverse) private var sleepEntries: [SleepEntry]
+    @Query(sort: \SleepEntry.date, order: .reverse) private var episodes: [SleepEntry]
 
     @State private var editorRequest: SleepEditorRequest?
-    @State private var entryToDelete: SleepEntry?
+    @State private var episodeToDelete: SleepEntry?
+
+    var trend: SleepTrendSnapshot? {
+        SleepTrendBuilder.build(from: episodes)
+    }
 
     var body: some View {
         List {
-            if sleepEntries.isEmpty {
+            if let trend {
+                Section("Recent Recovery") {
+                    HStack {
+                        sleepMetric(
+                            "3-Day",
+                            trend.acuteLoggedDays > 0
+                                ? SleepFormatting.duration(trend.threeDayAverageHours)
+                                : "--"
+                        )
+                        sleepMetric("7-Day", SleepFormatting.duration(trend.sevenDayAverageHours))
+                        sleepMetric("Quality", String(format: "%.1f/5", trend.averageQuality))
+                    }
+
+                    HStack {
+                        Label("\(trend.underSixHours) under 6h", systemImage: "moon.zzz.fill")
+                        Spacer()
+                        Label("\(trend.variabilityLabel) variability", systemImage: "waveform.path.ecg")
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                    if let latestDay = trend.days.last {
+                        Text(
+                            "Latest wake day: \(SleepFormatting.duration(latestDay.mainSleepHours)) main"
+                                + (latestDay.napHours > 0 ? " + \(SleepFormatting.duration(latestDay.napHours)) naps" : "")
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    }
+                }
+            }
+
+            if episodes.isEmpty {
                 ContentUnavailableView(
-                    "No Sleep Entries",
+                    "No Sleep Episodes",
                     systemImage: "bed.double",
-                    description: Text("Log sleep from the Dashboard to begin seeing recovery trends.")
+                    description: Text("Log a main sleep or nap to begin seeing recovery trends.")
                 )
             } else {
-                ForEach(sleepEntries) { entry in
+                ForEach(episodes) { episode in
                     Button {
-                        editorRequest = SleepEditorRequest(entry: entry)
+                        editorRequest = SleepEditorRequest(episode: episode)
                     } label: {
                         HStack(spacing: 12) {
                             VStack(alignment: .leading, spacing: 4) {
-                                Text(entry.date.formatted(date: .abbreviated, time: .omitted))
+                                Text(episode.episodeType.rawValue)
                                     .font(.subheadline.bold())
-                                Text("\(entry.shiftType.rawValue) · Quality \(entry.qualityRating)/5")
+                                Text("\(episode.resolvedEndDate.formatted(date: .abbreviated, time: .shortened)) · Quality \(episode.qualityRating)/5")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
-                                if !entry.notes.isEmpty {
-                                    Text(entry.notes)
+                                Text(episode.shiftType.rawValue)
+                                    .font(.caption2)
+                                    .foregroundStyle(.tertiary)
+                                if !episode.notes.isEmpty {
+                                    Text(episode.notes)
                                         .font(.caption2)
                                         .foregroundStyle(.tertiary)
                                         .lineLimit(2)
                                 }
                             }
                             Spacer()
-                            Text(SleepFormatting.duration(entry.durationHours))
+                            Text(SleepFormatting.duration(episode.resolvedDurationHours))
                                 .font(.title3.bold())
                                 .foregroundStyle(.blue)
                             Image(systemName: "chevron.right")
@@ -296,7 +452,7 @@ struct SleepHistoryView: View {
                     .buttonStyle(.plain)
                     .swipeActions {
                         Button("Delete", role: .destructive) {
-                            entryToDelete = entry
+                            episodeToDelete = episode
                         }
                     }
                 }
@@ -306,7 +462,7 @@ struct SleepHistoryView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
-                    editorRequest = SleepEditorRequest(entry: nil)
+                    editorRequest = SleepEditorRequest(episode: nil)
                 } label: {
                     Image(systemName: "plus.circle.fill")
                         .foregroundStyle(.blue)
@@ -314,28 +470,39 @@ struct SleepHistoryView: View {
             }
         }
         .sheet(item: $editorRequest) { request in
-            SleepEntryEditor(entry: request.entry)
+            SleepEntryEditor(episode: request.episode)
         }
-        .alert("Delete Sleep Entry?", isPresented: Binding(
-            get: { entryToDelete != nil },
-            set: { if !$0 { entryToDelete = nil } }
+        .alert("Delete Sleep Episode?", isPresented: Binding(
+            get: { episodeToDelete != nil },
+            set: { if !$0 { episodeToDelete = nil } }
         )) {
-            Button("Delete", role: .destructive) { deleteEntry() }
-            Button("Cancel", role: .cancel) { entryToDelete = nil }
+            Button("Delete", role: .destructive) { deleteEpisode() }
+            Button("Cancel", role: .cancel) { episodeToDelete = nil }
         } message: {
-            Text("This removes the entry from sleep trends and future analysis context.")
+            Text("This removes the episode from sleep trends and future analysis context.")
         }
     }
 
-    private func deleteEntry() {
-        guard let entryToDelete else { return }
-        modelContext.delete(entryToDelete)
-        guard PersistenceReporter.save(modelContext, operation: "sleep entry deletion") else {
+    private func sleepMetric(_ label: String, _ value: String) -> some View {
+        VStack(spacing: 3) {
+            Text(value)
+                .font(.headline)
+            Text(label)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private func deleteEpisode() {
+        guard let episodeToDelete else { return }
+        modelContext.delete(episodeToDelete)
+        guard PersistenceReporter.save(modelContext, operation: "sleep episode deletion") else {
             modelContext.rollback()
             return
         }
         SleepTrendStore.refresh(using: modelContext)
         DataBackupManager.shared.writeAutomaticBackup(using: modelContext)
-        self.entryToDelete = nil
+        self.episodeToDelete = nil
     }
 }

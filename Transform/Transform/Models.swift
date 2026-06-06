@@ -16,32 +16,63 @@ class WeightEntry {
     }
 }
 
-// MARK: - Sleep Entry
+// MARK: - Sleep Episode
 @Model
 class SleepEntry {
+    // `date` and `durationHours` are retained for lightweight migration from
+    // the original daily-summary model. New code keeps them synchronized.
     var date: Date
     var durationHours: Double = 0
     var qualityRating: Int = 0
     var shiftTypeRaw: String = SleepShiftType.off.rawValue
     var notes: String = ""
+    var startDate: Date?
+    var endDate: Date?
+    var episodeTypeRaw: String = SleepEpisodeType.mainSleep.rawValue
 
     init(
-        date: Date = .now,
-        durationHours: Double,
+        startDate: Date,
+        endDate: Date,
         qualityRating: Int,
         shiftType: SleepShiftType,
+        episodeType: SleepEpisodeType,
         notes: String = ""
     ) {
-        self.date = date
-        self.durationHours = durationHours
+        self.date = endDate
+        self.durationHours = max(0, endDate.timeIntervalSince(startDate) / 3600)
         self.qualityRating = qualityRating
         self.shiftTypeRaw = shiftType.rawValue
+        self.startDate = startDate
+        self.endDate = endDate
+        self.episodeTypeRaw = episodeType.rawValue
         self.notes = notes
     }
 
     var shiftType: SleepShiftType {
         get { SleepShiftType(rawValue: shiftTypeRaw) ?? .off }
         set { shiftTypeRaw = newValue.rawValue }
+    }
+
+    var episodeType: SleepEpisodeType {
+        get { SleepEpisodeType(rawValue: episodeTypeRaw) ?? .mainSleep }
+        set { episodeTypeRaw = newValue.rawValue }
+    }
+
+    var resolvedEndDate: Date { endDate ?? date }
+
+    var resolvedStartDate: Date {
+        startDate ?? resolvedEndDate.addingTimeInterval(-durationHours * 3600)
+    }
+
+    var resolvedDurationHours: Double {
+        max(0, resolvedEndDate.timeIntervalSince(resolvedStartDate) / 3600)
+    }
+
+    func updateTiming(start: Date, end: Date) {
+        startDate = start
+        endDate = end
+        date = end
+        durationHours = max(0, end.timeIntervalSince(start) / 3600)
     }
 }
 

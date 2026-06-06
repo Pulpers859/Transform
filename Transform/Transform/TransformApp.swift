@@ -55,13 +55,14 @@ struct StartupConfiguration {
             var maintenanceWarning: String?
 
             do {
+                try SleepEpisodeMigration.migrateIfNeeded(using: maintenanceContext)
                 if try ExerciseWeightStore.normalizeAndConsolidate(in: maintenanceContext) {
                     try maintenanceContext.save()
                 }
                 SleepTrendStore.refresh(using: maintenanceContext)
             } catch {
                 maintenanceContext.rollback()
-                maintenanceWarning = "Stored exercise-weight summaries could not be normalized at startup. The app loaded, but some progression data may need review."
+                maintenanceWarning = "Stored health or progression data could not be fully normalized at startup. The app loaded, but recent migrated entries may need review."
             }
 
             return StartupConfiguration(container: container, errorMessage: maintenanceWarning)
