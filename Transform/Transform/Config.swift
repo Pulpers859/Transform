@@ -64,6 +64,30 @@ enum Config {
     static var analysisClientProfilePrompt: String { AppSettingsStore.analysisClientProfile.promptDescription }
     static var analysisCheckInPrompt: String { AppSettingsStore.analysisCheckIn.promptDescription }
     static var analysisInputContext: AnalysisInputContext { AppSettingsStore.analysisInputContext }
+    static var profileCompleteness: ProfileCompleteness { AppSettingsStore.profileCompleteness }
+}
+
+struct ProfileCompleteness {
+    let filledCount: Int
+    let totalCount: Int
+    let missingFields: [String]
+
+    var fraction: Double { totalCount > 0 ? Double(filledCount) / Double(totalCount) : 0 }
+
+    var signal: String {
+        switch fraction {
+        case 0.85...: return "Strong"
+        case 0.6...: return "Moderate"
+        default: return "Weak"
+        }
+    }
+
+    var summary: String {
+        if missingFields.isEmpty { return "Profile signal: Strong" }
+        let missing = missingFields.prefix(3).joined(separator: ", ")
+        let extra = missingFields.count > 3 ? " + \(missingFields.count - 3) more" : ""
+        return "Profile signal: \(signal) — Missing: \(missing)\(extra)"
+    }
 }
 
 enum SexOption: String, CaseIterable, Identifiable {
@@ -114,6 +138,18 @@ enum GoalCategory: String, CaseIterable, Identifiable {
     var label: String { self == .notSpecified ? "Not specified" : rawValue }
 }
 
+enum HeightUnit: String, CaseIterable, Identifiable {
+    case imperial = "ft/in"
+    case metric = "cm"
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .imperial: return "ft / in"
+        case .metric: return "cm"
+        }
+    }
+}
+
 enum PersonalProfileSeed {
     static let age = "30"
     static let sex = "Male"
@@ -132,6 +168,14 @@ enum PersonalProfileSeed {
     static let weightValue = "195"
     static let weightUnit = "lb"
     static let goalDetail = "Visible abs and aesthetic proportions while maintaining performance for demanding clinical shifts"
+    static let ageValue = 30
+    static let heightFeet = 6
+    static let heightInches = 0
+    static let heightCm = 183
+    static let heightUnit = "ft/in"
+    static let trainingDays = 5
+    static let sleepHours = 6.0
+    static let sleepNotes = "Variable due to shift work"
 }
 
 enum MacroTargetSource {
@@ -261,6 +305,20 @@ enum AppSettingsKeys {
     static let analysisWeightValue = "analysis_profile_weight_value"
     static let analysisWeightUnit = "analysis_profile_weight_unit"
     static let analysisGoalDetail = "analysis_profile_goal_detail"
+    static let analysisAgeValue = "analysis_profile_age_value"
+    static let analysisHeightFeet = "analysis_profile_height_feet"
+    static let analysisHeightInches = "analysis_profile_height_inches"
+    static let analysisHeightCm = "analysis_profile_height_cm"
+    static let analysisHeightUnit = "analysis_profile_height_unit"
+    static let analysisTrainingDays = "analysis_profile_training_days"
+    static let analysisSleepHours = "analysis_profile_sleep_hours"
+    static let analysisSleepNotes = "analysis_profile_sleep_notes"
+    static let medicalCurrentInjury = "medical_screen_current_injury"
+    static let medicalPainDuringExercise = "medical_screen_pain_during_exercise"
+    static let medicalCardioMetabolic = "medical_screen_cardio_metabolic"
+    static let medicalMedications = "medical_screen_medications"
+    static let medicalPregnancySurgery = "medical_screen_pregnancy_surgery"
+    static let medicalSymptoms = "medical_screen_symptoms"
     static let analysisCheckInTrainingContext = "analysis_checkin_training_context"
     static let analysisCheckInBodyweightTrend = "analysis_checkin_bodyweight_trend"
     static let analysisCheckInRecoverySleep = "analysis_checkin_recovery_sleep"
@@ -394,6 +452,53 @@ enum AppSettingsStore {
             }
         }
 
+        if defaults.object(forKey: AppSettingsKeys.analysisAgeValue) == nil {
+            let raw = defaults.string(forKey: AppSettingsKeys.analysisAge) ?? ""
+            if let age = Int(raw.trimmingCharacters(in: .whitespacesAndNewlines)), (1...120).contains(age) {
+                defaults.set(age, forKey: AppSettingsKeys.analysisAgeValue)
+            }
+        }
+
+        if defaults.object(forKey: AppSettingsKeys.analysisHeightFeet) == nil {
+            let raw = defaults.string(forKey: AppSettingsKeys.analysisHeight) ?? ""
+            if let (feet, inches) = parseImperialHeight(raw) {
+                defaults.set(feet, forKey: AppSettingsKeys.analysisHeightFeet)
+                defaults.set(inches, forKey: AppSettingsKeys.analysisHeightInches)
+                defaults.set(HeightUnit.imperial.rawValue, forKey: AppSettingsKeys.analysisHeightUnit)
+                let totalInches = feet * 12 + inches
+                defaults.set(Int(round(Double(totalInches) * 2.54)), forKey: AppSettingsKeys.analysisHeightCm)
+            } else if let cm = parseCmHeight(raw) {
+                defaults.set(cm, forKey: AppSettingsKeys.analysisHeightCm)
+                defaults.set(HeightUnit.metric.rawValue, forKey: AppSettingsKeys.analysisHeightUnit)
+                let totalInches = Double(cm) / 2.54
+                defaults.set(Int(totalInches) / 12, forKey: AppSettingsKeys.analysisHeightFeet)
+                defaults.set(Int(totalInches) % 12, forKey: AppSettingsKeys.analysisHeightInches)
+            }
+        }
+
+        if defaults.object(forKey: AppSettingsKeys.analysisTrainingDays) == nil {
+            let raw = defaults.string(forKey: AppSettingsKeys.analysisTrainingFrequency) ?? ""
+            let digits = raw.filter { $0.isNumber }
+            if let first = digits.first, let days = Int(String(first)), (1...7).contains(days) {
+                defaults.set(days, forKey: AppSettingsKeys.analysisTrainingDays)
+            }
+        }
+
+        if defaults.object(forKey: AppSettingsKeys.analysisSleepHours) == nil {
+            let raw = defaults.string(forKey: AppSettingsKeys.analysisAverageSleep) ?? ""
+            let scanner = Scanner(string: raw)
+            scanner.charactersToBeSkipped = CharacterSet.decimalDigits.inverted
+            if let hours = scanner.scanDouble(), (1...14).contains(hours) {
+                defaults.set(String(format: "%.1f", hours), forKey: AppSettingsKeys.analysisSleepHours)
+            }
+            let notes = raw.replacingOccurrences(of: "\\b\\d+[-–]?\\d*\\s*(hours?|hrs?)\\b", with: "", options: .regularExpression)
+                .replacingOccurrences(of: "often|;|,", with: "", options: .regularExpression)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if !notes.isEmpty {
+                defaults.set(notes, forKey: AppSettingsKeys.analysisSleepNotes)
+            }
+        }
+
         if let current = defaults.string(forKey: AppSettingsKeys.analysisActivityLevel),
            !current.isEmpty,
            ActivityLevel(rawValue: current) == nil {
@@ -429,23 +534,63 @@ enum AppSettingsStore {
         }
     }
 
+    private static func parseImperialHeight(_ raw: String) -> (Int, Int)? {
+        let pattern = #"(\d+)\s*[''′]\s*(\d+)\s*[""″]?"#
+        guard let match = raw.range(of: pattern, options: .regularExpression) else { return nil }
+        let matched = String(raw[match])
+        let digits = matched.components(separatedBy: CharacterSet.decimalDigits.inverted).filter { !$0.isEmpty }
+        guard digits.count >= 2,
+              let feet = Int(digits[0]), (3...8).contains(feet),
+              let inches = Int(digits[1]), (0...11).contains(inches) else { return nil }
+        return (feet, inches)
+    }
+
+    private static func parseCmHeight(_ raw: String) -> Int? {
+        let lower = raw.lowercased()
+        guard lower.contains("cm") else { return nil }
+        let scanner = Scanner(string: raw)
+        scanner.charactersToBeSkipped = CharacterSet.decimalDigits.inverted
+        guard let value = scanner.scanInt(), (100...250).contains(value) else { return nil }
+        return value
+    }
+
     static var analysisClientProfile: AnalysisClientProfile {
         AnalysisClientProfile(
-            age: string(for: AppSettingsKeys.analysisAge, default: Config.defaultAnalysisAge),
+            age: composedAgeString(),
             sex: string(for: AppSettingsKeys.analysisSex, default: Config.defaultAnalysisSex),
             build: string(for: AppSettingsKeys.analysisBuild, default: Config.defaultAnalysisBuild),
-            height: string(for: AppSettingsKeys.analysisHeight, default: Config.defaultAnalysisHeight),
+            height: composedHeightString(),
             currentWeight: composedWeightString(),
             occupation: string(for: AppSettingsKeys.analysisOccupation, default: Config.defaultAnalysisOccupation),
-            trainingFrequency: string(for: AppSettingsKeys.analysisTrainingFrequency, default: Config.defaultAnalysisTrainingFrequency),
+            trainingFrequency: composedTrainingFrequencyString(),
             trainingAge: string(for: AppSettingsKeys.analysisTrainingAge, default: Config.defaultAnalysisTrainingAge),
             equipmentAccess: string(for: AppSettingsKeys.analysisEquipmentAccess, default: Config.defaultAnalysisEquipmentAccess),
-            averageSleep: string(for: AppSettingsKeys.analysisAverageSleep, default: Config.defaultAnalysisAverageSleep),
-            painHistory: string(for: AppSettingsKeys.analysisPainHistory, default: Config.defaultAnalysisPainHistory),
+            averageSleep: composedSleepString(),
+            painHistory: composedMedicalContext(),
             activityLevel: string(for: AppSettingsKeys.analysisActivityLevel, default: Config.defaultAnalysisActivityLevel),
             primaryGoal: composedGoalString(),
             lifestyleConstraints: string(for: AppSettingsKeys.analysisLifestyleConstraints, default: Config.defaultAnalysisLifestyleConstraints)
         )
+    }
+
+    private static func composedAgeString() -> String {
+        if let age = defaults.object(forKey: AppSettingsKeys.analysisAgeValue) as? Int, age > 0 {
+            return "\(age)"
+        }
+        return string(for: AppSettingsKeys.analysisAge, default: Config.defaultAnalysisAge)
+    }
+
+    private static func composedHeightString() -> String {
+        let unitRaw = defaults.string(forKey: AppSettingsKeys.analysisHeightUnit) ?? ""
+        if unitRaw == HeightUnit.metric.rawValue {
+            let cm = defaults.integer(forKey: AppSettingsKeys.analysisHeightCm)
+            if (100...250).contains(cm) { return "\(cm) cm" }
+        } else if unitRaw == HeightUnit.imperial.rawValue {
+            let feet = defaults.integer(forKey: AppSettingsKeys.analysisHeightFeet)
+            let inches = defaults.integer(forKey: AppSettingsKeys.analysisHeightInches)
+            if (3...8).contains(feet) { return "\(feet)'\(inches)\"" }
+        }
+        return string(for: AppSettingsKeys.analysisHeight, default: Config.defaultAnalysisHeight)
     }
 
     private static func composedWeightString() -> String {
@@ -455,6 +600,48 @@ enum AppSettingsStore {
         }
         let unit = string(for: AppSettingsKeys.analysisWeightUnit, default: WeightUnit.lb.rawValue)
         return "\(value) \(unit)"
+    }
+
+    private static func composedTrainingFrequencyString() -> String {
+        if let days = defaults.object(forKey: AppSettingsKeys.analysisTrainingDays) as? Int, (1...7).contains(days) {
+            return "\(days) days/week"
+        }
+        return string(for: AppSettingsKeys.analysisTrainingFrequency, default: Config.defaultAnalysisTrainingFrequency)
+    }
+
+    private static func composedSleepString() -> String {
+        let hoursStr = defaults.string(forKey: AppSettingsKeys.analysisSleepHours) ?? ""
+        let notes = defaults.string(forKey: AppSettingsKeys.analysisSleepNotes)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if let hours = Double(hoursStr), hours > 0 {
+            let hoursText = hours.truncatingRemainder(dividingBy: 1) == 0
+                ? "\(Int(hours)) hours/night"
+                : String(format: "%.1f hours/night", hours)
+            return notes.isEmpty ? hoursText : "\(hoursText); \(notes)"
+        }
+        return string(for: AppSettingsKeys.analysisAverageSleep, default: Config.defaultAnalysisAverageSleep)
+    }
+
+    private static func composedMedicalContext() -> String {
+        var parts: [String] = []
+
+        var flags: [String] = []
+        if defaults.bool(forKey: AppSettingsKeys.medicalCurrentInjury) { flags.append("current injury") }
+        if defaults.bool(forKey: AppSettingsKeys.medicalPainDuringExercise) { flags.append("pain during exercise") }
+        if defaults.bool(forKey: AppSettingsKeys.medicalCardioMetabolic) { flags.append("cardiovascular/metabolic/renal condition") }
+        if defaults.bool(forKey: AppSettingsKeys.medicalMedications) { flags.append("medication affecting HR/BP/balance/glucose") }
+        if defaults.bool(forKey: AppSettingsKeys.medicalPregnancySurgery) { flags.append("pregnant/postpartum/recent surgery") }
+        if defaults.bool(forKey: AppSettingsKeys.medicalSymptoms) { flags.append("dizziness/chest pain/fainting/unusual SOB") }
+
+        if !flags.isEmpty {
+            parts.append("Medical screening flags: " + flags.joined(separator: "; ") + ". Recommend medical clearance before high-intensity training.")
+        }
+
+        let painText = string(for: AppSettingsKeys.analysisPainHistory, default: Config.defaultAnalysisPainHistory)
+        if !painText.isEmpty {
+            parts.append(painText)
+        }
+
+        return parts.joined(separator: " | ")
     }
 
     private static func composedGoalString() -> String {
@@ -486,6 +673,26 @@ enum AppSettingsStore {
             checkIn: analysisCheckIn.snapshot,
             progress: nil
         )
+    }
+
+    static var profileCompleteness: ProfileCompleteness {
+        let checks: [(String, Bool)] = [
+            ("Age", defaults.object(forKey: AppSettingsKeys.analysisAgeValue) != nil),
+            ("Sex", !string(for: AppSettingsKeys.analysisSex, default: "").isEmpty),
+            ("Height", defaults.object(forKey: AppSettingsKeys.analysisHeightFeet) != nil || defaults.object(forKey: AppSettingsKeys.analysisHeightCm) != nil),
+            ("Weight", !string(for: AppSettingsKeys.analysisWeightValue, default: "").isEmpty),
+            ("Activity level", !string(for: AppSettingsKeys.analysisActivityLevel, default: "").isEmpty),
+            ("Goal", !string(for: AppSettingsKeys.analysisPrimaryGoal, default: "").isEmpty),
+            ("Training frequency", defaults.object(forKey: AppSettingsKeys.analysisTrainingDays) != nil),
+            ("Sleep", defaults.object(forKey: AppSettingsKeys.analysisSleepHours) != nil),
+            ("Equipment", !string(for: AppSettingsKeys.analysisEquipmentAccess, default: "").isEmpty),
+            ("Training experience", !string(for: AppSettingsKeys.analysisTrainingAge, default: "").isEmpty),
+            ("Occupation", !string(for: AppSettingsKeys.analysisOccupation, default: "").isEmpty),
+            ("Pain / injury", !string(for: AppSettingsKeys.analysisPainHistory, default: "").isEmpty),
+        ]
+        let filled = checks.filter(\.1).count
+        let missing = checks.filter { !$0.1 }.map(\.0)
+        return ProfileCompleteness(filledCount: filled, totalCount: checks.count, missingFields: missing)
     }
 
     static var calorieTarget: Int {

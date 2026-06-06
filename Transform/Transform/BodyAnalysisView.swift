@@ -728,6 +728,23 @@ struct BodyAnalysisView: View {
             Text("Photo analysis is strongest for visible physique patterns and broad training priorities. It is more limited for injury, posture, metabolic, and adherence assessment without added history or check-in data.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+
+            profileCompletenessIndicator
+        }
+    }
+
+    private var profileCompletenessIndicator: some View {
+        let completeness = Config.profileCompleteness
+        return Group {
+            if !completeness.missingFields.isEmpty {
+                HStack(spacing: 6) {
+                    Image(systemName: completeness.fraction >= 0.6 ? "checkmark.circle" : "exclamationmark.triangle")
+                        .foregroundStyle(completeness.fraction >= 0.85 ? .green : completeness.fraction >= 0.6 ? .orange : .red)
+                    Text(completeness.summary)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
         }
     }
 
