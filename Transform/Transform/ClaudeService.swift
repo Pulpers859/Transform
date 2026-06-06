@@ -229,10 +229,6 @@ class ClaudeService {
                 [
                     "role": "user",
                     "content": contentArray
-                ],
-                [
-                    "role": "assistant",
-                    "content": "{"
                 ]
             ]
         ]
@@ -260,11 +256,8 @@ class ClaudeService {
     private func makeAnalysisRequest(body: [String: Any]) async throws -> BodyAnalysisResult {
         let text = try await AnthropicClient.shared.sendRequest(body: body, timeout: 120)
 
-        // Prepend "{" since we used assistant prefill starting with "{"
-        let fullText = "{" + text
-
         // Extract JSON object from response
-        let jsonString = ClaudeService.extractJSON(from: fullText)
+        let jsonString = ClaudeService.extractJSON(from: text)
 
         guard let jsonData = jsonString.data(using: .utf8) else {
             print("[ClaudeService] Could not convert cleaned text to Data")
