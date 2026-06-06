@@ -1821,6 +1821,14 @@ struct MeasurementTrendSnapshot: Codable {
     let waistChangeIn: Double?
     let waistChangeRatePerWeek: Double?
 
+    let latestNeckIn: Double?
+    let latestHipsIn: Double?
+    let latestChestIn: Double?
+    let latestRightArmIn: Double?
+    let latestLeftArmIn: Double?
+    let latestRightThighIn: Double?
+    let latestLeftThighIn: Double?
+
     let latestWeightLbs: Double?
     let weightChangeLbs: Double?
     let weightChangeRatePerWeek: Double?
@@ -1857,7 +1865,7 @@ struct AnalysisMeasurementSnapshot: Codable {
 
     var promptDescription: String {
         var lines: [String] = [
-            "Measurement trend since last analysis (data from \(trend.sessionsCount) session(s) over \(trend.lookbackDays) day(s)):"
+            "Circumference measurements from the user's most recent session (\(trend.sessionsCount) session(s) over \(trend.lookbackDays) day(s)):"
         ]
 
         if let waist = trend.latestWaistIn {
@@ -1868,19 +1876,41 @@ struct AnalysisMeasurementSnapshot: Codable {
             lines.append(waistLine)
         }
 
+        if let neck = trend.latestNeckIn {
+            lines.append("- Neck: \(formatInches(neck)) in")
+        }
+        if let hips = trend.latestHipsIn {
+            lines.append("- Hips: \(formatInches(hips)) in")
+        }
+        if let chest = trend.latestChestIn {
+            var chestLine = "- Chest: \(formatInches(chest)) in"
+            if let change = trend.chestChangeIn {
+                chestLine += " (\(signedInches(change)) change)"
+            }
+            lines.append(chestLine)
+        }
+        if let rightArm = trend.latestRightArmIn {
+            lines.append("- Right arm: \(formatInches(rightArm)) in")
+        }
+        if let leftArm = trend.latestLeftArmIn {
+            lines.append("- Left arm: \(formatInches(leftArm)) in")
+        }
+        if let arm = trend.armChangeIn {
+            lines.append("- Arm avg change: \(signedInches(arm)) in")
+        }
+        if let rightThigh = trend.latestRightThighIn {
+            lines.append("- Right thigh: \(formatInches(rightThigh)) in")
+        }
+        if let leftThigh = trend.latestLeftThighIn {
+            lines.append("- Left thigh: \(formatInches(leftThigh)) in")
+        }
+
         if let weight = trend.latestWeightLbs {
             var weightLine = "- Bodyweight: \(String(format: "%.1f", weight)) lb"
             if let change = trend.weightChangeLbs {
                 weightLine += " (\(signedWeight(change)) lb change)"
             }
             lines.append(weightLine)
-        }
-
-        if let chest = trend.chestChangeIn {
-            lines.append("- Chest change: \(signedInches(chest)) in")
-        }
-        if let arm = trend.armChangeIn {
-            lines.append("- Arm change: \(signedInches(arm)) in")
         }
 
         lines.append("- Data quality: \(trend.dataQuality.rawValue) (\(trend.standardSessionsCount) standard-timing session(s))")
@@ -1958,14 +1988,24 @@ struct AnalysisMeasurementSnapshot: Codable {
             if let change = trend.waistChangeIn { line += " (\(signedInches(change)) change)" }
             items.append(line)
         }
+        if let neck = trend.latestNeckIn { items.append("Neck: \(formatInches(neck)) in") }
+        if let hips = trend.latestHipsIn { items.append("Hips: \(formatInches(hips)) in") }
+        if let chest = trend.latestChestIn {
+            var line = "Chest: \(formatInches(chest)) in"
+            if let change = trend.chestChangeIn { line += " (\(signedInches(change)) change)" }
+            items.append(line)
+        }
+        if let ra = trend.latestRightArmIn { items.append("Right arm: \(formatInches(ra)) in") }
+        if let la = trend.latestLeftArmIn { items.append("Left arm: \(formatInches(la)) in") }
+        if let arm = trend.armChangeIn { items.append("Arm avg change: \(signedInches(arm)) in") }
+        if let rt = trend.latestRightThighIn { items.append("Right thigh: \(formatInches(rt)) in") }
+        if let lt = trend.latestLeftThighIn { items.append("Left thigh: \(formatInches(lt)) in") }
+        if let thigh = trend.thighChangeIn { items.append("Thigh avg change: \(signedInches(thigh)) in") }
         if let weight = trend.latestWeightLbs {
             var line = "Bodyweight: \(String(format: "%.1f", weight)) lb"
             if let change = trend.weightChangeLbs { line += " (\(signedWeight(change)) change)" }
             items.append(line)
         }
-        if let chest = trend.chestChangeIn { items.append("Chest change: \(signedInches(chest)) in") }
-        if let arm = trend.armChangeIn { items.append("Arm change: \(signedInches(arm)) in") }
-        if let thigh = trend.thighChangeIn { items.append("Thigh change: \(signedInches(thigh)) in") }
         items.append("Data quality: \(trend.dataQuality.rawValue)")
         items.append("Interpretation: \(trend.interpretation.rawValue)")
         if let ratio = trend.waistToWeightRatio { items.append("Waist-to-weight: \(ratio)") }
@@ -2029,6 +2069,13 @@ enum MeasurementTrendSnapshotBuilder {
                 latestWaistIn: latest?.waistIn,
                 waistChangeIn: nil,
                 waistChangeRatePerWeek: nil,
+                latestNeckIn: latest?.neckIn,
+                latestHipsIn: latest?.hipsIn,
+                latestChestIn: latest?.chestIn,
+                latestRightArmIn: latest?.rightArmIn,
+                latestLeftArmIn: latest?.leftArmIn,
+                latestRightThighIn: latest?.rightThighIn,
+                latestLeftThighIn: latest?.leftThighIn,
                 latestWeightLbs: latestWeight?.weightLbs ?? latest?.bodyweightLbs,
                 weightChangeLbs: nil,
                 weightChangeRatePerWeek: nil,
@@ -2098,6 +2145,13 @@ enum MeasurementTrendSnapshotBuilder {
             latestWaistIn: last.waistIn,
             waistChangeIn: waistChange,
             waistChangeRatePerWeek: waistRate,
+            latestNeckIn: last.neckIn,
+            latestHipsIn: last.hipsIn,
+            latestChestIn: last.chestIn,
+            latestRightArmIn: last.rightArmIn,
+            latestLeftArmIn: last.leftArmIn,
+            latestRightThighIn: last.rightThighIn,
+            latestLeftThighIn: last.leftThighIn,
             latestWeightLbs: latestWeight,
             weightChangeLbs: weightChange,
             weightChangeRatePerWeek: weightRate,

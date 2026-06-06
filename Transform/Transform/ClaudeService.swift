@@ -56,7 +56,8 @@ class ClaudeService {
 
     func analyzeBody(
         photos: [AnalysisPhoto],
-        inputContext suppliedInputContext: AnalysisInputContext? = nil
+        inputContext suppliedInputContext: AnalysisInputContext? = nil,
+        priorAnalysis: BodyAnalysisResult? = nil
     ) async throws -> BodyAnalysisResult {
         guard !photos.isEmpty else { throw ClaudeError.noPhotos }
 
@@ -82,6 +83,7 @@ class ClaudeService {
         You are reviewing \(photos.count) photo(s) from these angles: \(poseList).
         \(photos.count > 1 ? "Cross-reference all views to produce a comprehensive assessment. Note differences visible between angles." : "Assess what is visible and note limitations from having only one angle.")
         \(ClaudeService.photoQualityContext(poses: photos.map(\.pose)))
+        \(ClaudeService.priorAnalysisContext(priorAnalysis))
 
         HARD SCOPE LIMITS:
         - This is a photo-based physique analysis, not a medical evaluation.
@@ -345,5 +347,34 @@ class ClaudeService {
 
         let limitationText = limitations.joined(separator: "; ")
         return "Photo coverage: \(poses.count) of 4 angles. Missing: \(missing.sorted().joined(separator: ", ")). Reduce confidence for: \(limitationText). State these limitations in analysisLimitations."
+    }
+
+    // MARK: - Prior Analysis Comparison Context
+
+    static func priorAnalysisContext(_ prior: BodyAnalysisResult?) -> String {
+        guard let prior else { return "" }
+
+        var lines: [String] = [
+            "",
+            "PRIOR ANALYSIS COMPARISON:",
+            "The user has a previous body analysis on file. Compare your current assessment against it and note changes — improvements, regressions, or areas that appear unchanged. Be specific about what looks different.",
+            "Previous overall assessment: \(prior.overallAssessment)",
+            "Previous estimated body fat: \(prior.estimatedBodyFat)",
+            "Previous top leverage change: \(prior.topLeverageChange)",
+            "Previous priority muscles: \(prior.priorityMuscles.joined(separator: ", "))"
+        ]
+
+        if !prior.regionBreakdown.isEmpty {
+            let regionSummary = prior.regionBreakdown.map { "\($0.region) [\($0.priority)]" }.joined(separator: ", ")
+            lines.append("Previous region priorities: \(regionSummary)")
+        }
+
+        if let macros = prior.macroTargets {
+            lines.append("Previous macro targets: \(macros.calories) kcal, \(Int(macros.proteinG))g protein, \(Int(macros.carbsG))g carbs, \(Int(macros.fatG))g fat")
+        }
+
+        lines.append("In your overallAssessment, explicitly address what has changed since the prior analysis — visually improved areas, areas that still need attention, and any new observations. Do not just repeat the prior assessment.")
+
+        return lines.joined(separator: "\n")
     }
 }

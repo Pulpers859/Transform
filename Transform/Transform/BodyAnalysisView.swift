@@ -846,7 +846,8 @@ struct BodyAnalysisView: View {
         do {
             let result = try await ClaudeService.shared.analyzeBody(
                 photos: photos,
-                inputContext: currentAnalysisInputContext
+                inputContext: currentAnalysisInputContext,
+                priorAnalysis: previousAnalysisResult
             )
             try Task.checkCancellation()
             guard !Task.isCancelled else { return }

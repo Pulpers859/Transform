@@ -243,6 +243,8 @@ struct BodyAnalysisResultView: View {
 struct AnalysisResultContent: View {
     let result: BodyAnalysisResult
     @State private var showContextDetails = false
+    @State private var showScopeSection = false
+    @State private var showContextSection = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -271,14 +273,14 @@ struct AnalysisResultContent: View {
                 .clipShape(RoundedRectangle(cornerRadius: 12))
             }
 
-            SectionCard(title: "Photo-Based Scope", icon: "info.circle") {
+            CollapsibleSectionCard(title: "Photo-Based Scope", icon: "info.circle", isExpanded: $showScopeSection) {
                 Text(result.resolvedAnalysisLimitations)
                     .font(.body)
                     .foregroundStyle(.secondary)
             }
 
             if let inputContext = result.inputContext {
-                SectionCard(title: "Context Used", icon: "text.badge.checkmark") {
+                CollapsibleSectionCard(title: "Context Used", icon: "text.badge.checkmark", isExpanded: $showContextSection) {
                     CompactContextCard(
                         intro: "The analysis used your saved profile, check-in, and recent progress context.",
                         summaryItems: inputContext.compactSummaryItems,
@@ -512,6 +514,39 @@ struct SectionCard<Content: View>: View {
                 .font(.headline)
                 .foregroundStyle(.orange)
             content()
+        }
+        .padding()
+        .background(Color(.secondarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+}
+
+struct CollapsibleSectionCard<Content: View>: View {
+    let title: String
+    let icon: String
+    @Binding var isExpanded: Bool
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Button {
+                withAnimation { isExpanded.toggle() }
+            } label: {
+                HStack {
+                    Label(title, systemImage: icon)
+                        .font(.headline)
+                        .foregroundStyle(.orange)
+                    Spacer()
+                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .buttonStyle(.plain)
+
+            if isExpanded {
+                content()
+            }
         }
         .padding()
         .background(Color(.secondarySystemBackground))
