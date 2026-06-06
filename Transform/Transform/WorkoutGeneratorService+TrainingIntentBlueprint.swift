@@ -806,7 +806,6 @@ extension ClaudeService {
             poorNutritionAdherence: false,
             recoveryConstrained: false,
             recompositionGoal: false,
-            readinessMode: .normal,
             weeklyVolumeScale: 1.0,
             reduceExerciseSlotComplexity: false,
             defaultSessionTimeCapMinutes: 75,
@@ -902,10 +901,6 @@ extension ClaudeService {
             )
             || recoveryHours.map { $0 < 7.0 } == true
 
-        let readinessMode = WorkoutReadinessMode(
-            rawValue: UserDefaults.standard.string(forKey: "workout_readiness_mode") ?? "normal"
-        ) ?? .normal
-
         var weeklyVolumeScale = 1.0
         if lowPerformanceDataQuality {
             weeklyVolumeScale *= 0.92
@@ -916,23 +911,19 @@ extension ClaudeService {
         if recoveryConstrained {
             weeklyVolumeScale *= 0.95
         }
-        if readinessMode != .normal {
-            weeklyVolumeScale *= readinessMode.volumeScale
-        }
         weeklyVolumeScale = max(0.70, min(1.0, weeklyVolumeScale))
 
         let reduceExerciseSlotComplexity = lowPerformanceDataQuality
             || (poorNutritionAdherence && recompositionGoal)
-            || readinessMode == .postCall
         let baseTimeCap = recoveryConstrained ? 70 : 75
-        let defaultSessionTimeCapMinutes = min(baseTimeCap, readinessMode.sessionTimeCap)
+        let defaultSessionTimeCapMinutes = baseTimeCap
         let styleSessionCaps: [String: Int] = [
             "Push": defaultSessionTimeCapMinutes,
             "Pull": defaultSessionTimeCapMinutes,
             "Upper": defaultSessionTimeCapMinutes,
-            "Lower": min(recoveryConstrained ? 70 : 75, readinessMode.sessionTimeCap),
-            "Legs": min(recoveryConstrained ? 70 : 75, readinessMode.sessionTimeCap),
-            "Arms": min(recoveryConstrained ? 55 : 60, readinessMode.sessionTimeCap)
+            "Lower": recoveryConstrained ? 70 : 75,
+            "Legs": recoveryConstrained ? 70 : 75,
+            "Arms": recoveryConstrained ? 55 : 60
         ]
 
         var notes: [String] = []
@@ -945,17 +936,11 @@ extension ClaudeService {
         if recoveryConstrained {
             notes.append("Session design should stay tight for shift-work recovery: trim filler first, keep compounds honest, and protect the weekly time budget.")
         }
-        let readinessGuidance = readinessMode.programmingGuidance
-        if !readinessGuidance.isEmpty {
-            notes.append(readinessGuidance)
-        }
-
         return ProgramCalibrationProfile(
             lowPerformanceDataQuality: lowPerformanceDataQuality,
             poorNutritionAdherence: poorNutritionAdherence,
             recoveryConstrained: recoveryConstrained,
             recompositionGoal: recompositionGoal,
-            readinessMode: readinessMode,
             weeklyVolumeScale: weeklyVolumeScale,
             reduceExerciseSlotComplexity: reduceExerciseSlotComplexity,
             defaultSessionTimeCapMinutes: defaultSessionTimeCapMinutes,

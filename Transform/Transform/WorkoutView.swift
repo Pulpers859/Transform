@@ -14,7 +14,6 @@ struct WorkoutView: View {
     @State private var selectedWeek = 1
     @State private var showGeneratorLab = false
     @State private var generationTask: Task<Void, Never>?
-    @AppStorage("workout_readiness_mode") private var readinessModeRaw = WorkoutReadinessMode.normal.rawValue
 
     var currentProgram: WorkoutProgram? { programs.first }
     var latestAnalysis: BodyAnalysisSession? { analysisSessions.first }
@@ -30,7 +29,6 @@ struct WorkoutView: View {
                         weekDiffBanner(program)
                         weekDaysList(program)
                         if program.canGenerateNextWeek {
-                            readinessModePicker
                             generateNextWeekButton(program)
                         }
                         progressSummary(program)
@@ -126,7 +124,6 @@ struct WorkoutView: View {
                     .background(Color(.secondarySystemBackground))
                     .clipShape(RoundedRectangle(cornerRadius: 12))
 
-                    readinessModePicker
                     generateWeekOneButton(analysis: analysis, result: result)
                     if !canUseAI {
                         Text(Config.anthropicKeyInlineHelpText)
@@ -154,32 +151,6 @@ struct WorkoutView: View {
         .onLongPressGesture(minimumDuration: 1.2) {
             openGeneratorLab()
         }
-    }
-
-    var readinessModePicker: some View {
-        let selectedMode = WorkoutReadinessMode(rawValue: readinessModeRaw) ?? .normal
-        return VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Label("Readiness", systemImage: "heart.text.clipboard")
-                    .font(.subheadline)
-                Spacer()
-                Picker("Readiness", selection: $readinessModeRaw) {
-                    ForEach(WorkoutReadinessMode.allCases) { mode in
-                        Text(mode.displayName).tag(mode.rawValue)
-                    }
-                }
-                .pickerStyle(.menu)
-                .tint(.orange)
-            }
-            if selectedMode != .normal {
-                Text(selectedMode.programmingGuidance)
-                    .font(.caption2)
-                    .foregroundStyle(.orange)
-            }
-        }
-        .padding(12)
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
     func generateWeekOneButton(analysis: BodyAnalysisSession, result: BodyAnalysisResult) -> some View {

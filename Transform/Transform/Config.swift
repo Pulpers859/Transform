@@ -187,6 +187,139 @@ enum GoalCategory: String, CaseIterable, Identifiable {
     case generalHealth = "General health and fitness"
     var id: String { rawValue }
     var label: String { self == .notSpecified ? "Not specified" : rawValue }
+
+    var defaultDetail: String {
+        switch self {
+        case .notSpecified:
+            return ""
+        case .fatLoss:
+            return "Reduce body fat while preserving muscle, training performance, and sustainable energy."
+        case .muscleGain:
+            return "Build visible muscle with progressive training while limiting unnecessary fat gain."
+        case .recomposition:
+            return "Improve muscular definition and proportions while gradually reducing body fat."
+        case .strength:
+            return "Increase strength in repeatable compound movement patterns while maintaining balanced development."
+        case .generalHealth:
+            return "Improve fitness, movement quality, energy, and long-term training consistency."
+        }
+    }
+}
+
+protocol ProfilePresetOption: Hashable, Identifiable, CaseIterable {
+    var label: String { get }
+}
+
+enum BuildProfileOption: String, ProfilePresetOption {
+    case notSpecified = ""
+    case leanNarrow = "Lean / Narrow Frame"
+    case muscularMedium = "Muscular / Medium Frame (Mesomorph)"
+    case broadSturdy = "Broad / Sturdy Frame"
+    case averageMixed = "Average / Mixed Frame"
+
+    var id: String { rawValue }
+    var label: String { self == .notSpecified ? "Not specified" : rawValue }
+
+    var promptDescription: String {
+        switch self {
+        case .notSpecified:
+            return ""
+        case .leanNarrow:
+            return "Lean, relatively narrow frame with less baseline muscular thickness; use this only as descriptive context, not as a fixed metabolic body type."
+        case .muscularMedium:
+            return "Naturally muscular appearance with a medium frame and visible baseline muscle development; the familiar mesomorph label is descriptive only, not a medical classification."
+        case .broadSturdy:
+            return "Broad, sturdy frame with wider joints or torso structure and substantial baseline mass; distinguish skeletal frame from body-fat level."
+        case .averageMixed:
+            return "Average frame with mixed lean, muscular, and broad characteristics; avoid assuming a fixed somatotype or metabolism."
+        }
+    }
+
+    static func fromStoredValue(_ value: String) -> BuildProfileOption {
+        if let exact = Self(rawValue: value) { return exact }
+        let normalized = value.lowercased()
+        if normalized.contains("mesomorph") || normalized.contains("muscular") { return .muscularMedium }
+        if normalized.contains("lean") || normalized.contains("narrow") || normalized.contains("ectomorph") { return .leanNarrow }
+        if normalized.contains("broad") || normalized.contains("sturdy") || normalized.contains("endomorph") { return .broadSturdy }
+        if normalized.contains("average") || normalized.contains("mixed") { return .averageMixed }
+        return .notSpecified
+    }
+}
+
+enum TrainingExperienceOption: String, ProfilePresetOption {
+    case notSpecified = ""
+    case beginner = "Beginner"
+    case novice = "Novice"
+    case intermediate = "Intermediate"
+    case advanced = "Advanced"
+    case returning = "Returning After a Layoff"
+
+    var id: String { rawValue }
+    var label: String { self == .notSpecified ? "Not specified" : rawValue }
+
+    var promptDescription: String {
+        switch self {
+        case .notSpecified:
+            return ""
+        case .beginner:
+            return "Less than 6 months of consistent resistance training; prioritize technique, simple progression, and low exercise complexity."
+        case .novice:
+            return "About 6-18 months of consistent resistance training; can progress frequently but still benefits from stable exercises and straightforward loading."
+        case .intermediate:
+            return "Roughly 1.5-5 years of consistent resistance training; needs planned progression, sufficient volume, and fatigue management."
+        case .advanced:
+            return "More than 5 years of serious, consistent resistance training; requires individualized loading, careful fatigue management, and highly trackable exercise selection."
+        case .returning:
+            return "Has prior resistance-training experience but is returning after a meaningful layoff; use conservative volume and load while rebuilding tolerance."
+        }
+    }
+
+    static func fromStoredValue(_ value: String) -> TrainingExperienceOption {
+        if let exact = Self(rawValue: value) { return exact }
+        let normalized = value.lowercased()
+        if normalized.contains("return") || normalized.contains("layoff") { return .returning }
+        if normalized.contains("advanced") || normalized.contains("6 years") || normalized.contains("7 years") || normalized.contains("8 years") || normalized.contains("9 years") { return .advanced }
+        if normalized.contains("intermediate") || normalized.contains("2 years") || normalized.contains("3 years") || normalized.contains("4 years") || normalized.contains("5 years") { return .intermediate }
+        if normalized.contains("novice") || normalized.contains("1 year") { return .novice }
+        if normalized.contains("beginner") || normalized.contains("month") || normalized.contains("new") { return .beginner }
+        return .notSpecified
+    }
+}
+
+enum EquipmentAccessOption: String, ProfilePresetOption {
+    case notSpecified = ""
+    case commercialGym = "Full Commercial Gym"
+    case homeGym = "Home Gym"
+    case dumbbellsBench = "Dumbbells + Bench"
+    case minimal = "Bands / Bodyweight / Minimal"
+
+    var id: String { rawValue }
+    var label: String { self == .notSpecified ? "Not specified" : rawValue }
+
+    var promptDescription: String {
+        switch self {
+        case .notSpecified:
+            return ""
+        case .commercialGym:
+            return "Full commercial gym access including barbells, dumbbells, benches, cables, plate-loaded and selectorized machines, racks, and common cardio equipment."
+        case .homeGym:
+            return "Home-gym access with a rack, barbell, plates, adjustable bench, dumbbells, and basic accessories; do not assume specialized machines or a full cable station."
+        case .dumbbellsBench:
+            return "Adjustable dumbbells and a bench are available; avoid programming barbells, cable stacks, or specialized machines."
+        case .minimal:
+            return "Minimal equipment limited to bodyweight, resistance bands, and small portable accessories; use movements that do not require gym machines or heavy free weights."
+        }
+    }
+
+    static func fromStoredValue(_ value: String) -> EquipmentAccessOption {
+        if let exact = Self(rawValue: value) { return exact }
+        let normalized = value.lowercased()
+        if normalized.contains("commercial") || normalized.contains("full machine") || normalized.contains("full gym") { return .commercialGym }
+        if normalized.contains("home gym") || normalized.contains("rack") || normalized.contains("barbell") { return .homeGym }
+        if normalized.contains("dumbbell") && normalized.contains("bench") { return .dumbbellsBench }
+        if normalized.contains("band") || normalized.contains("bodyweight") || normalized.contains("minimal") { return .minimal }
+        return .notSpecified
+    }
 }
 
 enum HeightUnit: String, CaseIterable, Identifiable {
@@ -204,13 +337,13 @@ enum HeightUnit: String, CaseIterable, Identifiable {
 enum PersonalProfileSeed {
     static let age = "30"
     static let sex = "Male"
-    static let build = "Mesomorph build"
+    static let build = BuildProfileOption.muscularMedium.rawValue
     static let height = "6'0\""
     static let currentWeight = "195 lbs"
     static let occupation = "Emergency medicine physician"
     static let trainingFrequency = "Training 5-6 days/week"
-    static let trainingAge = "4 years of consistent lifting"
-    static let equipmentAccess = "Commercial gym with full machine, cable, dumbbell, and barbell access"
+    static let trainingAge = TrainingExperienceOption.intermediate.rawValue
+    static let equipmentAccess = EquipmentAccessOption.commercialGym.rawValue
     static let averageSleep = "Variable due to shift work; often 5-7 hours"
     static let painHistory = "No major active injury reported; monitor overuse and recovery around long shifts"
     static let activityLevel = "High daily activity from long clinical shifts and time on feet"
@@ -542,9 +675,9 @@ enum AppSettingsStore {
             } else if let cm = parseCmHeight(raw) {
                 defaults.set(cm, forKey: AppSettingsKeys.analysisHeightCm)
                 defaults.set(HeightUnit.metric.rawValue, forKey: AppSettingsKeys.analysisHeightUnit)
-                let totalInches = Double(cm) / 2.54
-                defaults.set(Int(totalInches) / 12, forKey: AppSettingsKeys.analysisHeightFeet)
-                defaults.set(Int(totalInches) % 12, forKey: AppSettingsKeys.analysisHeightInches)
+                let roundedTotalInches = Int(round(Double(cm) / 2.54))
+                defaults.set(roundedTotalInches / 12, forKey: AppSettingsKeys.analysisHeightFeet)
+                defaults.set(roundedTotalInches % 12, forKey: AppSettingsKeys.analysisHeightInches)
             }
         }
 
@@ -555,6 +688,25 @@ enum AppSettingsStore {
                 defaults.set(days, forKey: AppSettingsKeys.analysisTrainingDays)
             }
         }
+
+        migratePresetValue(
+            forKey: AppSettingsKeys.analysisBuild,
+            mappedValue: BuildProfileOption.fromStoredValue(
+                defaults.string(forKey: AppSettingsKeys.analysisBuild) ?? ""
+            ).rawValue
+        )
+        migratePresetValue(
+            forKey: AppSettingsKeys.analysisTrainingAge,
+            mappedValue: TrainingExperienceOption.fromStoredValue(
+                defaults.string(forKey: AppSettingsKeys.analysisTrainingAge) ?? ""
+            ).rawValue
+        )
+        migratePresetValue(
+            forKey: AppSettingsKeys.analysisEquipmentAccess,
+            mappedValue: EquipmentAccessOption.fromStoredValue(
+                defaults.string(forKey: AppSettingsKeys.analysisEquipmentAccess) ?? ""
+            ).rawValue
+        )
 
         if defaults.object(forKey: AppSettingsKeys.analysisSleepHours) == nil {
             let raw = defaults.string(forKey: AppSettingsKeys.analysisAverageSleep) ?? ""
@@ -634,17 +786,23 @@ enum AppSettingsStore {
         return value
     }
 
+    private static func migratePresetValue(forKey key: String, mappedValue: String) {
+        let current = defaults.string(forKey: key) ?? ""
+        guard !current.isEmpty, !mappedValue.isEmpty, current != mappedValue else { return }
+        defaults.set(mappedValue, forKey: key)
+    }
+
     static var analysisClientProfile: AnalysisClientProfile {
         AnalysisClientProfile(
             age: composedAgeString(),
             sex: string(for: AppSettingsKeys.analysisSex, default: Config.defaultAnalysisSex),
-            build: string(for: AppSettingsKeys.analysisBuild, default: Config.defaultAnalysisBuild),
+            build: buildPromptDescription(),
             height: composedHeightString(),
             currentWeight: composedWeightString(),
             occupation: string(for: AppSettingsKeys.analysisOccupation, default: Config.defaultAnalysisOccupation),
             trainingFrequency: composedTrainingFrequencyString(),
-            trainingAge: string(for: AppSettingsKeys.analysisTrainingAge, default: Config.defaultAnalysisTrainingAge),
-            equipmentAccess: string(for: AppSettingsKeys.analysisEquipmentAccess, default: Config.defaultAnalysisEquipmentAccess),
+            trainingAge: trainingExperiencePromptDescription(),
+            equipmentAccess: equipmentAccessPromptDescription(),
             averageSleep: composedSleepString(),
             painHistory: composedMedicalContext(),
             activityLevel: string(for: AppSettingsKeys.analysisActivityLevel, default: Config.defaultAnalysisActivityLevel),
@@ -658,6 +816,24 @@ enum AppSettingsStore {
             return "\(age)"
         }
         return string(for: AppSettingsKeys.analysisAge, default: Config.defaultAnalysisAge)
+    }
+
+    private static func buildPromptDescription() -> String {
+        let stored = string(for: AppSettingsKeys.analysisBuild, default: Config.defaultAnalysisBuild)
+        let option = BuildProfileOption.fromStoredValue(stored)
+        return option == .notSpecified ? stored : option.promptDescription
+    }
+
+    private static func trainingExperiencePromptDescription() -> String {
+        let stored = string(for: AppSettingsKeys.analysisTrainingAge, default: Config.defaultAnalysisTrainingAge)
+        let option = TrainingExperienceOption.fromStoredValue(stored)
+        return option == .notSpecified ? stored : option.promptDescription
+    }
+
+    private static func equipmentAccessPromptDescription() -> String {
+        let stored = string(for: AppSettingsKeys.analysisEquipmentAccess, default: Config.defaultAnalysisEquipmentAccess)
+        let option = EquipmentAccessOption.fromStoredValue(stored)
+        return option == .notSpecified ? stored : option.promptDescription
     }
 
     private static func composedHeightString() -> String {

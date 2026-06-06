@@ -3,6 +3,7 @@ import UIKit
 
 struct AppSettingsView: View {
     @Environment(\.dismiss) private var dismiss
+    @FocusState private var isTextInputFocused: Bool
 
     // MARK: - Structured fields
 
@@ -75,9 +76,9 @@ struct AppSettingsView: View {
                     if totalInches > 0 { heightCm = Int(round(Double(totalInches) * 2.54)) }
                 } else if newUnit == .imperial && HeightUnit(rawValue: heightUnit) == .metric {
                     if heightCm > 0 {
-                        let totalInches = Double(heightCm) / 2.54
-                        heightFeet = Int(totalInches) / 12
-                        heightInches = Int(round(totalInches)) % 12
+                        let roundedTotalInches = Int(round(Double(heightCm) / 2.54))
+                        heightFeet = roundedTotalInches / 12
+                        heightInches = roundedTotalInches % 12
                     }
                 }
                 heightUnit = newUnit.rawValue
@@ -92,10 +93,34 @@ struct AppSettingsView: View {
         )
     }
 
+    private var buildBinding: Binding<BuildProfileOption> {
+        Binding(
+            get: { BuildProfileOption.fromStoredValue(analysisBuild) },
+            set: { analysisBuild = $0.rawValue }
+        )
+    }
+
+    private var trainingExperienceBinding: Binding<TrainingExperienceOption> {
+        Binding(
+            get: { TrainingExperienceOption.fromStoredValue(analysisTrainingAge) },
+            set: { analysisTrainingAge = $0.rawValue }
+        )
+    }
+
+    private var equipmentAccessBinding: Binding<EquipmentAccessOption> {
+        Binding(
+            get: { EquipmentAccessOption.fromStoredValue(analysisEquipmentAccess) },
+            set: { analysisEquipmentAccess = $0.rawValue }
+        )
+    }
+
     private var goalBinding: Binding<GoalCategory> {
         Binding(
             get: { GoalCategory(rawValue: analysisPrimaryGoal) ?? .notSpecified },
-            set: { analysisPrimaryGoal = $0.rawValue }
+            set: {
+                analysisPrimaryGoal = $0.rawValue
+                analysisGoalDetail = $0.defaultDetail
+            }
         )
     }
 
@@ -126,7 +151,8 @@ struct AppSettingsView: View {
                         }
                     }
 
-                    settingsField("Build", text: $analysisBuild)
+                    presetPicker("Build", selection: buildBinding)
+                    presetHint(buildBinding.wrappedValue.promptDescription)
 
                     VStack(alignment: .leading, spacing: 6) {
                         Picker("Height Unit", selection: heightUnitBinding) {
@@ -137,11 +163,35 @@ struct AppSettingsView: View {
                         .pickerStyle(.segmented)
 
                         if HeightUnit(rawValue: heightUnit) == .metric {
-                            Stepper("Height: \(heightCm > 0 ? "\(heightCm) cm" : "—")", value: $heightCm, in: 0...250)
-                        } else {
                             HStack {
-                                Stepper("Feet: \(heightFeet > 0 ? "\(heightFeet)" : "—")", value: $heightFeet, in: 0...8)
-                                Stepper("In: \(heightInches)", value: $heightInches, in: 0...11)
+                                Text("Height")
+                                Spacer()
+                                TextField("cm", value: $heightCm, format: .number)
+                                    .keyboardType(.numberPad)
+                                    .multilineTextAlignment(.trailing)
+                                    .frame(width: 72)
+                                    .focused($isTextInputFocused)
+                                Text("cm")
+                                    .foregroundStyle(.secondary)
+                            }
+                        } else {
+                            HStack(spacing: 8) {
+                                Text("Height")
+                                Spacer()
+                                TextField("ft", value: $heightFeet, format: .number)
+                                    .keyboardType(.numberPad)
+                                    .multilineTextAlignment(.trailing)
+                                    .frame(width: 44)
+                                    .focused($isTextInputFocused)
+                                Text("ft")
+                                    .foregroundStyle(.secondary)
+                                TextField("in", value: $heightInches, format: .number)
+                                    .keyboardType(.numberPad)
+                                    .multilineTextAlignment(.trailing)
+                                    .frame(width: 44)
+                                    .focused($isTextInputFocused)
+                                Text("in")
+                                    .foregroundStyle(.secondary)
                             }
                         }
                     }
@@ -153,6 +203,7 @@ struct AppSettingsView: View {
                             .keyboardType(.decimalPad)
                             .multilineTextAlignment(.trailing)
                             .frame(width: 70)
+                            .focused($isTextInputFocused)
                         Picker("", selection: weightUnitBinding) {
                             ForEach(WeightUnit.allCases) { unit in
                                 Text(unit.rawValue).tag(unit)
@@ -166,8 +217,11 @@ struct AppSettingsView: View {
 
                     Stepper("Training: \(trainingDays > 0 ? "\(trainingDays) days/week" : "—")", value: $trainingDays, in: 0...7)
 
-                    settingsField("Training Age / Experience", text: $analysisTrainingAge, axis: .vertical)
-                    settingsField("Equipment Access", text: $analysisEquipmentAccess, axis: .vertical)
+                    presetPicker("Training Age / Experience", selection: trainingExperienceBinding)
+                    presetHint(trainingExperienceBinding.wrappedValue.promptDescription)
+
+                    presetPicker("Equipment Access", selection: equipmentAccessBinding)
+                    presetHint(equipmentAccessBinding.wrappedValue.promptDescription)
 
                     VStack(alignment: .leading, spacing: 6) {
                         HStack {
@@ -177,6 +231,7 @@ struct AppSettingsView: View {
                                 .keyboardType(.decimalPad)
                                 .multilineTextAlignment(.trailing)
                                 .frame(width: 50)
+                                .focused($isTextInputFocused)
                             Text("hrs/night")
                                 .foregroundStyle(.secondary)
                         }
@@ -184,6 +239,7 @@ struct AppSettingsView: View {
                             .lineLimit(2...3)
                             .textInputAutocapitalization(.sentences)
                             .font(.subheadline)
+                            .focused($isTextInputFocused)
                     }
 
                     settingsField("Pain / Injury Context", text: $analysisPainHistory, axis: .vertical)
@@ -210,6 +266,7 @@ struct AppSettingsView: View {
                                 .lineLimit(2...4)
                                 .textInputAutocapitalization(.sentences)
                                 .font(.subheadline)
+                                .focused($isTextInputFocused)
                         }
                     }
 
@@ -249,14 +306,23 @@ struct AppSettingsView: View {
                     }
                 }
             }
+            .scrollDismissesKeyboard(.interactively)
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") {
+                        normalizeHeightInputs()
                         dismiss()
                     }
                     .bold()
+                }
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") {
+                        normalizeHeightInputs()
+                        isTextInputFocused = false
+                    }
                 }
             }
         }
@@ -278,6 +344,7 @@ struct AppSettingsView: View {
                 TextField(title, text: text, axis: .vertical)
                     .lineLimit(2...4)
                     .textInputAutocapitalization(.sentences)
+                    .focused($isTextInputFocused)
             }
         } else {
             HStack {
@@ -286,11 +353,43 @@ struct AppSettingsView: View {
                 TextField(title, text: text)
                     .keyboardType(keyboard)
                     .multilineTextAlignment(.trailing)
+                    .focused($isTextInputFocused)
                 if let suffix {
                     Text(suffix)
                         .foregroundStyle(.secondary)
                 }
             }
+        }
+    }
+
+    @ViewBuilder
+    private func presetPicker<Option: ProfilePresetOption>(
+        _ title: String,
+        selection: Binding<Option>
+    ) -> some View where Option.AllCases: RandomAccessCollection, Option.AllCases.Element == Option {
+        Picker(title, selection: selection) {
+            ForEach(Option.allCases) { option in
+                Text(option.label).tag(option)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func presetHint(_ text: String) -> some View {
+        if !text.isEmpty {
+            Text(text)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func normalizeHeightInputs() {
+        if heightFeet > 0 {
+            heightFeet = min(max(heightFeet, 3), 8)
+        }
+        heightInches = min(max(heightInches, 0), 11)
+        if heightCm > 0 {
+            heightCm = min(max(heightCm, 100), 250)
         }
     }
 
