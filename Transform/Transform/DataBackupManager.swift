@@ -300,7 +300,7 @@ private extension SleepSnapshot {
             Calendar.current.date(bySettingHour: 8, minute: 0, second: 0, of: date) ?? date
         )
         let resolvedStart = startDate ?? resolvedEnd.addingTimeInterval(-durationHours * 3600)
-        SleepEntry(
+        return SleepEntry(
             startDate: resolvedStart,
             endDate: resolvedEnd,
             qualityRating: qualityRating,
