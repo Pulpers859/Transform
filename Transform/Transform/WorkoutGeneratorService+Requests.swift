@@ -153,6 +153,10 @@ extension ClaudeService {
             rules.append("- Keep shift-work recovery in mind: prefer a tighter 5-6 movement session over extra accessories that create fatigue without new value.")
         }
 
+        if issues.contains(where: { $0.contains("substitution changes the primary muscle target") || $0.contains("replaced with a poor substitute") }) {
+            rules.append("- When substituting an exercise from the previous week, the replacement MUST target the same primary muscle group. A back exercise must be replaced with another back exercise, not a chest exercise. Revert the bad substitution or pick a same-muscle-group alternative.")
+        }
+
         return rules.joined(separator: "\n")
     }
 

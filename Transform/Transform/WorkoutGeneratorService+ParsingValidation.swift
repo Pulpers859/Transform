@@ -599,6 +599,9 @@ extension ClaudeService {
             if hasCompoundPriorityViolation(in: issues) {
                 return false
             }
+            if issues.contains(where: { $0.contains("substitution changes the primary muscle target") }) {
+                return false
+            }
             return true
         }
         return false
