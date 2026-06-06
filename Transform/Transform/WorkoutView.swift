@@ -5,6 +5,7 @@ struct WorkoutView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \WorkoutProgram.createdDate, order: .reverse) private var programs: [WorkoutProgram]
     @Query(sort: \BodyAnalysisSession.date, order: .reverse) private var analysisSessions: [BodyAnalysisSession]
+    @Query(sort: \ExerciseWeightEntry.loggedAt, order: .reverse) private var exerciseWeightEntries: [ExerciseWeightEntry]
 
     @State private var isGenerating = false
     @State private var errorMessage: String?
@@ -672,7 +673,8 @@ struct WorkoutView: View {
         }
 
         do {
-            let generationResult = try await ClaudeService.shared.generateWeekOne(from: result)
+            let performanceHistory = compactPerformanceHistory(from: exerciseWeightEntries)
+            let generationResult = try await ClaudeService.shared.generateWeekOne(from: result, performanceHistory: performanceHistory)
             let response = generationResult.response
             try Task.checkCancellation()
             WorkoutGenerationDiagnostics.markStage("encoding generated week 1 program")
@@ -761,12 +763,14 @@ struct WorkoutView: View {
 
         do {
             WorkoutGenerationDiagnostics.markStage("requesting week \(nextWeek) program from AI")
+            let performanceHistory = compactPerformanceHistory(from: exerciseWeightEntries)
             let generationResult = try await ClaudeService.shared.generateNextWeek(
                 weekNumber: nextWeek,
                 previousWeekJSON: program.programJSON,
                 analysisJSON: program.analysisJSON,
                 splitType: program.splitType,
-                programName: program.programName
+                programName: program.programName,
+                performanceHistory: performanceHistory
             )
             let response = generationResult.response
             try Task.checkCancellation()
@@ -946,6 +950,27 @@ struct WorkoutView: View {
         if selectedWeek < 1 || selectedWeek > maxAvailableWeek {
             selectedWeek = maxAvailableWeek
         }
+    }
+
+    func compactPerformanceHistory(from entries: [ExerciseWeightEntry], limit: Int = 10) -> String? {
+        var seen = Set<String>()
+        var recent: [ExerciseWeightEntry] = []
+        for entry in entries where entry.weightLbs > 0 {
+            if seen.insert(entry.canonicalExerciseKey).inserted {
+                recent.append(entry)
+                if recent.count >= limit { break }
+            }
+        }
+        guard !recent.isEmpty else { return nil }
+        let formatter = DateFormatter()
+        formatter.dateStyle = .short
+        formatter.timeStyle = .none
+        return recent.map { entry in
+            var line = "- \(entry.exerciseName): \(Int(entry.weightLbs)) lb"
+            if let reps = entry.repsCompleted { line += " x \(reps)" }
+            line += " (\(formatter.string(from: entry.loggedAt)))"
+            return line
+        }.joined(separator: "\n")
     }
 
     func encodeJSONString<T: Encodable>(_ value: T, failureMessage: String) -> String? {

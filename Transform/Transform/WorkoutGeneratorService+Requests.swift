@@ -254,7 +254,19 @@ extension ClaudeService {
         """
     }
 
-    func weekOneUserPrompt(context: String) -> String {
+    func performanceHistorySection(from history: String?) -> String {
+        guard let history, !history.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return "" }
+        return """
+
+        --- Logged performance (actual weights/reps from recent workouts — use for load cues) ---
+        \(history)
+        Use these actual loads to write concrete progression cues (e.g., "aim for 190 lb x 8" instead
+        of "select an appropriate weight"). Do not change the output schema or add new fields.
+        --- end logged performance ---
+        """
+    }
+
+    func weekOneUserPrompt(context: String, performanceHistory: String? = nil) -> String {
         """
         Build Week 1 of this individual's 4-week mesocycle. Treat the coaching inputs below as
         the source of truth — every day, every exercise, and every note should be traceable back
@@ -263,7 +275,7 @@ extension ClaudeService {
         --- Coaching Inputs ---
         \(context)
         --- end Coaching Inputs ---
-
+        \(performanceHistorySection(from: performanceHistory))
         Requirements:
         - Name the program and split meaningfully (reference the analysis, not a generic label).
         - In programSummary, state in ONE sentence what this 4-week arc is designed to accomplish
@@ -362,7 +374,8 @@ extension ClaudeService {
         dayStart: Int,
         dayEnd: Int,
         previousWeekReference: String,
-        analysisContext: String
+        analysisContext: String,
+        performanceHistory: String? = nil
     ) -> String {
         """
         Generate Week \(weekNumber) (days \(dayStart)-\(dayEnd)) of the mesocycle.
@@ -374,7 +387,7 @@ extension ClaudeService {
         --- Previous week (progression reference ONLY — don't copy) ---
         \(previousWeekReference)
         --- end previous week ---
-
+        \(performanceHistorySection(from: performanceHistory))
         Phase guidance for Week \(weekNumber):
         \(phaseGuidance(for: weekNumber))
 
