@@ -28,6 +28,7 @@ struct TransformBackupPayload: Codable {
     let version: Int
     let exportedAt: Date
     let weights: [WeightSnapshot]
+    let sleep: [SleepSnapshot]?
     let measurements: [MeasurementSnapshot]
     let nutrition: [NutritionSnapshot]
     let favorites: [FavoriteFoodSnapshot]
@@ -41,6 +42,7 @@ struct TransformBackupPayload: Codable {
         version: Int,
         exportedAt: Date,
         weights: [WeightSnapshot],
+        sleep: [SleepSnapshot]?,
         measurements: [MeasurementSnapshot],
         nutrition: [NutritionSnapshot],
         favorites: [FavoriteFoodSnapshot],
@@ -53,6 +55,7 @@ struct TransformBackupPayload: Codable {
         self.version = version
         self.exportedAt = exportedAt
         self.weights = weights
+        self.sleep = sleep
         self.measurements = measurements
         self.nutrition = nutrition
         self.favorites = favorites
@@ -86,6 +89,14 @@ struct LegacyNutritionSnapshot: Codable {
 struct WeightSnapshot: Codable {
     let date: Date
     let weightLbs: Double
+    let notes: String
+}
+
+struct SleepSnapshot: Codable {
+    let date: Date
+    let durationHours: Double
+    let qualityRating: Int
+    let shiftTypeRaw: String
     let notes: String
 }
 
@@ -256,6 +267,32 @@ private extension WeightSnapshot {
 
     func makeModel() -> WeightEntry {
         WeightEntry(date: date, weightLbs: weightLbs, notes: notes)
+    }
+}
+
+private extension SleepSnapshot {
+    init(_ entry: SleepEntry) {
+        self.init(
+            date: entry.date,
+            durationHours: entry.durationHours,
+            qualityRating: entry.qualityRating,
+            shiftTypeRaw: entry.shiftTypeRaw,
+            notes: entry.notes
+        )
+    }
+
+    var dedupeKey: String {
+        Calendar.current.startOfDay(for: date).timeIntervalSince1970.description
+    }
+
+    func makeModel() -> SleepEntry {
+        SleepEntry(
+            date: date,
+            durationHours: durationHours,
+            qualityRating: qualityRating,
+            shiftType: SleepShiftType(rawValue: shiftTypeRaw) ?? .off,
+            notes: notes
+        )
     }
 }
 
@@ -689,8 +726,8 @@ private extension LegacyNutritionSnapshot {
 final class DataBackupManager {
     static let shared = DataBackupManager()
     private init() {}
-    let currentBackupVersion = 4
-    private let supportedBackupVersions: Set<Int> = [1, 2, 3, 4]
+    let currentBackupVersion = 5
+    private let supportedBackupVersions: Set<Int> = [1, 2, 3, 4, 5]
 
     func exportDocument(using modelContext: ModelContext) throws -> BackupDocument {
         let payload = try buildPayload(using: modelContext)
@@ -725,6 +762,7 @@ final class DataBackupManager {
             try modelContext.transaction {
                 try merge(payload: payload, into: modelContext)
             }
+            SleepTrendStore.refresh(using: modelContext)
             writeAutomaticBackup(using: modelContext)
         } catch {
             modelContext.rollback()
@@ -745,6 +783,7 @@ final class DataBackupManager {
 
     private func buildPayload(using modelContext: ModelContext) throws -> TransformBackupPayload {
         let weights = try modelContext.fetch(FetchDescriptor<WeightEntry>())
+        let sleep = try modelContext.fetch(FetchDescriptor<SleepEntry>())
         let measurements = try modelContext.fetch(FetchDescriptor<MeasurementEntry>())
         let nutrition = try modelContext.fetch(FetchDescriptor<NutritionEntry>())
         let favorites = try modelContext.fetch(FetchDescriptor<FavoriteFood>())
@@ -758,6 +797,7 @@ final class DataBackupManager {
             version: currentBackupVersion,
             exportedAt: .now,
             weights: weights.map(WeightSnapshot.init),
+            sleep: sleep.map(SleepSnapshot.init),
             measurements: measurements.map(MeasurementSnapshot.init),
             nutrition: nutrition.map(NutritionSnapshot.init),
             favorites: favorites.map(FavoriteFoodSnapshot.init),
@@ -771,6 +811,7 @@ final class DataBackupManager {
 
     private func merge(payload: TransformBackupPayload, into modelContext: ModelContext) throws {
         let existingWeights = try modelContext.fetch(FetchDescriptor<WeightEntry>())
+        let existingSleep = try modelContext.fetch(FetchDescriptor<SleepEntry>())
         let existingMeasurements = try modelContext.fetch(FetchDescriptor<MeasurementEntry>())
         let existingNutrition = try modelContext.fetch(FetchDescriptor<NutritionEntry>())
         let existingFavorites = try modelContext.fetch(FetchDescriptor<FavoriteFood>())
@@ -781,6 +822,7 @@ final class DataBackupManager {
         let existingExercisePerformanceLogs = try modelContext.fetch(FetchDescriptor<ExercisePerformanceLog>())
 
         var weightKeys = Set(existingWeights.map { WeightSnapshot($0).dedupeKey })
+        var sleepKeys = Set(existingSleep.map { SleepSnapshot($0).dedupeKey })
         var measurementKeys = Set(existingMeasurements.map { MeasurementSnapshot($0).dedupeKey })
         var nutritionKeys = Set(existingNutrition.map { NutritionSnapshot($0).dedupeKey })
         var favoriteKeys = Set(existingFavorites.map { FavoriteFoodSnapshot($0).dedupeKey })
@@ -797,6 +839,13 @@ final class DataBackupManager {
             guard !weightKeys.contains(key) else { continue }
             modelContext.insert(item.makeModel())
             weightKeys.insert(key)
+        }
+
+        for item in payload.sleep ?? [] {
+            let key = item.dedupeKey
+            guard !sleepKeys.contains(key) else { continue }
+            modelContext.insert(item.makeModel())
+            sleepKeys.insert(key)
         }
 
         for item in payload.measurements {
@@ -873,6 +922,7 @@ final class DataBackupManager {
             version: 1,
             exportedAt: .now,
             weights: legacy.weights,
+            sleep: nil,
             measurements: legacy.measurements,
             nutrition: legacy.nutrition.map { $0.makeNutritionSnapshot() },
             favorites: [],

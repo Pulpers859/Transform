@@ -9,6 +9,7 @@ struct DashboardView: View {
     @Query(sort: \NutritionEntry.date, order: .reverse) private var allNutrition: [NutritionEntry]
     @Query(sort: \BodyAnalysisSession.date, order: .reverse) private var analysisSessions: [BodyAnalysisSession]
     @Query(sort: \MeasurementEntry.date, order: .reverse) private var measurementEntries: [MeasurementEntry]
+    @Query(sort: \SleepEntry.date, order: .reverse) private var sleepEntries: [SleepEntry]
 
     @State private var animateRings = false
     @State private var backupDocument = BackupDocument()
@@ -19,6 +20,7 @@ struct DashboardView: View {
     @State private var showAddWeightSheet = false
     @State private var showAddFoodSheet = false
     @State private var showSettings = false
+    @State private var sleepEditorRequest: SleepEditorRequest?
 
     // MARK: - Computed Props
 
@@ -91,6 +93,17 @@ struct DashboardView: View {
             let day = calendar.startOfDay(for: entry.date)
             totals[day, default: 0] += Double(entry.calories)
         }
+    }
+
+    var sleepTrend: SleepTrendSnapshot? {
+        SleepTrendBuilder.build(from: sleepEntries)
+    }
+
+    var sleepEntriesChangeToken: String {
+        sleepEntries.map {
+            "\($0.persistentModelID)-\($0.date.timeIntervalSince1970)-\($0.durationHours)-\($0.qualityRating)-\($0.shiftTypeRaw)-\($0.notes)"
+        }
+        .joined(separator: "|")
     }
 
     // MARK: - Adherence Metrics
@@ -229,6 +242,7 @@ struct DashboardView: View {
                         VStack(spacing: 16) {
                             coachingHeadlineCard
                             todayRingsCard
+                            sleepRecoveryCard
                             weightAndRecompCard
                             weekCalorieChart
                             bottomPadding
@@ -284,10 +298,17 @@ struct DashboardView: View {
             .sheet(isPresented: $showSettings) {
                 AppSettingsView()
             }
+            .sheet(item: $sleepEditorRequest) { request in
+                SleepEntryEditor(entry: request.entry)
+            }
             .onAppear {
+                SleepTrendStore.refresh(using: modelContext)
                 withAnimation(.easeOut(duration: 0.9).delay(0.2)) {
                     animateRings = true
                 }
+            }
+            .onChange(of: sleepEntriesChangeToken) { _, _ in
+                SleepTrendStore.refresh(using: modelContext)
             }
         }
     }
@@ -563,6 +584,127 @@ struct DashboardView: View {
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
         }
+    }
+
+    // MARK: - Sleep & Recovery
+
+    var sleepRecoveryCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                sectionLabel("Sleep & Recovery")
+                Spacer()
+                Button {
+                    sleepEditorRequest = SleepEditorRequest(entry: todaySleepEntry)
+                } label: {
+                    Label(todaySleepEntry == nil ? "Log Sleep" : "Edit Today", systemImage: "plus.circle.fill")
+                        .font(.caption.bold())
+                }
+                .buttonStyle(.bordered)
+                .tint(.blue)
+            }
+
+            if let trend = sleepTrend {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(SleepFormatting.duration(trend.averageHours))
+                        .font(.system(size: 38, weight: .black, design: .rounded))
+                    Text("average")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    VStack(alignment: .trailing, spacing: 3) {
+                        Text("Quality \(String(format: "%.1f", trend.averageQuality))/5")
+                            .font(.caption.bold())
+                        Text("\(trend.loggedDays)/7 days logged")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                Chart(trend.entries) { entry in
+                    BarMark(
+                        x: .value("Day", entry.date, unit: .day),
+                        y: .value("Hours", entry.durationHours)
+                    )
+                    .foregroundStyle(entry.durationHours < 6 ? Color.orange : Color.blue)
+                    .cornerRadius(4)
+
+                    RuleMark(y: .value("Reference", 7))
+                        .foregroundStyle(Color.blue.opacity(0.35))
+                        .lineStyle(StrokeStyle(lineWidth: 1, dash: [4]))
+                }
+                .chartXAxis {
+                    AxisMarks(values: .stride(by: .day)) { value in
+                        if let date = value.as(Date.self) {
+                            AxisValueLabel {
+                                Text(date.formatted(.dateTime.weekday(.narrow)))
+                                    .font(.caption2)
+                            }
+                        }
+                    }
+                }
+                .chartYAxis {
+                    AxisMarks(position: .trailing, values: [4, 6, 8, 10]) {
+                        AxisValueLabel()
+                            .font(.caption2)
+                    }
+                }
+                .chartYScale(domain: 0...12)
+                .frame(height: 110)
+
+                HStack(spacing: 12) {
+                    Label(
+                        "\(trend.shortSleepDays) under 6h",
+                        systemImage: trend.shortSleepDays > 0 ? "exclamationmark.triangle.fill" : "checkmark.circle.fill"
+                    )
+                    .foregroundStyle(trend.shortSleepDays > 0 ? .orange : .green)
+
+                    Label(
+                        String(format: "%.1fh variability", trend.variabilityHours),
+                        systemImage: "waveform.path.ecg"
+                    )
+                    .foregroundStyle(.secondary)
+
+                    Spacer()
+                }
+                .font(.caption2)
+            } else {
+                HStack(spacing: 12) {
+                    Image(systemName: "bed.double.fill")
+                        .font(.title2)
+                        .foregroundStyle(.blue)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("No sleep logged yet")
+                            .font(.subheadline.bold())
+                        Text("A 10-second daily log is enough to build useful recovery context.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+
+            Divider()
+
+            NavigationLink {
+                SleepHistoryView()
+            } label: {
+                HStack {
+                    Label("View and edit sleep history", systemImage: "clock.arrow.circlepath")
+                        .font(.caption.bold())
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                }
+                .foregroundStyle(.blue)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(16)
+        .background(Color(.secondarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+    }
+
+    var todaySleepEntry: SleepEntry? {
+        sleepEntries.first { Calendar.current.isDateInToday($0.date) }
     }
 
     // MARK: - Weight + Recomp Card

@@ -533,6 +533,7 @@ enum AppSettingsKeys {
     static let analysisCheckInHungerLevel = "analysis_checkin_hunger_level"
     static let analysisCheckInEnergyLevel = "analysis_checkin_energy_level"
     static let analysisCheckInCravingsLevel = "analysis_checkin_cravings_level"
+    static let derivedSleepTrendSummary = "derived_sleep_trend_summary"
 
     static let calorieTarget = "nutrition_calorie_target"
     static let proteinTarget = "nutrition_protein_target"
@@ -891,10 +892,19 @@ enum AppSettingsStore {
     }
 
     static var analysisCheckIn: AnalysisCheckIn {
-        AnalysisCheckIn(
+        let manualRecovery = string(
+            for: AppSettingsKeys.analysisCheckInRecoverySleep,
+            default: Config.defaultAnalysisCheckInRecoverySleep
+        )
+        let derivedRecovery = string(for: AppSettingsKeys.derivedSleepTrendSummary, default: "")
+        let combinedRecovery = [derivedRecovery, manualRecovery]
+            .filter { !$0.isEmpty }
+            .joined(separator: " Additional context: ")
+
+        return AnalysisCheckIn(
             trainingContext: string(for: AppSettingsKeys.analysisCheckInTrainingContext, default: Config.defaultAnalysisCheckInTrainingContext),
             bodyweightTrend: string(for: AppSettingsKeys.analysisCheckInBodyweightTrend, default: Config.defaultAnalysisCheckInBodyweightTrend),
-            recoverySleep: string(for: AppSettingsKeys.analysisCheckInRecoverySleep, default: Config.defaultAnalysisCheckInRecoverySleep),
+            recoverySleep: combinedRecovery,
             stressSchedule: string(for: AppSettingsKeys.analysisCheckInStressSchedule, default: Config.defaultAnalysisCheckInStressSchedule),
             sorenessPain: string(for: AppSettingsKeys.analysisCheckInSorenessPain, default: Config.defaultAnalysisCheckInSorenessPain),
             nutritionAdherence: string(for: AppSettingsKeys.analysisCheckInNutritionAdherence, default: Config.defaultAnalysisCheckInNutritionAdherence),

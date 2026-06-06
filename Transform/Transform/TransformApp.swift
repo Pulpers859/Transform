@@ -29,6 +29,7 @@ struct StartupConfiguration {
     static func build() -> StartupConfiguration {
         let schema = Schema([
             WeightEntry.self,
+            SleepEntry.self,
             MeasurementEntry.self,
             NutritionEntry.self,
             SavedNutritionProtocol.self,
@@ -57,6 +58,7 @@ struct StartupConfiguration {
                 if try ExerciseWeightStore.normalizeAndConsolidate(in: maintenanceContext) {
                     try maintenanceContext.save()
                 }
+                SleepTrendStore.refresh(using: maintenanceContext)
             } catch {
                 maintenanceContext.rollback()
                 maintenanceWarning = "Stored exercise-weight summaries could not be normalized at startup. The app loaded, but some progression data may need review."

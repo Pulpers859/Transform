@@ -37,6 +37,7 @@ struct BodyAnalysisView: View {
     @AppStorage(AppSettingsKeys.analysisCheckInHungerLevel) private var analysisCheckInHungerLevel = Config.defaultAnalysisCheckInHungerLevel
     @AppStorage(AppSettingsKeys.analysisCheckInEnergyLevel) private var analysisCheckInEnergyLevel = Config.defaultAnalysisCheckInEnergyLevel
     @AppStorage(AppSettingsKeys.analysisCheckInCravingsLevel) private var analysisCheckInCravingsLevel = Config.defaultAnalysisCheckInCravingsLevel
+    @AppStorage(AppSettingsKeys.derivedSleepTrendSummary) private var derivedSleepTrendSummary = ""
 
     let poses = ["Front", "Back", "Side (Left)", "Side (Right)"]
 
@@ -411,10 +412,24 @@ struct BodyAnalysisView: View {
                     prompt: "e.g. weight flat for 2 weeks, looking leaner, up 1 lb"
                 )
                 checkInField(
-                    "Recovery and sleep (last 7 days)",
+                    "Additional recovery or sleep context",
                     text: $analysisCheckInRecoverySleep,
-                    prompt: "e.g. averaging 5.5 hours, waking up fatigued, good energy"
+                    prompt: "e.g. waking frequently, unusually fatigued, recovery nap helped"
                 )
+                if !derivedSleepTrendSummary.isEmpty {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Label("Sleep log added automatically", systemImage: "bed.double.fill")
+                            .font(.caption.bold())
+                            .foregroundStyle(.blue)
+                        Text(derivedSleepTrendSummary)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(10)
+                    .background(Color.blue.opacity(0.08))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                }
                 checkInField(
                     "Stress and schedule pressure",
                     text: $analysisCheckInStressSchedule,

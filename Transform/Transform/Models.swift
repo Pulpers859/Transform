@@ -16,6 +16,35 @@ class WeightEntry {
     }
 }
 
+// MARK: - Sleep Entry
+@Model
+class SleepEntry {
+    var date: Date
+    var durationHours: Double = 0
+    var qualityRating: Int = 0
+    var shiftTypeRaw: String = SleepShiftType.off.rawValue
+    var notes: String = ""
+
+    init(
+        date: Date = .now,
+        durationHours: Double,
+        qualityRating: Int,
+        shiftType: SleepShiftType,
+        notes: String = ""
+    ) {
+        self.date = date
+        self.durationHours = durationHours
+        self.qualityRating = qualityRating
+        self.shiftTypeRaw = shiftType.rawValue
+        self.notes = notes
+    }
+
+    var shiftType: SleepShiftType {
+        get { SleepShiftType(rawValue: shiftTypeRaw) ?? .off }
+        set { shiftTypeRaw = newValue.rawValue }
+    }
+}
+
 // MARK: - Body Measurements
 @Model
 class MeasurementEntry {
