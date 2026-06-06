@@ -24,6 +24,7 @@ struct BodyAnalysisView: View {
     @State private var errorMessage: String?
     @State private var showError = false
     @State private var showDeleteConfirm = false
+    @State private var showMedicalGateAlert = false
     @State private var sessionToDelete: BodyAnalysisSession?
     @State private var analysisTask: Task<Void, Never>?
     @State private var showProgressContextDetails = false
@@ -221,6 +222,14 @@ struct BodyAnalysisView: View {
                 }
             } message: {
                 Text("This will permanently remove this analysis and its photo.")
+            }
+            .alert("Medical Screening Notice", isPresented: $showMedicalGateAlert) {
+                Button("Proceed Anyway") {
+                    proceedWithAnalysis()
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text(Config.medicalScreeningGate.alerts.joined(separator: "\n\n"))
             }
         }
     }
@@ -792,6 +801,16 @@ struct BodyAnalysisView: View {
 
     @MainActor
     func startAnalysis() {
+        let gate = Config.medicalScreeningGate
+        if gate.level >= .caution && !gate.alerts.isEmpty {
+            showMedicalGateAlert = true
+            return
+        }
+        proceedWithAnalysis()
+    }
+
+    @MainActor
+    func proceedWithAnalysis() {
         analysisTask?.cancel()
         analysisTask = Task {
             await runAnalysis()

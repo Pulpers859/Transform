@@ -217,21 +217,24 @@ struct AnalysisInputContext: Codable {
     let checkIn: AnalysisCheckInSnapshot?
     let progress: AnalysisProgressSnapshot?
     let measurements: AnalysisMeasurementSnapshot?
+    let medicalScreening: MedicalScreeningSnapshot?
 
     enum CodingKeys: String, CodingKey {
-        case profile, checkIn, progress, measurements
+        case profile, checkIn, progress, measurements, medicalScreening
     }
 
     init(
         profile: AnalysisProfileSnapshot,
         checkIn: AnalysisCheckInSnapshot?,
         progress: AnalysisProgressSnapshot?,
-        measurements: AnalysisMeasurementSnapshot? = nil
+        measurements: AnalysisMeasurementSnapshot? = nil,
+        medicalScreening: MedicalScreeningSnapshot? = nil
     ) {
         self.profile = profile
         self.checkIn = checkIn
         self.progress = progress
         self.measurements = measurements
+        self.medicalScreening = medicalScreening
     }
 
     init(from decoder: Decoder) throws {
@@ -240,10 +243,14 @@ struct AnalysisInputContext: Codable {
         checkIn = try container.decodeIfPresent(AnalysisCheckInSnapshot.self, forKey: .checkIn)
         progress = try container.decodeIfPresent(AnalysisProgressSnapshot.self, forKey: .progress)
         measurements = try container.decodeIfPresent(AnalysisMeasurementSnapshot.self, forKey: .measurements)
+        medicalScreening = try container.decodeIfPresent(MedicalScreeningSnapshot.self, forKey: .medicalScreening)
     }
 
     var promptDescription: String {
         var sections: [String] = [profile.promptDescription]
+        if let medicalScreening, medicalScreening.hasAnyFlags {
+            sections.append(medicalScreening.promptDescription)
+        }
         if let checkIn {
             sections.append(checkIn.promptDescription)
         }
@@ -258,6 +265,9 @@ struct AnalysisInputContext: Codable {
 
     var coachingContextSummary: String {
         var parts: [String] = [profile.summaryDescription]
+        if let medicalScreening, !medicalScreening.summaryDescription.isEmpty {
+            parts.append(medicalScreening.summaryDescription)
+        }
         if let checkIn {
             parts.append(checkIn.summaryDescription)
         }
@@ -276,6 +286,13 @@ struct AnalysisInputContext: Codable {
         let profileItems = profile.generationSummaryItems
         if !profileItems.isEmpty {
             sections.append("Profile:\n" + profileItems.map { "- \($0)" }.joined(separator: "\n"))
+        }
+
+        if let medicalScreening {
+            let medItems = medicalScreening.generationSummaryItems
+            if !medItems.isEmpty {
+                sections.append("Medical screening:\n" + medItems.map { "- \($0)" }.joined(separator: "\n"))
+            }
         }
 
         if let checkIn {
@@ -306,6 +323,9 @@ struct AnalysisInputContext: Codable {
 
     var compactSummaryItems: [String] {
         var items = profile.compactSummaryItems
+        if let medicalScreening {
+            items.append(contentsOf: medicalScreening.compactSummaryItems)
+        }
         if let checkIn {
             items.append(contentsOf: checkIn.compactSummaryItems)
         }
@@ -320,6 +340,9 @@ struct AnalysisInputContext: Codable {
 
     var detailSections: [AnalysisContextSection] {
         var sections = [AnalysisContextSection(title: "Profile", items: profile.detailSummaryItems)]
+        if let medicalScreening, !medicalScreening.detailSummaryItems.isEmpty {
+            sections.append(AnalysisContextSection(title: "Medical Screening", items: medicalScreening.detailSummaryItems))
+        }
         if let checkIn, !checkIn.detailSummaryItems.isEmpty {
             sections.append(AnalysisContextSection(title: "Current Check-In", items: checkIn.detailSummaryItems))
         }
@@ -339,7 +362,8 @@ extension AnalysisInputContext {
             profile: profile,
             checkIn: checkIn,
             progress: progress,
-            measurements: measurements
+            measurements: measurements,
+            medicalScreening: medicalScreening
         )
     }
 
@@ -348,7 +372,8 @@ extension AnalysisInputContext {
             profile: profile,
             checkIn: checkIn,
             progress: progress,
-            measurements: measurements
+            measurements: measurements,
+            medicalScreening: medicalScreening
         )
     }
 }
@@ -574,6 +599,69 @@ struct AnalysisCheckInSnapshot: Codable {
         if let c = cravingsLevel, c > 0 { parts.append("Cravings \(c)/10") }
         guard !parts.isEmpty else { return nil }
         return "Wellness: " + parts.joined(separator: ", ")
+    }
+}
+
+struct MedicalScreeningSnapshot: Codable {
+    let currentInjury: Bool
+    let painDuringExercise: Bool
+    let cardioMetabolic: Bool
+    let medicationsAffectingVitals: Bool
+    let pregnancySurgery: Bool
+    let redFlagSymptoms: Bool
+
+    var hasAnyFlags: Bool {
+        currentInjury || painDuringExercise || cardioMetabolic ||
+        medicationsAffectingVitals || pregnancySurgery || redFlagSymptoms
+    }
+
+    var activeFlags: [String] {
+        flagLines.filter(\.1).map(\.0)
+    }
+
+    private var flagLines: [(String, Bool)] {
+        [
+            ("Current injury", currentInjury),
+            ("Pain during exercise", painDuringExercise),
+            ("Cardiovascular / metabolic / renal / BP condition", cardioMetabolic),
+            ("Medication affecting HR, BP, balance, or glucose", medicationsAffectingVitals),
+            ("Pregnant, postpartum, or recent surgery", pregnancySurgery),
+            ("Red-flag symptoms (dizziness, chest pain, fainting, unusual SOB)", redFlagSymptoms)
+        ]
+    }
+
+    var promptDescription: String {
+        guard hasAnyFlags else { return "" }
+        let lines = flagLines.map { label, active in
+            "- \(label): \(active ? "Yes" : "No")"
+        }.joined(separator: "\n")
+
+        return """
+        Medical screening flags from the user's self-reported health profile.
+        If any flag is Yes, factor it into exercise selection, intensity recommendations, and recovery guidance.
+        Recommend medical clearance before high-intensity training when serious flags are present.
+        \(lines)
+        """
+    }
+
+    var summaryDescription: String {
+        guard hasAnyFlags else { return "" }
+        return "Medical screening: " + activeFlags.joined(separator: "; ")
+    }
+
+    var compactSummaryItems: [String] {
+        guard hasAnyFlags else { return [] }
+        return ["Medical flags: " + activeFlags.prefix(2).joined(separator: ", ")]
+    }
+
+    var generationSummaryItems: [String] {
+        guard hasAnyFlags else { return [] }
+        return activeFlags.map { "Medical flag: \($0)" }
+    }
+
+    var detailSummaryItems: [String] {
+        guard hasAnyFlags else { return [] }
+        return flagLines.filter(\.1).map { label, _ in label }
     }
 }
 

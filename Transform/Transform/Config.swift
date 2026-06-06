@@ -65,6 +65,7 @@ enum Config {
     static var analysisCheckInPrompt: String { AppSettingsStore.analysisCheckIn.promptDescription }
     static var analysisInputContext: AnalysisInputContext { AppSettingsStore.analysisInputContext }
     static var profileCompleteness: ProfileCompleteness { AppSettingsStore.profileCompleteness }
+    static var medicalScreeningGate: MedicalScreeningGate { MedicalScreeningGate.evaluate() }
 }
 
 struct ProfileCompleteness {
@@ -87,6 +88,56 @@ struct ProfileCompleteness {
         let missing = missingFields.prefix(3).joined(separator: ", ")
         let extra = missingFields.count > 3 ? " + \(missingFields.count - 3) more" : ""
         return "Profile signal: \(signal) — Missing: \(missing)\(extra)"
+    }
+}
+
+struct MedicalScreeningGate {
+    enum GateLevel: Comparable {
+        case clear
+        case caution
+        case warning
+    }
+
+    let level: GateLevel
+    let alerts: [String]
+
+    static func evaluate() -> MedicalScreeningGate {
+        let defaults = UserDefaults.standard
+        var alerts: [String] = []
+        var level: GateLevel = .clear
+
+        if defaults.bool(forKey: AppSettingsKeys.medicalSymptoms) {
+            alerts.append("You reported dizziness, chest pain, fainting, or unusual shortness of breath. Medical clearance is strongly recommended before high-intensity training.")
+            level = .warning
+        }
+
+        if defaults.bool(forKey: AppSettingsKeys.medicalCardioMetabolic) {
+            alerts.append("You reported a cardiovascular, metabolic, renal, or blood pressure condition. Consider medical clearance before vigorous exercise.")
+            if level < .caution { level = .caution }
+        }
+
+        if defaults.bool(forKey: AppSettingsKeys.medicalPregnancySurgery) {
+            alerts.append("You indicated pregnancy, postpartum status, or recent surgery. Exercise programming should be conservative until cleared.")
+            if level < .caution { level = .caution }
+        }
+
+        if defaults.bool(forKey: AppSettingsKeys.medicalCurrentInjury) {
+            let painContext = defaults.string(forKey: AppSettingsKeys.analysisPainHistory)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if painContext.isEmpty {
+                alerts.append("You indicated a current injury but the Pain / Injury Context field in Settings is empty. Adding details will improve exercise selection safety.")
+            }
+            if level < .caution { level = .caution }
+        }
+
+        if defaults.bool(forKey: AppSettingsKeys.medicalPainDuringExercise) {
+            if level < .caution { level = .caution }
+        }
+
+        if defaults.bool(forKey: AppSettingsKeys.medicalMedications) {
+            if level < .caution { level = .caution }
+        }
+
+        return MedicalScreeningGate(level: level, alerts: alerts)
     }
 }
 
@@ -218,7 +269,8 @@ enum MacroTargetResolver {
             let bw = bodyweightLbs ?? profileBodyweightLbs()
             var adjustments: [String] = []
 
-            let calFloor = calorieFloor(bodyweightLbs: bw)
+            let baseCalFloor = calorieFloor(bodyweightLbs: bw)
+            let calFloor = contextAwareCalorieFloor(baseFloor: baseCalFloor)
             let proFloor = proteinFloor(bodyweightLbs: bw)
             let fFloor = fatFloor(bodyweightLbs: bw)
 
@@ -284,6 +336,26 @@ enum MacroTargetResolver {
         guard let bw = bodyweightLbs else { return 25 }
         let kg = bw / 2.205
         return max(25, kg * 0.35)
+    }
+
+    private static func contextAwareCalorieFloor(baseFloor: Int) -> Int {
+        let defaults = UserDefaults.standard
+        var floor = baseFloor
+
+        if let age = defaults.object(forKey: AppSettingsKeys.analysisAgeValue) as? Int, age > 0, age < 18 {
+            floor = max(floor, 1500)
+        }
+
+        if defaults.bool(forKey: AppSettingsKeys.medicalPregnancySurgery) {
+            floor = max(floor, 1800)
+        }
+
+        let goal = defaults.string(forKey: AppSettingsKeys.analysisPrimaryGoal) ?? ""
+        if goal == GoalCategory.strength.rawValue {
+            floor = max(floor, 1600)
+        }
+
+        return floor
     }
 }
 
@@ -486,10 +558,18 @@ enum AppSettingsStore {
 
         if defaults.object(forKey: AppSettingsKeys.analysisSleepHours) == nil {
             let raw = defaults.string(forKey: AppSettingsKeys.analysisAverageSleep) ?? ""
+            var sleepNumbers: [Double] = []
             let scanner = Scanner(string: raw)
-            scanner.charactersToBeSkipped = CharacterSet.decimalDigits.inverted
-            if let hours = scanner.scanDouble(), (1...14).contains(hours) {
-                defaults.set(String(format: "%.1f", hours), forKey: AppSettingsKeys.analysisSleepHours)
+            while !scanner.isAtEnd {
+                if let num = scanner.scanDouble() {
+                    if (1...14).contains(num) { sleepNumbers.append(num) }
+                } else {
+                    _ = scanner.scanCharacter()
+                }
+            }
+            if !sleepNumbers.isEmpty {
+                let midpoint = sleepNumbers.reduce(0, +) / Double(sleepNumbers.count)
+                defaults.set(String(format: "%.1f", midpoint), forKey: AppSettingsKeys.analysisSleepHours)
             }
             let notes = raw.replacingOccurrences(of: "\\b\\d+[-–]?\\d*\\s*(hours?|hrs?)\\b", with: "", options: .regularExpression)
                 .replacingOccurrences(of: "often|;|,", with: "", options: .regularExpression)
@@ -622,26 +702,7 @@ enum AppSettingsStore {
     }
 
     private static func composedMedicalContext() -> String {
-        var parts: [String] = []
-
-        var flags: [String] = []
-        if defaults.bool(forKey: AppSettingsKeys.medicalCurrentInjury) { flags.append("current injury") }
-        if defaults.bool(forKey: AppSettingsKeys.medicalPainDuringExercise) { flags.append("pain during exercise") }
-        if defaults.bool(forKey: AppSettingsKeys.medicalCardioMetabolic) { flags.append("cardiovascular/metabolic/renal condition") }
-        if defaults.bool(forKey: AppSettingsKeys.medicalMedications) { flags.append("medication affecting HR/BP/balance/glucose") }
-        if defaults.bool(forKey: AppSettingsKeys.medicalPregnancySurgery) { flags.append("pregnant/postpartum/recent surgery") }
-        if defaults.bool(forKey: AppSettingsKeys.medicalSymptoms) { flags.append("dizziness/chest pain/fainting/unusual SOB") }
-
-        if !flags.isEmpty {
-            parts.append("Medical screening flags: " + flags.joined(separator: "; ") + ". Recommend medical clearance before high-intensity training.")
-        }
-
-        let painText = string(for: AppSettingsKeys.analysisPainHistory, default: Config.defaultAnalysisPainHistory)
-        if !painText.isEmpty {
-            parts.append(painText)
-        }
-
-        return parts.joined(separator: " | ")
+        return string(for: AppSettingsKeys.analysisPainHistory, default: Config.defaultAnalysisPainHistory)
     }
 
     private static func composedGoalString() -> String {
@@ -667,11 +728,24 @@ enum AppSettingsStore {
         )
     }
 
+    static var medicalScreeningSnapshot: MedicalScreeningSnapshot? {
+        let snapshot = MedicalScreeningSnapshot(
+            currentInjury: defaults.bool(forKey: AppSettingsKeys.medicalCurrentInjury),
+            painDuringExercise: defaults.bool(forKey: AppSettingsKeys.medicalPainDuringExercise),
+            cardioMetabolic: defaults.bool(forKey: AppSettingsKeys.medicalCardioMetabolic),
+            medicationsAffectingVitals: defaults.bool(forKey: AppSettingsKeys.medicalMedications),
+            pregnancySurgery: defaults.bool(forKey: AppSettingsKeys.medicalPregnancySurgery),
+            redFlagSymptoms: defaults.bool(forKey: AppSettingsKeys.medicalSymptoms)
+        )
+        return snapshot.hasAnyFlags ? snapshot : nil
+    }
+
     static var analysisInputContext: AnalysisInputContext {
         AnalysisInputContext(
             profile: analysisClientProfile.snapshot,
             checkIn: analysisCheckIn.snapshot,
-            progress: nil
+            progress: nil,
+            medicalScreening: medicalScreeningSnapshot
         )
     }
 
