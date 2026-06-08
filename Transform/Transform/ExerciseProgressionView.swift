@@ -3,7 +3,7 @@ import SwiftData
 import Charts
 
 struct ExerciseProgressionView: View {
-    @Query(sort: \ExercisePerformanceLog.loggedAt, order: .ascending) private var allLogs: [ExercisePerformanceLog]
+    @Query(sort: \ExercisePerformanceLog.loggedAt, order: .forward) private var allLogs: [ExercisePerformanceLog]
     let exerciseName: String
     let canonicalKey: String
 
