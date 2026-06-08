@@ -439,14 +439,27 @@ struct NutritionView: View {
                     macroReviewTarget("Fat", "\(Int(review.proposedFatG))g")
                 }
 
-                Button {
-                    applyMacroReview(review)
-                } label: {
-                    Label("Apply Recommendation", systemImage: "checkmark.circle.fill")
-                        .frame(maxWidth: .infinity)
+                HStack(spacing: 12) {
+                    Button {
+                        applyMacroReview(review)
+                    } label: {
+                        Label("Apply", systemImage: "checkmark.circle.fill")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.orange)
+
+                    if savedNutritionProtocols.first?.appliedMacroOverride != nil {
+                        Button {
+                            clearMacroOverride()
+                        } label: {
+                            Label("Revert", systemImage: "arrow.uturn.backward")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(.secondary)
+                    }
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(.orange)
             } else if macroReviewGate.isEligible {
                 Text("Your weight, nutrition, and measurement data are mature enough for a conservative weekly review.")
                     .font(.caption)
@@ -851,19 +864,30 @@ struct NutritionView: View {
 
     func applyMacroReview(_ review: AdaptiveMacroReview) {
         let record = nutritionPersistenceRecord()
-        let target = MacroTargetResolver.resolve(
-            from: latestAnalysis,
-            bodyweightLbs: weightTrend.currentTrendWeightLbs,
-            adaptiveOverride: review.proposedOverride
-        )
-        record.appliedCalories = target.calories
-        record.appliedProteinG = target.proteinG
-        record.appliedCarbsG = target.carbsG
-        record.appliedFatG = target.fatG
+        record.appliedCalories = review.proposedCalories
+        record.appliedProteinG = review.proposedProteinG
+        record.appliedCarbsG = review.proposedCarbsG
+        record.appliedFatG = review.proposedFatG
         record.updatedAt = .now
         guard PersistenceReporter.save(modelContext, operation: "applied adaptive macro review") else {
             modelContext.rollback()
             macroReviewError = "Could not apply the recommendation."
+            return
+        }
+        DataBackupManager.shared.writeAutomaticBackup(using: modelContext)
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+    }
+
+    func clearMacroOverride() {
+        guard let record = savedNutritionProtocols.first else { return }
+        record.appliedCalories = nil
+        record.appliedProteinG = nil
+        record.appliedCarbsG = nil
+        record.appliedFatG = nil
+        record.updatedAt = .now
+        guard PersistenceReporter.save(modelContext, operation: "clear adaptive macro override") else {
+            modelContext.rollback()
+            macroReviewError = "Could not clear the override."
             return
         }
         DataBackupManager.shared.writeAutomaticBackup(using: modelContext)
@@ -1034,6 +1058,12 @@ struct NutritionView: View {
             existing.updatedAt = now
             existing.programJSON = programJSON
             existing.followupWeeksJSON = followupsJSON
+            existing.appliedCalories = nil
+            existing.appliedProteinG = nil
+            existing.appliedCarbsG = nil
+            existing.appliedFatG = nil
+            existing.macroReviewJSON = ""
+            existing.macroReviewUpdatedAt = nil
             for stale in savedNutritionProtocols.dropFirst() {
                 modelContext.delete(stale)
             }
