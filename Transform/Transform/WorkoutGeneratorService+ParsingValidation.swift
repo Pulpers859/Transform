@@ -708,6 +708,16 @@ extension ClaudeService {
         validationDisposition(for: issue) != .hardFailure
     }
 
+    func scoreValidationIssues(_ issues: [String]) -> Int {
+        issues.reduce(0) { total, issue in
+            switch validationDisposition(for: issue) {
+            case .acceptableWarning: return total + 1
+            case .correctionPass: return total + 5
+            case .hardFailure: return total + 20
+            }
+        }
+    }
+
     func validateContinuity(currentWeekDays: [WorkoutDayResponse], previousWeekDays: [WorkoutDayResponse]) -> [String] {
         guard previousWeekDays.count == 7 else { return [] }
 

@@ -8,6 +8,7 @@ import os
 extension ClaudeService {
 
     var generationAttempts: Int { 3 }
+    var parallelCandidates: Int { 2 }
     var aiSourceLabel: String { "[AI Coach]" }
     var fallbackSourceLabel: String { "[Recovery Engine]" }
     var evidenceProfile: HypertrophyEvidenceProfile { Self.evidenceProfileCache }
@@ -194,27 +195,153 @@ extension ClaudeService {
             )
         }
 
-        for attempt in 1...generationAttempts {
+        // Phase 1: Fire parallel candidates and pick the best
+        try Task.checkCancellation()
+        WorkoutGenerationDiagnostics.markStage("requesting week 1 parallel candidates from AI")
+
+        let candidateResults = await withTaskGroup(of: (Int, Result<WorkoutProgramResponse, Error>).self) { group in
+            for i in 1...parallelCandidates {
+                group.addTask { [requestBody, config, requestContext] in
+                    do {
+                        let jsonString = try await AnthropicClient.shared.sendStructuredRequest(
+                            body: requestBody,
+                            toolName: self.programToolName,
+                            timeout: config.timeout,
+                            context: requestContext
+                        )
+                        let decoded = try self.decodeJSONPayload(WorkoutProgramResponse.self, from: jsonString)
+                        let cleaned = try await self.sanitizeProgramResponse(decoded)
+                        return (i, .success(cleaned))
+                    } catch {
+                        return (i, .failure(error))
+                    }
+                }
+            }
+            var results: [(Int, Result<WorkoutProgramResponse, Error>)] = []
+            for await result in group {
+                results.append(result)
+            }
+            return results.sorted { $0.0 < $1.0 }
+        }
+
+        try Task.checkCancellation()
+        WorkoutGenerationDiagnostics.markStage("scoring week 1 parallel candidates")
+
+        var scoredCandidates: [(response: WorkoutProgramResponse, issues: [String], score: Int)] = []
+        var candidateErrors: [Error] = []
+
+        for (i, result) in candidateResults {
+            switch result {
+            case .success(let cleaned):
+                let issues = validateProgramResponse(cleaned, blueprint: blueprint)
+                let score = issues.isEmpty ? 0 : scoreValidationIssues(issues)
+                scoredCandidates.append((response: cleaned, issues: issues, score: score))
+                if issues.isEmpty {
+                    attemptTrace.append("Candidate \(i): Accepted — no issues")
+                } else {
+                    attemptTrace.append("Candidate \(i): Score \(score)\nIssues:\n\(issues.map { "- \($0)" }.joined(separator: "\n"))")
+                }
+            case .failure(let error):
+                candidateErrors.append(error)
+                attemptTrace.append("Candidate \(i): API error — \(error.localizedDescription)")
+                if shouldAbortFallback(for: error) {
+                    throw terminalGenerationError(
+                        while: "generating your initial workout program",
+                        underlying: error
+                    )
+                }
+            }
+        }
+
+        scoredCandidates.sort { $0.score < $1.score }
+
+        // Accept the best candidate if it's clean or has only acceptable warnings
+        if let best = scoredCandidates.first {
+            if best.issues.isEmpty {
+                let labeled = labeledProgramResponse(best.response, sourceLabel: aiSourceLabel)
+                return WorkoutProgramGenerationResult(
+                    response: labeled,
+                    validatorWarnings: [],
+                    bundleText: buildBundle(response: labeled, warnings: [], usedFallback: false)
+                )
+            }
+
+            if best.issues.allSatisfy({ validationDisposition(for: $0) == .acceptableWarning }) {
+                print("[WorkoutGeneratorService] Week 1 best candidate accepted with acceptable warnings: \(best.issues.joined(separator: " | "))")
+                attemptTrace.append("Best candidate accepted with acceptable warnings")
+                let labeled = labeledProgramResponse(best.response, sourceLabel: aiSourceLabel)
+                return WorkoutProgramGenerationResult(
+                    response: labeled,
+                    validatorWarnings: best.issues,
+                    bundleText: buildBundle(response: labeled, warnings: best.issues, usedFallback: false)
+                )
+            }
+
+            // Try overshoot trim on best candidate before correction pass
+            let (trimmedDays, didTrim) = trimOvershootExercises(
+                days: best.response.days,
+                blueprint: blueprint
+            )
+            if didTrim {
+                let trimmed = WorkoutProgramResponse(
+                    programName: best.response.programName,
+                    programSummary: best.response.programSummary,
+                    splitType: best.response.splitType,
+                    daysPerWeek: best.response.daysPerWeek,
+                    days: trimmedDays
+                )
+                let trimmedIssues = validateProgramResponse(trimmed, blueprint: blueprint)
+                if trimmedIssues.isEmpty {
+                    print("[WorkoutGeneratorService] Week 1 best candidate accepted after trim — all issues resolved")
+                    attemptTrace.append("Best candidate accepted after overshoot trim — all issues resolved")
+                    let labeled = labeledProgramResponse(trimmed, sourceLabel: aiSourceLabel)
+                    return WorkoutProgramGenerationResult(
+                        response: labeled,
+                        validatorWarnings: [],
+                        bundleText: buildBundle(response: labeled, warnings: [], usedFallback: false)
+                    )
+                }
+                if trimmedIssues.allSatisfy({ validationDisposition(for: $0) == .acceptableWarning }) {
+                    print("[WorkoutGeneratorService] Week 1 best candidate accepted after trim with warnings: \(trimmedIssues.joined(separator: " | "))")
+                    attemptTrace.append("Best candidate accepted after trim with acceptable warnings")
+                    let labeled = labeledProgramResponse(trimmed, sourceLabel: aiSourceLabel)
+                    return WorkoutProgramGenerationResult(
+                        response: labeled,
+                        validatorWarnings: trimmedIssues,
+                        bundleText: buildBundle(response: labeled, warnings: trimmedIssues, usedFallback: false)
+                    )
+                }
+            }
+
+            // Phase 2: One targeted correction pass on the best candidate's issues
+            lastIssues = best.issues
             try Task.checkCancellation()
+            WorkoutGenerationDiagnostics.markStage("correction pass for week 1 best candidate")
+            attemptTrace.append("Correction pass targeting: \(best.issues.map { "- \($0)" }.joined(separator: "\n"))")
+
+            let correctionBody = correctionRequestBody(
+                config: config,
+                toolName: programToolName,
+                toolSchema: toolSchema,
+                issues: best.issues,
+                context: context,
+                originalUserPrompt: userPrompt
+            )
+
             do {
-                WorkoutGenerationDiagnostics.markStage("requesting week 1 program from AI (attempt \(attempt))")
-                let jsonString = try await AnthropicClient.shared.sendStructuredRequest(
-                    body: requestBody,
+                let correctedJSON = try await AnthropicClient.shared.sendStructuredRequest(
+                    body: correctionBody,
                     toolName: programToolName,
                     timeout: config.timeout,
                     context: requestContext
                 )
+                let correctedDecoded = try decodeJSONPayload(WorkoutProgramResponse.self, from: correctedJSON)
+                let correctedCleaned = try await sanitizeProgramResponse(correctedDecoded)
+                let correctedIssues = validateProgramResponse(correctedCleaned, blueprint: blueprint)
 
-                WorkoutGenerationDiagnostics.markStage("decoding week 1 JSON (attempt \(attempt), \(jsonString.count) chars, \(Self.availableMemoryMB())MB free)")
-                let decoded = try decodeJSONPayload(WorkoutProgramResponse.self, from: jsonString)
-                WorkoutGenerationDiagnostics.markStage("sanitizing week 1 (attempt \(attempt), \(Self.payloadProfile(for: decoded.days)))")
-                let cleaned = try await sanitizeProgramResponse(decoded)
-                WorkoutGenerationDiagnostics.markStage("validating week 1 (attempt \(attempt))")
-                let issues = validateProgramResponse(cleaned, blueprint: blueprint)
-
-                if issues.isEmpty {
-                    attemptTrace.append("Attempt \(attempt): Accepted — no issues")
-                    let labeled = labeledProgramResponse(cleaned, sourceLabel: aiSourceLabel)
+                if correctedIssues.isEmpty {
+                    attemptTrace.append("Correction pass: Accepted — no issues")
+                    let labeled = labeledProgramResponse(correctedCleaned, sourceLabel: aiSourceLabel)
                     return WorkoutProgramGenerationResult(
                         response: labeled,
                         validatorWarnings: [],
@@ -222,98 +349,54 @@ extension ClaudeService {
                     )
                 }
 
-                if attempt >= generationAttempts {
-                    let (trimmedDays, didTrim) = trimOvershootExercises(
-                        days: cleaned.days,
-                        blueprint: blueprint
+                // Try trim on correction result
+                let (corrTrimDays, corrDidTrim) = trimOvershootExercises(
+                    days: correctedCleaned.days,
+                    blueprint: blueprint
+                )
+                if corrDidTrim {
+                    let corrTrimmed = WorkoutProgramResponse(
+                        programName: correctedCleaned.programName,
+                        programSummary: correctedCleaned.programSummary,
+                        splitType: correctedCleaned.splitType,
+                        daysPerWeek: correctedCleaned.daysPerWeek,
+                        days: corrTrimDays
                     )
-                    if didTrim {
-                        let trimmed = WorkoutProgramResponse(
-                            programName: cleaned.programName,
-                            programSummary: cleaned.programSummary,
-                            splitType: cleaned.splitType,
-                            daysPerWeek: cleaned.daysPerWeek,
-                            days: trimmedDays
+                    let corrTrimIssues = validateProgramResponse(corrTrimmed, blueprint: blueprint)
+                    if corrTrimIssues.isEmpty || shouldAcceptAIOutput(despite: corrTrimIssues, attempt: generationAttempts, generationAttempts: generationAttempts) {
+                        let finalIssues = corrTrimIssues.isEmpty ? [] : corrTrimIssues
+                        attemptTrace.append("Correction pass: Accepted after trim\(finalIssues.isEmpty ? "" : " with warnings")")
+                        let labeled = labeledProgramResponse(corrTrimmed, sourceLabel: aiSourceLabel)
+                        return WorkoutProgramGenerationResult(
+                            response: labeled,
+                            validatorWarnings: finalIssues,
+                            bundleText: buildBundle(response: labeled, warnings: finalIssues, usedFallback: false)
                         )
-                        let trimmedIssues = validateProgramResponse(trimmed, blueprint: blueprint)
-                        if trimmedIssues.isEmpty {
-                            print("[WorkoutGeneratorService] Week 1 overshoot trimmed — all issues resolved")
-                            attemptTrace.append("Attempt \(attempt): Accepted after overshoot trim — all issues resolved")
-                            let labeled = labeledProgramResponse(trimmed, sourceLabel: aiSourceLabel)
-                            return WorkoutProgramGenerationResult(
-                                response: labeled,
-                                validatorWarnings: [],
-                                bundleText: buildBundle(response: labeled, warnings: [], usedFallback: false)
-                            )
-                        }
-                        if shouldAcceptAIOutput(
-                            despite: trimmedIssues,
-                            attempt: attempt,
-                            generationAttempts: generationAttempts
-                        ) {
-                            print("[WorkoutGeneratorService] Week 1 accepted after overshoot trim with warnings: \(trimmedIssues.joined(separator: " | "))")
-                            attemptTrace.append("Attempt \(attempt): Accepted after overshoot trim with warnings\nIssues:\n\(trimmedIssues.map { "- \($0)" }.joined(separator: "\n"))")
-                            let labeled = labeledProgramResponse(trimmed, sourceLabel: aiSourceLabel)
-                            return WorkoutProgramGenerationResult(
-                                response: labeled,
-                                validatorWarnings: trimmedIssues,
-                                bundleText: buildBundle(response: labeled, warnings: trimmedIssues, usedFallback: false)
-                            )
-                        }
                     }
                 }
 
-                if shouldAcceptAIOutput(
-                    despite: issues,
-                    attempt: attempt,
-                    generationAttempts: generationAttempts
-                ) {
-                    print("[WorkoutGeneratorService] Week 1 accepted with heuristic validator warnings: \(issues.joined(separator: " | "))")
-                    attemptTrace.append("Attempt \(attempt): Accepted with warnings\nIssues:\n\(issues.map { "- \($0)" }.joined(separator: "\n"))")
-                    let labeled = labeledProgramResponse(cleaned, sourceLabel: aiSourceLabel)
+                // Accept correction if permissible on final attempt
+                if shouldAcceptAIOutput(despite: correctedIssues, attempt: generationAttempts, generationAttempts: generationAttempts) {
+                    attemptTrace.append("Correction pass: Accepted with warnings (score \(scoreValidationIssues(correctedIssues)))")
+                    let labeled = labeledProgramResponse(correctedCleaned, sourceLabel: aiSourceLabel)
                     return WorkoutProgramGenerationResult(
                         response: labeled,
-                        validatorWarnings: issues,
-                        bundleText: buildBundle(response: labeled, warnings: issues, usedFallback: false)
+                        validatorWarnings: correctedIssues,
+                        bundleText: buildBundle(response: labeled, warnings: correctedIssues, usedFallback: false)
                     )
                 }
 
-                attemptTrace.append("Attempt \(attempt): Rejected by validator\nIssues:\n\(issues.map { "- \($0)" }.joined(separator: "\n"))")
-                lastIssues = issues
-                if attempt < generationAttempts {
-                    requestBody = correctionRequestBody(
-                        config: config,
-                        toolName: programToolName,
-                        toolSchema: toolSchema,
-                        issues: issues,
-                        context: context,
-                        originalUserPrompt: userPrompt
-                    )
-                    continue
-                }
+                lastIssues = correctedIssues
+                attemptTrace.append("Correction pass: Rejected (score \(scoreValidationIssues(correctedIssues)))\nIssues:\n\(correctedIssues.map { "- \($0)" }.joined(separator: "\n"))")
             } catch {
-                attemptTrace.append("Attempt \(attempt): API error — \(error.localizedDescription)")
-                lastIssues = ["API error (attempt \(attempt)): \(error.localizedDescription)"]
-
+                attemptTrace.append("Correction pass: API error — \(error.localizedDescription)")
                 if shouldAbortFallback(for: error) {
-                    throw terminalGenerationError(
-                        while: "generating your initial workout program",
-                        underlying: error
-                    )
-                }
-
-                if attempt < generationAttempts {
-                    requestBody = correctionRequestBody(
-                        config: config,
-                        toolName: programToolName,
-                        toolSchema: toolSchema,
-                        issues: [correctionIssue(for: error)],
-                        context: context,
-                        originalUserPrompt: userPrompt
-                    )
-                    continue
+                    throw terminalGenerationError(while: "generating your initial workout program", underlying: error)
                 }
             }
+        } else if let firstError = candidateErrors.first {
+            lastIssues = ["All parallel candidates failed: \(firstError.localizedDescription)"]
+            attemptTrace.append("All candidates failed — falling back to procedural generator")
         }
 
         if !lastIssues.isEmpty {
@@ -445,21 +528,44 @@ extension ClaudeService {
             )
         }
 
-        for attempt in 1...generationAttempts {
-            try Task.checkCancellation()
-            do {
-                WorkoutGenerationDiagnostics.markStage("requesting week \(weekNumber) program from AI (attempt \(attempt))")
-                let jsonString = try await AnthropicClient.shared.sendStructuredRequest(
-                    body: requestBody,
-                    toolName: weekToolName,
-                    timeout: config.timeout,
-                    context: requestContext
-                )
-                WorkoutGenerationDiagnostics.markStage("decoding week \(weekNumber) JSON (attempt \(attempt), \(jsonString.count) chars, \(Self.availableMemoryMB())MB free)")
-                let decoded = try decodeJSONPayload(WorkoutWeekResponse.self, from: jsonString)
-                WorkoutGenerationDiagnostics.markStage("sanitizing week \(weekNumber) (attempt \(attempt), \(Self.payloadProfile(for: decoded.days)))")
-                let cleaned = try await sanitizeWeekResponse(decoded)
-                WorkoutGenerationDiagnostics.markStage("validating week \(weekNumber) (attempt \(attempt))")
+        // Phase 1: Fire parallel candidates and pick the best
+        try Task.checkCancellation()
+        WorkoutGenerationDiagnostics.markStage("requesting week \(weekNumber) parallel candidates from AI")
+
+        let candidateResults = await withTaskGroup(of: (Int, Result<WorkoutWeekResponse, Error>).self) { group in
+            for i in 1...parallelCandidates {
+                group.addTask { [requestBody, config, requestContext] in
+                    do {
+                        let jsonString = try await AnthropicClient.shared.sendStructuredRequest(
+                            body: requestBody,
+                            toolName: self.weekToolName,
+                            timeout: config.timeout,
+                            context: requestContext
+                        )
+                        let decoded = try self.decodeJSONPayload(WorkoutWeekResponse.self, from: jsonString)
+                        let cleaned = try await self.sanitizeWeekResponse(decoded)
+                        return (i, .success(cleaned))
+                    } catch {
+                        return (i, .failure(error))
+                    }
+                }
+            }
+            var results: [(Int, Result<WorkoutWeekResponse, Error>)] = []
+            for await result in group {
+                results.append(result)
+            }
+            return results.sorted { $0.0 < $1.0 }
+        }
+
+        try Task.checkCancellation()
+        WorkoutGenerationDiagnostics.markStage("scoring week \(weekNumber) parallel candidates")
+
+        var scoredCandidates: [(response: WorkoutWeekResponse, issues: [String], score: Int)] = []
+        var candidateErrors: [Error] = []
+
+        for (i, result) in candidateResults {
+            switch result {
+            case .success(let cleaned):
                 let issues = validateWeekResponse(
                     cleaned,
                     dayStart: dayStart,
@@ -467,10 +573,121 @@ extension ClaudeService {
                     previousWeekDays: hasValidPreviousWeek ? previousWeekDays : nil,
                     blueprint: blueprint
                 )
-
+                let score = issues.isEmpty ? 0 : scoreValidationIssues(issues)
+                scoredCandidates.append((response: cleaned, issues: issues, score: score))
                 if issues.isEmpty {
-                    attemptTrace.append("Attempt \(attempt): Accepted — no issues")
-                    let labeled = labeledWeekResponse(cleaned, sourceLabel: aiSourceLabel)
+                    attemptTrace.append("Candidate \(i): Accepted — no issues")
+                } else {
+                    attemptTrace.append("Candidate \(i): Score \(score)\nIssues:\n\(issues.map { "- \($0)" }.joined(separator: "\n"))")
+                }
+            case .failure(let error):
+                candidateErrors.append(error)
+                attemptTrace.append("Candidate \(i): API error — \(error.localizedDescription)")
+                if shouldAbortFallback(for: error) {
+                    throw terminalGenerationError(
+                        while: "generating week \(weekNumber)",
+                        underlying: error
+                    )
+                }
+            }
+        }
+
+        scoredCandidates.sort { $0.score < $1.score }
+
+        // Accept the best candidate if it's clean or has only acceptable warnings
+        if let best = scoredCandidates.first {
+            if best.issues.isEmpty {
+                let labeled = labeledWeekResponse(best.response, sourceLabel: aiSourceLabel)
+                return WorkoutWeekGenerationResult(
+                    response: labeled,
+                    validatorWarnings: [],
+                    bundleText: buildWeekBundle(weekSummary: labeled.weekSummary, days: labeled.days, warnings: [], usedFallback: false)
+                )
+            }
+
+            if best.issues.allSatisfy({ validationDisposition(for: $0) == .acceptableWarning }) {
+                print("[WorkoutGeneratorService] Week \(weekNumber) best candidate accepted with acceptable warnings: \(best.issues.joined(separator: " | "))")
+                attemptTrace.append("Best candidate accepted with acceptable warnings")
+                let labeled = labeledWeekResponse(best.response, sourceLabel: aiSourceLabel)
+                return WorkoutWeekGenerationResult(
+                    response: labeled,
+                    validatorWarnings: best.issues,
+                    bundleText: buildWeekBundle(weekSummary: labeled.weekSummary, days: labeled.days, warnings: best.issues, usedFallback: false)
+                )
+            }
+
+            // Try overshoot trim on best candidate before correction pass
+            let (trimmedDays, didTrim) = trimOvershootExercises(
+                days: best.response.days,
+                blueprint: blueprint,
+                dayStart: dayStart
+            )
+            if didTrim {
+                let trimmed = WorkoutWeekResponse(weekSummary: best.response.weekSummary, days: trimmedDays)
+                let trimmedIssues = validateWeekResponse(
+                    trimmed,
+                    dayStart: dayStart,
+                    dayEnd: dayEnd,
+                    previousWeekDays: hasValidPreviousWeek ? previousWeekDays : nil,
+                    blueprint: blueprint
+                )
+                if trimmedIssues.isEmpty {
+                    print("[WorkoutGeneratorService] Week \(weekNumber) best candidate accepted after trim — all issues resolved")
+                    attemptTrace.append("Best candidate accepted after overshoot trim — all issues resolved")
+                    let labeled = labeledWeekResponse(trimmed, sourceLabel: aiSourceLabel)
+                    return WorkoutWeekGenerationResult(
+                        response: labeled,
+                        validatorWarnings: [],
+                        bundleText: buildWeekBundle(weekSummary: labeled.weekSummary, days: labeled.days, warnings: [], usedFallback: false)
+                    )
+                }
+                if trimmedIssues.allSatisfy({ validationDisposition(for: $0) == .acceptableWarning }) {
+                    print("[WorkoutGeneratorService] Week \(weekNumber) best candidate accepted after trim with warnings: \(trimmedIssues.joined(separator: " | "))")
+                    attemptTrace.append("Best candidate accepted after trim with acceptable warnings")
+                    let labeled = labeledWeekResponse(trimmed, sourceLabel: aiSourceLabel)
+                    return WorkoutWeekGenerationResult(
+                        response: labeled,
+                        validatorWarnings: trimmedIssues,
+                        bundleText: buildWeekBundle(weekSummary: labeled.weekSummary, days: labeled.days, warnings: trimmedIssues, usedFallback: false)
+                    )
+                }
+            }
+
+            // Phase 2: One targeted correction pass on the best candidate's issues
+            lastIssues = best.issues
+            try Task.checkCancellation()
+            WorkoutGenerationDiagnostics.markStage("correction pass for week \(weekNumber) best candidate")
+            attemptTrace.append("Correction pass targeting: \(best.issues.map { "- \($0)" }.joined(separator: "\n"))")
+
+            let correctionBody = correctionRequestBody(
+                config: config,
+                toolName: weekToolName,
+                toolSchema: toolSchema,
+                issues: best.issues,
+                context: context,
+                originalUserPrompt: userPrompt
+            )
+
+            do {
+                let correctedJSON = try await AnthropicClient.shared.sendStructuredRequest(
+                    body: correctionBody,
+                    toolName: weekToolName,
+                    timeout: config.timeout,
+                    context: requestContext
+                )
+                let correctedDecoded = try decodeJSONPayload(WorkoutWeekResponse.self, from: correctedJSON)
+                let correctedCleaned = try await sanitizeWeekResponse(correctedDecoded)
+                let correctedIssues = validateWeekResponse(
+                    correctedCleaned,
+                    dayStart: dayStart,
+                    dayEnd: dayEnd,
+                    previousWeekDays: hasValidPreviousWeek ? previousWeekDays : nil,
+                    blueprint: blueprint
+                )
+
+                if correctedIssues.isEmpty {
+                    attemptTrace.append("Correction pass: Accepted — no issues")
+                    let labeled = labeledWeekResponse(correctedCleaned, sourceLabel: aiSourceLabel)
                     return WorkoutWeekGenerationResult(
                         response: labeled,
                         validatorWarnings: [],
@@ -478,102 +695,66 @@ extension ClaudeService {
                     )
                 }
 
-                if attempt >= generationAttempts {
-                    let (trimmedDays, didTrim) = trimOvershootExercises(
-                        days: cleaned.days,
-                        blueprint: blueprint,
-                        dayStart: dayStart
+                // Try trim on correction result
+                let (corrTrimDays, corrDidTrim) = trimOvershootExercises(
+                    days: correctedCleaned.days,
+                    blueprint: blueprint,
+                    dayStart: dayStart
+                )
+                if corrDidTrim {
+                    let corrTrimmed = WorkoutWeekResponse(weekSummary: correctedCleaned.weekSummary, days: corrTrimDays)
+                    let corrTrimIssues = validateWeekResponse(
+                        corrTrimmed,
+                        dayStart: dayStart,
+                        dayEnd: dayEnd,
+                        previousWeekDays: hasValidPreviousWeek ? previousWeekDays : nil,
+                        blueprint: blueprint
                     )
-                    if didTrim {
-                        let trimmed = WorkoutWeekResponse(
-                            weekSummary: cleaned.weekSummary,
-                            days: trimmedDays
+                    if corrTrimIssues.isEmpty || shouldAcceptAIOutput(despite: corrTrimIssues, attempt: generationAttempts, generationAttempts: generationAttempts) {
+                        let finalIssues = corrTrimIssues.isEmpty ? [] : corrTrimIssues
+                        attemptTrace.append("Correction pass: Accepted after trim\(finalIssues.isEmpty ? "" : " with warnings")")
+                        let labeled = labeledWeekResponse(corrTrimmed, sourceLabel: aiSourceLabel)
+                        return WorkoutWeekGenerationResult(
+                            response: labeled,
+                            validatorWarnings: finalIssues,
+                            bundleText: buildWeekBundle(weekSummary: labeled.weekSummary, days: labeled.days, warnings: finalIssues, usedFallback: false)
                         )
-                        let trimmedIssues = validateWeekResponse(
-                            trimmed,
-                            dayStart: dayStart,
-                            dayEnd: dayEnd,
-                            previousWeekDays: hasValidPreviousWeek ? previousWeekDays : nil,
-                            blueprint: blueprint
-                        )
-                        if trimmedIssues.isEmpty {
-                            print("[WorkoutGeneratorService] Week \(weekNumber) overshoot trimmed — all issues resolved")
-                            attemptTrace.append("Attempt \(attempt): Accepted after overshoot trim — all issues resolved")
-                            let labeled = labeledWeekResponse(trimmed, sourceLabel: aiSourceLabel)
-                            return WorkoutWeekGenerationResult(
-                                response: labeled,
-                                validatorWarnings: [],
-                                bundleText: buildWeekBundle(weekSummary: labeled.weekSummary, days: labeled.days, warnings: [], usedFallback: false)
-                            )
-                        }
-                        if shouldAcceptAIOutput(
-                            despite: trimmedIssues,
-                            attempt: attempt,
-                            generationAttempts: generationAttempts
-                        ) {
-                            print("[WorkoutGeneratorService] Week \(weekNumber) accepted after overshoot trim with warnings: \(trimmedIssues.joined(separator: " | "))")
-                            attemptTrace.append("Attempt \(attempt): Accepted after overshoot trim with warnings\nIssues:\n\(trimmedIssues.map { "- \($0)" }.joined(separator: "\n"))")
-                            let labeled = labeledWeekResponse(trimmed, sourceLabel: aiSourceLabel)
-                            return WorkoutWeekGenerationResult(
-                                response: labeled,
-                                validatorWarnings: trimmedIssues,
-                                bundleText: buildWeekBundle(weekSummary: labeled.weekSummary, days: labeled.days, warnings: trimmedIssues, usedFallback: false)
-                            )
-                        }
                     }
                 }
 
-                if shouldAcceptAIOutput(
-                    despite: issues,
-                    attempt: attempt,
-                    generationAttempts: generationAttempts
-                ) {
-                    print("[WorkoutGeneratorService] Week \(weekNumber) accepted with heuristic validator warnings: \(issues.joined(separator: " | "))")
-                    attemptTrace.append("Attempt \(attempt): Accepted with warnings\nIssues:\n\(issues.map { "- \($0)" }.joined(separator: "\n"))")
-                    let labeled = labeledWeekResponse(cleaned, sourceLabel: aiSourceLabel)
+                // Accept correction result if it's better than the parallel best
+                let correctedScore = scoreValidationIssues(correctedIssues)
+                if shouldAcceptAIOutput(despite: correctedIssues, attempt: generationAttempts, generationAttempts: generationAttempts) {
+                    attemptTrace.append("Correction pass: Accepted with warnings (score \(correctedScore))")
+                    let labeled = labeledWeekResponse(correctedCleaned, sourceLabel: aiSourceLabel)
                     return WorkoutWeekGenerationResult(
                         response: labeled,
-                        validatorWarnings: issues,
-                        bundleText: buildWeekBundle(weekSummary: labeled.weekSummary, days: labeled.days, warnings: issues, usedFallback: false)
+                        validatorWarnings: correctedIssues,
+                        bundleText: buildWeekBundle(weekSummary: labeled.weekSummary, days: labeled.days, warnings: correctedIssues, usedFallback: false)
                     )
                 }
 
-                attemptTrace.append("Attempt \(attempt): Rejected by validator\nIssues:\n\(issues.map { "- \($0)" }.joined(separator: "\n"))")
-                lastIssues = issues
-                if attempt < generationAttempts {
-                    requestBody = correctionRequestBody(
-                        config: config,
-                        toolName: weekToolName,
-                        toolSchema: toolSchema,
-                        issues: issues,
-                        context: context,
-                        originalUserPrompt: userPrompt
+                // Correction didn't help enough — pick the better of correction vs original best
+                if correctedScore < best.score && shouldAcceptAIOutput(despite: correctedIssues, attempt: generationAttempts, generationAttempts: generationAttempts) {
+                    let labeled = labeledWeekResponse(correctedCleaned, sourceLabel: aiSourceLabel)
+                    return WorkoutWeekGenerationResult(
+                        response: labeled,
+                        validatorWarnings: correctedIssues,
+                        bundleText: buildWeekBundle(weekSummary: labeled.weekSummary, days: labeled.days, warnings: correctedIssues, usedFallback: false)
                     )
-                    continue
                 }
+
+                lastIssues = correctedIssues
+                attemptTrace.append("Correction pass: Rejected (score \(correctedScore))\nIssues:\n\(correctedIssues.map { "- \($0)" }.joined(separator: "\n"))")
             } catch {
-                attemptTrace.append("Attempt \(attempt): API error — \(error.localizedDescription)")
-                lastIssues = ["API error (attempt \(attempt)): \(error.localizedDescription)"]
-
+                attemptTrace.append("Correction pass: API error — \(error.localizedDescription)")
                 if shouldAbortFallback(for: error) {
-                    throw terminalGenerationError(
-                        while: "generating week \(weekNumber)",
-                        underlying: error
-                    )
-                }
-
-                if attempt < generationAttempts {
-                    requestBody = correctionRequestBody(
-                        config: config,
-                        toolName: weekToolName,
-                        toolSchema: toolSchema,
-                        issues: [correctionIssue(for: error)],
-                        context: context,
-                        originalUserPrompt: userPrompt
-                    )
-                    continue
+                    throw terminalGenerationError(while: "generating week \(weekNumber)", underlying: error)
                 }
             }
+        } else if let firstError = candidateErrors.first {
+            lastIssues = ["All parallel candidates failed: \(firstError.localizedDescription)"]
+            attemptTrace.append("All candidates failed — falling back to procedural generator")
         }
 
         if !lastIssues.isEmpty {
