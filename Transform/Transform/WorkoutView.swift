@@ -27,7 +27,6 @@ struct WorkoutView: View {
                     if let program = currentProgram {
                         programHeader(program)
                         weekSelector(program)
-                        weekDiffBanner(program)
                         weekDaysList(program)
                         if program.canGenerateNextWeek {
                             generateNextWeekButton(program)
@@ -259,7 +258,6 @@ struct WorkoutView: View {
                 }
             }
 
-            validatorWarningsBanner(program)
         }
         .padding(16)
         .background(Color(.secondarySystemBackground))
@@ -947,9 +945,7 @@ struct WorkoutView: View {
         }
 
         let maxAvailableWeek = max(1, program.currentWeek)
-        if selectedWeek < 1 || selectedWeek > maxAvailableWeek {
-            selectedWeek = maxAvailableWeek
-        }
+        selectedWeek = maxAvailableWeek
     }
 
     func compactPerformanceHistory(from entries: [ExerciseWeightEntry], limit: Int = 10) -> String? {

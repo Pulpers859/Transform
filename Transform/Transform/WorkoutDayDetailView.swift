@@ -811,12 +811,14 @@ struct SessionNoteSections {
 
     private static func parseDelimitedWarmupSections(from text: String) -> SessionNoteSections? {
         let normalized = text
-            .replacingOccurrences(of: "Warm-up:", with: "|", options: .caseInsensitive)
-            .replacingOccurrences(of: "Warm up:", with: "|", options: .caseInsensitive)
             .replacingOccurrences(of: "Warm-up checklist:", with: "|", options: .caseInsensitive)
             .replacingOccurrences(of: "Warm up checklist:", with: "|", options: .caseInsensitive)
+            .replacingOccurrences(of: "Warm-up:", with: "|", options: .caseInsensitive)
+            .replacingOccurrences(of: "Warm up:", with: "|", options: .caseInsensitive)
             .replacingOccurrences(of: "Mobility/activation:", with: "|", options: .caseInsensitive)
             .replacingOccurrences(of: "Mobility:", with: "|", options: .caseInsensitive)
+            .replacingOccurrences(of: "Activation:", with: "|", options: .caseInsensitive)
+            .replacingOccurrences(of: "Prime with:", with: "|", options: .caseInsensitive)
 
         let chunks = normalized
             .split(separator: "|")
@@ -836,7 +838,7 @@ struct SessionNoteSections {
 
     private static func parseEmbeddedWarmupSections(from text: String) -> SessionNoteSections? {
         guard let triggerRange = text.range(
-            of: #"(?i)warm[\s-]*up with\s+"#,
+            of: #"(?i)(?:warm[\s-]*up with|begin with|start with|prime with)\s+"#,
             options: .regularExpression
         ) else {
             return nil

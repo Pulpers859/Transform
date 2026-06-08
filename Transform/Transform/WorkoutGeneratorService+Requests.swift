@@ -181,9 +181,11 @@ extension ClaudeService {
         Voice and style:
         - Write like a real coach talking to THIS person, not a generic app.
         - Session Notes (the `notes` field on each training day) must sound curated and personal:
-          open with a one-line framing of today's intent given the analysis, then give SPECIFIC
-          warm-up and mobility guidance tied to THIS day's lifts and THIS person's posture/injury
-          notes. Keep session notes concise: 2-3 short sentences, ideally under 70 words total.
+          open with a one-line framing of today's intent given the analysis, then on a NEW LINE
+          write "Warm-up:" followed by specific warm-up and mobility items separated by commas
+          (e.g. "Warm-up: band pull-aparts x15, thoracic rotations x10, light face pulls x12").
+          The warm-up must be tied to THIS day's lifts and THIS person's posture/injury notes.
+          Keep session notes concise: 2-3 short sentences, ideally under 70 words total.
           No template language. No phrases like "progressive overload session."
         - Exercise notes must be 2-4 sentences of real coaching. Include (a) a form/technique cue
           for THIS movement, (b) a progression cue appropriate for Week 1 (RIR/RPE or load/rep
@@ -315,8 +317,9 @@ extension ClaudeService {
         progression tracking), but feel free to rotate accessories based on what the analysis
         calls for.
 
-        Session Notes still must be personal, specific, analysis-anchored, and include warm-up /
-        mobility guidance tied to this day's lifts AND the user's posture/injury notes. Exercise
+        Session Notes still must be personal, specific, analysis-anchored, and include a "Warm-up:"
+        line (on its own line) with specific warm-up and mobility items separated by commas, tied
+        to this day's lifts AND the user's posture/injury notes. Exercise
         notes still must include form cue + phase-appropriate progression cue + a "why this is
         here for you" sentence tied to the analysis.
         Use double progression as the default progression model: add reps before load, keep
@@ -584,7 +587,7 @@ extension ClaudeService {
             "dayName": stringProp(),
             "muscleGroups": stringProp(),
             "isRestDay": booleanProp(),
-            "notes": stringProp("Session Notes: intent framing tied to the body analysis + warm-up + mobility guidance for THIS day's lifts and THIS user's posture/injury. For rest days, a short active-recovery note."),
+            "notes": stringProp("Session Notes: one-line intent framing, then on a new line 'Warm-up:' followed by comma-separated warm-up/mobility items for THIS day's lifts and THIS user's posture/injury. For rest days, a short active-recovery note."),
             "exercises": exercisesProp
         ]
         let required: [String] = ["dayNumber", "dayName", "muscleGroups", "isRestDay", "notes", "exercises"]
