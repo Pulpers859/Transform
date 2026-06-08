@@ -1,7 +1,36 @@
 import Foundation
 import SwiftData
-import UniformTypeIdentifiers
 import SwiftUI
+import UniformTypeIdentifiers
+
+nonisolated private enum BackupFormat {
+    static let currentVersion = 7
+    static let supportedVersions: Set<Int> = [1, 2, 3, 4, 5, 6, 7]
+}
+
+@MainActor
+private func mainActorMap<Input, Output>(
+    _ values: [Input],
+    _ transform: @MainActor (Input) -> Output
+) -> [Output] {
+    var results: [Output] = []
+    results.reserveCapacity(values.count)
+    for value in values {
+        results.append(transform(value))
+    }
+    return results
+}
+
+@MainActor
+private func mainActorFirst<Input>(
+    in values: [Input],
+    where predicate: @MainActor (Input) -> Bool
+) -> Input? {
+    for value in values where predicate(value) {
+        return value
+    }
+    return nil
+}
 
 struct BackupDocument: FileDocument {
     static var readableContentTypes: [UTType] { [.json] }
@@ -24,7 +53,7 @@ struct BackupDocument: FileDocument {
     }
 }
 
-struct TransformBackupPayload: Codable {
+nonisolated struct TransformBackupPayload: Codable {
     let version: Int
     let exportedAt: Date
     let weights: [WeightSnapshot]
@@ -68,7 +97,7 @@ struct TransformBackupPayload: Codable {
 }
 
 // Legacy backup shape (before sugar/fiber/favorites fields were introduced).
-struct LegacyTransformBackupPayload: Codable {
+nonisolated struct LegacyTransformBackupPayload: Codable {
     let weights: [WeightSnapshot]
     let measurements: [MeasurementSnapshot]
     let nutrition: [LegacyNutritionSnapshot]
@@ -76,7 +105,7 @@ struct LegacyTransformBackupPayload: Codable {
     let workouts: [WorkoutProgramSnapshot]
 }
 
-struct LegacyNutritionSnapshot: Codable {
+nonisolated struct LegacyNutritionSnapshot: Codable {
     let date: Date
     let mealName: String
     let calories: Int
@@ -86,13 +115,13 @@ struct LegacyNutritionSnapshot: Codable {
     let notes: String
 }
 
-struct WeightSnapshot: Codable {
+nonisolated struct WeightSnapshot: Codable {
     let date: Date
     let weightLbs: Double
     let notes: String
 }
 
-struct SleepSnapshot: Codable {
+nonisolated struct SleepSnapshot: Codable {
     let date: Date
     let durationHours: Double
     let qualityRating: Int
@@ -103,7 +132,7 @@ struct SleepSnapshot: Codable {
     let episodeTypeRaw: String?
 }
 
-struct MeasurementSnapshot: Codable {
+nonisolated struct MeasurementSnapshot: Codable {
     let date: Date
     let chestIn: Double?
     let waistIn: Double?
@@ -155,7 +184,7 @@ struct MeasurementSnapshot: Codable {
     }
 }
 
-struct NutritionSnapshot: Codable {
+nonisolated struct NutritionSnapshot: Codable {
     let date: Date
     let mealName: String
     let calories: Int
@@ -167,7 +196,7 @@ struct NutritionSnapshot: Codable {
     let notes: String
 }
 
-struct FavoriteFoodSnapshot: Codable {
+nonisolated struct FavoriteFoodSnapshot: Codable {
     let createdAt: Date
     let name: String
     let mealName: String
@@ -179,7 +208,7 @@ struct FavoriteFoodSnapshot: Codable {
     let fatG: Double
 }
 
-struct SavedNutritionProtocolSnapshot: Codable {
+nonisolated struct SavedNutritionProtocolSnapshot: Codable {
     let createdAt: Date
     let updatedAt: Date
     let programJSON: String
@@ -192,7 +221,7 @@ struct SavedNutritionProtocolSnapshot: Codable {
     let appliedFatG: Double?
 }
 
-struct AnalysisSnapshot: Codable {
+nonisolated struct AnalysisSnapshot: Codable {
     let date: Date
     let photoData: Data
     let pose: String
@@ -203,7 +232,7 @@ struct AnalysisSnapshot: Codable {
     let dietRecommendation: String
 }
 
-struct WorkoutProgramSnapshot: Codable {
+nonisolated struct WorkoutProgramSnapshot: Codable {
     let id: UUID
     let createdDate: Date
     let programName: String
@@ -220,7 +249,7 @@ struct WorkoutProgramSnapshot: Codable {
     let days: [WorkoutDaySnapshot]
 }
 
-struct WorkoutDaySnapshot: Codable {
+nonisolated struct WorkoutDaySnapshot: Codable {
     let dayNumber: Int
     let dayName: String
     let muscleGroups: String
@@ -236,7 +265,7 @@ struct WorkoutDaySnapshot: Codable {
     let exercises: [WorkoutExerciseSnapshot]
 }
 
-struct WorkoutExerciseSnapshot: Codable {
+nonisolated struct WorkoutExerciseSnapshot: Codable {
     let order: Int
     let exerciseName: String
     let sets: Int
@@ -248,7 +277,7 @@ struct WorkoutExerciseSnapshot: Codable {
     let isCompleted: Bool
 }
 
-struct ExerciseWeightSnapshot: Codable {
+nonisolated struct ExerciseWeightSnapshot: Codable {
     let loggedAt: Date
     let exerciseName: String
     let weightLbs: Double
@@ -261,7 +290,7 @@ struct ExerciseWeightSnapshot: Codable {
     let bestNotes: String?
 }
 
-struct ExercisePerformanceLogSnapshot: Codable {
+nonisolated struct ExercisePerformanceLogSnapshot: Codable {
     let loggedAt: Date
     let exerciseName: String
     let weightLbs: Double
@@ -272,7 +301,7 @@ struct ExercisePerformanceLogSnapshot: Codable {
     let setLogsJSON: String?
 }
 
-private extension WeightSnapshot {
+@MainActor private extension WeightSnapshot {
     init(_ entry: WeightEntry) {
         self.init(date: entry.date, weightLbs: entry.weightLbs, notes: entry.notes)
     }
@@ -286,7 +315,7 @@ private extension WeightSnapshot {
     }
 }
 
-private extension SleepSnapshot {
+@MainActor private extension SleepSnapshot {
     init(_ entry: SleepEntry) {
         self.init(
             date: entry.date,
@@ -324,7 +353,7 @@ private extension SleepSnapshot {
     }
 }
 
-private extension MeasurementSnapshot {
+@MainActor private extension MeasurementSnapshot {
     init(_ entry: MeasurementEntry) {
         self.init(
             date: entry.date,
@@ -369,7 +398,7 @@ private extension MeasurementSnapshot {
     }
 }
 
-private extension NutritionSnapshot {
+@MainActor private extension NutritionSnapshot {
     init(_ entry: NutritionEntry) {
         self.init(
             date: entry.date,
@@ -403,7 +432,7 @@ private extension NutritionSnapshot {
     }
 }
 
-private extension FavoriteFoodSnapshot {
+@MainActor private extension FavoriteFoodSnapshot {
     init(_ favorite: FavoriteFood) {
         self.init(
             createdAt: favorite.createdAt,
@@ -447,7 +476,7 @@ private extension FavoriteFoodSnapshot {
     }
 }
 
-private extension SavedNutritionProtocolSnapshot {
+@MainActor private extension SavedNutritionProtocolSnapshot {
     init(_ protocolModel: SavedNutritionProtocol) {
         self.init(
             createdAt: protocolModel.createdAt,
@@ -484,7 +513,7 @@ private extension SavedNutritionProtocolSnapshot {
     }
 }
 
-private extension AnalysisSnapshot {
+@MainActor private extension AnalysisSnapshot {
     init(_ session: BodyAnalysisSession) {
         self.init(
             date: session.date,
@@ -516,7 +545,7 @@ private extension AnalysisSnapshot {
     }
 }
 
-private extension WorkoutExerciseSnapshot {
+@MainActor private extension WorkoutExerciseSnapshot {
     init(_ exercise: WorkoutExercise) {
         self.init(
             order: exercise.order,
@@ -547,7 +576,7 @@ private extension WorkoutExerciseSnapshot {
     }
 }
 
-private extension WorkoutDaySnapshot {
+@MainActor private extension WorkoutDaySnapshot {
     init(_ day: WorkoutDay) {
         self.init(
             dayNumber: day.dayNumber,
@@ -562,7 +591,7 @@ private extension WorkoutDaySnapshot {
             jointPain: day.jointPain,
             performanceRatingRaw: day.performanceRatingRaw,
             sessionFeedbackNotes: day.sessionFeedbackNotes,
-            exercises: day.sortedExercises.map(WorkoutExerciseSnapshot.init)
+            exercises: mainActorMap(day.sortedExercises, WorkoutExerciseSnapshot.init)
         )
     }
 
@@ -592,7 +621,7 @@ private extension WorkoutDaySnapshot {
     }
 }
 
-private extension WorkoutProgramSnapshot {
+@MainActor private extension WorkoutProgramSnapshot {
     init(_ program: WorkoutProgram) {
         self.init(
             id: program.id,
@@ -608,7 +637,7 @@ private extension WorkoutProgramSnapshot {
             currentWeek: program.currentWeek,
             maxWeeks: program.maxWeeks,
             analysisJSON: program.analysisJSON,
-            days: program.sortedDays.map(WorkoutDaySnapshot.init)
+            days: mainActorMap(program.sortedDays, WorkoutDaySnapshot.init)
         )
     }
 
@@ -639,7 +668,7 @@ private extension WorkoutProgramSnapshot {
     }
 }
 
-private extension ExerciseWeightSnapshot {
+@MainActor private extension ExerciseWeightSnapshot {
     var resolvedCanonicalKey: String {
         let recomputed = ExerciseWeightEntry.canonicalLookupKey(exerciseName)
         if !recomputed.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -720,7 +749,7 @@ private extension ExerciseWeightSnapshot {
     }
 }
 
-private extension ExercisePerformanceLogSnapshot {
+@MainActor private extension ExercisePerformanceLogSnapshot {
     var resolvedCanonicalKey: String {
         let recomputed = ExerciseWeightEntry.canonicalLookupKey(exerciseName)
         if !recomputed.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -762,7 +791,7 @@ private extension ExercisePerformanceLogSnapshot {
     }
 }
 
-private extension LegacyNutritionSnapshot {
+@MainActor private extension LegacyNutritionSnapshot {
     func makeNutritionSnapshot() -> NutritionSnapshot {
         NutritionSnapshot(
             date: date,
@@ -778,11 +807,12 @@ private extension LegacyNutritionSnapshot {
     }
 }
 
+@MainActor
 final class DataBackupManager {
     static let shared = DataBackupManager()
     private init() {}
-    let currentBackupVersion = 7
-    private let supportedBackupVersions: Set<Int> = [1, 2, 3, 4, 5, 6, 7]
+    let currentBackupVersion = BackupFormat.currentVersion
+    private let supportedBackupVersions = BackupFormat.supportedVersions
 
     func exportDocument(using modelContext: ModelContext) throws -> BackupDocument {
         let payload = try buildPayload(using: modelContext)
@@ -851,16 +881,16 @@ final class DataBackupManager {
         return TransformBackupPayload(
             version: currentBackupVersion,
             exportedAt: .now,
-            weights: weights.map(WeightSnapshot.init),
-            sleep: sleep.map(SleepSnapshot.init),
-            measurements: measurements.map(MeasurementSnapshot.init),
-            nutrition: nutrition.map(NutritionSnapshot.init),
-            favorites: favorites.map(FavoriteFoodSnapshot.init),
-            savedNutritionProtocols: savedNutritionProtocols.map(SavedNutritionProtocolSnapshot.init),
-            analyses: analyses.map(AnalysisSnapshot.init),
-            workouts: workouts.map(WorkoutProgramSnapshot.init),
-            exerciseWeights: exerciseWeights.map(ExerciseWeightSnapshot.init),
-            exercisePerformanceLogs: exercisePerformanceLogs.map(ExercisePerformanceLogSnapshot.init)
+            weights: mainActorMap(weights, WeightSnapshot.init),
+            sleep: mainActorMap(sleep, SleepSnapshot.init),
+            measurements: mainActorMap(measurements, MeasurementSnapshot.init),
+            nutrition: mainActorMap(nutrition, NutritionSnapshot.init),
+            favorites: mainActorMap(favorites, FavoriteFoodSnapshot.init),
+            savedNutritionProtocols: mainActorMap(savedNutritionProtocols, SavedNutritionProtocolSnapshot.init),
+            analyses: mainActorMap(analyses, AnalysisSnapshot.init),
+            workouts: mainActorMap(workouts, WorkoutProgramSnapshot.init),
+            exerciseWeights: mainActorMap(exerciseWeights, ExerciseWeightSnapshot.init),
+            exercisePerformanceLogs: mainActorMap(exercisePerformanceLogs, ExercisePerformanceLogSnapshot.init)
         )
     }
 
@@ -876,18 +906,20 @@ final class DataBackupManager {
         var existingExerciseWeights = try modelContext.fetch(FetchDescriptor<ExerciseWeightEntry>())
         let existingExercisePerformanceLogs = try modelContext.fetch(FetchDescriptor<ExercisePerformanceLog>())
 
-        var weightKeys = Set(existingWeights.map { WeightSnapshot($0).dedupeKey })
-        var sleepKeys = Set(existingSleep.map { SleepSnapshot($0).dedupeKey })
-        var measurementKeys = Set(existingMeasurements.map { MeasurementSnapshot($0).dedupeKey })
-        var nutritionKeys = Set(existingNutrition.map { NutritionSnapshot($0).dedupeKey })
-        var favoriteKeys = Set(existingFavorites.map { FavoriteFoodSnapshot($0).dedupeKey })
-        var savedNutritionProtocolKeys = Set(existingSavedNutritionProtocols.map {
+        var weightKeys = Set(mainActorMap(existingWeights) { WeightSnapshot($0).dedupeKey })
+        var sleepKeys = Set(mainActorMap(existingSleep) { SleepSnapshot($0).dedupeKey })
+        var measurementKeys = Set(mainActorMap(existingMeasurements) { MeasurementSnapshot($0).dedupeKey })
+        var nutritionKeys = Set(mainActorMap(existingNutrition) { NutritionSnapshot($0).dedupeKey })
+        var favoriteKeys = Set(mainActorMap(existingFavorites) { FavoriteFoodSnapshot($0).dedupeKey })
+        var savedNutritionProtocolKeys = Set(mainActorMap(existingSavedNutritionProtocols) {
             SavedNutritionProtocolSnapshot($0).dedupeKey
         })
-        var analysisKeys = Set(existingAnalyses.map { AnalysisSnapshot($0).dedupeKey })
-        var workoutKeys = Set(existingWorkouts.map { $0.id.uuidString })
-        var exerciseWeightKeys = Set(existingExerciseWeights.map { ExerciseWeightSnapshot($0).dedupeKey })
-        var exercisePerformanceLogKeys = Set(existingExercisePerformanceLogs.map { ExercisePerformanceLogSnapshot($0).dedupeKey })
+        var analysisKeys = Set(mainActorMap(existingAnalyses) { AnalysisSnapshot($0).dedupeKey })
+        var workoutKeys = Set(mainActorMap(existingWorkouts) { $0.id.uuidString })
+        var exerciseWeightKeys = Set(mainActorMap(existingExerciseWeights) { ExerciseWeightSnapshot($0).dedupeKey })
+        var exercisePerformanceLogKeys = Set(mainActorMap(existingExercisePerformanceLogs) {
+            ExercisePerformanceLogSnapshot($0).dedupeKey
+        })
 
         for item in payload.weights {
             let key = item.dedupeKey
@@ -919,7 +951,10 @@ final class DataBackupManager {
 
         for item in payload.favorites {
             let key = item.dedupeKey
-            if let existing = existingFavorites.first(where: { FavoriteFoodSnapshot($0).dedupeKey == key }) {
+            if let existing = mainActorFirst(
+                in: existingFavorites,
+                where: { FavoriteFoodSnapshot($0).dedupeKey == key }
+            ) {
                 item.apply(to: existing)
             } else if !favoriteKeys.contains(key) {
                 modelContext.insert(item.makeModel())
@@ -950,7 +985,10 @@ final class DataBackupManager {
 
         for item in payload.exerciseWeights ?? [] {
             let key = item.dedupeKey
-            if let existing = existingExerciseWeights.first(where: { ExerciseWeightSnapshot($0).dedupeKey == key }) {
+            if let existing = mainActorFirst(
+                in: existingExerciseWeights,
+                where: { ExerciseWeightSnapshot($0).dedupeKey == key }
+            ) {
                 item.merge(into: existing)
                 exerciseWeightKeys.insert(key)
                 continue
@@ -979,7 +1017,7 @@ final class DataBackupManager {
             weights: legacy.weights,
             sleep: nil,
             measurements: legacy.measurements,
-            nutrition: legacy.nutrition.map { $0.makeNutritionSnapshot() },
+            nutrition: mainActorMap(legacy.nutrition) { $0.makeNutritionSnapshot() },
             favorites: [],
             savedNutritionProtocols: nil,
             analyses: legacy.analyses,
@@ -995,7 +1033,7 @@ final class DataBackupManager {
     }
 }
 
-enum BackupError: LocalizedError {
+nonisolated enum BackupError: LocalizedError {
     case parseError(String)
     case unsupportedVersion(Int)
 
@@ -1004,7 +1042,7 @@ enum BackupError: LocalizedError {
         case .parseError(let message):
             return message
         case .unsupportedVersion(let version):
-            if version > DataBackupManager.shared.currentBackupVersion {
+            if version > BackupFormat.currentVersion {
                 return "This backup was created by a newer app version (backup format \(version)). Update Transform before importing to avoid data loss."
             }
             return "Unsupported backup version \(version)."

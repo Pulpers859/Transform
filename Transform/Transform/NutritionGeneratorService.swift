@@ -35,14 +35,14 @@ enum ShiftWorkNutritionMode: String, CaseIterable, Identifiable {
 
 // MARK: - Nutrition Program Response Models
 
-struct NutritionProgramResponse: Codable {
+nonisolated struct NutritionProgramResponse: Codable {
     let programName: String
     let programSummary: String
     let proteinCoverageNote: String
     let weekOne: NutritionWeekResponse
 }
 
-struct NutritionWeekResponse: Codable, Identifiable {
+nonisolated struct NutritionWeekResponse: Codable, Identifiable {
     let weekNumber: Int
     let weekSummary: String
     let phaseFocus: String
@@ -60,7 +60,7 @@ struct NutritionWeekResponse: Codable, Identifiable {
     var id: Int { weekNumber }
 }
 
-struct DailyNutritionTemplate: Codable {
+nonisolated struct DailyNutritionTemplate: Codable {
     let label: String
     let totalCalories: Int
     let totalProteinG: Int
@@ -69,7 +69,7 @@ struct DailyNutritionTemplate: Codable {
     let meals: [MealSlotResponse]
 }
 
-struct MealSlotResponse: Codable, Identifiable {
+nonisolated struct MealSlotResponse: Codable, Identifiable {
     let mealName: String
     let primaryOption: String
     let substitutions: [String]
@@ -82,14 +82,14 @@ struct MealSlotResponse: Codable, Identifiable {
     var id: String { mealName }
 }
 
-struct NutritionGroceryCategory: Codable, Identifiable {
+nonisolated struct NutritionGroceryCategory: Codable, Identifiable {
     let category: String
     let items: [NutritionGroceryItem]
 
     var id: String { category }
 }
 
-struct NutritionGroceryItem: Codable, Identifiable {
+nonisolated struct NutritionGroceryItem: Codable, Identifiable {
     let name: String
     let quantity: String
     let substitutions: [String]
@@ -838,7 +838,7 @@ extension ClaudeService {
 
     // MARK: - Decode & Sanitize
 
-    private func decodeNutritionPayload<T: Decodable>(_ type: T.Type, from responseText: String) throws -> T {
+    nonisolated private func decodeNutritionPayload<T: Decodable>(_ type: T.Type, from responseText: String) throws -> T {
         let cleaned = responseText
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .replacingOccurrences(of: "```json", with: "")

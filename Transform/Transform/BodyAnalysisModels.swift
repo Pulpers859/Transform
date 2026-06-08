@@ -2,7 +2,7 @@ import Foundation
 
 // MARK: - Body Analysis Result Models
 
-struct BodyAnalysisResult: Codable {
+nonisolated struct BodyAnalysisResult: Codable {
     let overallAssessment: String
     let trainingAssessment: String
     let nutritionAssessment: String
@@ -193,14 +193,14 @@ extension BodyAnalysisResult {
     }
 }
 
-struct StructuredTrainingIntent: Codable {
+nonisolated struct StructuredTrainingIntent: Codable {
     let splitRecommendation: String
     let weeklyTrainingDays: Int
     let priorities: [StructuredTrainingPriority]
     let programmingNotes: [String]
 }
 
-struct StructuredTrainingPriority: Codable {
+nonisolated struct StructuredTrainingPriority: Codable {
     let area: String
     let priorityLevel: String
     let rationale: String
@@ -212,7 +212,7 @@ struct StructuredTrainingPriority: Codable {
     let directWorkBias: String
 }
 
-struct AnalysisInputContext: Codable {
+nonisolated struct AnalysisInputContext: Codable {
     let profile: AnalysisProfileSnapshot
     let checkIn: AnalysisCheckInSnapshot?
     let progress: AnalysisProgressSnapshot?
@@ -378,7 +378,7 @@ extension AnalysisInputContext {
     }
 }
 
-struct AnalysisProfileSnapshot: Codable {
+nonisolated struct AnalysisProfileSnapshot: Codable {
     let age: String
     let sex: String
     let build: String
@@ -464,7 +464,7 @@ struct AnalysisProfileSnapshot: Codable {
     }
 }
 
-struct AnalysisCheckInSnapshot: Codable {
+nonisolated struct AnalysisCheckInSnapshot: Codable {
     let trainingContext: String
     let bodyweightTrend: String
     let recoverySleep: String
@@ -602,7 +602,7 @@ struct AnalysisCheckInSnapshot: Codable {
     }
 }
 
-struct MedicalScreeningSnapshot: Codable {
+nonisolated struct MedicalScreeningSnapshot: Codable {
     let currentInjury: Bool
     let painDuringExercise: Bool
     let cardioMetabolic: Bool
@@ -665,7 +665,7 @@ struct MedicalScreeningSnapshot: Codable {
     }
 }
 
-struct AnalysisProgressSnapshot: Codable {
+nonisolated struct AnalysisProgressSnapshot: Codable {
     let previousAnalysisAgeDays: Int
     let previousPriorityAreas: [String]
     let previousTopLeverageChange: String
@@ -1041,13 +1041,13 @@ private extension Sequence where Element == String {
     }
 }
 
-private func compactLine(label: String, value: String, limit: Int = 80) -> String? {
+nonisolated private func compactLine(label: String, value: String, limit: Int = 80) -> String? {
     let cleaned = value.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !cleaned.isEmpty else { return nil }
     return "\(label): \(cleaned.truncatedForAnalysisUI(limit))"
 }
 
-private extension String {
+nonisolated private extension String {
     func truncatedForAnalysisUI(_ limit: Int) -> String {
         guard count > limit else { return self }
         let truncated = prefix(max(0, limit - 1)).trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1055,7 +1055,7 @@ private extension String {
     }
 }
 
-struct AnalysisMacroTargets: Codable {
+nonisolated struct AnalysisMacroTargets: Codable {
     let calories: Int
     let proteinG: Double
     let carbsG: Double
@@ -1107,7 +1107,7 @@ struct AnalysisMacroTargets: Codable {
     }
 }
 
-struct RegionAssessment: Codable, Identifiable {
+nonisolated struct RegionAssessment: Codable, Identifiable {
     let id = UUID()
     let region: String
     let assessment: String
@@ -1118,7 +1118,7 @@ struct RegionAssessment: Codable, Identifiable {
     }
 }
 
-private func uniqueOrderedAnalysisValues(_ values: [String]) -> [String] {
+nonisolated private func uniqueOrderedAnalysisValues(_ values: [String]) -> [String] {
     var seen = Set<String>()
     return values.compactMap { value in
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1801,7 +1801,7 @@ enum NutritionAdherenceMetricsBuilder {
 
 // MARK: - Measurement Trend Engine
 
-enum MeasurementInterpretation: String, Codable {
+nonisolated enum MeasurementInterpretation: String, Codable {
     case likelyFatLoss = "Likely Fat Loss"
     case likelyRecomposition = "Likely Recomposition"
     case likelyMassGain = "Likely Mass Gain"
@@ -1810,7 +1810,7 @@ enum MeasurementInterpretation: String, Codable {
     case stableNoChange = "Stable — No Meaningful Change"
 }
 
-enum MeasurementDataQuality: String, Codable {
+nonisolated enum MeasurementDataQuality: String, Codable {
     case excellent = "Excellent"
     case good = "Good"
     case moderate = "Moderate"
@@ -1818,14 +1818,14 @@ enum MeasurementDataQuality: String, Codable {
     case insufficient = "Insufficient"
 }
 
-enum ProgressConfidence: String, Codable {
+nonisolated enum ProgressConfidence: String, Codable {
     case high = "High"
     case moderate = "Moderate"
     case low = "Low"
     case insufficient = "Insufficient"
 }
 
-struct MeasurementTrendSnapshot: Codable {
+nonisolated struct MeasurementTrendSnapshot: Codable {
     let lookbackDays: Int
     let sessionsCount: Int
     let standardSessionsCount: Int
@@ -1873,7 +1873,7 @@ struct MeasurementTrendSnapshot: Codable {
     }
 }
 
-struct AnalysisMeasurementSnapshot: Codable {
+nonisolated struct AnalysisMeasurementSnapshot: Codable {
     let trend: MeasurementTrendSnapshot
 
     var promptDescription: String {

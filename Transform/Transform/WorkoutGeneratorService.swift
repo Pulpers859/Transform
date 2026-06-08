@@ -96,7 +96,7 @@ extension ClaudeService {
         attemptTrace: [String],
         finalJSON: String
     ) -> String {
-        var lines: [String] = [
+        let lines: [String] = [
             "Stage: Week \(weekNumber)",
             "Mode: Live AI",
             "Week: \(weekNumber)",
@@ -164,7 +164,7 @@ extension ClaudeService {
             userPrompt: userPrompt
         )
 
-        var requestBody = structuredRequestBody(
+        let requestBody = structuredRequestBody(
             config: config,
             systemPrompt: systemPrompt,
             userPrompt: userPrompt,
@@ -492,7 +492,7 @@ extension ClaudeService {
             systemPrompt: systemPrompt,
             userPrompt: userPrompt
         )
-        var requestBody = structuredRequestBody(
+        let requestBody = structuredRequestBody(
             config: config,
             systemPrompt: systemPrompt,
             userPrompt: userPrompt,

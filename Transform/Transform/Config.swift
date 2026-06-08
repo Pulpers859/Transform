@@ -206,11 +206,11 @@ enum GoalCategory: String, CaseIterable, Identifiable {
     }
 }
 
-protocol ProfilePresetOption: Hashable, Identifiable, CaseIterable {
+nonisolated protocol ProfilePresetOption: Hashable, Identifiable, CaseIterable {
     var label: String { get }
 }
 
-enum BuildProfileOption: String, ProfilePresetOption {
+nonisolated enum BuildProfileOption: String, ProfilePresetOption {
     case notSpecified = ""
     case leanNarrow = "Lean / Narrow Frame"
     case muscularMedium = "Muscular / Medium Frame (Mesomorph)"
@@ -246,7 +246,7 @@ enum BuildProfileOption: String, ProfilePresetOption {
     }
 }
 
-enum TrainingExperienceOption: String, ProfilePresetOption {
+nonisolated enum TrainingExperienceOption: String, ProfilePresetOption {
     case notSpecified = ""
     case beginner = "Beginner"
     case novice = "Novice"
@@ -286,7 +286,7 @@ enum TrainingExperienceOption: String, ProfilePresetOption {
     }
 }
 
-enum EquipmentAccessOption: String, ProfilePresetOption {
+nonisolated enum EquipmentAccessOption: String, ProfilePresetOption {
     case notSpecified = ""
     case commercialGym = "Full Commercial Gym"
     case homeGym = "Home Gym"

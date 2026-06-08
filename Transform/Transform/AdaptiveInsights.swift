@@ -101,14 +101,14 @@ enum WeightTrendBuilder {
     }
 }
 
-struct AdaptiveMacroOverride: Codable {
+nonisolated struct AdaptiveMacroOverride: Codable {
     let calories: Int
     let proteinG: Double
     let carbsG: Double
     let fatG: Double
 }
 
-enum AdaptiveMacroRecommendation: String, Codable, CaseIterable {
+nonisolated enum AdaptiveMacroRecommendation: String, Codable, CaseIterable {
     case maintain = "Maintain"
     case reduceCalories = "Reduce calories"
     case increaseCalories = "Increase calories"
@@ -117,7 +117,7 @@ enum AdaptiveMacroRecommendation: String, Codable, CaseIterable {
     case adherenceFirst = "Adherence first"
 }
 
-struct AdaptiveMacroReview: Codable {
+nonisolated struct AdaptiveMacroReview: Codable {
     let recommendation: AdaptiveMacroRecommendation
     let headline: String
     let rationale: String

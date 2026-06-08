@@ -299,7 +299,7 @@ class ExerciseWeightEntry {
     }
 }
 
-struct SetLogEntry: Codable, Identifiable, Equatable {
+nonisolated struct SetLogEntry: Codable, Identifiable, Equatable {
     var id = UUID()
     var setNumber: Int
     var weightLbs: Double
@@ -362,6 +362,7 @@ class ExercisePerformanceLog {
     }
 }
 
+@MainActor
 enum ExerciseWeightStore {
     @discardableResult
     static func normalizeAndConsolidate(in modelContext: ModelContext) throws -> Bool {
@@ -382,10 +383,17 @@ enum ExerciseWeightStore {
                 lhs.loggedAt < rhs.loggedAt
             } ?? entries[0]
 
-            let bestRecord = entries
-                .map(bestRecord(from:))
-                .max(by: compareBestRecords)
-                ?? bestRecord(from: latestEntry)
+            var records: [BestRecord] = []
+            records.reserveCapacity(entries.count)
+            for entry in entries {
+                records.append(bestRecord(from: entry))
+            }
+            let bestRecord = records.max { lhs, rhs in
+                if lhs.weightLbs != rhs.weightLbs {
+                    return lhs.weightLbs < rhs.weightLbs
+                }
+                return (lhs.loggedAt ?? .distantPast) < (rhs.loggedAt ?? .distantPast)
+            } ?? bestRecord(from: latestEntry)
 
             let survivor = latestEntry
             let desiredBestNotes = bestRecord.notes ?? ""
@@ -445,7 +453,7 @@ enum ExerciseWeightStore {
         return nil
     }
 
-    private struct BestRecord {
+    nonisolated private struct BestRecord {
         let weightLbs: Double
         let loggedAt: Date?
         let repsCompleted: Int?
@@ -470,12 +478,6 @@ enum ExerciseWeightStore {
         )
     }
 
-    private static func compareBestRecords(_ lhs: BestRecord, _ rhs: BestRecord) -> Bool {
-        if lhs.weightLbs != rhs.weightLbs {
-            return lhs.weightLbs < rhs.weightLbs
-        }
-        return (lhs.loggedAt ?? .distantPast) < (rhs.loggedAt ?? .distantPast)
-    }
 }
 
 // MARK: - Generation Result Wrappers
@@ -494,7 +496,7 @@ struct WorkoutWeekGenerationResult {
 
 // MARK: - JSON Codable Structs for API Response Parsing
 
-struct WorkoutProgramResponse: Codable {
+nonisolated struct WorkoutProgramResponse: Codable {
     let programName: String
     let programSummary: String
     let splitType: String
@@ -551,7 +553,7 @@ struct WorkoutProgramResponse: Codable {
     }
 }
 
-struct WorkoutDayResponse: Codable {
+nonisolated struct WorkoutDayResponse: Codable {
     let dayNumber: Int
     let dayName: String
     let muscleGroups: String
@@ -609,7 +611,7 @@ struct WorkoutDayResponse: Codable {
     }
 }
 
-struct WorkoutExerciseResponse: Codable {
+nonisolated struct WorkoutExerciseResponse: Codable {
     let exerciseName: String
     let sets: Int
     let reps: String
@@ -664,7 +666,7 @@ struct WorkoutExerciseResponse: Codable {
 
 // MARK: - Week-Only Response (for generating subsequent weeks)
 
-struct WorkoutWeekResponse: Codable {
+nonisolated struct WorkoutWeekResponse: Codable {
     let weekSummary: String
     let days: [WorkoutDayResponse]
 
@@ -688,7 +690,7 @@ struct WorkoutWeekResponse: Codable {
     }
 }
 
-private extension KeyedDecodingContainer {
+nonisolated private extension KeyedDecodingContainer {
     func decodeFlexibleString(forKey key: Key) -> String? {
         if let value = try? decodeIfPresent(String.self, forKey: key) {
             return value
@@ -755,14 +757,14 @@ private extension KeyedDecodingContainer {
     }
 }
 
-private extension String {
+nonisolated private extension String {
     func cleanedOr(default fallback: String) -> String {
         let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? fallback : trimmed
     }
 }
 
-private extension Int {
+nonisolated private extension Int {
     static func fromFlexibleString(_ value: String) -> Int? {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         if let direct = Int(trimmed) {

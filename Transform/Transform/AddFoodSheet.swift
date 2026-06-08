@@ -830,7 +830,7 @@ struct MacroInputRow: View {
     }
 }
 
-struct MacroEstimate: Codable {
+nonisolated struct MacroEstimate: Codable {
     let foodName: String
     let calories: Int
     let proteinG: Double

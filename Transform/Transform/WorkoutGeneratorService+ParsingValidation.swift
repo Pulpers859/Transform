@@ -9,7 +9,7 @@ extension ClaudeService {
 
     // MARK: - Parsing and Cleanup
 
-    func decodeJSONPayload<T: Decodable>(_ type: T.Type, from responseText: String) throws -> T {
+    nonisolated func decodeJSONPayload<T: Decodable>(_ type: T.Type, from responseText: String) throws -> T {
         let cleaned = responseText
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .replacingOccurrences(of: "```json", with: "")
@@ -36,7 +36,7 @@ extension ClaudeService {
         throw ClaudeError.parseError("Tool payload decode failure: no decodable JSON candidate found")
     }
 
-    func jsonCandidates(from raw: String) -> [String] {
+    nonisolated func jsonCandidates(from raw: String) -> [String] {
         guard !raw.isEmpty else { return [] }
 
         var values: [String] = []

@@ -280,7 +280,7 @@ class ClaudeService {
     // MARK: - Robust JSON Extraction
 
     /// Extracts the first complete JSON object from a string, handling preamble, markdown fences, and trailing text.
-    static func extractJSON(from text: String) -> String {
+    nonisolated static func extractJSON(from text: String) -> String {
         var cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
 
         // Strip markdown code fences

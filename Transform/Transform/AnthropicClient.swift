@@ -444,7 +444,7 @@ final class AnthropicClient {
     }
 }
 
-struct AnthropicResponse: Codable {
+nonisolated struct AnthropicResponse: Codable {
     let content: [ContentBlock]
     let stopReason: String?
 
@@ -454,7 +454,7 @@ struct AnthropicResponse: Codable {
     }
 }
 
-struct ContentBlock: Codable {
+nonisolated struct ContentBlock: Codable {
     let type: Kind
     let text: String?
 
@@ -501,15 +501,15 @@ struct ContentBlock: Codable {
     }
 }
 
-private struct AnthropicErrorResponse: Decodable {
+nonisolated private struct AnthropicErrorResponse: Decodable {
     let error: AnthropicErrorPayload
 }
 
-private struct AnthropicErrorPayload: Decodable {
+nonisolated private struct AnthropicErrorPayload: Decodable {
     let message: String
 }
 
-enum ClaudeError: LocalizedError {
+nonisolated enum ClaudeError: LocalizedError {
     case apiError(String)
     case emptyResponse
     case parseError(String)
