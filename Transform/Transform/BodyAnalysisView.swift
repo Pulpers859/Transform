@@ -776,8 +776,18 @@ struct BodyAnalysisView: View {
 
     var pastSessionsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Past Analyses")
-                .font(.headline)
+            HStack {
+                Text("Past Analyses")
+                    .font(.headline)
+                Spacer()
+                if sessions.count >= 2 {
+                    NavigationLink(destination: PhotoComparisonView(sessions: sessions)) {
+                        Label("Compare", systemImage: "photo.on.rectangle.angled")
+                            .font(.caption.bold())
+                            .foregroundStyle(.orange)
+                    }
+                }
+            }
 
             ForEach(sessions.prefix(10)) { session in
                 NavigationLink(destination: savedAnalysisDestination(session)) {
