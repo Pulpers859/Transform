@@ -223,6 +223,19 @@ struct ExerciseCard: View {
         ExercisePrescription.parse(from: exercise.notes)
     }
 
+    var progressionSuggestion: ProgressionSuggestion? {
+        guard let log = latestWeightLog,
+              let repsCompleted = log.repsCompleted else { return nil }
+        let repRange = RepRange.parse(exercise.reps)
+        guard let repRange else { return nil }
+        return ProgressionSuggestion.evaluate(
+            repsCompleted: repsCompleted,
+            repRange: repRange,
+            lastWeight: log.weightLbs,
+            exercise: exercise
+        )
+    }
+
     var cleanedCoachingNote: String {
         if let parsedPrescription {
             return parsedPrescription.cleanedNotes
@@ -344,6 +357,10 @@ struct ExerciseCard: View {
                         bestWeightText: bestWeightText ?? "-",
                         bestRepsText: bestRepsTileText
                     )
+                }
+
+                if let suggestion = progressionSuggestion {
+                    ProgressionSuggestionBadge(suggestion: suggestion)
                 }
             }
             .padding(.horizontal, 14)
@@ -999,5 +1016,109 @@ struct ExercisePrescription {
 
         let value = String(text[captureRange]).trimmingCharacters(in: .whitespacesAndNewlines)
         return value.isEmpty ? nil : value
+    }
+}
+
+// MARK: - Progression Suggestion
+
+struct RepRange {
+    let low: Int
+    let high: Int
+
+    static func parse(_ reps: String) -> RepRange? {
+        let cleaned = reps
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "–", with: "-")
+            .replacingOccurrences(of: "—", with: "-")
+
+        if cleaned.contains("-") {
+            let parts = cleaned.split(separator: "-").compactMap { Int($0.trimmingCharacters(in: .whitespaces)) }
+            guard parts.count == 2, parts[0] > 0, parts[1] >= parts[0] else { return nil }
+            return RepRange(low: parts[0], high: parts[1])
+        }
+
+        if let single = Int(cleaned), single > 0 {
+            return RepRange(low: single, high: single)
+        }
+
+        return nil
+    }
+}
+
+struct ProgressionSuggestion {
+    let icon: String
+    let text: String
+    let color: Color
+
+    static func evaluate(
+        repsCompleted: Int,
+        repRange: RepRange,
+        lastWeight: Double,
+        exercise: WorkoutExercise
+    ) -> ProgressionSuggestion? {
+        let isCompound = exercise.sets >= 3 && (
+            exercise.muscleTarget.lowercased().contains("back") ||
+            exercise.muscleTarget.lowercased().contains("chest") ||
+            exercise.muscleTarget.lowercased().contains("quad") ||
+            exercise.muscleTarget.lowercased().contains("glute") ||
+            exercise.muscleTarget.lowercased().contains("hamstring")
+        )
+        let increment = isCompound ? 5.0 : 2.5
+
+        if repsCompleted >= repRange.high {
+            let suggestedWeight = lastWeight + increment
+            return ProgressionSuggestion(
+                icon: "arrow.up.circle.fill",
+                text: "Increase to \(formatWeight(suggestedWeight)) lb next session",
+                color: .green
+            )
+        }
+
+        if repsCompleted < repRange.low {
+            return ProgressionSuggestion(
+                icon: "arrow.down.circle.fill",
+                text: "Stay at \(formatWeight(lastWeight)) lb, focus on form and full ROM",
+                color: .yellow
+            )
+        }
+
+        let repsToGo = repRange.high - repsCompleted
+        if repsToGo == 1 {
+            return ProgressionSuggestion(
+                icon: "flame.fill",
+                text: "1 rep away from weight increase — push for \(repRange.high) reps",
+                color: .orange
+            )
+        }
+
+        return ProgressionSuggestion(
+            icon: "arrow.right.circle.fill",
+            text: "On track — aim for \(repsCompleted + 1)-\(repRange.high) reps next session",
+            color: .blue
+        )
+    }
+
+    private static func formatWeight(_ weight: Double) -> String {
+        weight.rounded() == weight ? String(Int(weight)) : String(format: "%.1f", weight)
+    }
+}
+
+struct ProgressionSuggestionBadge: View {
+    let suggestion: ProgressionSuggestion
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: suggestion.icon)
+                .font(.caption2)
+                .foregroundStyle(suggestion.color)
+            Text(suggestion.text)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(suggestion.color.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 }
