@@ -362,8 +362,9 @@ enum PersonalProfileSeed {
     static let sleepNotes = "Variable due to shift work"
 }
 
-enum MacroTargetSource {
+enum MacroTargetSource: Equatable {
     case analysis
+    case adaptiveReview
     case config
 }
 
@@ -397,37 +398,30 @@ struct DailyMacroTargets {
 }
 
 enum MacroTargetResolver {
-    static func resolve(from analysis: BodyAnalysisResult?, bodyweightLbs: Double? = nil) -> DailyMacroTargets {
+    static func resolve(
+        from analysis: BodyAnalysisResult?,
+        bodyweightLbs: Double? = nil,
+        adaptiveOverride: AdaptiveMacroOverride? = nil
+    ) -> DailyMacroTargets {
+        if let adaptiveOverride {
+            return resolvedTargets(
+                calories: adaptiveOverride.calories,
+                proteinG: adaptiveOverride.proteinG,
+                carbsG: adaptiveOverride.carbsG,
+                fatG: adaptiveOverride.fatG,
+                bodyweightLbs: bodyweightLbs,
+                source: .adaptiveReview
+            )
+        }
+
         if let macros = analysis?.macroTargets {
-            let bw = bodyweightLbs ?? profileBodyweightLbs()
-            var adjustments: [String] = []
-
-            let baseCalFloor = calorieFloor(bodyweightLbs: bw)
-            let calFloor = contextAwareCalorieFloor(baseFloor: baseCalFloor)
-            let proFloor = proteinFloor(bodyweightLbs: bw)
-            let fFloor = fatFloor(bodyweightLbs: bw)
-
-            let resolvedCalories = max(macros.calories, calFloor)
-            let resolvedProtein = max(macros.proteinG, proFloor)
-            let resolvedFat = max(macros.fatG, fFloor)
-
-            if macros.calories < calFloor {
-                adjustments.append("Calories raised from \(macros.calories) to \(calFloor) (safety floor: BW×10)")
-            }
-            if macros.proteinG < proFloor {
-                adjustments.append("Protein raised from \(Int(macros.proteinG))g to \(Int(proFloor))g (safety floor: 1.4 g/kg)")
-            }
-            if macros.fatG < fFloor {
-                adjustments.append("Fat raised from \(Int(macros.fatG))g to \(Int(fFloor))g (safety floor: 0.35 g/kg)")
-            }
-
-            return DailyMacroTargets(
-                calories: resolvedCalories,
-                proteinG: resolvedProtein,
-                carbsG: max(macros.carbsG, 50),
-                fatG: resolvedFat,
-                source: .analysis,
-                floorAdjustments: adjustments
+            return resolvedTargets(
+                calories: macros.calories,
+                proteinG: macros.proteinG,
+                carbsG: macros.carbsG,
+                fatG: macros.fatG,
+                bodyweightLbs: bodyweightLbs,
+                source: .analysis
             )
         }
 
@@ -437,6 +431,43 @@ enum MacroTargetResolver {
             carbsG: Config.carbTargetG,
             fatG: Config.fatTargetG,
             source: .config
+        )
+    }
+
+    private static func resolvedTargets(
+        calories: Int,
+        proteinG: Double,
+        carbsG: Double,
+        fatG: Double,
+        bodyweightLbs: Double?,
+        source: MacroTargetSource
+    ) -> DailyMacroTargets {
+        let bw = bodyweightLbs ?? profileBodyweightLbs()
+        var adjustments: [String] = []
+        let calFloor = contextAwareCalorieFloor(baseFloor: calorieFloor(bodyweightLbs: bw))
+        let proFloor = proteinFloor(bodyweightLbs: bw)
+        let fFloor = fatFloor(bodyweightLbs: bw)
+        let resolvedCalories = max(calories, calFloor)
+        let resolvedProtein = max(proteinG, proFloor)
+        let resolvedFat = max(fatG, fFloor)
+
+        if calories < calFloor {
+            adjustments.append("Calories raised from \(calories) to \(calFloor) (safety floor: BW×10)")
+        }
+        if proteinG < proFloor {
+            adjustments.append("Protein raised from \(Int(proteinG))g to \(Int(proFloor))g (safety floor: 1.4 g/kg)")
+        }
+        if fatG < fFloor {
+            adjustments.append("Fat raised from \(Int(fatG))g to \(Int(fFloor))g (safety floor: 0.35 g/kg)")
+        }
+
+        return DailyMacroTargets(
+            calories: resolvedCalories,
+            proteinG: resolvedProtein,
+            carbsG: max(carbsG, 50),
+            fatG: resolvedFat,
+            source: source,
+            floorAdjustments: adjustments
         )
     }
 

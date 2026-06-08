@@ -382,7 +382,8 @@ extension ClaudeService {
         dayEnd: Int,
         previousWeekReference: String,
         analysisContext: String,
-        performanceHistory: String? = nil
+        performanceHistory: String? = nil,
+        sessionFeedbackSummary: String? = nil
     ) -> String {
         """
         Generate Week \(weekNumber) (days \(dayStart)-\(dayEnd)) of the mesocycle.
@@ -395,6 +396,7 @@ extension ClaudeService {
         \(previousWeekReference)
         --- end previous week ---
         \(performanceHistorySection(from: performanceHistory))
+        \(sessionFeedbackSection(from: sessionFeedbackSummary))
         Phase guidance for Week \(weekNumber):
         \(phaseGuidance(for: weekNumber))
 
@@ -412,6 +414,23 @@ extension ClaudeService {
           referencing the analysis.
 
         Call the emit_workout_week tool with your answer.
+        """
+    }
+
+    private func sessionFeedbackSection(from summary: String?) -> String {
+        guard let summary,
+              !summary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return ""
+        }
+        return """
+
+        --- Completed-session feedback ---
+        \(summary)
+        Use this as a conservative adjustment signal, not an instruction to rewrite the split.
+        Repeated high effort, pain, worse performance, or poor stimulus should change exercise
+        selection, progression, or the lowest-priority volume. Do not infer a diagnosis, and do
+        not overreact to one session when the rest of the week was productive.
+        --- end completed-session feedback ---
         """
     }
 

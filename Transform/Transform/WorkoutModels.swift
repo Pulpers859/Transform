@@ -80,6 +80,12 @@ class WorkoutDay {
     var isRestDay: Bool = false
     var notes: String = ""
     var isCompleted: Bool = false
+    var feedbackSubmittedAt: Date?
+    var sessionEffort: Int = 0
+    var stimulusQuality: Int = 0
+    var jointPain: Int = 0
+    var performanceRatingRaw: String = ""
+    var sessionFeedbackNotes: String = ""
 
     @Relationship(deleteRule: .cascade, inverse: \WorkoutExercise.day)
     var exercises: [WorkoutExercise] = []
@@ -108,6 +114,23 @@ class WorkoutDay {
     var weekNumber: Int {
         ((dayNumber - 1) / 7) + 1
     }
+
+    var performanceRating: WorkoutPerformanceRating? {
+        get { WorkoutPerformanceRating(rawValue: performanceRatingRaw) }
+        set { performanceRatingRaw = newValue?.rawValue ?? "" }
+    }
+
+    var hasSessionFeedback: Bool {
+        feedbackSubmittedAt != nil
+    }
+}
+
+enum WorkoutPerformanceRating: String, CaseIterable, Identifiable {
+    case better = "Better"
+    case same = "Same"
+    case worse = "Worse"
+
+    var id: String { rawValue }
 }
 
 // MARK: - Workout Exercise

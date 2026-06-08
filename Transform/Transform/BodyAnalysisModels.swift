@@ -849,19 +849,16 @@ enum AnalysisProgressSnapshotBuilder {
     }
 
     private static func bodyweightTrendSummary(from points: [AnalysisLoggedWeightPoint]) -> String {
-        let sorted = points.sorted { $0.date < $1.date }
-        guard let first = sorted.first else {
+        let trend = WeightTrendBuilder.build(from: points)
+        guard let current = trend.currentTrendWeightLbs else {
             return "No bodyweight logs were recorded since the last analysis."
         }
-        guard let last = sorted.last, sorted.count > 1 else {
-            return "One bodyweight log was recorded since the last analysis: \(formatWeight(first.weightLbs)) lb."
+        guard let weeklyChange = trend.weeklyChangeLbs else {
+            return "\(trend.loggedDays) bodyweight log(s) were recorded. Current 7-day trend is \(formatWeight(current)) lb; more elapsed time is needed for a weekly rate."
         }
 
-        let elapsedDays = max(Calendar.current.dateComponents([.day], from: first.date, to: last.date).day ?? 0, 1)
-        let delta = last.weightLbs - first.weightLbs
-        let weeklyRate = delta / Double(elapsedDays) * 7.0
-        let direction = directionPhrase(for: delta)
-        return "Weight \(direction) from \(formatWeight(first.weightLbs)) to \(formatWeight(last.weightLbs)) lb (\(signedWeight(delta)) lb over \(elapsedDays) day(s), about \(signedWeight(weeklyRate)) lb/week) across \(sorted.count) log(s)."
+        let direction = directionPhrase(for: weeklyChange)
+        return "Smoothed bodyweight is \(direction) at about \(signedWeight(weeklyChange)) lb/week. Current 7-day trend is \(formatWeight(current)) lb across \(trend.loggedDays) logged day(s), with \(trend.dataQuality.rawValue.lowercased()) data quality."
     }
 
     private static func nutritionSummary(
@@ -1580,7 +1577,23 @@ enum NutritionAdherenceMetricsBuilder {
             avgFiber = nil
         }
 
-        let (weightCount, weeklyAvg, weeklyChange, weeklyPct, direction) = weightTrendMetrics(from: weightPoints)
+        let trend = WeightTrendBuilder.build(from: weightPoints)
+        let weightCount = trend.loggedDays
+        let weeklyAvg = trend.currentTrendWeightLbs
+        let weeklyChange = trend.weeklyChangeLbs
+        let weeklyPct = trend.weeklyChangePct
+        let direction: WeightTrendDirection
+        if let weeklyChange {
+            if weeklyChange < -0.3 {
+                direction = .losing
+            } else if weeklyChange > 0.3 {
+                direction = .gaining
+            } else {
+                direction = .stable
+            }
+        } else {
+            direction = .unknown
+        }
 
         let targetRange: (low: Double, high: Double)?
         if let avg = weeklyAvg {
@@ -2100,18 +2113,10 @@ enum MeasurementTrendSnapshotBuilder {
         let armChange = averageArmDelta(first: first, last: last)
         let thighChange = averageThighDelta(first: first, last: last)
 
-        let weightSorted = weightPoints.sorted { $0.date < $1.date }
-        let latestWeight = weightSorted.last?.weightLbs ?? last.bodyweightLbs
-        let weightChange: Double?
-        let weightRate: Double?
-        if weightSorted.count >= 2, let wFirst = weightSorted.first, let wLast = weightSorted.last {
-            let wDays = max(Calendar.current.dateComponents([.day], from: wFirst.date, to: wLast.date).day ?? 1, 1)
-            weightChange = wLast.weightLbs - wFirst.weightLbs
-            weightRate = (wLast.weightLbs - wFirst.weightLbs) / Double(wDays) * 7.0
-        } else {
-            weightChange = nil
-            weightRate = nil
-        }
+        let smoothedWeight = WeightTrendBuilder.build(from: weightPoints)
+        let latestWeight = smoothedWeight.currentTrendWeightLbs ?? last.bodyweightLbs
+        let weightChange = smoothedWeight.weeklyChangeLbs
+        let weightRate = smoothedWeight.weeklyChangeLbs
 
         let quality = classifyDataQuality(
             sessions: sorted.count,

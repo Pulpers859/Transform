@@ -8,6 +8,7 @@ struct NutritionView: View {
     @Query(sort: \BodyAnalysisSession.date, order: .reverse) private var analysisSessions: [BodyAnalysisSession]
     @Query(sort: \SavedNutritionProtocol.updatedAt, order: .reverse) private var savedNutritionProtocols: [SavedNutritionProtocol]
     @Query(sort: \WeightEntry.date, order: .reverse) private var weightEntries: [WeightEntry]
+    @Query(sort: \MeasurementEntry.date, order: .reverse) private var measurementEntries: [MeasurementEntry]
 
     @State private var selectedDate = Date()
     @State private var showAddSheet = false
@@ -24,6 +25,8 @@ struct NutritionView: View {
     @State private var nutritionErrorMessage = ""
     @State private var generationProgress: String = ""
     @State private var nutritionGenerationTask: Task<Void, Never>?
+    @State private var isGeneratingMacroReview = false
+    @State private var macroReviewError = ""
     @AppStorage("nutrition_shift_work_mode") private var shiftWorkModeRaw = ShiftWorkNutritionMode.normal.rawValue
 
     let mealOrder = ["Breakfast", "Lunch", "Dinner", "Snack"]
@@ -47,7 +50,13 @@ struct NutritionView: View {
     var totalFat: Double { todayEntries.reduce(0) { $0 + $1.fatG } }
     var canUseAI: Bool { Config.hasAnthropicKey }
     var latestAnalysis: BodyAnalysisResult? { analysisSessions.first?.decodedResult }
-    var activeMacroTargets: DailyMacroTargets { MacroTargetResolver.resolve(from: latestAnalysis) }
+    var activeMacroTargets: DailyMacroTargets {
+        MacroTargetResolver.resolve(
+            from: latestAnalysis,
+            bodyweightLbs: weightTrend.currentTrendWeightLbs,
+            adaptiveOverride: savedNutritionProtocols.first?.appliedMacroOverride
+        )
+    }
     var remainingCalories: Int { activeMacroTargets.calories - totalCalories }
 
     // Heuristic cap: keep added/free sugars under ~10% of calories (aligned with broad public-
@@ -89,6 +98,57 @@ struct NutritionView: View {
         )
     }
 
+    var weightTrend: WeightTrendSnapshot {
+        WeightTrendBuilder.build(
+            from: weightEntries.map {
+                AnalysisLoggedWeightPoint(date: $0.date, weightLbs: $0.weightLbs)
+            }
+        )
+    }
+
+    var measurementTrend: MeasurementTrendSnapshot? {
+        let entries = measurementEntries.map { entry in
+            MeasurementTrendInput(
+                date: entry.date,
+                waistIn: entry.waistIn,
+                neckIn: entry.neckIn,
+                hipsIn: entry.hipsIn,
+                chestIn: entry.chestIn,
+                rightArmIn: entry.rightArmIn,
+                leftArmIn: entry.leftArmIn,
+                rightThighIn: entry.rightThighIn,
+                leftThighIn: entry.leftThighIn,
+                isStandard: entry.isStandardMeasurement,
+                bodyweightLbs: nil
+            )
+        }
+        guard entries.count >= 2 else { return nil }
+        return MeasurementTrendSnapshotBuilder.build(
+            entries: entries,
+            weightPoints: weightEntries.map {
+                AnalysisLoggedWeightPoint(date: $0.date, weightLbs: $0.weightLbs)
+            },
+            nutritionDayCount: adherenceMetrics.validDays
+        )
+    }
+
+    var macroReviewGate: AdaptiveMacroReviewGate {
+        AdaptiveMacroReviewGate.evaluate(
+            weightTrend: weightTrend,
+            adherence: adherenceMetrics,
+            measurementTrend: measurementTrend,
+            lastReviewDate: savedNutritionProtocols.first?.macroReviewUpdatedAt
+        )
+    }
+
+    var savedMacroReview: AdaptiveMacroReview? {
+        guard let json = savedNutritionProtocols.first?.macroReviewJSON,
+              !json.isEmpty else {
+            return nil
+        }
+        return try? JSONDecoder().decode(AdaptiveMacroReview.self, from: Data(json.utf8))
+    }
+
     private func nutritionDaySummaries(since startDate: Date) -> [AnalysisLoggedNutritionDay] {
         let calendar = Calendar.current
         let grouped = allEntries
@@ -119,6 +179,7 @@ struct NutritionView: View {
                     macroRingsCard
                     macroBarCard
                     AdherenceSnapshotCard(metrics: adherenceMetrics)
+                    adaptiveMacroReviewCard
                     groceryPlannerCard
                     mealLogSection
                 }
@@ -325,11 +386,7 @@ struct NutritionView: View {
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .padding(.top, 4)
-            Text(
-                activeMacroTargets.source == .analysis
-                ? "Targets source: latest AI body analysis"
-                : "Targets source: Config fallback (run a new Body Analysis to populate AI macro targets)"
-            )
+            Text(macroTargetSourceText)
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
             if activeMacroTargets.wasAdjustedBySafetyFloor {
@@ -345,6 +402,104 @@ struct NutritionView: View {
         .padding()
         .background(Color(.secondarySystemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 16))
+    }
+
+    var macroTargetSourceText: String {
+        switch activeMacroTargets.source {
+        case .analysis:
+            return "Targets source: latest AI body analysis"
+        case .adaptiveReview:
+            return "Targets source: applied adaptive review"
+        case .config:
+            return "Targets source: Config fallback (run a new Body Analysis to populate AI macro targets)"
+        }
+    }
+
+    var adaptiveMacroReviewCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Label("Adaptive Macro Review", systemImage: "slider.horizontal.3")
+                    .font(.headline)
+                Spacer()
+                Text(macroReviewGate.isEligible ? "READY" : "LOCKED")
+                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    .foregroundStyle(macroReviewGate.isEligible ? .green : .secondary)
+            }
+
+            if let review = savedMacroReview {
+                Text(review.headline)
+                    .font(.subheadline.bold())
+                Text(review.rationale)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                HStack {
+                    macroReviewTarget("Calories", "\(review.proposedCalories)")
+                    macroReviewTarget("Protein", "\(Int(review.proposedProteinG))g")
+                    macroReviewTarget("Carbs", "\(Int(review.proposedCarbsG))g")
+                    macroReviewTarget("Fat", "\(Int(review.proposedFatG))g")
+                }
+
+                Button {
+                    applyMacroReview(review)
+                } label: {
+                    Label("Apply Recommendation", systemImage: "checkmark.circle.fill")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.orange)
+            } else if macroReviewGate.isEligible {
+                Text("Your weight, nutrition, and measurement data are mature enough for a conservative weekly review.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                Text("Unlocks only when the app has enough trustworthy data:")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                ForEach(macroReviewGate.unmetRequirements, id: \.self) { requirement in
+                    Label(requirement, systemImage: "circle")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            if !macroReviewError.isEmpty {
+                Text(macroReviewError)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
+
+            Button {
+                startMacroReview()
+            } label: {
+                HStack {
+                    if isGeneratingMacroReview {
+                        ProgressView()
+                    }
+                    Text(savedMacroReview == nil ? "Run Weekly Review" : "Refresh Weekly Review")
+                }
+                .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .tint(.orange)
+            .disabled(!macroReviewGate.isEligible || isGeneratingMacroReview || !canUseAI)
+        }
+        .padding()
+        .background(Color(.secondarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+    }
+
+    func macroReviewTarget(_ label: String, _ value: String) -> some View {
+        VStack(spacing: 3) {
+            Text(value)
+                .font(.caption.bold())
+            Text(label.uppercased())
+                .font(.system(size: 8, weight: .bold, design: .monospaced))
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 8)
+        .background(Color(.tertiarySystemFill))
+        .clipShape(RoundedRectangle(cornerRadius: 9))
     }
 
     // MARK: - Grocery / Nutrition Planner
@@ -653,6 +808,75 @@ struct NutritionView: View {
         }
         DataBackupManager.shared.writeAutomaticBackup(using: modelContext)
         UINotificationFeedbackGenerator().notificationOccurred(.success)
+    }
+
+    @MainActor
+    func startMacroReview() {
+        guard macroReviewGate.isEligible, let measurementTrend else { return }
+        isGeneratingMacroReview = true
+        macroReviewError = ""
+        Task {
+            defer { isGeneratingMacroReview = false }
+            do {
+                let review = try await ClaudeService.shared.generateAdaptiveMacroReview(
+                    currentTargets: activeMacroTargets,
+                    weightTrend: weightTrend,
+                    adherence: adherenceMetrics,
+                    measurementTrend: measurementTrend
+                )
+                try saveMacroReview(review)
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+            } catch {
+                macroReviewError = error.localizedDescription
+                UINotificationFeedbackGenerator().notificationOccurred(.error)
+            }
+        }
+    }
+
+    func saveMacroReview(_ review: AdaptiveMacroReview) throws {
+        let data = try JSONEncoder().encode(review)
+        guard let json = String(data: data, encoding: .utf8) else {
+            throw ClaudeError.parseError("Could not encode the macro review.")
+        }
+        let record = nutritionPersistenceRecord()
+        record.macroReviewJSON = json
+        record.macroReviewUpdatedAt = .now
+        record.updatedAt = .now
+        guard PersistenceReporter.save(modelContext, operation: "adaptive macro review") else {
+            modelContext.rollback()
+            throw ClaudeError.parseError("Could not save the macro review.")
+        }
+        DataBackupManager.shared.writeAutomaticBackup(using: modelContext)
+    }
+
+    func applyMacroReview(_ review: AdaptiveMacroReview) {
+        let record = nutritionPersistenceRecord()
+        let target = MacroTargetResolver.resolve(
+            from: latestAnalysis,
+            bodyweightLbs: weightTrend.currentTrendWeightLbs,
+            adaptiveOverride: review.proposedOverride
+        )
+        record.appliedCalories = target.calories
+        record.appliedProteinG = target.proteinG
+        record.appliedCarbsG = target.carbsG
+        record.appliedFatG = target.fatG
+        record.updatedAt = .now
+        guard PersistenceReporter.save(modelContext, operation: "applied adaptive macro review") else {
+            modelContext.rollback()
+            macroReviewError = "Could not apply the recommendation."
+            return
+        }
+        DataBackupManager.shared.writeAutomaticBackup(using: modelContext)
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+    }
+
+    func nutritionPersistenceRecord() -> SavedNutritionProtocol {
+        if let existing = savedNutritionProtocols.first {
+            return existing
+        }
+        let created = SavedNutritionProtocol(programJSON: "", followupWeeksJSON: "")
+        modelContext.insert(created)
+        return created
     }
 
     @MainActor

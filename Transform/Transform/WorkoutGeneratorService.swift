@@ -441,7 +441,8 @@ extension ClaudeService {
         analysisJSON: String,
         splitType: String,
         programName: String,
-        performanceHistory: String? = nil
+        performanceHistory: String? = nil,
+        sessionFeedbackSummary: String? = nil
     ) async throws -> WorkoutWeekGenerationResult {
         let dayStart = ((weekNumber - 1) * 7) + 1
         let dayEnd = weekNumber * 7
@@ -480,7 +481,8 @@ extension ClaudeService {
             dayEnd: dayEnd,
             previousWeekReference: previousWeekReference,
             analysisContext: context,
-            performanceHistory: performanceHistory
+            performanceHistory: performanceHistory,
+            sessionFeedbackSummary: sessionFeedbackSummary
         )
         let requestContext = workoutRequestContext(
             phase: "next_week",

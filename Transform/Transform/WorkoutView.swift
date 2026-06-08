@@ -15,6 +15,7 @@ struct WorkoutView: View {
     @State private var selectedWeek = 1
     @State private var showGeneratorLab = false
     @State private var generationTask: Task<Void, Never>?
+    @State private var feedbackDay: WorkoutDay?
 
     var currentProgram: WorkoutProgram? { programs.first }
     var latestAnalysis: BodyAnalysisSession? { analysisSessions.first }
@@ -60,6 +61,9 @@ struct WorkoutView: View {
             }
             .sheet(isPresented: $showGeneratorLab) {
                 WorkoutGeneratorLabView()
+            }
+            .sheet(item: $feedbackDay) { day in
+                WorkoutSessionFeedbackSheet(day: day)
             }
             .onAppear {
                 syncSelectedWeekWithCurrentProgram()
@@ -768,7 +772,11 @@ struct WorkoutView: View {
                 analysisJSON: program.analysisJSON,
                 splitType: program.splitType,
                 programName: program.programName,
-                performanceHistory: performanceHistory
+                performanceHistory: performanceHistory,
+                sessionFeedbackSummary: sessionFeedbackSummary(
+                    for: program,
+                    weekNumber: program.currentWeek
+                )
             )
             let response = generationResult.response
             try Task.checkCancellation()
@@ -884,6 +892,24 @@ struct WorkoutView: View {
         }
         DataBackupManager.shared.writeAutomaticBackup(using: modelContext)
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        if day.isCompleted && !day.isRestDay {
+            feedbackDay = day
+        }
+    }
+
+    func sessionFeedbackSummary(for program: WorkoutProgram, weekNumber: Int) -> String? {
+        let completed = program.sortedDays.filter {
+            $0.weekNumber == weekNumber && !$0.isRestDay && $0.hasSessionFeedback
+        }
+        guard !completed.isEmpty else { return nil }
+
+        return completed.map { day in
+            let performance = day.performanceRating?.rawValue ?? "Not rated"
+            let note = day.sessionFeedbackNotes.trimmingCharacters(in: .whitespacesAndNewlines)
+            let noteSuffix = note.isEmpty ? "" : " Note: \(String(note.prefix(160)))"
+            return "Day \(day.dayNumber) \(day.dayName) [\(day.muscleGroups)]: effort \(day.sessionEffort)/5, stimulus \(day.stimulusQuality)/5, joint pain \(day.jointPain)/5, performance \(performance).\(noteSuffix)"
+        }
+        .joined(separator: "\n")
     }
 
     func deleteProgram(_ program: WorkoutProgram) {

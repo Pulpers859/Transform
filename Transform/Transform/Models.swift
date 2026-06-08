@@ -155,6 +155,12 @@ class SavedNutritionProtocol {
     var updatedAt: Date
     var programJSON: String = ""
     var followupWeeksJSON: String = ""
+    var macroReviewJSON: String = ""
+    var macroReviewUpdatedAt: Date?
+    var appliedCalories: Int?
+    var appliedProteinG: Double?
+    var appliedCarbsG: Double?
+    var appliedFatG: Double?
 
     init(
         createdAt: Date = .now,
@@ -166,6 +172,21 @@ class SavedNutritionProtocol {
         self.updatedAt = updatedAt
         self.programJSON = programJSON
         self.followupWeeksJSON = followupWeeksJSON
+    }
+
+    var appliedMacroOverride: AdaptiveMacroOverride? {
+        guard let calories = appliedCalories,
+              let proteinG = appliedProteinG,
+              let carbsG = appliedCarbsG,
+              let fatG = appliedFatG else {
+            return nil
+        }
+        return AdaptiveMacroOverride(
+            calories: calories,
+            proteinG: proteinG,
+            carbsG: carbsG,
+            fatG: fatG
+        )
     }
 }
 

@@ -10,6 +10,7 @@ struct DashboardView: View {
     @Query(sort: \BodyAnalysisSession.date, order: .reverse) private var analysisSessions: [BodyAnalysisSession]
     @Query(sort: \MeasurementEntry.date, order: .reverse) private var measurementEntries: [MeasurementEntry]
     @Query(sort: \SleepEntry.date, order: .reverse) private var sleepEpisodes: [SleepEntry]
+    @Query(sort: \SavedNutritionProtocol.updatedAt, order: .reverse) private var savedNutritionProtocols: [SavedNutritionProtocol]
 
     @State private var animateRings = false
     @State private var backupDocument = BackupDocument()
@@ -33,7 +34,13 @@ struct DashboardView: View {
     var todayCarbs: Double { todayNutrition.reduce(0) { $0 + $1.carbsG } }
     var todayFat: Double { todayNutrition.reduce(0) { $0 + $1.fatG } }
     var latestAnalysis: BodyAnalysisResult? { analysisSessions.first?.decodedResult }
-    var activeMacroTargets: DailyMacroTargets { MacroTargetResolver.resolve(from: latestAnalysis) }
+    var activeMacroTargets: DailyMacroTargets {
+        MacroTargetResolver.resolve(
+            from: latestAnalysis,
+            bodyweightLbs: weightTrend.currentTrendWeightLbs,
+            adaptiveOverride: savedNutritionProtocols.first?.appliedMacroOverride
+        )
+    }
 
     var currentWeight: Double? { weightEntries.first?.weightLbs }
     var previousWeight: Double? { weightEntries.dropFirst().first?.weightLbs }
@@ -54,8 +61,20 @@ struct DashboardView: View {
         Array(weightEntries.prefix(14).reversed())
     }
 
+    var weightTrend: WeightTrendSnapshot {
+        WeightTrendBuilder.build(
+            from: weightEntries.map {
+                AnalysisLoggedWeightPoint(date: $0.date, weightLbs: $0.weightLbs)
+            }
+        )
+    }
+
+    var displayedWeightPoints: [SmoothedWeightPoint] {
+        Array(weightTrend.points.suffix(21))
+    }
+
     var weightTrendDomain: ClosedRange<Double> {
-        let values = weightSparkline.map(\.weightLbs)
+        let values = displayedWeightPoints.flatMap { [$0.rawWeightLbs, $0.trendWeightLbs] }
         guard let minValue = values.min(), let maxValue = values.max() else {
             return 0...1
         }
@@ -708,18 +727,23 @@ struct DashboardView: View {
                 }
                 .buttonStyle(.bordered)
                 .tint(.orange)
-                if let delta = weightDelta {
+                if let delta = weightTrend.weeklyChangeLbs {
                     deltaBadge(delta, invertGood: true)
                 }
             }
 
             HStack(alignment: .firstTextBaseline, spacing: 4) {
-                Text(currentWeight.map { String(format: "%.1f", $0) } ?? "--")
+                Text(weightTrend.currentTrendWeightLbs.map { String(format: "%.1f", $0) } ?? "--")
                     .font(.system(size: 44, weight: .black, design: .rounded))
                 Text("lbs")
                     .font(.system(size: 16, weight: .medium))
                     .foregroundStyle(.secondary)
                     .padding(.bottom, 4)
+            }
+            if let raw = weightTrend.currentRawWeightLbs {
+                Text("7-day trend · latest weigh-in \(String(format: "%.1f", raw)) lb · \(weightTrend.dataQuality.rawValue) data")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
             }
 
             VStack(alignment: .leading, spacing: 6) {
@@ -779,38 +803,41 @@ struct DashboardView: View {
                 .buttonStyle(.plain)
             }
 
-            if weightSparkline.count > 1 {
-                Text("Recent trend")
+            if displayedWeightPoints.count > 1 {
+                HStack {
+                    Text("Raw weight + 7-day trend")
+                    Spacer()
+                    if let weeklyPct = weightTrend.weeklyChangePct {
+                        Text(String(format: "%+.2f%% / week", weeklyPct))
+                    }
+                }
                     .font(.caption2)
                     .foregroundStyle(.secondary)
 
-                Chart(weightSparkline) { entry in
+                Chart(displayedWeightPoints) { entry in
                     LineMark(
                         x: .value("Date", entry.date),
-                        y: .value("Weight", entry.weightLbs)
+                        y: .value("Raw weight", entry.rawWeightLbs),
+                        series: .value("Series", "Raw")
                     )
-                    .foregroundStyle(Color.orange.opacity(0.8))
-                    .lineStyle(StrokeStyle(lineWidth: 1.5))
+                    .foregroundStyle(Color.secondary.opacity(0.35))
+                    .lineStyle(StrokeStyle(lineWidth: 1))
                     .interpolationMethod(.monotone)
 
                     PointMark(
                         x: .value("Date", entry.date),
-                        y: .value("Weight", entry.weightLbs)
+                        y: .value("Raw weight", entry.rawWeightLbs)
+                    )
+                    .foregroundStyle(Color.secondary.opacity(0.55))
+                    .symbolSize(10)
+
+                    LineMark(
+                        x: .value("Date", entry.date),
+                        y: .value("Trend weight", entry.trendWeightLbs),
+                        series: .value("Series", "7-day trend")
                     )
                     .foregroundStyle(Color.orange)
-                    .symbolSize(12)
-
-                    AreaMark(
-                        x: .value("Date", entry.date),
-                        y: .value("Weight", entry.weightLbs)
-                    )
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [.orange.opacity(0.1), .clear],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    )
+                    .lineStyle(StrokeStyle(lineWidth: 2.5))
                     .interpolationMethod(.monotone)
                 }
                 .chartXAxis {
@@ -1008,7 +1035,11 @@ struct DashboardView: View {
             }
             Spacer()
 
-            if activeMacroTargets.source == .analysis {
+            if activeMacroTargets.source == .adaptiveReview {
+                Text("Adaptive targets")
+                    .font(.caption2)
+                    .foregroundStyle(.green.opacity(0.75))
+            } else if activeMacroTargets.source == .analysis {
                 if let daysAgo = analysisDaysAgo {
                     let stale = daysAgo > 56
                     Text("AI targets · \(daysAgo)d")

@@ -184,6 +184,12 @@ struct SavedNutritionProtocolSnapshot: Codable {
     let updatedAt: Date
     let programJSON: String
     let followupWeeksJSON: String
+    let macroReviewJSON: String?
+    let macroReviewUpdatedAt: Date?
+    let appliedCalories: Int?
+    let appliedProteinG: Double?
+    let appliedCarbsG: Double?
+    let appliedFatG: Double?
 }
 
 struct AnalysisSnapshot: Codable {
@@ -221,6 +227,12 @@ struct WorkoutDaySnapshot: Codable {
     let isRestDay: Bool
     let notes: String
     let isCompleted: Bool
+    let feedbackSubmittedAt: Date?
+    let sessionEffort: Int?
+    let stimulusQuality: Int?
+    let jointPain: Int?
+    let performanceRatingRaw: String?
+    let sessionFeedbackNotes: String?
     let exercises: [WorkoutExerciseSnapshot]
 }
 
@@ -440,21 +452,34 @@ private extension SavedNutritionProtocolSnapshot {
             createdAt: protocolModel.createdAt,
             updatedAt: protocolModel.updatedAt,
             programJSON: protocolModel.programJSON,
-            followupWeeksJSON: protocolModel.followupWeeksJSON
+            followupWeeksJSON: protocolModel.followupWeeksJSON,
+            macroReviewJSON: protocolModel.macroReviewJSON,
+            macroReviewUpdatedAt: protocolModel.macroReviewUpdatedAt,
+            appliedCalories: protocolModel.appliedCalories,
+            appliedProteinG: protocolModel.appliedProteinG,
+            appliedCarbsG: protocolModel.appliedCarbsG,
+            appliedFatG: protocolModel.appliedFatG
         )
     }
 
     var dedupeKey: String {
-        "\(createdAt.timeIntervalSince1970)-\(programJSON)-\(followupWeeksJSON)"
+        "\(createdAt.timeIntervalSince1970)-\(programJSON)-\(followupWeeksJSON)-\(macroReviewJSON ?? "")"
     }
 
     func makeModel() -> SavedNutritionProtocol {
-        SavedNutritionProtocol(
+        let model = SavedNutritionProtocol(
             createdAt: createdAt,
             updatedAt: updatedAt,
             programJSON: programJSON,
             followupWeeksJSON: followupWeeksJSON
         )
+        model.macroReviewJSON = macroReviewJSON ?? ""
+        model.macroReviewUpdatedAt = macroReviewUpdatedAt
+        model.appliedCalories = appliedCalories
+        model.appliedProteinG = appliedProteinG
+        model.appliedCarbsG = appliedCarbsG
+        model.appliedFatG = appliedFatG
+        return model
     }
 }
 
@@ -530,6 +555,12 @@ private extension WorkoutDaySnapshot {
             isRestDay: day.isRestDay,
             notes: day.notes,
             isCompleted: day.isCompleted,
+            feedbackSubmittedAt: day.feedbackSubmittedAt,
+            sessionEffort: day.sessionEffort,
+            stimulusQuality: day.stimulusQuality,
+            jointPain: day.jointPain,
+            performanceRatingRaw: day.performanceRatingRaw,
+            sessionFeedbackNotes: day.sessionFeedbackNotes,
             exercises: day.sortedExercises.map(WorkoutExerciseSnapshot.init)
         )
     }
@@ -543,6 +574,12 @@ private extension WorkoutDaySnapshot {
             notes: notes
         )
         day.isCompleted = isCompleted
+        day.feedbackSubmittedAt = feedbackSubmittedAt
+        day.sessionEffort = sessionEffort ?? 0
+        day.stimulusQuality = stimulusQuality ?? 0
+        day.jointPain = jointPain ?? 0
+        day.performanceRatingRaw = performanceRatingRaw ?? ""
+        day.sessionFeedbackNotes = sessionFeedbackNotes ?? ""
 
         for exerciseSnapshot in exercises {
             let exercise = exerciseSnapshot.makeModel()
@@ -741,8 +778,8 @@ private extension LegacyNutritionSnapshot {
 final class DataBackupManager {
     static let shared = DataBackupManager()
     private init() {}
-    let currentBackupVersion = 6
-    private let supportedBackupVersions: Set<Int> = [1, 2, 3, 4, 5, 6]
+    let currentBackupVersion = 7
+    private let supportedBackupVersions: Set<Int> = [1, 2, 3, 4, 5, 6, 7]
 
     func exportDocument(using modelContext: ModelContext) throws -> BackupDocument {
         let payload = try buildPayload(using: modelContext)

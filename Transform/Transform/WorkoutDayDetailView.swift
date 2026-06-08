@@ -7,6 +7,7 @@ struct WorkoutDayDetailView: View {
     @Query(sort: \ExerciseWeightEntry.loggedAt, order: .reverse) private var allWeightLogs: [ExerciseWeightEntry]
     let day: WorkoutDay
     @State private var exerciseForWeightLogging: WorkoutExercise?
+    @State private var feedbackDay: WorkoutDay?
 
     var completedExerciseCount: Int {
         day.sortedExercises.filter { $0.isCompleted }.count
@@ -31,6 +32,9 @@ struct WorkoutDayDetailView: View {
                 if !day.notes.isEmpty {
                     sessionNotes
                 }
+                if day.isCompleted {
+                    sessionFeedbackCard
+                }
                 exerciseList
             }
             .padding()
@@ -43,6 +47,9 @@ struct WorkoutDayDetailView: View {
                 exercise: exercise,
                 weightSummary: weightSummary(for: exercise)
             )
+        }
+        .sheet(item: $feedbackDay) { selectedDay in
+            WorkoutSessionFeedbackSheet(day: selectedDay)
         }
     }
 
@@ -139,6 +146,36 @@ struct WorkoutDayDetailView: View {
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
+    var sessionFeedbackCard: some View {
+        Button {
+            feedbackDay = day
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: day.hasSessionFeedback ? "checkmark.bubble.fill" : "bubble.left.and.exclamationmark.bubble.right")
+                    .foregroundStyle(day.hasSessionFeedback ? .green : .orange)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(day.hasSessionFeedback ? "Session Feedback" : "Add Session Feedback")
+                        .font(.subheadline.bold())
+                        .foregroundStyle(.primary)
+                    Text(day.hasSessionFeedback
+                         ? "Effort \(day.sessionEffort)/5 · Stimulus \(day.stimulusQuality)/5 · Pain \(day.jointPain)/5 · \(day.performanceRating?.rawValue ?? "Not rated")"
+                         : "Four quick ratings help calibrate next week.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.leading)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            }
+            .padding()
+            .background(Color(.secondarySystemBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+        }
+        .buttonStyle(.plain)
+    }
+
     // MARK: - Exercise List
 
     var exerciseList: some View {
@@ -178,6 +215,9 @@ struct WorkoutDayDetailView: View {
         }
         DataBackupManager.shared.writeAutomaticBackup(using: modelContext)
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        if day.isCompleted && !previousDayState {
+            feedbackDay = day
+        }
     }
 
     func weightSummary(for exercise: WorkoutExercise) -> ExerciseWeightEntry? {
