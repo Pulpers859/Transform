@@ -5,6 +5,7 @@ import Foundation
 struct WorkoutDayDetailView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \ExerciseWeightEntry.loggedAt, order: .reverse) private var allWeightLogs: [ExerciseWeightEntry]
+    @Query(sort: \ExercisePerformanceLog.loggedAt, order: .reverse) private var allPerformanceLogs: [ExercisePerformanceLog]
     let day: WorkoutDay
     @State private var exerciseForWeightLogging: WorkoutExercise?
     @State private var feedbackDay: WorkoutDay?
@@ -189,6 +190,7 @@ struct WorkoutDayDetailView: View {
                 ExerciseCard(
                     exercise: exercise,
                     weightSummary: weightSummary(for: exercise),
+                    latestSetLogs: latestSetLogs(for: exercise),
                     onToggle: { toggleExercise(exercise) },
                     onLogWeight: { exerciseForWeightLogging = exercise }
                 )
@@ -223,6 +225,14 @@ struct WorkoutDayDetailView: View {
     func weightSummary(for exercise: WorkoutExercise) -> ExerciseWeightEntry? {
         ExerciseWeightStore.summary(for: exercise, within: allWeightLogs)
     }
+
+    func latestSetLogs(for exercise: WorkoutExercise) -> [SetLogEntry] {
+        let key = ExerciseWeightEntry.canonicalLookupKey(exercise.exerciseName)
+        guard let latest = allPerformanceLogs.first(where: {
+            $0.canonicalExerciseKey == key && !$0.setLogsJSON.isEmpty
+        }) else { return [] }
+        return latest.decodedSetLogs
+    }
 }
 
 // MARK: - Exercise Card
@@ -230,6 +240,7 @@ struct WorkoutDayDetailView: View {
 struct ExerciseCard: View {
     let exercise: WorkoutExercise
     let weightSummary: ExerciseWeightEntry?
+    let latestSetLogs: [SetLogEntry]
     let onToggle: () -> Void
     let onLogWeight: () -> Void
 
@@ -390,7 +401,9 @@ struct ExerciseCard: View {
                     }
                 }
 
-                if latestWeightLog != nil {
+                if !latestSetLogs.isEmpty {
+                    setLogBreakdown
+                } else if latestWeightLog != nil {
                     ExerciseWeightSnapshotTile(
                         lastWeightText: latestWeightLog.map { "\(formatWeight($0.weightLbs)) lb" } ?? "-",
                         lastRepsText: lastRepsTileText,
@@ -430,13 +443,21 @@ struct ExerciseCard: View {
                 Button {
                     onLogWeight()
                 } label: {
-                    Label("Log Weight", systemImage: "plus.circle.fill")
+                    Label("Log Sets", systemImage: "plus.circle.fill")
                         .font(.caption.bold())
                         .foregroundStyle(.orange)
                 }
                 .buttonStyle(.plain)
 
                 Spacer()
+
+                NavigationLink {
+                    ExerciseProgressionView(exerciseName: exercise.exerciseName)
+                } label: {
+                    Label("Progression", systemImage: "chart.line.uptrend.xyaxis")
+                        .font(.caption.bold())
+                        .foregroundStyle(.secondary)
+                }
 
                 if let latestWeightLog {
                     Text(latestWeightLog.loggedAt.formatted(date: .abbreviated, time: .shortened))
@@ -505,6 +526,49 @@ struct ExerciseCard: View {
                 onClose: { showExpandedRestTimer = false }
             )
         }
+    }
+
+    var setLogBreakdown: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("LAST SESSION")
+                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                .foregroundStyle(.tertiary)
+                .tracking(1)
+
+            ForEach(latestSetLogs) { set in
+                HStack(spacing: 8) {
+                    Text("Set \(set.setNumber)")
+                        .font(.caption2.bold())
+                        .foregroundStyle(.orange)
+                        .frame(width: 38, alignment: .leading)
+                    Text("\(formatWeight(set.weightLbs)) lb")
+                        .font(.caption.bold())
+                        .frame(width: 65, alignment: .trailing)
+                    Text("\u{00D7}")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                    Text("\(set.repsCompleted) reps")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
+            }
+
+            if let best = bestWeightText {
+                HStack(spacing: 4) {
+                    Image(systemName: "trophy.fill")
+                        .font(.system(size: 8))
+                        .foregroundStyle(.yellow)
+                    Text("Best: \(best)")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.top, 2)
+            }
+        }
+        .padding(10)
+        .background(Color.primary.opacity(0.04))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
     var restTimerPanel: some View {

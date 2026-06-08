@@ -299,6 +299,14 @@ class ExerciseWeightEntry {
     }
 }
 
+struct SetLogEntry: Codable, Identifiable, Equatable {
+    var id = UUID()
+    var setNumber: Int
+    var weightLbs: Double
+    var repsCompleted: Int
+    var notes: String = ""
+}
+
 @Model
 class ExercisePerformanceLog {
     var loggedAt: Date
@@ -309,6 +317,7 @@ class ExercisePerformanceLog {
     var repsCompleted: Int?
     var notes: String = ""
     var muscleTarget: String = ""
+    var setLogsJSON: String = ""
 
     init(
         loggedAt: Date = .now,
@@ -316,7 +325,8 @@ class ExercisePerformanceLog {
         weightLbs: Double,
         repsCompleted: Int? = nil,
         notes: String = "",
-        muscleTarget: String = ""
+        muscleTarget: String = "",
+        setLogs: [SetLogEntry] = []
     ) {
         self.loggedAt = loggedAt
         self.exerciseName = exerciseName
@@ -326,6 +336,29 @@ class ExercisePerformanceLog {
         self.repsCompleted = repsCompleted
         self.notes = notes
         self.muscleTarget = muscleTarget
+        self.setLogsJSON = Self.encodeSetLogs(setLogs)
+    }
+
+    var decodedSetLogs: [SetLogEntry] {
+        guard !setLogsJSON.isEmpty else { return [] }
+        return (try? JSONDecoder().decode([SetLogEntry].self, from: Data(setLogsJSON.utf8))) ?? []
+    }
+
+    static func encodeSetLogs(_ logs: [SetLogEntry]) -> String {
+        guard !logs.isEmpty,
+              let data = try? JSONEncoder().encode(logs),
+              let json = String(data: data, encoding: .utf8) else { return "" }
+        return json
+    }
+
+    static func topSetWeight(from logs: [SetLogEntry]) -> Double? {
+        logs.max(by: { $0.weightLbs < $1.weightLbs })?.weightLbs
+    }
+
+    static func topSetReps(from logs: [SetLogEntry]) -> Int? {
+        guard let maxWeight = topSetWeight(from: logs) else { return nil }
+        return logs.filter { abs($0.weightLbs - maxWeight) < 0.01 }
+            .max(by: { $0.repsCompleted < $1.repsCompleted })?.repsCompleted
     }
 }
 

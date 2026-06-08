@@ -269,6 +269,7 @@ struct ExercisePerformanceLogSnapshot: Codable {
     let notes: String
     let muscleTarget: String
     let canonicalExerciseKey: String?
+    let setLogsJSON: String?
 }
 
 private extension WeightSnapshot {
@@ -736,7 +737,8 @@ private extension ExercisePerformanceLogSnapshot {
             repsCompleted: entry.repsCompleted,
             notes: entry.notes,
             muscleTarget: entry.muscleTarget,
-            canonicalExerciseKey: entry.canonicalExerciseKey
+            canonicalExerciseKey: entry.canonicalExerciseKey,
+            setLogsJSON: entry.setLogsJSON.isEmpty ? nil : entry.setLogsJSON
         )
     }
 
@@ -755,6 +757,7 @@ private extension ExercisePerformanceLogSnapshot {
             muscleTarget: muscleTarget
         )
         entry.canonicalExerciseKey = resolvedCanonicalKey
+        entry.setLogsJSON = setLogsJSON ?? ""
         return entry
     }
 }

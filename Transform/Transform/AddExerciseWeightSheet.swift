@@ -9,36 +9,27 @@ struct AddExerciseWeightSheet: View {
     let exercise: WorkoutExercise
     let weightSummary: ExerciseWeightEntry?
 
-    @State private var loggedAt = Date()
-    @State private var weightText = ""
-    @State private var repsText = ""
+    @State private var setLogs: [SetLogDraft] = []
     @State private var notes = ""
+    @State private var loggedAt = Date()
 
     private let quickAdjustments: [Double] = [-10, -5, -2.5, 2.5, 5, 10]
-    private let suggestedReps: [Int] = [5, 6, 8, 10, 12, 15]
 
-    enum EntryField {
-        case weight
-        case reps
+    struct SetLogDraft: Identifiable {
+        let id = UUID()
+        var setNumber: Int
+        var weightText: String
+        var repsText: String
+    }
+
+    enum EntryField: Hashable {
+        case weight(Int)
+        case reps(Int)
         case notes
     }
 
     var canSave: Bool {
-        parsedWeight != nil
-    }
-
-    var parsedWeight: Double? {
-        let cleaned = weightText
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .replacingOccurrences(of: ",", with: ".")
-        guard let value = Double(cleaned), value > 0 else { return nil }
-        return value
-    }
-
-    var parsedReps: Int? {
-        let cleaned = repsText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !cleaned.isEmpty, let reps = Int(cleaned), reps > 0 else { return nil }
-        return reps
+        setLogs.contains { parsedWeight(from: $0.weightText) != nil }
     }
 
     var isKeyboardActive: Bool {
@@ -57,40 +48,31 @@ struct AddExerciseWeightSheet: View {
                         if let weightSummary {
                             targetsCard(summary: weightSummary)
                         }
-                        entryCard
+                        setEntryCards
+                        notesAndDateCard
                     }
                     .padding(.horizontal, 16)
                     .padding(.top, 16)
                     .padding(.bottom, isKeyboardActive ? 24 : 120)
                 }
             }
-            .navigationTitle("Log Weight")
+            .navigationTitle("Log Sets")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
+                    Button("Cancel") { dismiss() }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Save") {
-                        saveEntry()
-                    }
-                    .bold()
-                    .disabled(!canSave)
+                    Button("Save") { saveEntry() }
+                        .bold()
+                        .disabled(!canSave)
                 }
                 ToolbarItemGroup(placement: .keyboard) {
-                    Button("Save") {
-                        saveEntry()
-                    }
-                    .bold()
-                    .disabled(!canSave)
-
+                    Button("Save") { saveEntry() }
+                        .bold()
+                        .disabled(!canSave)
                     Spacer()
-
-                    Button("Done") {
-                        focusedField = nil
-                    }
+                    Button("Done") { focusedField = nil }
                 }
             }
             .safeAreaInset(edge: .bottom) {
@@ -99,15 +81,11 @@ struct AddExerciseWeightSheet: View {
                 }
             }
             .animation(.easeOut(duration: 0.2), value: isKeyboardActive)
-            .onAppear {
-                guard weightText.isEmpty, let weightSummary else { return }
-                weightText = formatWeight(weightSummary.weightLbs)
-                if let reps = weightSummary.repsCompleted {
-                    repsText = String(reps)
-                }
-            }
+            .onAppear { initializeSets() }
         }
     }
+
+    // MARK: - Exercise Header
 
     var exerciseCard: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -129,6 +107,8 @@ struct AddExerciseWeightSheet: View {
         .clipShape(RoundedRectangle(cornerRadius: 20))
     }
 
+    // MARK: - Targets
+
     func targetsCard(summary: ExerciseWeightEntry) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             sectionLabel("Targets")
@@ -141,7 +121,7 @@ struct AddExerciseWeightSheet: View {
                     date: summary.loggedAt,
                     accent: .orange
                 ) {
-                    applyLast(summary)
+                    applyWeightToAll(summary.weightLbs, reps: summary.repsCompleted)
                 }
 
                 Divider()
@@ -154,7 +134,7 @@ struct AddExerciseWeightSheet: View {
                     date: resolvedBestDate(from: summary),
                     accent: .green
                 ) {
-                    applyBest(summary)
+                    applyWeightToAll(resolvedBestWeight(from: summary), reps: resolvedBestReps(from: summary))
                 }
             }
             .background(Color(.systemBackground))
@@ -197,7 +177,7 @@ struct AddExerciseWeightSheet: View {
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
 
-                Text("Tap to use")
+                Text("Tap to fill all sets")
                     .font(.caption2.bold())
                     .foregroundStyle(accent)
             }
@@ -208,88 +188,127 @@ struct AddExerciseWeightSheet: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    var entryCard: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            sectionLabel("New Entry")
+    // MARK: - Set Entry Cards
 
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Weight")
-                    .font(.caption.bold())
-                    .foregroundStyle(.secondary)
-
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    TextField("0", text: $weightText)
-                        .keyboardType(.decimalPad)
-                        .focused($focusedField, equals: .weight)
-                        .font(.system(size: 40, weight: .black, design: .rounded))
-
-                    Text("lb")
-                        .font(.title3.bold())
-                        .foregroundStyle(.secondary)
+    var setEntryCards: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                sectionLabel("Sets")
+                Spacer()
+                Button {
+                    addSet()
+                } label: {
+                    Label("Add Set", systemImage: "plus.circle.fill")
+                        .font(.caption.bold())
+                        .foregroundStyle(.orange)
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 14)
-                .background(Color(.systemBackground))
-                .clipShape(RoundedRectangle(cornerRadius: 18))
+                .buttonStyle(.plain)
             }
 
-            VStack(alignment: .leading, spacing: 10) {
-                Text("Quick Adjust")
-                    .font(.caption.bold())
-                    .foregroundStyle(.secondary)
+            ForEach(Array(setLogs.enumerated()), id: \.element.id) { index, draft in
+                setRow(index: index, draft: draft)
+            }
 
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 3), spacing: 10) {
-                    ForEach(quickAdjustments, id: \.self) { delta in
+            if setLogs.count > 1 {
+                HStack(spacing: 12) {
+                    Button {
+                        copyFirstSetToAll()
+                    } label: {
+                        Label("Copy Set 1 to all", systemImage: "doc.on.doc")
+                            .font(.caption.bold())
+                            .foregroundStyle(.orange)
+                    }
+                    .buttonStyle(.plain)
+
+                    Spacer()
+
+                    if setLogs.count > exercise.sets {
                         Button {
-                            nudgeWeight(by: delta)
+                            removeLastSet()
                         } label: {
-                            Text(delta > 0 ? "+\(formatWeight(delta))" : formatWeight(delta))
-                                .font(.subheadline.bold())
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 12)
-                                .background(delta > 0 ? Color.orange.opacity(0.14) : Color.primary.opacity(0.06))
-                                .foregroundStyle(delta > 0 ? Color.orange : Color.primary)
-                                .clipShape(RoundedRectangle(cornerRadius: 14))
+                            Label("Remove last", systemImage: "minus.circle")
+                                .font(.caption.bold())
+                                .foregroundStyle(.red)
                         }
                         .buttonStyle(.plain)
                     }
                 }
+                .padding(.horizontal, 4)
             }
+        }
+        .padding(16)
+        .background(Color(.secondarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 20))
+    }
 
-            VStack(alignment: .leading, spacing: 10) {
-                Text("Reps Completed")
+    func setRow(index: Int, draft: SetLogDraft) -> some View {
+        HStack(spacing: 10) {
+            Text("Set \(draft.setNumber)")
+                .font(.caption.bold())
+                .foregroundStyle(.orange)
+                .frame(width: 44, alignment: .leading)
+
+            HStack(spacing: 4) {
+                TextField("0", text: $setLogs[index].weightText)
+                    .keyboardType(.decimalPad)
+                    .focused($focusedField, equals: .weight(index))
+                    .font(.system(size: 20, weight: .black, design: .rounded))
+                    .frame(minWidth: 50)
+                Text("lb")
                     .font(.caption.bold())
                     .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(Color(.systemBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 12))
 
-                TextField("Optional", text: $repsText)
+            Text("\u{00D7}")
+                .font(.caption.bold())
+                .foregroundStyle(.tertiary)
+
+            HStack(spacing: 4) {
+                TextField("0", text: $setLogs[index].repsText)
                     .keyboardType(.numberPad)
-                    .focused($focusedField, equals: .reps)
-                    .font(.title3.bold())
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 14)
-                    .background(Color(.systemBackground))
-                    .clipShape(RoundedRectangle(cornerRadius: 18))
+                    .focused($focusedField, equals: .reps(index))
+                    .font(.system(size: 20, weight: .black, design: .rounded))
+                    .frame(minWidth: 30)
+                Text("reps")
+                    .font(.caption.bold())
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(Color(.systemBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 12))
 
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        ForEach(suggestedReps, id: \.self) { rep in
-                            Button {
-                                repsText = String(rep)
-                            } label: {
-                                Text("\(rep)")
-                                    .font(.caption.bold())
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 8)
-                                    .background(repsText == String(rep) ? Color.orange.opacity(0.18) : Color.primary.opacity(0.06))
-                                    .foregroundStyle(repsText == String(rep) ? Color.orange : Color.primary)
-                                    .clipShape(Capsule())
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
+            quickAdjustButton(index: index)
+        }
+    }
+
+    func quickAdjustButton(index: Int) -> some View {
+        Menu {
+            ForEach(quickAdjustments, id: \.self) { delta in
+                Button {
+                    nudgeSetWeight(at: index, by: delta)
+                } label: {
+                    Text(delta > 0 ? "+\(formatWeight(delta))" : "\(formatWeight(delta))")
                 }
             }
+        } label: {
+            Image(systemName: "plusminus")
+                .font(.caption.bold())
+                .foregroundStyle(.secondary)
+                .padding(8)
+                .background(Color(.tertiarySystemFill))
+                .clipShape(Circle())
+        }
+    }
 
+    // MARK: - Notes & Date
+
+    var notesAndDateCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
             VStack(alignment: .leading, spacing: 10) {
                 Text("When")
                     .font(.caption.bold())
@@ -328,15 +347,17 @@ struct AddExerciseWeightSheet: View {
         .clipShape(RoundedRectangle(cornerRadius: 20))
     }
 
+    // MARK: - Bottom Bar
+
     var bottomSaveBar: some View {
         VStack(spacing: 10) {
             Divider()
 
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(parsedWeight.map { "\(formatWeight($0)) lb" } ?? "Enter a valid weight")
+                    Text(saveSummaryText)
                         .font(.headline)
-                    Text(parsedReps.map { "\($0) reps logged" } ?? "Reps optional")
+                    Text("\(validSetCount) of \(setLogs.count) sets logged")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -346,9 +367,9 @@ struct AddExerciseWeightSheet: View {
                 Button {
                     saveEntry()
                 } label: {
-                    Text("Save Entry")
+                    Text("Save Sets")
                         .font(.headline.bold())
-                        .frame(minWidth: 132)
+                        .frame(minWidth: 120)
                         .padding(.vertical, 14)
                         .background(canSave ? Color.orange : Color.orange.opacity(0.4))
                         .foregroundStyle(.white)
@@ -362,6 +383,125 @@ struct AddExerciseWeightSheet: View {
         .background(.ultraThinMaterial)
     }
 
+    var validSetCount: Int {
+        setLogs.filter { parsedWeight(from: $0.weightText) != nil && parsedReps(from: $0.repsText) != nil }.count
+    }
+
+    var saveSummaryText: String {
+        let valid = setLogs.compactMap { draft -> (Double, Int)? in
+            guard let w = parsedWeight(from: draft.weightText),
+                  let r = parsedReps(from: draft.repsText) else { return nil }
+            return (w, r)
+        }
+        guard let top = valid.max(by: { $0.0 < $1.0 }) else { return "Enter weight to save" }
+        return "\(formatWeight(top.0)) lb \u{00D7} \(top.1) top set"
+    }
+
+    // MARK: - Actions
+
+    func initializeSets() {
+        guard setLogs.isEmpty else { return }
+        let count = max(exercise.sets, 1)
+        let prefillWeight = weightSummary?.weightLbs
+        let prefillReps = weightSummary?.repsCompleted
+
+        setLogs = (1...count).map { num in
+            SetLogDraft(
+                setNumber: num,
+                weightText: prefillWeight.map { formatWeight($0) } ?? "",
+                repsText: prefillReps.map { String($0) } ?? ""
+            )
+        }
+    }
+
+    func addSet() {
+        let nextNum = (setLogs.last?.setNumber ?? 0) + 1
+        let lastWeight = setLogs.last?.weightText ?? ""
+        let lastReps = setLogs.last?.repsText ?? ""
+        setLogs.append(SetLogDraft(setNumber: nextNum, weightText: lastWeight, repsText: lastReps))
+    }
+
+    func removeLastSet() {
+        guard setLogs.count > 1 else { return }
+        setLogs.removeLast()
+    }
+
+    func copyFirstSetToAll() {
+        guard let first = setLogs.first else { return }
+        for i in setLogs.indices {
+            setLogs[i].weightText = first.weightText
+            setLogs[i].repsText = first.repsText
+        }
+    }
+
+    func applyWeightToAll(_ weight: Double, reps: Int?) {
+        for i in setLogs.indices {
+            setLogs[i].weightText = formatWeight(weight)
+            setLogs[i].repsText = reps.map { String($0) } ?? ""
+        }
+    }
+
+    func nudgeSetWeight(at index: Int, by delta: Double) {
+        let base = parsedWeight(from: setLogs[index].weightText) ?? weightSummary?.weightLbs ?? 0
+        let updated = max(0, base + delta)
+        guard updated > 0 else { return }
+        setLogs[index].weightText = formatWeight(updated)
+    }
+
+    func saveEntry() {
+        let validSets: [SetLogEntry] = setLogs.compactMap { draft in
+            guard let w = parsedWeight(from: draft.weightText) else { return nil }
+            let r = parsedReps(from: draft.repsText) ?? 0
+            return SetLogEntry(setNumber: draft.setNumber, weightLbs: w, repsCompleted: r)
+        }
+        guard !validSets.isEmpty else { return }
+
+        let topWeight = ExercisePerformanceLog.topSetWeight(from: validSets) ?? validSets[0].weightLbs
+        let topReps = ExercisePerformanceLog.topSetReps(from: validSets)
+        let trimmedNotes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        let performanceLog = ExercisePerformanceLog(
+            loggedAt: loggedAt,
+            exerciseName: exercise.exerciseName,
+            weightLbs: topWeight,
+            repsCompleted: topReps,
+            notes: trimmedNotes,
+            muscleTarget: exercise.muscleTarget,
+            setLogs: validSets
+        )
+        modelContext.insert(performanceLog)
+
+        if let weightSummary {
+            weightSummary.applyLog(
+                loggedAt: loggedAt,
+                exerciseName: exercise.exerciseName,
+                weightLbs: topWeight,
+                repsCompleted: topReps,
+                notes: trimmedNotes
+            )
+        } else {
+            let entry = ExerciseWeightEntry(
+                loggedAt: loggedAt,
+                exerciseName: exercise.exerciseName,
+                weightLbs: topWeight,
+                repsCompleted: topReps,
+                notes: trimmedNotes
+            )
+            modelContext.insert(entry)
+        }
+
+        guard PersistenceReporter.save(modelContext, operation: "exercise set logging") else {
+            modelContext.rollback()
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            return
+        }
+        DataBackupManager.shared.writeAutomaticBackup(using: modelContext)
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        dismiss()
+    }
+
+    // MARK: - Helpers
+
     func resolvedBestWeight(from summary: ExerciseWeightEntry) -> Double {
         summary.hasBestRecord ? summary.bestWeightLbs : summary.weightLbs
     }
@@ -374,18 +514,18 @@ struct AddExerciseWeightSheet: View {
         summary.bestRepsCompleted ?? summary.repsCompleted
     }
 
-    func applyLast(_ summary: ExerciseWeightEntry) {
-        weightText = formatWeight(summary.weightLbs)
-        repsText = summary.repsCompleted.map(String.init) ?? ""
-        notes = summary.notes
-        loggedAt = Date()
+    func parsedWeight(from text: String) -> Double? {
+        let cleaned = text
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: ",", with: ".")
+        guard let value = Double(cleaned), value > 0 else { return nil }
+        return value
     }
 
-    func applyBest(_ summary: ExerciseWeightEntry) {
-        weightText = formatWeight(resolvedBestWeight(from: summary))
-        repsText = resolvedBestReps(from: summary).map(String.init) ?? ""
-        notes = summary.hasBestRecord ? summary.bestNotes : summary.notes
-        loggedAt = Date()
+    func parsedReps(from text: String) -> Int? {
+        let cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty, let reps = Int(cleaned), reps > 0 else { return nil }
+        return reps
     }
 
     func sectionLabel(_ text: String) -> some View {
@@ -406,59 +546,6 @@ struct AddExerciseWeightSheet: View {
         .background(Color.orange.opacity(0.12))
         .foregroundStyle(.orange)
         .clipShape(Capsule())
-    }
-
-    func nudgeWeight(by delta: Double) {
-        let base = parsedWeight ?? weightSummary?.weightLbs ?? 0
-        let updated = max(0, base + delta)
-        guard updated > 0 else {
-            weightText = ""
-            return
-        }
-        weightText = formatWeight(updated)
-    }
-
-    func saveEntry() {
-        guard let weight = parsedWeight else { return }
-
-        let trimmedNotes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
-        let performanceLog = ExercisePerformanceLog(
-            loggedAt: loggedAt,
-            exerciseName: exercise.exerciseName,
-            weightLbs: weight,
-            repsCompleted: parsedReps,
-            notes: trimmedNotes,
-            muscleTarget: exercise.muscleTarget
-        )
-        modelContext.insert(performanceLog)
-
-        if let weightSummary {
-            weightSummary.applyLog(
-                loggedAt: loggedAt,
-                exerciseName: exercise.exerciseName,
-                weightLbs: weight,
-                repsCompleted: parsedReps,
-                notes: trimmedNotes
-            )
-        } else {
-            let entry = ExerciseWeightEntry(
-                loggedAt: loggedAt,
-                exerciseName: exercise.exerciseName,
-                weightLbs: weight,
-                repsCompleted: parsedReps,
-                notes: trimmedNotes
-            )
-            modelContext.insert(entry)
-        }
-
-        guard PersistenceReporter.save(modelContext, operation: "exercise weight summary") else {
-            modelContext.rollback()
-            UINotificationFeedbackGenerator().notificationOccurred(.error)
-            return
-        }
-        DataBackupManager.shared.writeAutomaticBackup(using: modelContext)
-        UINotificationFeedbackGenerator().notificationOccurred(.success)
-        dismiss()
     }
 
     func formatWeight(_ weight: Double) -> String {
