@@ -275,12 +275,12 @@ struct ExerciseCard: View {
     }
 
     var progressionSuggestion: ProgressionSuggestion? {
-        guard let log = latestWeightLog,
-              let repsCompleted = log.repsCompleted else { return nil }
+        guard let log = latestWeightLog else { return nil }
         let repRange = RepRange.parse(exercise.reps)
         guard let repRange else { return nil }
         return ProgressionSuggestion.evaluate(
-            repsCompleted: repsCompleted,
+            setLogs: latestSetLogs,
+            summaryRepsCompleted: log.repsCompleted,
             repRange: repRange,
             lastWeight: log.weightLbs,
             exercise: exercise
@@ -1155,7 +1155,8 @@ struct ProgressionSuggestion {
     let color: Color
 
     static func evaluate(
-        repsCompleted: Int,
+        setLogs: [SetLogEntry],
+        summaryRepsCompleted: Int?,
         repRange: RepRange,
         lastWeight: Double,
         exercise: WorkoutExercise
@@ -1168,6 +1169,67 @@ struct ProgressionSuggestion {
             exercise.muscleTarget.lowercased().contains("hamstring")
         )
         let increment = isCompound ? 5.0 : 2.5
+
+        if !setLogs.isEmpty {
+            let workingSets = setLogs.filter { abs($0.weightLbs - lastWeight) < 0.01 }
+            let setsAtOrAboveTop = workingSets.filter { $0.repsCompleted >= repRange.high }.count
+            let setsInRange = workingSets.filter { $0.repsCompleted >= repRange.low }.count
+            let setsBelowRange = workingSets.filter { $0.repsCompleted < repRange.low }.count
+            let totalWorking = workingSets.count
+            let majorityThreshold = max(1, Int(ceil(Double(totalWorking) * 0.67)))
+
+            if setsAtOrAboveTop >= majorityThreshold {
+                let suggestedWeight = lastWeight + increment
+                return ProgressionSuggestion(
+                    icon: "arrow.up.circle.fill",
+                    text: "Increase to \(formatWeight(suggestedWeight)) lb next session",
+                    color: .green
+                )
+            }
+
+            if setsAtOrAboveTop > 0 && setsAtOrAboveTop < majorityThreshold {
+                let needed = majorityThreshold - setsAtOrAboveTop
+                return ProgressionSuggestion(
+                    icon: "flame.fill",
+                    text: "Strong top set — hit \(repRange.high) on \(needed) more set\(needed == 1 ? "" : "s") before increasing",
+                    color: .orange
+                )
+            }
+
+            if setsBelowRange > 0 && setsBelowRange == totalWorking {
+                return ProgressionSuggestion(
+                    icon: "arrow.down.circle.fill",
+                    text: "Stay at \(formatWeight(lastWeight)) lb, focus on form and full ROM",
+                    color: .yellow
+                )
+            }
+
+            if setsInRange == totalWorking && setsAtOrAboveTop == 0 {
+                let minReps = workingSets.map(\.repsCompleted).min() ?? repRange.low
+                return ProgressionSuggestion(
+                    icon: "arrow.right.circle.fill",
+                    text: "On track — build all sets to \(repRange.high) reps (lowest was \(minReps))",
+                    color: .blue
+                )
+            }
+
+            let avgReps = workingSets.map(\.repsCompleted).reduce(0, +) / max(1, totalWorking)
+            if avgReps < repRange.low {
+                return ProgressionSuggestion(
+                    icon: "arrow.down.circle.fill",
+                    text: "Stay at \(formatWeight(lastWeight)) lb, focus on form and full ROM",
+                    color: .yellow
+                )
+            }
+
+            return ProgressionSuggestion(
+                icon: "arrow.right.circle.fill",
+                text: "On track — aim for \(repRange.high) reps across all sets",
+                color: .blue
+            )
+        }
+
+        guard let repsCompleted = summaryRepsCompleted else { return nil }
 
         if repsCompleted >= repRange.high {
             let suggestedWeight = lastWeight + increment
@@ -1183,15 +1245,6 @@ struct ProgressionSuggestion {
                 icon: "arrow.down.circle.fill",
                 text: "Stay at \(formatWeight(lastWeight)) lb, focus on form and full ROM",
                 color: .yellow
-            )
-        }
-
-        let repsToGo = repRange.high - repsCompleted
-        if repsToGo == 1 {
-            return ProgressionSuggestion(
-                icon: "flame.fill",
-                text: "1 rep away from weight increase — push for \(repRange.high) reps",
-                color: .orange
             )
         }
 

@@ -263,6 +263,8 @@ struct AddExerciseWeightSheet: View {
             .background(Color(.systemBackground))
             .clipShape(RoundedRectangle(cornerRadius: 12))
 
+            quickAdjustButton(index: index)
+
             Text("\u{00D7}")
                 .font(.caption.bold())
                 .foregroundStyle(.tertiary)
@@ -281,8 +283,6 @@ struct AddExerciseWeightSheet: View {
             .padding(.vertical, 10)
             .background(Color(.systemBackground))
             .clipShape(RoundedRectangle(cornerRadius: 12))
-
-            quickAdjustButton(index: index)
         }
     }
 
