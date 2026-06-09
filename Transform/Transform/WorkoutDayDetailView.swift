@@ -238,6 +238,7 @@ struct WorkoutDayDetailView: View {
 // MARK: - Exercise Card
 
 struct ExerciseCard: View {
+    @Environment(\.modelContext) private var modelContext
     let exercise: WorkoutExercise
     let weightSummary: ExerciseWeightEntry?
     let latestSetLogs: [SetLogEntry]
@@ -439,6 +440,32 @@ struct ExerciseCard: View {
             }
 
             Divider().padding(.horizontal, 14)
+            if let status = exercise.completionStatus, status != .completed {
+                HStack(spacing: 6) {
+                    Image(systemName: status.isSkipped ? "forward.fill" : "arrow.triangle.swap")
+                        .font(.caption2)
+                        .foregroundStyle(status.isSkipped ? .red : .yellow)
+                    Text(status.shortLabel)
+                        .font(.caption2.bold())
+                        .foregroundStyle(status.isSkipped ? .red : .yellow)
+                    Spacer()
+                    Button {
+                        exercise.completionStatus = nil
+                        if status.isSkipped { exercise.isCompleted = false }
+                        PersistenceReporter.save(modelContext, operation: "clear exercise status")
+                    } label: {
+                        Text("Clear")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(status.isSkipped ? Color.red.opacity(0.06) : Color.yellow.opacity(0.06))
+            }
+
+            Divider().padding(.horizontal, 14)
             HStack {
                 Button {
                     onLogWeight()
@@ -448,6 +475,24 @@ struct ExerciseCard: View {
                         .foregroundStyle(.orange)
                 }
                 .buttonStyle(.plain)
+
+                Menu {
+                    ForEach(ExerciseCompletionStatus.allCases.filter { $0 != .completed }) { status in
+                        Button {
+                            exercise.completionStatus = status
+                            if status.isSkipped {
+                                exercise.isCompleted = true
+                            }
+                            PersistenceReporter.save(modelContext, operation: "set exercise status")
+                        } label: {
+                            Text(status.rawValue)
+                        }
+                    }
+                } label: {
+                    Label("Skip", systemImage: "forward.fill")
+                        .font(.caption.bold())
+                        .foregroundStyle(.secondary)
+                }
 
                 Spacer()
 

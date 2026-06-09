@@ -135,6 +135,35 @@ enum WorkoutPerformanceRating: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
+enum ExerciseCompletionStatus: String, CaseIterable, Identifiable {
+    case completed = "Completed"
+    case completedModified = "Completed (modified)"
+    case skippedTime = "Skipped — ran out of time"
+    case skippedEquipment = "Skipped — equipment unavailable"
+    case skippedPain = "Skipped — pain/discomfort"
+    case substituted = "Substituted"
+
+    var id: String { rawValue }
+
+    var isSkipped: Bool {
+        switch self {
+        case .skippedTime, .skippedEquipment, .skippedPain: return true
+        default: return false
+        }
+    }
+
+    var shortLabel: String {
+        switch self {
+        case .completed: return "Done"
+        case .completedModified: return "Modified"
+        case .skippedTime: return "Skipped (time)"
+        case .skippedEquipment: return "Skipped (equip)"
+        case .skippedPain: return "Skipped (pain)"
+        case .substituted: return "Substituted"
+        }
+    }
+}
+
 // MARK: - Workout Exercise
 
 @Model
@@ -148,6 +177,7 @@ class WorkoutExercise {
     var notes: String = ""
     var muscleTarget: String = ""
     var isCompleted: Bool = false
+    var completionStatusRaw: String = ""
 
     @Relationship(deleteRule: .nullify, inverse: \ExerciseWeightEntry.exercise)
     var weightLogs: [ExerciseWeightEntry] = []
@@ -173,6 +203,11 @@ class WorkoutExercise {
         self.notes = notes
         self.muscleTarget = muscleTarget
         self.isCompleted = false
+    }
+
+    var completionStatus: ExerciseCompletionStatus? {
+        get { ExerciseCompletionStatus(rawValue: completionStatusRaw) }
+        set { completionStatusRaw = newValue?.rawValue ?? "" }
     }
 }
 

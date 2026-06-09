@@ -277,6 +277,7 @@ nonisolated struct WorkoutExerciseSnapshot: Codable {
     let notes: String
     let muscleTarget: String
     let isCompleted: Bool
+    let completionStatusRaw: String?
 }
 
 nonisolated struct ExerciseWeightSnapshot: Codable {
@@ -558,7 +559,8 @@ nonisolated struct ExercisePerformanceLogSnapshot: Codable {
             restSeconds: exercise.restSeconds,
             notes: exercise.notes,
             muscleTarget: exercise.muscleTarget,
-            isCompleted: exercise.isCompleted
+            isCompleted: exercise.isCompleted,
+            completionStatusRaw: exercise.completionStatusRaw.isEmpty ? nil : exercise.completionStatusRaw
         )
     }
 
@@ -574,6 +576,7 @@ nonisolated struct ExercisePerformanceLogSnapshot: Codable {
             muscleTarget: muscleTarget
         )
         exercise.isCompleted = isCompleted
+        exercise.completionStatusRaw = completionStatusRaw ?? ""
         return exercise
     }
 }
