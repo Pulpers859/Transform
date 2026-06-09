@@ -97,6 +97,12 @@ struct AddMeasurementSheet: View {
                         .bold()
                         .disabled(!canSave)
                 }
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") {
+                        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                    }
+                }
             }
             .alert("Invalid Entry", isPresented: $showValidationAlert) {
                 Button("OK", role: .cancel) {}
