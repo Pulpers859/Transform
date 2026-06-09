@@ -214,8 +214,8 @@ struct SleepEntryEditor: View {
 
     let episode: SleepEntry?
 
+    @State private var fellAsleepDate = Calendar.current.date(byAdding: .hour, value: -7, to: Date()) ?? Date()
     @State private var wakeDate = Date()
-    @State private var durationHours = 7.0
     @State private var quality = 3
     @State private var shiftType = SleepShiftType.off
     @State private var episodeType = SleepEpisodeType.mainSleep
@@ -224,8 +224,8 @@ struct SleepEntryEditor: View {
     @State private var showValidationAlert = false
     @FocusState private var notesFocused: Bool
 
-    var calculatedStart: Date {
-        wakeDate.addingTimeInterval(-durationHours * 3600)
+    var durationHours: Double {
+        max(wakeDate.timeIntervalSince(fellAsleepDate) / 3600, 0)
     }
 
     var body: some View {
@@ -238,21 +238,16 @@ struct SleepEntryEditor: View {
                         }
                     }
 
-                    DatePicker("Woke at", selection: $wakeDate, in: ...Date(), displayedComponents: [.date, .hourAndMinute])
+                    DatePicker("Fell asleep", selection: $fellAsleepDate, in: ...Date(), displayedComponents: [.date, .hourAndMinute])
 
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Text("Duration")
-                            Spacer()
-                            Text(SleepFormatting.duration(durationHours))
-                                .font(.headline)
-                                .foregroundStyle(.blue)
-                        }
-                        Slider(value: $durationHours, in: 0.25...16, step: 0.25)
-                            .tint(.blue)
-                        Text("\(calculatedStart.formatted(date: .abbreviated, time: .shortened)) → \(wakeDate.formatted(date: .omitted, time: .shortened))")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                    DatePicker("Woke up", selection: $wakeDate, in: fellAsleepDate...Date(), displayedComponents: [.date, .hourAndMinute])
+
+                    HStack {
+                        Text("Duration")
+                        Spacer()
+                        Text(SleepFormatting.duration(durationHours))
+                            .font(.headline)
+                            .foregroundStyle(durationHours < 0.25 ? .red : .blue)
                     }
 
                     Picker("Sleep quality", selection: $quality) {
@@ -299,10 +294,11 @@ struct SleepEntryEditor: View {
             .onAppear {
                 guard let episode else {
                     wakeDate = .now
+                    fellAsleepDate = Calendar.current.date(byAdding: .hour, value: -7, to: .now) ?? .now
                     return
                 }
                 wakeDate = episode.resolvedEndDate
-                durationHours = episode.resolvedDurationHours
+                fellAsleepDate = episode.resolvedEndDate.addingTimeInterval(-episode.resolvedDurationHours * 3600)
                 quality = episode.qualityRating
                 shiftType = episode.shiftType
                 episodeType = episode.episodeType
@@ -310,12 +306,13 @@ struct SleepEntryEditor: View {
             }
             .onChange(of: episodeType) { oldValue, newValue in
                 guard episode == nil else { return }
-                if oldValue == .mainSleep && newValue == .nap && durationHours > 3 {
-                    durationHours = 1
-                } else if newValue == .recoverySleep && durationHours > 6 {
-                    durationHours = 4
-                } else if oldValue != .mainSleep && newValue == .mainSleep && durationHours < 3 {
-                    durationHours = 7
+                let currentDuration = durationHours
+                if oldValue == .mainSleep && newValue == .nap && currentDuration > 3 {
+                    fellAsleepDate = wakeDate.addingTimeInterval(-1 * 3600)
+                } else if newValue == .recoverySleep && currentDuration > 6 {
+                    fellAsleepDate = wakeDate.addingTimeInterval(-4 * 3600)
+                } else if oldValue != .mainSleep && newValue == .mainSleep && currentDuration < 3 {
+                    fellAsleepDate = wakeDate.addingTimeInterval(-7 * 3600)
                 }
             }
             .alert("Overlapping Sleep Episode", isPresented: $showValidationAlert) {
@@ -328,7 +325,7 @@ struct SleepEntryEditor: View {
 
     private func save() {
         let trimmedNotes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
-        let start = calculatedStart
+        let start = fellAsleepDate
         if existingEpisodes.contains(where: { candidate in
             if let episode, candidate === episode { return false }
             return start < candidate.resolvedEndDate && wakeDate > candidate.resolvedStartDate
