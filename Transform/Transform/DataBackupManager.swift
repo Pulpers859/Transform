@@ -262,6 +262,8 @@ nonisolated struct WorkoutDaySnapshot: Codable {
     let jointPain: Int?
     let performanceRatingRaw: String?
     let sessionFeedbackNotes: String?
+    let sessionStartedAt: Date?
+    let sessionEndedAt: Date?
     let exercises: [WorkoutExerciseSnapshot]
 }
 
@@ -591,6 +593,8 @@ nonisolated struct ExercisePerformanceLogSnapshot: Codable {
             jointPain: day.jointPain,
             performanceRatingRaw: day.performanceRatingRaw,
             sessionFeedbackNotes: day.sessionFeedbackNotes,
+            sessionStartedAt: day.sessionStartedAt,
+            sessionEndedAt: day.sessionEndedAt,
             exercises: mainActorMap(day.sortedExercises, WorkoutExerciseSnapshot.init)
         )
     }
@@ -610,6 +614,8 @@ nonisolated struct ExercisePerformanceLogSnapshot: Codable {
         day.jointPain = jointPain ?? 0
         day.performanceRatingRaw = performanceRatingRaw ?? ""
         day.sessionFeedbackNotes = sessionFeedbackNotes ?? ""
+        day.sessionStartedAt = sessionStartedAt
+        day.sessionEndedAt = sessionEndedAt
 
         for exerciseSnapshot in exercises {
             let exercise = exerciseSnapshot.makeModel()

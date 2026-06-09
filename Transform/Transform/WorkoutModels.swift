@@ -86,6 +86,8 @@ class WorkoutDay {
     var jointPain: Int = 0
     var performanceRatingRaw: String = ""
     var sessionFeedbackNotes: String = ""
+    var sessionStartedAt: Date?
+    var sessionEndedAt: Date?
 
     @Relationship(deleteRule: .cascade, inverse: \WorkoutExercise.day)
     var exercises: [WorkoutExercise] = []

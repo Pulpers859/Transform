@@ -12,6 +12,8 @@ struct WorkoutSessionFeedbackSheet: View {
     @State private var pain: Int
     @State private var performance: WorkoutPerformanceRating
     @State private var notes: String
+    @State private var sessionStartedAt: Date
+    @State private var sessionEndedAt: Date
 
     init(day: WorkoutDay) {
         self.day = day
@@ -20,6 +22,8 @@ struct WorkoutSessionFeedbackSheet: View {
         _pain = State(initialValue: day.jointPain)
         _performance = State(initialValue: day.performanceRating ?? .same)
         _notes = State(initialValue: day.sessionFeedbackNotes)
+        _sessionStartedAt = State(initialValue: day.sessionStartedAt ?? Calendar.current.date(byAdding: .hour, value: -1, to: .now) ?? .now)
+        _sessionEndedAt = State(initialValue: day.sessionEndedAt ?? .now)
     }
 
     var body: some View {
@@ -36,6 +40,24 @@ struct WorkoutSessionFeedbackSheet: View {
                 ratingSection("Session effort", detail: "1 easy · 5 maximal", value: $effort, range: 1...5)
                 ratingSection("Stimulus quality", detail: "How well the target muscles worked", value: $stimulus, range: 1...5)
                 ratingSection("Joint pain", detail: "0 none · 5 severe", value: $pain, range: 0...5)
+
+                Section {
+                    DatePicker("Started", selection: $sessionStartedAt, in: ...Date(), displayedComponents: [.date, .hourAndMinute])
+                    DatePicker("Finished", selection: $sessionEndedAt, in: sessionStartedAt...Date(), displayedComponents: [.date, .hourAndMinute])
+                    let durationMinutes = Int(sessionEndedAt.timeIntervalSince(sessionStartedAt) / 60)
+                    if durationMinutes > 0 {
+                        HStack {
+                            Text("Duration")
+                            Spacer()
+                            Text("\(durationMinutes) min")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                } header: {
+                    Text("Workout time")
+                } footer: {
+                    Text("Tracking when you train helps identify your best time of day over time.")
+                }
 
                 Section("Performance") {
                     Picker("Compared with expected", selection: $performance) {
@@ -101,6 +123,8 @@ struct WorkoutSessionFeedbackSheet: View {
         let priorPain = day.jointPain
         let priorPerformance = day.performanceRatingRaw
         let priorNotes = day.sessionFeedbackNotes
+        let priorStartedAt = day.sessionStartedAt
+        let priorEndedAt = day.sessionEndedAt
 
         day.feedbackSubmittedAt = .now
         day.sessionEffort = effort
@@ -108,6 +132,8 @@ struct WorkoutSessionFeedbackSheet: View {
         day.jointPain = pain
         day.performanceRating = performance
         day.sessionFeedbackNotes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
+        day.sessionStartedAt = sessionStartedAt
+        day.sessionEndedAt = sessionEndedAt
 
         guard PersistenceReporter.save(modelContext, operation: "workout session feedback") else {
             modelContext.rollback()
@@ -117,6 +143,8 @@ struct WorkoutSessionFeedbackSheet: View {
             day.jointPain = priorPain
             day.performanceRatingRaw = priorPerformance
             day.sessionFeedbackNotes = priorNotes
+            day.sessionStartedAt = priorStartedAt
+            day.sessionEndedAt = priorEndedAt
             UINotificationFeedbackGenerator().notificationOccurred(.error)
             return
         }
