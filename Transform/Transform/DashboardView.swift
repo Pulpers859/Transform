@@ -273,6 +273,7 @@ struct DashboardView: View {
                             todayRingsCard
                             weightAndRecompCard
                             sleepRecoveryCard
+                            WorkoutTimingInsightsCard()
                             weekCalorieChart
                             bottomPadding
                         }

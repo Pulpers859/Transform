@@ -907,7 +907,31 @@ struct WorkoutView: View {
             let performance = day.performanceRating?.rawValue ?? "Not rated"
             let note = day.sessionFeedbackNotes.trimmingCharacters(in: .whitespacesAndNewlines)
             let noteSuffix = note.isEmpty ? "" : " Note: \(String(note.prefix(160)))"
-            return "Day \(day.dayNumber) \(day.dayName) [\(day.muscleGroups)]: effort \(day.sessionEffort)/5, stimulus \(day.stimulusQuality)/5, joint pain \(day.jointPain)/5, performance \(performance).\(noteSuffix)"
+
+            let skippedExercises = day.sortedExercises.filter { exercise in
+                guard let status = exercise.completionStatus else { return false }
+                return status != .completed
+            }
+            let skipSuffix: String
+            if skippedExercises.isEmpty {
+                skipSuffix = ""
+            } else {
+                let skipLines = skippedExercises.map { ex in
+                    "\(ex.exerciseName) (\(ex.completionStatus?.shortLabel ?? "skipped"))"
+                }.joined(separator: ", ")
+                skipSuffix = " Skipped/modified: \(skipLines)."
+            }
+
+            var timingSuffix = ""
+            if let start = day.sessionStartedAt, let end = day.sessionEndedAt {
+                let hour = Calendar.current.component(.hour, from: start)
+                let durationMin = Int(end.timeIntervalSince(start) / 60)
+                if durationMin > 0 {
+                    timingSuffix = " Session \(durationMin) min starting ~\(hour):00."
+                }
+            }
+
+            return "Day \(day.dayNumber) \(day.dayName) [\(day.muscleGroups)]: effort \(day.sessionEffort)/5, stimulus \(day.stimulusQuality)/5, joint pain \(day.jointPain)/5, performance \(performance).\(noteSuffix)\(skipSuffix)\(timingSuffix)"
         }
         .joined(separator: "\n")
     }
