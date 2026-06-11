@@ -14,6 +14,7 @@ Secrets.plist
 Packages/
 
 # Local tooling / agent artifacts
+.agents/
 .claude/*
 !.claude/skills/
 !.claude/skills/**
