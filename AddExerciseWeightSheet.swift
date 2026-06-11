@@ -13,6 +13,7 @@ struct AddExerciseWeightSheet: View {
     @State private var weightText = ""
     @State private var repsText = ""
     @State private var notes = ""
+    @State private var didSave = false
 
     private let quickAdjustments: [Double] = [-10, -5, -2.5, 2.5, 5, 10]
     private let suggestedReps: [Int] = [5, 6, 8, 10, 12, 15]
@@ -420,6 +421,10 @@ struct AddExerciseWeightSheet: View {
 
     func saveEntry() {
         guard let weight = parsedWeight else { return }
+        // Save is reachable from three buttons; a fast double-tap before the sheet
+        // dismisses would insert a duplicate weight entry.
+        guard !didSave else { return }
+        didSave = true
 
         let trimmedNotes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
 
@@ -444,6 +449,7 @@ struct AddExerciseWeightSheet: View {
 
         guard PersistenceReporter.save(modelContext, operation: "exercise weight summary") else {
             modelContext.rollback()
+            didSave = false
             UINotificationFeedbackGenerator().notificationOccurred(.error)
             return
         }

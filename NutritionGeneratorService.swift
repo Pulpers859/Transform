@@ -90,11 +90,11 @@ extension ClaudeService {
             systemPrompt: systemPrompt,
             userPrompt: userPrompt,
             toolName: nutritionProgramToolName,
-            toolSchema: toolSchema,
-            temperature: 0.55
+            toolSchema: toolSchema
         )
 
         var lastIssues: [String] = []
+        var lastPayload: String?
 
         for attempt in 1...nutritionGenerationAttempts {
             do {
@@ -103,6 +103,7 @@ extension ClaudeService {
                     toolName: nutritionProgramToolName,
                     timeout: config.timeout
                 )
+                lastPayload = jsonString
                 let decoded = try decodeNutritionPayload(NutritionProgramResponse.self, from: jsonString)
                 let cleaned = sanitizeNutritionProgram(decoded)
                 let issues = validateNutritionProgram(cleaned)
@@ -117,12 +118,22 @@ extension ClaudeService {
                         toolSchema: toolSchema,
                         issues: issues,
                         context: context,
-                        originalUserPrompt: userPrompt
+                        originalUserPrompt: userPrompt,
+                        previousPayload: lastPayload
                     )
                     continue
                 }
             } catch {
-                lastIssues = ["API error (attempt \(attempt)): \(error.localizedDescription)"]
+                // Cancellation must propagate — converting it into more attempts or a
+                // fallback build burns API credits after the user navigated away.
+                if error is CancellationError { throw error }
+
+                // Terminal failures (offline, auth, rate-limit exhaustion, truncation)
+                // cannot be fixed by re-asking the model. Throw so the caller can keep
+                // existing saved output instead of overwriting it with a generic fallback.
+                guard error.isRecoverableStructuredOutputFailure else { throw error }
+
+                lastIssues = ["Structured output issue (attempt \(attempt)): \(error.localizedDescription)"]
                 if attempt < nutritionGenerationAttempts {
                     requestBody = nutritionCorrectionRequestBody(
                         config: config,
@@ -130,7 +141,8 @@ extension ClaudeService {
                         toolSchema: toolSchema,
                         issues: ["Previous call did not return a valid tool_use response: \(error.localizedDescription). Call the tool again with complete, valid fields."],
                         context: context,
-                        originalUserPrompt: userPrompt
+                        originalUserPrompt: userPrompt,
+                        previousPayload: lastPayload
                     )
                     continue
                 }
@@ -171,11 +183,11 @@ extension ClaudeService {
             systemPrompt: systemPrompt,
             userPrompt: userPrompt,
             toolName: nutritionWeekToolName,
-            toolSchema: toolSchema,
-            temperature: 0.55
+            toolSchema: toolSchema
         )
 
         var lastIssues: [String] = []
+        var lastPayload: String?
 
         for attempt in 1...nutritionGenerationAttempts {
             do {
@@ -184,6 +196,7 @@ extension ClaudeService {
                     toolName: nutritionWeekToolName,
                     timeout: config.timeout
                 )
+                lastPayload = jsonString
                 let decoded = try decodeNutritionPayload(NutritionWeekResponse.self, from: jsonString)
                 let cleaned = sanitizeNutritionWeek(decoded, expectedWeek: weekNumber)
                 let issues = validateNutritionWeek(cleaned, expectedWeek: weekNumber)
@@ -198,12 +211,18 @@ extension ClaudeService {
                         toolSchema: toolSchema,
                         issues: issues,
                         context: context,
-                        originalUserPrompt: userPrompt
+                        originalUserPrompt: userPrompt,
+                        previousPayload: lastPayload
                     )
                     continue
                 }
             } catch {
-                lastIssues = ["API error (attempt \(attempt)): \(error.localizedDescription)"]
+                // See generateNutritionWeekOne: cancellation propagates, terminal
+                // failures throw, only structured-output issues earn a correction retry.
+                if error is CancellationError { throw error }
+                guard error.isRecoverableStructuredOutputFailure else { throw error }
+
+                lastIssues = ["Structured output issue (attempt \(attempt)): \(error.localizedDescription)"]
                 if attempt < nutritionGenerationAttempts {
                     requestBody = nutritionCorrectionRequestBody(
                         config: config,
@@ -211,7 +230,8 @@ extension ClaudeService {
                         toolSchema: toolSchema,
                         issues: ["Previous call did not return a valid tool_use response: \(error.localizedDescription). Call the tool again with complete, valid fields."],
                         context: context,
-                        originalUserPrompt: userPrompt
+                        originalUserPrompt: userPrompt,
+                        previousPayload: lastPayload
                     )
                     continue
                 }
@@ -252,8 +272,7 @@ extension ClaudeService {
         systemPrompt: String,
         userPrompt: String,
         toolName: String,
-        toolSchema: [String: Any],
-        temperature: Double
+        toolSchema: [String: Any]
     ) -> [String: Any] {
         let tool: [String: Any] = [
             "name": toolName,
@@ -261,10 +280,10 @@ extension ClaudeService {
             "input_schema": toolSchema
         ]
 
+        // No `temperature`: current Opus models reject sampling parameters with a 400.
         return [
             "model": config.model,
             "max_tokens": config.maxTokens,
-            "temperature": temperature,
             "system": systemPrompt,
             "tools": [tool],
             "tool_choice": ["type": "tool", "name": toolName],
@@ -280,7 +299,8 @@ extension ClaudeService {
         toolSchema: [String: Any],
         issues: [String],
         context: String,
-        originalUserPrompt: String
+        originalUserPrompt: String,
+        previousPayload: String?
     ) -> [String: Any] {
         let issueBlock = issues.enumerated().map { "\($0.offset + 1). \($0.element)" }.joined(separator: "\n")
 
@@ -290,9 +310,23 @@ extension ClaudeService {
         preserving everything that was already good. Do not drift from the body analysis.
         """
 
+        // The API is stateless — without the prior payload the model has no "before"
+        // to preserve, and every correction becomes a blind full regeneration.
+        let previousBlock: String
+        if let previousPayload, !previousPayload.isEmpty {
+            previousBlock = """
+
+            Your previous output (fix only the listed issues; keep everything else):
+            \(String(previousPayload.prefix(6000)))
+            """
+        } else {
+            previousBlock = ""
+        }
+
         let userPrompt = """
         Issues to correct (preserve everything else):
         \(issueBlock)
+        \(previousBlock)
 
         Original assignment (for reference):
         \(originalUserPrompt)
@@ -306,8 +340,7 @@ extension ClaudeService {
             systemPrompt: systemPrompt,
             userPrompt: userPrompt,
             toolName: toolName,
-            toolSchema: toolSchema,
-            temperature: 0
+            toolSchema: toolSchema
         )
     }
 
@@ -318,7 +351,7 @@ extension ClaudeService {
         You are a multi-disciplinary nutrition panel designing Week 1 of a personalized 4-week
         nutrition protocol for a specific individual. The panel includes:
         - a sports dietitian (Helms / McDonald school) who sets macros and meal architecture,
-        - a metabolic-health specialist who handles shift-work circadian concerns,
+        - a metabolic-health specialist who adapts meal timing to the user's actual schedule and metabolic notes,
         - a behavioral coach who makes the plan realistic and sustainable.
 
         The user's Body Analysis is the north star of this entire 4-week protocol. Every choice
@@ -341,7 +374,7 @@ extension ClaudeService {
         - Write like a real coach talking to THIS person, not a generic meal-plan app.
         - coachNotes: 2-3 sentences on what this Week 1 is accomplishing for THIS user given the
           analysis. No template phrases.
-        - timingNote on each meal: specific. "Post-shift: lean protein + fast carbs to restart
+        - timingNote on each meal: specific. "Post-training: lean protein + fast carbs to restart
           glycogen" is good; "Eat after workout" is bad.
         - rationale on each grocery item: tie back to the analysis. "Greek yogurt — leucine density
           matches priority shoulders/chest development noted in analysis" is good; "Good source of
@@ -352,7 +385,8 @@ extension ClaudeService {
         - Training Day carbs ≈ Rest Day carbs + 20-40%.
         - Protein stays roughly constant across Training/Rest days.
         - Weekly grocery list must be sufficient to execute BOTH templates across 7 days.
-        - Keep choices practical and shift-work friendly (batch-prep friendly, quick reheats).
+        - Keep choices practical for this user's stated schedule and lifestyle constraints
+          (batch-prep friendly, quick reheats). Do not assume constraints the analysis does not state.
 
         Always call the emit_nutrition_program tool. Never respond with free text.
         """
@@ -616,20 +650,20 @@ extension ClaudeService {
     // MARK: - Decode & Sanitize
 
     private func decodeNutritionPayload<T: Decodable>(_ type: T.Type, from responseText: String) throws -> T {
-        let cleaned = responseText
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .replacingOccurrences(of: "```json", with: "")
-            .replacingOccurrences(of: "```", with: "")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+        // The payload is locally re-serialized tool_use JSON — no fence stripping
+        // needed (and global backtick removal would corrupt legitimate content).
+        let cleaned = responseText.trimmingCharacters(in: .whitespacesAndNewlines)
 
         guard let data = cleaned.data(using: .utf8) else {
-            throw ClaudeError.parseError("Could not encode nutrition response as data.")
+            throw ClaudeError.parseError("Tool payload decode failure: could not encode nutrition response as data.")
         }
         do {
             return try JSONDecoder().decode(type, from: data)
         } catch {
             let short = String(String(describing: error).prefix(180))
-            throw ClaudeError.parseError("Could not decode nutrition response. \(short)")
+            // "Tool payload decode failure" prefix marks this as recoverable, so the
+            // generation loop spends a correction retry rather than aborting.
+            throw ClaudeError.parseError("Tool payload decode failure: \(short)")
         }
     }
 
@@ -720,6 +754,18 @@ extension ClaudeService {
         }
         issues.append(contentsOf: validateTemplate(week.trainingDay, expectedLabel: "Training"))
         issues.append(contentsOf: validateTemplate(week.restDay, expectedLabel: "Rest"))
+        issues.append(contentsOf: validateTemplateArithmetic(
+            week.trainingDay,
+            expectedLabel: "Training",
+            declaredCalories: week.dailyCaloriesTraining,
+            declaredProteinG: week.dailyProteinG
+        ))
+        issues.append(contentsOf: validateTemplateArithmetic(
+            week.restDay,
+            expectedLabel: "Rest",
+            declaredCalories: week.dailyCaloriesRest,
+            declaredProteinG: week.dailyProteinG
+        ))
 
         if week.weeklyGrocery.count < 3 {
             issues.append("weeklyGrocery must include at least 3 categories (e.g., Proteins, Carbs, Produce).")
@@ -754,6 +800,48 @@ extension ClaudeService {
                 issues.append("\(expectedLabel) \(meal.mealName) timingNote is too short.")
             }
         }
+        return issues
+    }
+
+    /// Numeric coherence checks backing the prompt's stated quality bar — a week whose
+    /// declared totals, meal sums, and 4/4/9 energy math contradict each other passes
+    /// string-level validation but delivers self-contradictory coaching.
+    private func validateTemplateArithmetic(
+        _ template: DailyNutritionTemplate,
+        expectedLabel: String,
+        declaredCalories: Int,
+        declaredProteinG: Int
+    ) -> [String] {
+        var issues: [String] = []
+
+        func deviates(_ actual: Int, from expected: Int, by tolerance: Double) -> Bool {
+            guard expected > 0 else { return false }
+            return abs(Double(actual - expected)) > Double(expected) * tolerance
+        }
+
+        if deviates(template.totalCalories, from: declaredCalories, by: 0.10) {
+            issues.append("\(expectedLabel) template totalCalories (\(template.totalCalories)) deviates more than 10% from the declared daily calories (\(declaredCalories)). Align them.")
+        }
+        if deviates(template.totalProteinG, from: declaredProteinG, by: 0.10) {
+            issues.append("\(expectedLabel) template totalProteinG (\(template.totalProteinG)) deviates more than 10% from the declared daily protein (\(declaredProteinG)g). Align them.")
+        }
+
+        let macroKcal = template.totalProteinG * 4 + template.totalCarbsG * 4 + template.totalFatG * 9
+        if deviates(macroKcal, from: template.totalCalories, by: 0.15) {
+            issues.append("\(expectedLabel) template macros compute to ~\(macroKcal) kcal (4/4/9) but totalCalories is \(template.totalCalories). Make the macros and calories consistent.")
+        }
+
+        if !template.meals.isEmpty {
+            let mealCalories = template.meals.reduce(0) { $0 + $1.approxCalories }
+            let mealProtein = template.meals.reduce(0) { $0 + $1.approxProteinG }
+            if deviates(mealCalories, from: template.totalCalories, by: 0.12) {
+                issues.append("\(expectedLabel) meals sum to ~\(mealCalories) kcal but the template declares \(template.totalCalories). Scale meal portions to match the daily total.")
+            }
+            if deviates(mealProtein, from: template.totalProteinG, by: 0.12) {
+                issues.append("\(expectedLabel) meals sum to ~\(mealProtein)g protein but the template declares \(template.totalProteinG)g. Rebalance per-meal protein.")
+            }
+        }
+
         return issues
     }
 
@@ -828,7 +916,7 @@ extension ClaudeService {
 
         Postural / injury notes (may inform anti-inflammatory food choices): \(analysis.posturalNotes.nTrimmedOr("(none)")) / \(analysis.injuryRiskNotes.nTrimmedOr("(none)"))
 
-        Metabolic health notes (shift-work, insulin, glycemic — drive carb timing and fiber):
+        Metabolic health notes (schedule, insulin, glycemic — drive carb timing and fiber):
         \(analysis.metabolicHealthNotes.nTrimmedOr("(none)"))
 
         Psychological / behavioral insights (adherence + sustainability): \(analysis.psychologicalInsights.nTrimmedOr("(none)"))
@@ -841,7 +929,12 @@ extension ClaudeService {
     }
 
     private func macroTargetLine(from macros: AnalysisMacroTargets?) -> String {
-        guard let m = macros else { return "calories 2300 kcal, protein 200g, carbs 220g, fat 70g (fallback — analysis did not provide macros)" }
+        guard let m = macros else {
+            // No analysis macros — fall back to the user's configured targets rather
+            // than a hardcoded stranger's numbers.
+            let resolved = MacroTargetResolver.resolve(from: nil)
+            return "calories \(resolved.calories) kcal, protein \(Int(resolved.proteinG))g, carbs \(Int(resolved.carbsG))g, fat \(Int(resolved.fatG))g (from app settings — analysis did not provide macros)"
+        }
         return "calories \(m.calories) kcal, protein \(Int(m.proteinG))g, carbs \(Int(m.carbsG))g, fat \(Int(m.fatG))g"
     }
 
@@ -869,28 +962,35 @@ extension ClaudeService {
         from analysis: BodyAnalysisResult,
         diagnostic: String
     ) -> NutritionWeekResponse {
-        let macros = analysis.macroTargets
-        let calories = macros?.calories ?? 2300
-        let protein = Int(macros?.proteinG ?? 200)
-        let carbsTrain = Int(macros?.carbsG ?? 220)
-        let carbsRest = max(80, Int((macros?.carbsG ?? 220) * 0.7))
-        let fat = Int(macros?.fatG ?? 70)
+        // Resolve via MacroTargetResolver so the fallback honors the user's configured
+        // targets (or clamped analysis macros) instead of hardcoded numbers.
+        let resolved = MacroTargetResolver.resolve(from: analysis)
+        let protein = Int(resolved.proteinG)
+        let carbsTrain = Int(resolved.carbsG)
+        let carbsRest = max(80, Int(resolved.carbsG * 0.75))
+        let fatTrain = Int(resolved.fatG)
+        let fatRest = fatTrain + 10
+
+        // Declare calories from 4/4/9 of the macros so totals, meals, and energy
+        // math agree — a fallback that contradicts its own numbers reads as broken.
+        let trainCalories = protein * 4 + carbsTrain * 4 + fatTrain * 9
+        let restCalories = protein * 4 + carbsRest * 4 + fatRest * 9
 
         let training = DailyNutritionTemplate(
             label: "Training Day",
-            totalCalories: calories,
+            totalCalories: trainCalories,
             totalProteinG: protein,
             totalCarbsG: carbsTrain,
-            totalFatG: fat,
-            meals: fallbackMeals(carbsHigh: true)
+            totalFatG: fatTrain,
+            meals: fallbackMeals(carbsHigh: true, proteinG: protein, carbsG: carbsTrain, fatG: fatTrain)
         )
         let rest = DailyNutritionTemplate(
             label: "Rest Day",
-            totalCalories: max(1600, calories - 200),
+            totalCalories: restCalories,
             totalProteinG: protein,
             totalCarbsG: carbsRest,
-            totalFatG: fat + 10,
-            meals: fallbackMeals(carbsHigh: false)
+            totalFatG: fatRest,
+            meals: fallbackMeals(carbsHigh: false, proteinG: protein, carbsG: carbsRest, fatG: fatRest)
         )
         let grocery = fallbackGrocery()
         let diagnosticLine = diagnostic.isEmpty ? "" : "\n\nWhy fallback fired: \(nTruncate(diagnostic))"
@@ -902,51 +1002,77 @@ extension ClaudeService {
                 sourceLabel: nutritionFallbackSourceLabel
             ),
             phaseFocus: "Week \(weekNumber) — Fallback defaults",
-            coachNotes: "This week is a safe default protocol. The AI generation did not complete — regenerate once you've resolved the issue shown in the week summary.",
-            dailyCaloriesTraining: calories,
-            dailyCaloriesRest: max(1600, calories - 200),
+            coachNotes: "This week is a safe default protocol scaled to your macro targets. The AI generation did not complete — regenerate once you've resolved the issue shown in the week summary.",
+            dailyCaloriesTraining: trainCalories,
+            dailyCaloriesRest: restCalories,
             dailyProteinG: protein,
             dailyCarbsGTraining: carbsTrain,
             dailyCarbsGRest: carbsRest,
-            dailyFatG: fat,
+            dailyFatG: fatTrain,
             trainingDay: training,
             restDay: rest,
             weeklyGrocery: grocery
         )
     }
 
-    private func fallbackMeals(carbsHigh: Bool) -> [MealSlotResponse] {
+    /// Distributes the day's macro targets across the four meal slots and computes
+    /// each meal's calories from 4/4/9, so meal labels always sum to the daily totals.
+    private func fallbackMeals(carbsHigh: Bool, proteinG: Int, carbsG: Int, fatG: Int) -> [MealSlotResponse] {
         let carbLabel = carbsHigh ? "1 cup cooked rice / 1 medium potato" : "1/2 cup cooked rice / small potato"
-        return [
-            MealSlotResponse(
-                mealName: "Breakfast",
-                primaryOption: "3 whole eggs + 3 egg whites + 1 cup oats + berries",
-                substitutions: ["Greek yogurt + oats + whey", "Protein smoothie + banana + PB"],
-                approxCalories: 550, approxProteinG: 45, approxCarbsG: 60, approxFatG: 15,
-                timingNote: "Within 60 min of waking. Anchors protein + carbs for the day."
+
+        struct Slot {
+            let name: String
+            let proteinShare: Double
+            let carbShare: Double
+            let fatShare: Double
+            let primary: String
+            let subs: [String]
+            let timing: String
+        }
+
+        // Shares per macro each sum to 1.0.
+        let slots: [Slot] = [
+            Slot(
+                name: "Breakfast", proteinShare: 0.25, carbShare: 0.30, fatShare: 0.20,
+                primary: "Eggs + egg whites + oats + berries (scale portions to the macros below)",
+                subs: ["Greek yogurt + oats + whey", "Protein smoothie + banana + PB"],
+                timing: "Within 60 min of waking. Anchors protein + carbs for the day."
             ),
-            MealSlotResponse(
-                mealName: "Lunch",
-                primaryOption: "6 oz grilled chicken breast + \(carbLabel) + mixed vegetables",
-                substitutions: ["Ground turkey bowl", "Tuna + pita + salad"],
-                approxCalories: 600, approxProteinG: 55, approxCarbsG: carbsHigh ? 65 : 40, approxFatG: 12,
-                timingNote: carbsHigh ? "4-5 hrs before training." : "Mid-day anchor — leaner carbs."
+            Slot(
+                name: "Lunch", proteinShare: 0.30, carbShare: 0.30, fatShare: 0.20,
+                primary: "Grilled chicken breast + \(carbLabel) + mixed vegetables",
+                subs: ["Ground turkey bowl", "Tuna + pita + salad"],
+                timing: carbsHigh ? "4-5 hrs before training." : "Mid-day anchor — leaner carbs."
             ),
-            MealSlotResponse(
-                mealName: "Dinner",
-                primaryOption: "6 oz lean beef or salmon + \(carbLabel) + vegetables + olive oil",
-                substitutions: ["Shrimp stir fry", "Turkey chili"],
-                approxCalories: 650, approxProteinG: 50, approxCarbsG: carbsHigh ? 55 : 35, approxFatG: 22,
-                timingNote: "3-4 hrs before sleep. Favor slower carbs on rest days."
+            Slot(
+                name: "Dinner", proteinShare: 0.25, carbShare: 0.25, fatShare: 0.40,
+                primary: "Lean beef or salmon + \(carbLabel) + vegetables + olive oil",
+                subs: ["Shrimp stir fry", "Turkey chili"],
+                timing: "3-4 hrs before sleep. Favor slower carbs on rest days."
             ),
-            MealSlotResponse(
-                mealName: "Snack",
-                primaryOption: "Greek yogurt + whey + handful of nuts",
-                substitutions: ["Cottage cheese + fruit", "Protein shake + almonds"],
-                approxCalories: 350, approxProteinG: 40, approxCarbsG: carbsHigh ? 25 : 15, approxFatG: 12,
-                timingNote: carbsHigh ? "Post-workout or late evening." : "Before sleep — slow protein."
+            Slot(
+                name: "Snack", proteinShare: 0.20, carbShare: 0.15, fatShare: 0.20,
+                primary: "Greek yogurt + whey + handful of nuts",
+                subs: ["Cottage cheese + fruit", "Protein shake + almonds"],
+                timing: carbsHigh ? "Post-workout or late evening." : "Before sleep — slow protein."
             )
         ]
+
+        return slots.map { slot in
+            let p = Int((Double(proteinG) * slot.proteinShare).rounded())
+            let c = Int((Double(carbsG) * slot.carbShare).rounded())
+            let f = Int((Double(fatG) * slot.fatShare).rounded())
+            return MealSlotResponse(
+                mealName: slot.name,
+                primaryOption: slot.primary,
+                substitutions: slot.subs,
+                approxCalories: p * 4 + c * 4 + f * 9,
+                approxProteinG: p,
+                approxCarbsG: c,
+                approxFatG: f,
+                timingNote: slot.timing
+            )
+        }
     }
 
     private func fallbackGrocery() -> [NutritionGroceryCategory] {
@@ -958,7 +1084,7 @@ extension ClaudeService {
                     NutritionGroceryItem(name: "Lean ground beef / salmon", quantity: "2 lb", substitutions: ["Shrimp", "Cod"], rationale: "Dinner rotation — iron and omega-3s."),
                     NutritionGroceryItem(name: "Eggs", quantity: "2 dozen", substitutions: ["Egg whites cartons"], rationale: "Fast breakfast protein."),
                     NutritionGroceryItem(name: "Greek yogurt (nonfat)", quantity: "8 cups", substitutions: ["Skyr", "Cottage cheese"], rationale: "Leucine-dense snack protein."),
-                    NutritionGroceryItem(name: "Whey protein", quantity: "7 scoops", substitutions: ["Casein blend"], rationale: "Shake flexibility around shifts.")
+                    NutritionGroceryItem(name: "Whey protein", quantity: "7 scoops", substitutions: ["Casein blend"], rationale: "Shake flexibility for busy days.")
                 ]
             ),
             NutritionGroceryCategory(

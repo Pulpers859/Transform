@@ -47,6 +47,14 @@ final class AnthropicClient {
         let data = try await performRequest(body: body, timeout: timeout, requestKind: "text", context: context)
 
         let apiResponse = try JSONDecoder().decode(AnthropicResponse.self, from: data)
+
+        // A max_tokens stop means the JSON payload is cut off mid-stream. Surface it
+        // distinctly instead of letting downstream decode fail with a generic parse
+        // error that invites a full-price blind retry.
+        if apiResponse.stopReason == "max_tokens" {
+            throw ClaudeError.truncatedResponse
+        }
+
         let text = apiResponse.content
             .compactMap { $0.type == .text ? $0.text : nil }
             .joined()
@@ -100,6 +108,9 @@ final class AnthropicClient {
 
         guard let resolvedBlock,
               let input = resolvedBlock["input"] as? [String: Any] else {
+            if (root["stop_reason"] as? String) == "max_tokens" {
+                throw ClaudeError.truncatedResponse
+            }
             // If the model refused tool_use and returned text, bubble that up as a parse error
             // so the generator can fall back to procedural output rather than silently retrying.
             if let firstText = content.first(where: { ($0["type"] as? String) == "text" })?["text"] as? String,
@@ -188,6 +199,7 @@ final class AnthropicClient {
                 }
 
                 if shouldRetry(statusCode: httpResponse.statusCode), attempt < maxAttempts {
+                    let delayNanos = retryDelay(for: httpResponse, attempt: attempt)
                     logRequest(
                         requestID: requestID,
                         event: "retry_scheduled",
@@ -195,11 +207,11 @@ final class AnthropicClient {
                             "attempt": "\(attempt)",
                             "status": "\(httpResponse.statusCode)",
                             "reason": "server_status",
-                            "backoff_ms": "\(Int(backoff(attempt: attempt) / 1_000_000))",
+                            "backoff_ms": "\(Int(delayNanos / 1_000_000))",
                             "server_request_id": serverRequestID(from: httpResponse) ?? "n/a"
                         ]
                     )
-                    try await Task.sleep(nanoseconds: backoff(attempt: attempt))
+                    try await Task.sleep(nanoseconds: delayNanos)
                     continue
                 }
 
@@ -248,7 +260,7 @@ final class AnthropicClient {
                     lifecycleAtEnd: lifecycleAtEnd
                 )
 
-                if shouldRetry(error: error), attempt < maxAttempts {
+                if shouldRetry(error: error, attempt: attempt), attempt < maxAttempts {
                     logRequest(
                         requestID: requestID,
                         event: "retry_scheduled",
@@ -420,17 +432,40 @@ final class AnthropicClient {
         return baseNanos * multiplier
     }
 
+    /// Honors the server's `retry-after` header (capped at 30s) when present —
+    /// a fixed 1s/2s backoff during real rate limiting near-guarantees another 429.
+    private func retryDelay(for response: HTTPURLResponse, attempt: Int) -> UInt64 {
+        if let retryAfter = response.value(forHTTPHeaderField: "retry-after"),
+           let seconds = Double(retryAfter.trimmingCharacters(in: .whitespaces)),
+           seconds > 0 {
+            return UInt64(min(seconds, 30) * 1_000_000_000)
+        }
+        return backoff(attempt: attempt)
+    }
+
     private func shouldRetry(statusCode: Int) -> Bool {
         statusCode == 408 || statusCode == 429 || (500...599).contains(statusCode)
     }
 
-    private func shouldRetry(error: Error) -> Bool {
-        error.isTransientNetworkFailure
+    private func shouldRetry(error: Error, attempt: Int) -> Bool {
+        if let urlError = error as? URLError, urlError.code == .timedOut {
+            // A client-side timeout does not stop server-side generation — those
+            // tokens are billed regardless. Allow one re-send, not the full retry
+            // budget, so a slow multi-image vision call can't triple its cost.
+            return attempt == 1
+        }
+        return error.isTransientNetworkFailure
     }
 }
 
 struct AnthropicResponse: Codable {
     let content: [ContentBlock]
+    let stopReason: String?
+
+    enum CodingKeys: String, CodingKey {
+        case content
+        case stopReason = "stop_reason"
+    }
 }
 
 struct ContentBlock: Codable {
@@ -494,6 +529,7 @@ enum ClaudeError: LocalizedError {
     case parseError(String)
     case noPhotos
     case invalidImage
+    case truncatedResponse
 
     var errorDescription: String? {
         switch self {
@@ -502,6 +538,7 @@ enum ClaudeError: LocalizedError {
         case .parseError(let detail): return "Parse error: \(detail)"
         case .noPhotos: return "No photos provided"
         case .invalidImage: return "Could not process image"
+        case .truncatedResponse: return "The AI response was cut off before completion. Please try again."
         }
     }
 }

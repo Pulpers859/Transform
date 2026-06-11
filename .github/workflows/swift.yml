@@ -1,5 +1,10 @@
-# This workflow will build a Swift project
-# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-swift
+# Syntax smoke-check for the flat Swift source snapshot in this repo.
+#
+# There is no Package.swift or .xcodeproj checked in, so `swift build` /
+# `swift test` can never succeed here — the previous workflow failed on every
+# push and provided zero signal. Full type-checking requires the Xcode project
+# (UIKit/SwiftUI/SwiftData targets); parsing each source file still catches
+# syntax errors early.
 
 name: Swift
 
@@ -10,13 +15,17 @@ on:
     branches: [ "main" ]
 
 jobs:
-  build:
-
+  syntax-check:
     runs-on: macos-latest
 
     steps:
     - uses: actions/checkout@v4
-    - name: Build
-      run: swift build -v
-    - name: Run tests
-      run: swift test -v
+    - name: Parse all Swift sources
+      run: |
+        set -euo pipefail
+        status=0
+        for file in *.swift; do
+          echo "Parsing $file"
+          xcrun swiftc -parse "$file" || status=1
+        done
+        exit $status

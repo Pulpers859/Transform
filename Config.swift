@@ -4,15 +4,17 @@ enum Config {
     // Built-in default for zero-friction usage, with optional runtime overrides.
     static let bundledAnthropicAPIKey = "" // Set once and keep; env/Info.plist can still override.
 
-    static let defaultAnalysisAge = "30"
-    static let defaultAnalysisSex = "Male"
-    static let defaultAnalysisBuild = "Mesomorph build"
-    static let defaultAnalysisHeight = "6'0\""
-    static let defaultAnalysisCurrentWeight = "195 lbs"
-    static let defaultAnalysisOccupation = "Emergency medicine physician"
-    static let defaultAnalysisTrainingFrequency = "Training 5-6 days/week"
-    static let defaultAnalysisPrimaryGoal = "Body recomposition with visible abs and aesthetic proportions while maintaining performance for demanding clinical shifts"
-    static let defaultAnalysisLifestyleConstraints = "Shift-work schedule with variable sleep and meal timing"
+    // Profile fields ship blank: prompts treat blank fields as unknown instead of
+    // inventing them, so no fabricated persona leaks into analysis or coaching.
+    static let defaultAnalysisAge = ""
+    static let defaultAnalysisSex = ""
+    static let defaultAnalysisBuild = ""
+    static let defaultAnalysisHeight = ""
+    static let defaultAnalysisCurrentWeight = ""
+    static let defaultAnalysisOccupation = ""
+    static let defaultAnalysisTrainingFrequency = ""
+    static let defaultAnalysisPrimaryGoal = ""
+    static let defaultAnalysisLifestyleConstraints = ""
 
     static let defaultCalorieTarget = 2200
     static let defaultProteinTargetG = 190.0
@@ -28,10 +30,13 @@ enum Config {
         !anthropicAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    // Anthropic snapshot IDs from the official models docs. Snapshot IDs are more stable
-    // than free-floating aliases when you want predictable generation behavior over time.
-    static let claudeModel = "claude-opus-4-1-20250805" // Vision tasks (body analysis)
-    static let claudeModelLite = "claude-sonnet-4-20250514" // Text tasks (macro estimation)
+    // Current Anthropic model aliases. The previous snapshot IDs
+    // (claude-opus-4-1-20250805, claude-sonnet-4-20250514) are deprecated and
+    // begin returning 404 at retirement (Sonnet 4: 2026-06-15, Opus 4.1: 2026-08-05).
+    // Note: these models reject assistant prefill and `temperature` — request
+    // construction must not reintroduce either.
+    static let claudeModel = "claude-opus-4-8" // Vision tasks (body analysis)
+    static let claudeModelLite = "claude-sonnet-4-6" // Text tasks (macro estimation)
 
     static var calorieTarget: Int { AppSettingsStore.calorieTarget }
     static var proteinTargetG: Double { AppSettingsStore.proteinTargetG }
@@ -39,6 +44,26 @@ enum Config {
     static var fatTargetG: Double { AppSettingsStore.fatTargetG }
     static var bodyWeightGoalLbs: Double { AppSettingsStore.bodyWeightGoalLbs }
     static var analysisClientProfilePrompt: String { AppSettingsStore.analysisClientProfile.promptDescription }
+}
+
+/// Parses user-typed numeric text accepting both "." and "," decimal separators.
+/// The iOS decimal pad shows "," in many locales, where Double("12,5") returns
+/// nil and silently disables Save buttons with no explanation.
+enum UserNumberParser {
+    static func double(from text: String) -> Double? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        if let parsed = Double(trimmed) { return parsed }
+        return Double(trimmed.replacingOccurrences(of: ",", with: "."))
+    }
+
+    static func int(from text: String) -> Int? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        if let parsed = Int(trimmed) { return parsed }
+        // Accept decimal input for integer fields by rounding (e.g. "450.5" kcal).
+        return double(from: trimmed).map { Int($0.rounded()) }
+    }
 }
 
 enum MacroTargetSource {
@@ -57,11 +82,13 @@ struct DailyMacroTargets {
 enum MacroTargetResolver {
     static func resolve(from analysis: BodyAnalysisResult?) -> DailyMacroTargets {
         if let macros = analysis?.macroTargets {
+            // Clamp both directions: floors catch lowball/zero output, ceilings catch
+            // hallucinated extremes, mirroring AppSettingsStore's accepted ranges.
             return DailyMacroTargets(
-                calories: max(macros.calories, 1200),
-                proteinG: max(macros.proteinG, 60),
-                carbsG: max(macros.carbsG, 50),
-                fatG: max(macros.fatG, 25),
+                calories: min(max(macros.calories, 1200), 7000),
+                proteinG: min(max(macros.proteinG, 60), 400),
+                carbsG: min(max(macros.carbsG, 50), 700),
+                fatG: min(max(macros.fatG, 25), 250),
                 source: .analysis
             )
         }
@@ -177,14 +204,14 @@ enum AppSettingsStore {
     }
 
     private static func integer(for key: String, default defaultValue: Int, min: Int, max: Int) -> Int {
-        if let stored = numericString(for: key), let parsed = Int(stored) {
+        if let stored = numericString(for: key), let parsed = UserNumberParser.int(from: stored) {
             return Swift.max(min, Swift.min(max, parsed))
         }
         return defaultValue
     }
 
     private static func double(for key: String, default defaultValue: Double, min: Double, max: Double) -> Double {
-        if let stored = numericString(for: key), let parsed = Double(stored) {
+        if let stored = numericString(for: key), let parsed = UserNumberParser.double(from: stored) {
             return Swift.max(min, Swift.min(max, parsed))
         }
         return defaultValue

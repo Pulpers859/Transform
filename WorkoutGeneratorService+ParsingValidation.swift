@@ -209,7 +209,12 @@ extension ClaudeService {
         blueprint: ProgramBlueprint,
         dayStart: Int
     ) -> [String] {
-        guard !blueprint.priorityAllocations.isEmpty else { return [] }
+        guard !blueprint.priorityAllocations.isEmpty else {
+            // Degenerate blueprint: per-priority validation is vacuously satisfied.
+            // Log loudly so an empty-intent pipeline state can't pass silently.
+            print("[WorkoutGeneratorService] validateBlueprint skipped — blueprint has no priority allocations, so focus-coverage checks were not applied.")
+            return []
+        }
 
         var issues: [String] = []
         let trainingDayCount = days.filter { !$0.isRestDay }.count

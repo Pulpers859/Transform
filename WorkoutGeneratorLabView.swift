@@ -534,7 +534,14 @@ struct WorkoutGeneratorLabView: View {
         }
 
         isRunning = true
-        defer { isRunning = false }
+        // Guarded defer: when a run is cancelled and replaced, the OLD task's defer
+        // unwinds later and must not re-enable the Run button while the NEW (paid)
+        // live-AI run is still in flight.
+        defer {
+            if !Task.isCancelled {
+                isRunning = false
+            }
+        }
 
         do {
             let generatedReport: WorkoutGeneratorDebugReport

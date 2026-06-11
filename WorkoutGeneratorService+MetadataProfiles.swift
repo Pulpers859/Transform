@@ -384,7 +384,7 @@ extension ClaudeService {
 
         if expectedCanonical == "Lower" && day.exercises.count >= 7 {
             issues.append(
-                "Day \(day.dayNumber) is too crowded for a fatigue-managed Lower session. In a shift-work recomposition block, prefer fewer high-value lower-body movements over extra filler."
+                "Day \(day.dayNumber) is too crowded for a fatigue-managed Lower session. Prefer fewer high-value lower-body movements over extra filler."
             )
         }
 

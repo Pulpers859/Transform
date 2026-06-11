@@ -22,7 +22,7 @@ struct AddMeasurementSheet: View {
     @State private var showValidationAlert = false
 
     var hasValidWeightInput: Bool {
-        guard let weight = Double(weightText) else { return false }
+        guard let weight = UserNumberParser.double(from: weightText) else { return false }
         return (50...999).contains(weight)
     }
 
@@ -108,7 +108,7 @@ struct AddMeasurementSheet: View {
         var weightToSave: Double?
 
         if alsoSaveWeightEntry {
-            guard hasValidWeightInput, let weight = Double(weightText) else {
+            guard hasValidWeightInput, let weight = UserNumberParser.double(from: weightText) else {
                 validationMessage = "Enter a body weight between 50 and 999 lb or turn off the separate weight-log toggle."
                 showValidationAlert = true
                 return
@@ -124,24 +124,43 @@ struct AddMeasurementSheet: View {
             }
         }
 
+        // Same-day entries are edits, not hidden duplicates — the history UI shows
+        // one row per day, so a duplicate would be invisible and undeletable.
         if let weightToSave {
-            let entry = WeightEntry(date: normalizedDate, weightLbs: weightToSave, notes: trimmedNotes)
-            modelContext.insert(entry)
+            let existingWeights = (try? modelContext.fetch(FetchDescriptor<WeightEntry>())) ?? []
+            if let sameDay = existingWeights.first(where: { Calendar.current.isDate($0.date, inSameDayAs: normalizedDate) }) {
+                sameDay.weightLbs = weightToSave
+                if !trimmedNotes.isEmpty {
+                    sameDay.notes = trimmedNotes
+                }
+            } else {
+                let entry = WeightEntry(date: normalizedDate, weightLbs: weightToSave, notes: trimmedNotes)
+                modelContext.insert(entry)
+            }
         }
 
         if !allMeasurementsEmpty {
-            let m = MeasurementEntry(date: normalizedDate)
-            m.chestIn = Double(chestText)
-            m.waistIn = Double(waistText)
-            m.hipsIn = Double(hipsText)
-            m.neckIn = Double(neckText)
-            m.rightArmIn = Double(rightArmText)
-            m.leftArmIn = Double(leftArmText)
-            m.rightThighIn = Double(rightThighText)
-            m.leftThighIn = Double(leftThighText)
-            m.bodyFatPct = Double(bodyFatText)
-            m.notes = trimmedNotes
-            modelContext.insert(m)
+            let existingMeasurements = (try? modelContext.fetch(FetchDescriptor<MeasurementEntry>())) ?? []
+            let m: MeasurementEntry
+            if let sameDay = existingMeasurements.first(where: { Calendar.current.isDate($0.date, inSameDayAs: normalizedDate) }) {
+                m = sameDay
+            } else {
+                m = MeasurementEntry(date: normalizedDate)
+                modelContext.insert(m)
+            }
+            // Filled fields update; blank fields leave previously saved values alone.
+            if let v = UserNumberParser.double(from: chestText) { m.chestIn = v }
+            if let v = UserNumberParser.double(from: waistText) { m.waistIn = v }
+            if let v = UserNumberParser.double(from: hipsText) { m.hipsIn = v }
+            if let v = UserNumberParser.double(from: neckText) { m.neckIn = v }
+            if let v = UserNumberParser.double(from: rightArmText) { m.rightArmIn = v }
+            if let v = UserNumberParser.double(from: leftArmText) { m.leftArmIn = v }
+            if let v = UserNumberParser.double(from: rightThighText) { m.rightThighIn = v }
+            if let v = UserNumberParser.double(from: leftThighText) { m.leftThighIn = v }
+            if let v = UserNumberParser.double(from: bodyFatText) { m.bodyFatPct = v }
+            if !trimmedNotes.isEmpty {
+                m.notes = trimmedNotes
+            }
         }
 
         guard PersistenceReporter.save(modelContext, operation: "body measurements") else {
@@ -167,14 +186,14 @@ struct AddMeasurementSheet: View {
         for (label, rawValue) in inchFields {
             let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.isEmpty else { continue }
-            guard let value = Double(trimmed), (5...100).contains(value) else {
+            guard let value = UserNumberParser.double(from: trimmed), (5...100).contains(value) else {
                 return "\(label) must be between 5 and 100 inches."
             }
         }
 
         let trimmedBodyFat = bodyFatText.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmedBodyFat.isEmpty {
-            guard let value = Double(trimmedBodyFat), (2...80).contains(value) else {
+            guard let value = UserNumberParser.double(from: trimmedBodyFat), (2...80).contains(value) else {
                 return "Body fat must be between 2% and 80%."
             }
         }

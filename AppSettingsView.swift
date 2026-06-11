@@ -3,6 +3,7 @@ import UIKit
 
 struct AppSettingsView: View {
     @Environment(\.dismiss) private var dismiss
+    @State private var showRestoreDefaultsConfirm = false
 
     @AppStorage(AppSettingsKeys.analysisAge) private var analysisAge = Config.defaultAnalysisAge
     @AppStorage(AppSettingsKeys.analysisSex) private var analysisSex = Config.defaultAnalysisSex
@@ -53,9 +54,21 @@ struct AppSettingsView: View {
 
                 Section {
                     Button("Restore Defaults", role: .destructive) {
-                        restoreDefaults()
+                        showRestoreDefaultsConfirm = true
                     }
                 }
+            }
+            .confirmationDialog(
+                "Restore default settings?",
+                isPresented: $showRestoreDefaultsConfirm,
+                titleVisibility: .visible
+            ) {
+                Button("Restore Defaults", role: .destructive) {
+                    restoreDefaults()
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This clears your profile fields and resets macro targets. Typed text cannot be recovered.")
             }
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)

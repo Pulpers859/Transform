@@ -245,17 +245,30 @@ class ExerciseWeightEntry {
 
         let stopWords: Set<String> = [
             "the", "a", "an", "and", "or", "with", "for", "to",
-            "week", "day", "set", "sets", "rep", "reps", "rir", "rpe",
-            "machine", "cable", "db", "bb"
+            "week", "day", "set", "sets", "rep", "reps", "rir", "rpe"
+        ]
+
+        // Equipment changes the movement and its loading. Normalize abbreviations to
+        // one spelling instead of stripping equipment tokens — stripping made
+        // "DB Bench Press" share a key with barbell "Bench Press", so a launch-time
+        // consolidation destructively merged (and corrupted) their weight histories.
+        let tokenAliases: [String: String] = [
+            "db": "dumbbell",
+            "bb": "barbell",
+            "kb": "kettlebell"
         ]
 
         let normalizedText = String(normalizedCharacters)
         let tokens = normalizedText
             .split(whereSeparator: { $0.isWhitespace || $0.isNewline })
             .map(String.init)
-            .map { token in
+            .map { token -> String in
+                if let alias = tokenAliases[token] {
+                    return alias
+                }
                 if token.hasSuffix("s"), token.count > 3 {
-                    return String(token.dropLast())
+                    let singular = String(token.dropLast())
+                    return tokenAliases[singular] ?? singular
                 }
                 return token
             }

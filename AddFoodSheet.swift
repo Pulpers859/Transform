@@ -45,7 +45,7 @@ struct AddFoodSheet: View {
 
     var canSave: Bool {
         guard !trimmedFoodName.isEmpty,
-              let parsedCalories = Int(calories.trimmingCharacters(in: .whitespacesAndNewlines)) else {
+              let parsedCalories = UserNumberParser.int(from: calories) else {
             return false
         }
         return (0...7000).contains(parsedCalories)
@@ -519,11 +519,9 @@ struct AddFoodSheet: View {
             let text = try await AnthropicClient.shared.sendRequest(body: requestBody, timeout: 90)
             try Task.checkCancellation()
 
-            let cleaned = text
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-                .replacingOccurrences(of: "```json", with: "")
-                .replacingOccurrences(of: "```", with: "")
-                .trimmingCharacters(in: .whitespacesAndNewlines)
+            // Brace-matching extraction handles preamble/fences without corrupting
+            // string content the way global character replacement can.
+            let cleaned = ClaudeService.extractJSON(from: text)
 
             guard let jsonData = cleaned.data(using: .utf8) else {
                 throw ClaudeError.parseError("Could not decode response")
@@ -533,13 +531,15 @@ struct AddFoodSheet: View {
 
             guard !Task.isCancelled else { return }
 
+            // Clamp into the same ranges save-validation enforces, so a wild
+            // estimate can't silently disable the Save button.
             foodName = result.foodName
-            calories = "\(result.calories)"
-            protein = String(format: "%.0f", result.proteinG)
-            carbs = String(format: "%.0f", result.carbsG)
-            sugar = String(format: "%.0f", result.sugarG ?? 0)
-            fiber = String(format: "%.0f", result.fiberG ?? 0)
-            fat = String(format: "%.0f", result.fatG)
+            calories = "\(min(max(result.calories, 0), 7000))"
+            protein = String(format: "%.0f", min(max(result.proteinG, 0), 500))
+            carbs = String(format: "%.0f", min(max(result.carbsG, 0), 1000))
+            sugar = String(format: "%.0f", min(max(result.sugarG ?? 0, 0), 300))
+            fiber = String(format: "%.0f", min(max(result.fiberG ?? 0, 0), 150))
+            fat = String(format: "%.0f", min(max(result.fatG, 0), 500))
             UINotificationFeedbackGenerator().notificationOccurred(.success)
         } catch is CancellationError {
             return
@@ -560,7 +560,11 @@ struct AddFoodSheet: View {
             return
         }
 
+        // Filter in the store, not in memory: an unfiltered fetch capped at the
+        // latest N rows could never suggest a food logged further back, despite
+        // the UI presenting this as a search of the whole food memory.
         var descriptor = FetchDescriptor<NutritionEntry>(
+            predicate: #Predicate { $0.notes.localizedStandardContains(query) },
             sortBy: [SortDescriptor(\NutritionEntry.date, order: .reverse)]
         )
         descriptor.fetchLimit = searchHistoryFetchLimit
@@ -763,7 +767,7 @@ struct AddFoodSheet: View {
             showValidationAlert = true
             return nil
         }
-        guard let value = Int(trimmed), range.contains(value) else {
+        guard let value = UserNumberParser.int(from: trimmed), range.contains(value) else {
             validationMessage = "\(fieldName) must be between \(range.lowerBound) and \(range.upperBound)."
             showValidationAlert = true
             return nil
@@ -776,7 +780,7 @@ struct AddFoodSheet: View {
         guard !trimmed.isEmpty else {
             return 0
         }
-        guard let value = Double(trimmed), range.contains(value) else {
+        guard let value = UserNumberParser.double(from: trimmed), range.contains(value) else {
             validationMessage = "\(fieldName) must be between \(Int(range.lowerBound)) and \(Int(range.upperBound))."
             showValidationAlert = true
             return nil
@@ -838,6 +842,27 @@ struct MacroEstimate: Codable {
     let sugarG: Double?
     let fiberG: Double?
     let fatG: Double
+
+    enum CodingKeys: String, CodingKey {
+        case foodName, calories, proteinG, carbsG, sugarG, fiberG, fatG
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        foodName = try container.decode(String.self, forKey: .foodName)
+        // The model occasionally emits calories as a decimal ("450.0") — a strict
+        // Int decode would turn a perfectly usable estimate into a user-facing error.
+        if let intCalories = try? container.decode(Int.self, forKey: .calories) {
+            calories = intCalories
+        } else {
+            calories = Int((try container.decode(Double.self, forKey: .calories)).rounded())
+        }
+        proteinG = try container.decode(Double.self, forKey: .proteinG)
+        carbsG = try container.decode(Double.self, forKey: .carbsG)
+        sugarG = try container.decodeIfPresent(Double.self, forKey: .sugarG)
+        fiberG = try container.decodeIfPresent(Double.self, forKey: .fiberG)
+        fatG = try container.decode(Double.self, forKey: .fatG)
+    }
 }
 
 struct FoodMemoryItem: Identifiable {

@@ -21,8 +21,12 @@ struct AnalysisPhoto: Identifiable {
                 return data
             }
         }
-        // Last resort: lowest quality
-        return resized.jpegData(compressionQuality: 0.1)
+        // Last resort: lowest quality, still subject to the hard API payload cap.
+        if let data = resized.jpegData(compressionQuality: 0.1),
+           data.count <= AnalysisPhoto.maxJPEGBytes {
+            return data
+        }
+        return nil
     }
 
     /// Downscale so the longest edge is at most 2048px (keeps detail, cuts file size)
@@ -57,7 +61,18 @@ class ClaudeService {
     func analyzeBody(photos: [AnalysisPhoto]) async throws -> BodyAnalysisResult {
         guard !photos.isEmpty else { throw ClaudeError.noPhotos }
 
-        let poseList = photos.map { $0.pose }.joined(separator: ", ")
+        // Encode every photo up front. A silently dropped image would leave the
+        // prompt claiming N photos while fewer are attached, and the model would
+        // fabricate an assessment for a view it never saw — fail loudly instead.
+        var encodedPhotos: [(pose: String, base64: String)] = []
+        for photo in photos {
+            guard let jpegData = photo.jpegData else {
+                throw ClaudeError.invalidImage
+            }
+            encodedPhotos.append((photo.pose, jpegData.base64EncodedString()))
+        }
+
+        let poseList = encodedPhotos.map { $0.pose }.joined(separator: ", ")
 
         let systemPrompt = """
         You are a multidisciplinary physique and health assessment panel. Your team includes:
@@ -161,41 +176,36 @@ class ClaudeService {
         // Build content array with all photos + text prompt
         var contentArray: [[String: Any]] = []
 
-        for (index, photo) in photos.enumerated() {
-            guard let jpegData = photo.jpegData else { continue }
-            let base64 = jpegData.base64EncodedString()
-
+        for (index, encoded) in encodedPhotos.enumerated() {
             contentArray.append([
                 "type": "image",
                 "source": [
                     "type": "base64",
                     "media_type": "image/jpeg",
-                    "data": base64
+                    "data": encoded.base64
                 ]
             ])
             contentArray.append([
                 "type": "text",
-                "text": "Photo \(index + 1): \(photo.pose) view"
+                "text": "Photo \(index + 1): \(encoded.pose) view"
             ])
         }
 
         contentArray.append([
             "type": "text",
-            "text": "Analyze \(photos.count > 1 ? "all \(photos.count) photos together" : "this photo"). Respond with ONLY the JSON object specified in your instructions. Do not include any text before or after the JSON. Start your response with {"
+            "text": "Analyze \(encodedPhotos.count > 1 ? "all \(encodedPhotos.count) photos together" : "this photo"). Respond with ONLY the JSON object specified in your instructions. Do not include any text before or after the JSON."
         ])
 
+        // Note: no assistant prefill — current Claude models reject prefilled
+        // assistant turns with a 400. extractJSON handles any stray preamble.
         let requestBody: [String: Any] = [
             "model": Config.claudeModel,
-            "max_tokens": 4096,
+            "max_tokens": 8192,
             "system": systemPrompt,
             "messages": [
                 [
                     "role": "user",
                     "content": contentArray
-                ],
-                [
-                    "role": "assistant",
-                    "content": "{"
                 ]
             ]
         ]
@@ -215,11 +225,8 @@ class ClaudeService {
     private func makeAnalysisRequest(body: [String: Any]) async throws -> BodyAnalysisResult {
         let text = try await AnthropicClient.shared.sendRequest(body: body, timeout: 120)
 
-        // Prepend "{" since we used assistant prefill starting with "{"
-        let fullText = "{" + text
-
         // Extract JSON object from response
-        let jsonString = ClaudeService.extractJSON(from: fullText)
+        let jsonString = ClaudeService.extractJSON(from: text)
 
         guard let jsonData = jsonString.data(using: .utf8) else {
             print("[ClaudeService] Could not convert cleaned text to Data")
@@ -240,13 +247,10 @@ class ClaudeService {
     // MARK: - Robust JSON Extraction
 
     /// Extracts the first complete JSON object from a string, handling preamble, markdown fences, and trailing text.
+    /// Brace matching starts at the first `{`, so fences and preamble fall away naturally —
+    /// no global character stripping that could corrupt backticks inside JSON string values.
     static func extractJSON(from text: String) -> String {
-        var cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        // Strip markdown code fences
-        cleaned = cleaned.replacingOccurrences(of: "```json", with: "")
-        cleaned = cleaned.replacingOccurrences(of: "```", with: "")
-        cleaned = cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
 
         // Find the first '{' and match to its closing '}'
         guard let startIndex = cleaned.firstIndex(of: "{") else {
@@ -256,15 +260,24 @@ class ClaudeService {
         var depth = 0
         var endIndex = cleaned.endIndex
         var inString = false
-        var prevChar: Character = " "
+        var escaped = false
 
         for i in cleaned[startIndex...].indices {
             let ch = cleaned[i]
-            if ch == "\"" && prevChar != "\\" {
-                inString.toggle()
-            } else if !inString {
-                if ch == "{" { depth += 1 }
-                else if ch == "}" {
+            if inString {
+                if escaped {
+                    escaped = false
+                } else if ch == "\\" {
+                    escaped = true
+                } else if ch == "\"" {
+                    inString = false
+                }
+            } else {
+                if ch == "\"" {
+                    inString = true
+                } else if ch == "{" {
+                    depth += 1
+                } else if ch == "}" {
                     depth -= 1
                     if depth == 0 {
                         endIndex = cleaned.index(after: i)
@@ -272,7 +285,6 @@ class ClaudeService {
                     }
                 }
             }
-            prevChar = ch
         }
 
         return String(cleaned[startIndex..<endIndex])

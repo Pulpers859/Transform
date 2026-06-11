@@ -76,8 +76,21 @@ struct BodyAnalysisResult: Codable {
         metabolicHealthNotes = try container.decode(String.self, forKey: .metabolicHealthNotes)
         psychologicalInsights = try container.decode(String.self, forKey: .psychologicalInsights)
         injuryRiskNotes = try container.decode(String.self, forKey: .injuryRiskNotes)
-        macroTargets = try? container.decode(AnalysisMacroTargets.self, forKey: .macroTargets)
-        structuredTrainingIntent = try? container.decode(StructuredTrainingIntent.self, forKey: .structuredTrainingIntent)
+        // These fields are optional in the schema, but present-but-malformed payloads
+        // must not silently demote the analysis to the degraded path — log the decode
+        // error so quality regressions are visible instead of vanishing as nil.
+        do {
+            macroTargets = try container.decodeIfPresent(AnalysisMacroTargets.self, forKey: .macroTargets)
+        } catch {
+            print("[BodyAnalysisResult] macroTargets present but malformed, dropping: \(error)")
+            macroTargets = nil
+        }
+        do {
+            structuredTrainingIntent = try container.decodeIfPresent(StructuredTrainingIntent.self, forKey: .structuredTrainingIntent)
+        } catch {
+            print("[BodyAnalysisResult] structuredTrainingIntent present but malformed, dropping: \(error)")
+            structuredTrainingIntent = nil
+        }
     }
 }
 

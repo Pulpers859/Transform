@@ -194,13 +194,21 @@ struct ExerciseWeightSnapshot: Codable {
     let bestNotes: String?
 }
 
+// ISO8601 round-tripping truncates sub-second precision, while live entries carry
+// full-precision dates. Dedupe keys must therefore compare at whole-second
+// granularity (floored, matching the truncation) or every import into a non-empty
+// store duplicates the entries it was supposed to match.
+private func backupDedupeTimestamp(_ date: Date) -> Int {
+    Int(date.timeIntervalSince1970.rounded(.down))
+}
+
 private extension WeightSnapshot {
     init(_ entry: WeightEntry) {
         self.init(date: entry.date, weightLbs: entry.weightLbs, notes: entry.notes)
     }
 
     var dedupeKey: String {
-        "\(date.timeIntervalSince1970)-\(weightLbs)-\(notes)"
+        "\(backupDedupeTimestamp(date))-\(weightLbs)-\(notes)"
     }
 
     func makeModel() -> WeightEntry {
@@ -226,7 +234,7 @@ private extension MeasurementSnapshot {
     }
 
     var dedupeKey: String {
-        "\(date.timeIntervalSince1970)-\(waistIn ?? -1)-\(chestIn ?? -1)-\(notes)"
+        "\(backupDedupeTimestamp(date))-\(waistIn ?? -1)-\(chestIn ?? -1)-\(notes)"
     }
 
     func makeModel() -> MeasurementEntry {
@@ -261,7 +269,7 @@ private extension NutritionSnapshot {
     }
 
     var dedupeKey: String {
-        "\(date.timeIntervalSince1970)-\(mealName)-\(notes)-\(calories)-\(carbsG)-\(proteinG)-\(fatG)"
+        "\(backupDedupeTimestamp(date))-\(mealName)-\(notes)-\(calories)-\(carbsG)-\(proteinG)-\(fatG)"
     }
 
     func makeModel() -> NutritionEntry {
@@ -334,7 +342,7 @@ private extension SavedNutritionProtocolSnapshot {
     }
 
     var dedupeKey: String {
-        "\(createdAt.timeIntervalSince1970)-\(programJSON)-\(followupWeeksJSON)"
+        "\(backupDedupeTimestamp(createdAt))-\(programJSON)-\(followupWeeksJSON)"
     }
 
     func makeModel() -> SavedNutritionProtocol {
@@ -362,7 +370,7 @@ private extension AnalysisSnapshot {
     }
 
     var dedupeKey: String {
-        "\(date.timeIntervalSince1970)-\(pose)-\(photoCount)-\(analysisResult)"
+        "\(backupDedupeTimestamp(date))-\(pose)-\(photoCount)-\(analysisResult)"
     }
 
     func makeModel() -> BodyAnalysisSession {
@@ -593,10 +601,16 @@ final class DataBackupManager {
     let currentBackupVersion = 3
     private let supportedBackupVersions: Set<Int> = [1, 2, 3]
 
-    func exportDocument(using modelContext: ModelContext) throws -> BackupDocument {
+    /// Set when the app falls back to the empty in-memory store: automatic backups
+    /// must not overwrite the last good on-disk backup with an empty payload.
+    var suppressAutomaticBackups = false
+
+    private var pendingBackupTask: Task<Void, Never>?
+
+    func exportDocument(using modelContext: ModelContext, prettyPrinted: Bool = true) throws -> BackupDocument {
         let payload = try buildPayload(using: modelContext)
         let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        encoder.outputFormatting = prettyPrinted ? [.prettyPrinted, .sortedKeys] : [.sortedKeys]
         encoder.dateEncodingStrategy = .iso8601
         let data = try encoder.encode(payload)
         return BackupDocument(data: data)
@@ -633,9 +647,42 @@ final class DataBackupManager {
         }
     }
 
+    /// Debounced write: serializing the entire store (including analysis photo
+    /// blobs) on every checkbox toggle caused visible main-thread hitches during
+    /// the highest-frequency interaction in the app. Bursts coalesce into one write.
     func writeAutomaticBackup(using modelContext: ModelContext) {
+        guard !suppressAutomaticBackups else { return }
+        pendingBackupTask?.cancel()
+        pendingBackupTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            guard !Task.isCancelled else { return }
+            self?.performAutomaticBackup(using: modelContext)
+        }
+    }
+
+    /// Immediate write for backgrounding — a debounced write might never fire
+    /// once the app is suspended.
+    func writeAutomaticBackupNow(using modelContext: ModelContext) {
+        guard !suppressAutomaticBackups else { return }
+        pendingBackupTask?.cancel()
+        pendingBackupTask = nil
+        performAutomaticBackup(using: modelContext)
+    }
+
+    func automaticBackupExists() -> Bool {
+        FileManager.default.fileExists(atPath: automaticBackupURL().path)
+    }
+
+    /// Restore path for the on-device safety net — without this, the automatic
+    /// backup was write-only and unreachable by any user action.
+    func restoreFromAutomaticBackup(into modelContext: ModelContext) throws {
+        let data = try Data(contentsOf: automaticBackupURL())
+        try importBackup(from: data, into: modelContext)
+    }
+
+    private func performAutomaticBackup(using modelContext: ModelContext) {
         do {
-            let document = try exportDocument(using: modelContext)
+            let document = try exportDocument(using: modelContext, prettyPrinted: false)
             let url = automaticBackupURL()
             try document.data.write(to: url, options: [.atomic])
         } catch {

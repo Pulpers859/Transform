@@ -34,11 +34,18 @@ struct ContentView: View {
                 .tabItem {
                     Label("Nutrition", systemImage: "fork.knife")
                 }
+
+            MeasurementsView()
+                .tabItem {
+                    Label("Measure", systemImage: "ruler")
+                }
         }
         .tint(.orange)
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .inactive || newPhase == .background {
-                DataBackupManager.shared.writeAutomaticBackup(using: modelContext)
+                // Immediate (not debounced) — a deferred write may never fire
+                // once the app is suspended.
+                DataBackupManager.shared.writeAutomaticBackupNow(using: modelContext)
             }
         }
         .onAppear {

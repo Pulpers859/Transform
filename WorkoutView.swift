@@ -69,11 +69,9 @@ struct WorkoutView: View {
             .onChange(of: currentProgram?.currentWeek) { _, _ in
                 syncSelectedWeekWithCurrentProgram()
             }
-            .onDisappear {
-                generationTask?.cancel()
-                generationTask = nil
-                isGenerating = false
-            }
+            // Deliberately no cancellation on disappear: this fires on tab switches
+            // and NavigationLink pushes, and cancelling there silently discards a
+            // paid in-flight generation (the tokens are billed server-side anyway).
         }
     }
 
@@ -466,6 +464,9 @@ struct WorkoutView: View {
                 .foregroundStyle(.red)
                 .clipShape(RoundedRectangle(cornerRadius: 12))
             }
+            // Deleting mid-generation would leave the in-flight task mutating a
+            // deleted @Model when the response lands.
+            .disabled(isGenerating)
         }
     }
 
@@ -591,6 +592,10 @@ struct WorkoutView: View {
             )
             try Task.checkCancellation()
 
+            // The program may have been deleted while the request was in flight —
+            // mutating an invalidated @Model crashes or resurrects orphaned days.
+            guard program.modelContext != nil else { return }
+
             guard let weekJSON = encodeJSONString(
                 response,
                 failureMessage: "Could not save the generated week because the new workout data could not be encoded."
@@ -676,18 +681,21 @@ struct WorkoutView: View {
 
     func toggleDayCompletion(_ day: WorkoutDay) {
         let priorDayCompletion = day.isCompleted
-        let priorExerciseCompletion = day.exercises.map(\.isCompleted)
+        // Snapshot per object — SwiftData to-many arrays have no guaranteed stable
+        // order, so a positional zip could restore flags onto the wrong exercises.
+        let priorExerciseCompletion = day.exercises.map { ($0, $0.isCompleted) }
 
         day.isCompleted.toggle()
-        if day.isCompleted {
-            for exercise in day.exercises {
-                exercise.isCompleted = true
-            }
+        // Keep day and exercise completion symmetric: un-completing a day clears
+        // its exercises too, otherwise a single exercise re-toggle instantly
+        // re-completes the day via the all-done rule.
+        for exercise in day.exercises {
+            exercise.isCompleted = day.isCompleted
         }
         guard PersistenceReporter.save(modelContext, operation: "day completion toggle") else {
             modelContext.rollback()
             day.isCompleted = priorDayCompletion
-            for (exercise, priorValue) in zip(day.exercises, priorExerciseCompletion) {
+            for (exercise, priorValue) in priorExerciseCompletion {
                 exercise.isCompleted = priorValue
             }
             UINotificationFeedbackGenerator().notificationOccurred(.error)

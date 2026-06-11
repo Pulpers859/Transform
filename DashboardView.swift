@@ -46,6 +46,13 @@ struct DashboardView: View {
         return max(0, min(1.0, (current - start) / (goal - start)))
     }
 
+    // Direction-aware coaching signal: a user bulking toward a higher goal should
+    // see gained weight in green, not red.
+    var weightLossIsGood: Bool {
+        let start = weightEntries.last?.weightLbs ?? currentWeight ?? Config.bodyWeightGoalLbs
+        return Config.bodyWeightGoalLbs <= start
+    }
+
     var weightSparkline: [WeightEntry] {
         Array(weightEntries.prefix(14).reversed())
     }
@@ -135,6 +142,15 @@ struct DashboardView: View {
                 switch result {
                 case .success(let url):
                     do {
+                        // fileImporter URLs are security-scoped on device; reading
+                        // without acquiring access fails for files picked from
+                        // Files/iCloud Drive — exactly where real backups live.
+                        let didAccess = url.startAccessingSecurityScopedResource()
+                        defer {
+                            if didAccess {
+                                url.stopAccessingSecurityScopedResource()
+                            }
+                        }
                         let data = try Data(contentsOf: url)
                         try DataBackupManager.shared.importBackup(from: data, into: modelContext)
                         backupMessage = "Backup imported successfully."
@@ -232,6 +248,20 @@ struct DashboardView: View {
                             showImporter = true
                         } label: {
                             Label("Import Backup", systemImage: "square.and.arrow.down")
+                        }
+
+                        if DataBackupManager.shared.automaticBackupExists() {
+                            Button {
+                                do {
+                                    try DataBackupManager.shared.restoreFromAutomaticBackup(into: modelContext)
+                                    backupMessage = "Restored from the automatic on-device backup."
+                                } catch {
+                                    backupMessage = "Automatic backup restore failed: \(error.localizedDescription)"
+                                }
+                                showBackupAlert = true
+                            } label: {
+                                Label("Restore Auto-Backup", systemImage: "clock.arrow.circlepath")
+                            }
                         }
                     } label: {
                         Label("Backup", systemImage: "externaldrive.badge.plus")
@@ -379,7 +409,7 @@ struct DashboardView: View {
                 .buttonStyle(.bordered)
                 .tint(.orange)
                 if let delta = weightDelta {
-                    deltaBadge(delta, invertGood: true)
+                    deltaBadge(delta, invertGood: weightLossIsGood)
                 }
             }
 
@@ -577,6 +607,10 @@ struct DashboardView: View {
 
     var backupFileName: String {
         let formatter = DateFormatter()
+        // Fixed locale/calendar so devices on Buddhist/Japanese calendars don't
+        // produce filenames like Transform_Backup_2569-06-11.
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.calendar = Calendar(identifier: .gregorian)
         formatter.dateFormat = "yyyy-MM-dd_HHmm"
         return "Transform_Backup_\(formatter.string(from: Date()))"
     }

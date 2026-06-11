@@ -193,7 +193,7 @@ extension ClaudeService {
         )
 
         let diagnosticLine = diagnostic.isEmpty ? "" : "\n\nWhy fallback fired: \(truncatedDiagnostic(diagnostic))"
-        let summary = "Week \(weekNumber) for \(programName) (\(splitType)) applies phase-aware progression and shift-work-friendly session design.\(diagnosticLine)"
+        let summary = "Week \(weekNumber) for \(programName) (\(splitType)) applies phase-aware progression and fatigue-managed session design.\(diagnosticLine)"
         return WorkoutWeekResponse(
             weekSummary: withSourceLabel(summary, sourceLabel: fallbackSourceLabel),
             days: days

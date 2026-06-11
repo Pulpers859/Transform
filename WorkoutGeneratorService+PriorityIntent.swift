@@ -431,7 +431,19 @@ extension ClaudeService {
 
                 for area in metadata.primaryAreas {
                     let directCredit = directSetCredit(for: exercise, area: area)
-                    guard directCredit > 0 else { continue }
+                    guard directCredit > 0 else {
+                        // Support-grade work contributes weighted stimulus only —
+                        // no direct sets, exposure-frequency, or slot credit.
+                        let kind = focusStimulusKind(
+                            exerciseName: exercise.exerciseName,
+                            muscleTarget: exercise.muscleTarget,
+                            focusArea: area
+                        )
+                        if kind == .support {
+                            report.weightedStimulus[area, default: 0] += focusStimulusCredit(for: .support) * Double(exercise.sets)
+                        }
+                        continue
+                    }
 
                     report.directSets[area, default: 0] += directCredit
                     var dayDirectSets = report.directSetsByDay[area, default: [:]]
@@ -471,9 +483,18 @@ extension ClaudeService {
             muscleTarget: exercise.muscleTarget,
             focusArea: area
         )
-        let qualityCredit = focusStimulusCredit(for: qualityKind) * Double(exercise.sets)
-        if qualityCredit > 0 {
-            return qualityCredit
+        switch qualityKind {
+        case .prime, .secondary:
+            return focusStimulusCredit(for: qualityKind) * Double(exercise.sets)
+        case .support:
+            // Support/scapular-control work must never be credited as direct
+            // hypertrophy volume — returning a partial credit here let corrective
+            // work satisfy direct-set targets. It still earns weighted-stimulus
+            // credit in buildWeekStimulusReport. Returning 0 (not falling through)
+            // also prevents the metadata path below from re-crediting it at 1.0.
+            return 0
+        case .none:
+            break
         }
 
         let metadata = exerciseMetadata(for: exercise)

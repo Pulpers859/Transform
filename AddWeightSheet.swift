@@ -12,9 +12,11 @@ struct AddWeightSheet: View {
     @State private var existingEntryForDate: WeightEntry?
     @State private var validationMessage = ""
     @State private var showValidationAlert = false
+    @State private var lastSyncedWeightText = ""
+    @State private var lastSyncedNotes = ""
 
     var canSave: Bool {
-        guard let weight = Double(weightText) else { return false }
+        guard let weight = UserNumberParser.double(from: weightText) else { return false }
         return (50...999).contains(weight)
     }
 
@@ -74,19 +76,28 @@ struct AddWeightSheet: View {
 
     func syncExistingEntry() {
         let targetDay = Calendar.current.startOfDay(for: selectedDate)
-        if let existing = weightEntries.first(where: { Calendar.current.isDate($0.date, inSameDayAs: targetDay) }) {
-            existingEntryForDate = existing
-            weightText = String(format: "%.1f", existing.weightLbs)
-            notes = existing.notes
-        } else {
-            existingEntryForDate = nil
-            weightText = ""
-            notes = ""
+        let existing = weightEntries.first(where: { Calendar.current.isDate($0.date, inSameDayAs: targetDay) })
+        existingEntryForDate = existing
+
+        // Only auto-fill fields the user hasn't typed into since the last sync —
+        // changing the date must not silently discard in-progress input.
+        let weightUntouched = weightText == lastSyncedWeightText
+        let notesUntouched = notes == lastSyncedNotes
+        let syncedWeightText = existing.map { String(format: "%.1f", $0.weightLbs) } ?? ""
+        let syncedNotes = existing?.notes ?? ""
+
+        if weightUntouched {
+            weightText = syncedWeightText
+            lastSyncedWeightText = syncedWeightText
+        }
+        if notesUntouched {
+            notes = syncedNotes
+            lastSyncedNotes = syncedNotes
         }
     }
 
     func save() {
-        guard let weight = Double(weightText), (50...999).contains(weight) else {
+        guard let weight = UserNumberParser.double(from: weightText), (50...999).contains(weight) else {
             validationMessage = "Enter a body weight between 50 and 999 lb."
             showValidationAlert = true
             return

@@ -168,7 +168,7 @@ extension ClaudeService {
           create a clearly different stimulus profile.
         - Avoid filler late-session add-ons that do not clearly serve the day's style, the
           blueprint priorities, or the injury-management goal.
-        - In a shift-work recomposition block, especially on Lower days, prefer 5-6 high-value
+        - On fatigue-managed days, especially Lower days, prefer 5-6 high-value
           movements over bloated 7-8 exercise sessions unless every slot clearly earns its place.
         - Avoid back-to-back shoulder-intensive days when a lower-body or less-overlapping session
           can separate them.
@@ -277,7 +277,7 @@ extension ClaudeService {
           create a clearly different stimulus profile.
         - Avoid filler late-session add-ons that do not clearly serve the day's style, the
           blueprint priorities, or the injury-management goal.
-        - In a shift-work recomposition block, especially on Lower days, prefer 5-6 high-value
+        - On fatigue-managed days, especially Lower days, prefer 5-6 high-value
           movements over bloated 7-8 exercise sessions unless every slot clearly earns its place.
         - Avoid back-to-back shoulder-intensive days when a lower-body or less-overlapping session
           can separate them.
@@ -387,12 +387,22 @@ extension ClaudeService {
         for candidate in jsonCandidates(from: cleaned) {
             guard let data = candidate.data(using: .utf8) else { continue }
 
-            if let program = try? JSONDecoder().decode(WorkoutProgramResponse.self, from: data) {
-                return program.programSummary.trimmedOr(default: "")
+            // Both response types decode leniently (missing keys become defaults),
+            // so decode order alone can't disambiguate — a week-shaped payload would
+            // "succeed" as a program and return the boilerplate default summary.
+            // Inspect the actual keys first.
+            guard let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
+                continue
             }
 
-            if let week = try? JSONDecoder().decode(WorkoutWeekResponse.self, from: data) {
+            if object["weekSummary"] != nil,
+               let week = try? JSONDecoder().decode(WorkoutWeekResponse.self, from: data) {
                 return week.weekSummary.trimmedOr(default: "")
+            }
+
+            if object["programSummary"] != nil,
+               let program = try? JSONDecoder().decode(WorkoutProgramResponse.self, from: data) {
+                return program.programSummary.trimmedOr(default: "")
             }
         }
 

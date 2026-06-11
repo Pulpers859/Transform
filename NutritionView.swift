@@ -141,12 +141,9 @@ struct NutritionView: View {
             .onChange(of: savedNutritionProtocols.count) { _, _ in
                 loadSavedNutritionProtocolIfNeeded()
             }
-            .onDisappear {
-                nutritionGenerationTask?.cancel()
-                nutritionGenerationTask = nil
-                isGeneratingNutrition = false
-                generationProgress = ""
-            }
+            // Deliberately no cancellation on disappear: generation is a paid,
+            // multi-minute, multi-call run. A tab switch must not discard a completed
+            // Opus week — progress is persisted incrementally as weeks finish.
         }
     }
 
@@ -607,8 +604,14 @@ struct NutritionView: View {
             }
         }
 
+        let existingIsAIProtocol = priorProgram
+            .flatMap { GeneratedContentSource.detect(in: $0.programSummary) } == .aiCoach
+
         do {
-            let generated = try await buildNutritionProtocol(from: analysis)
+            let generated = try await buildNutritionProtocol(
+                from: analysis,
+                hasExistingAIProtocol: existingIsAIProtocol
+            )
             try Task.checkCancellation()
             guard !Task.isCancelled else { return }
 
@@ -619,7 +622,9 @@ struct NutritionView: View {
             if let warning = generated.partialGenerationWarning {
                 nutritionErrorMessage = warning
             }
-            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            // An honest haptic: a fallback protocol is not a success.
+            let generatedSource = GeneratedContentSource.detect(in: generated.program.programSummary)
+            UINotificationFeedbackGenerator().notificationOccurred(generatedSource == .recoveryEngine ? .warning : .success)
         } catch is CancellationError {
             return
         } catch {
@@ -631,8 +636,34 @@ struct NutritionView: View {
         }
     }
 
-    private func buildNutritionProtocol(from analysis: BodyAnalysisResult) async throws -> NutritionProtocolBuildResult {
+    private struct FallbackWouldReplaceAIProtocolError: LocalizedError {
+        var errorDescription: String? {
+            "The AI could not produce a valid Week 1 after retries — only the generic recovery plan was available, so your existing AI protocol was kept. Try again later."
+        }
+    }
+
+    private func buildNutritionProtocol(
+        from analysis: BodyAnalysisResult,
+        hasExistingAIProtocol: Bool
+    ) async throws -> NutritionProtocolBuildResult {
         let program = try await ClaudeService.shared.generateNutritionWeekOne(from: analysis)
+
+        // Never silently replace a saved AI protocol with the generic recovery
+        // fallback — that destroys paid-for personalized output on a bad day.
+        let weekOneSource = GeneratedContentSource.detect(in: program.programSummary)
+        if weekOneSource == .recoveryEngine && hasExistingAIProtocol {
+            throw FallbackWouldReplaceAIProtocolError()
+        }
+
+        // Persist week 1 immediately: a backgrounded app or interrupted run must
+        // not discard a completed (and billed) Opus generation.
+        await MainActor.run {
+            nutritionProgram = program
+            followupWeeks = []
+            selectedWeek = 1
+            saveNutritionProtocolToStore(program: program, followups: [])
+        }
+
         var followupWeeks: [NutritionWeekResponse] = []
         var warningMessage: String?
         guard let initialWeekJSON = encodeWeekToJSON(program.weekOne) else {
@@ -657,6 +688,14 @@ struct NutritionView: View {
                 )
                 try Task.checkCancellation()
                 followupWeeks.append(nextWeek)
+
+                // Persist each completed week so progress survives interruption.
+                let savedFollowups = followupWeeks
+                await MainActor.run {
+                    self.followupWeeks = savedFollowups
+                    saveNutritionProtocolToStore(program: program, followups: savedFollowups)
+                }
+
                 guard let encodedWeek = encodeWeekToJSON(nextWeek) else {
                     warningMessage = "Week \(week) generated, but its saved JSON context could not be encoded, so later weeks were skipped."
                     break
