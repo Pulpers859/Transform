@@ -479,12 +479,19 @@ extension ClaudeService {
         for candidate in jsonCandidates(from: cleaned) {
             guard let data = candidate.data(using: .utf8) else { continue }
 
-            if let program = try? JSONDecoder().decode(WorkoutProgramResponse.self, from: data) {
-                return program.programSummary.trimmedOr(default: "")
+            // Inspect payload keys first: WorkoutProgramResponse decodes leniently
+            // and would "succeed" on week-shaped JSON, returning the boilerplate
+            // default summary instead of the real previous-week summary.
+            let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+
+            if object?["weekSummary"] != nil,
+               let week = try? JSONDecoder().decode(WorkoutWeekResponse.self, from: data) {
+                return week.weekSummary.trimmedOr(default: "")
             }
 
-            if let week = try? JSONDecoder().decode(WorkoutWeekResponse.self, from: data) {
-                return week.weekSummary.trimmedOr(default: "")
+            if object?["programSummary"] != nil,
+               let program = try? JSONDecoder().decode(WorkoutProgramResponse.self, from: data) {
+                return program.programSummary.trimmedOr(default: "")
             }
         }
 

@@ -551,7 +551,13 @@ struct WorkoutGeneratorLabView: View {
         }
 
         isRunning = true
-        defer { isRunning = false }
+        // Don't re-enable Run if this task was cancelled/replaced by a newer run —
+        // otherwise the stale defer flips the button back on mid-(paid)-run.
+        defer {
+            if !Task.isCancelled {
+                isRunning = false
+            }
+        }
 
         do {
             let generatedReport: WorkoutGeneratorDebugReport

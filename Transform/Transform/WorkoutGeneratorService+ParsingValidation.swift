@@ -384,7 +384,10 @@ extension ClaudeService {
         blueprint: ProgramBlueprint,
         dayStart: Int
     ) -> [String] {
-        guard !blueprint.priorityAllocations.isEmpty else { return [] }
+        guard !blueprint.priorityAllocations.isEmpty else {
+            print("[WorkoutGeneratorService] validateBlueprint skipped: blueprint has no priorityAllocations (degenerate/empty training intent).")
+            return []
+        }
 
         var issues: [String] = []
         let trainingDayCount = days.filter { !$0.isRestDay }.count
