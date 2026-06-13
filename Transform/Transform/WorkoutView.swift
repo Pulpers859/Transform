@@ -624,6 +624,7 @@ struct WorkoutView: View {
                 .foregroundStyle(.red)
                 .clipShape(RoundedRectangle(cornerRadius: 12))
             }
+            .disabled(isGenerating)
         }
     }
 
@@ -780,6 +781,8 @@ struct WorkoutView: View {
             )
             let response = generationResult.response
             try Task.checkCancellation()
+            // The program may have been deleted while the request was in flight.
+            guard program.modelContext != nil else { return }
             WorkoutGenerationDiagnostics.markStage("encoding generated week \(nextWeek) program")
 
             guard let weekJSON = encodeJSONString(
@@ -873,18 +876,19 @@ struct WorkoutView: View {
 
     func toggleDayCompletion(_ day: WorkoutDay) {
         let priorDayCompletion = day.isCompleted
-        let priorExerciseCompletion = day.exercises.map(\.isCompleted)
+        let priorExerciseCompletion = day.exercises.map { ($0, $0.isCompleted) }
 
         day.isCompleted.toggle()
-        if day.isCompleted {
-            for exercise in day.exercises {
-                exercise.isCompleted = true
-            }
+        // Keep exercise checks consistent with the day: completing checks all,
+        // un-completing clears them (otherwise a single re-toggle instantly
+        // re-completes the day).
+        for exercise in day.exercises {
+            exercise.isCompleted = day.isCompleted
         }
         guard PersistenceReporter.save(modelContext, operation: "day completion toggle") else {
             modelContext.rollback()
             day.isCompleted = priorDayCompletion
-            for (exercise, priorValue) in zip(day.exercises, priorExerciseCompletion) {
+            for (exercise, priorValue) in priorExerciseCompletion {
                 exercise.isCompleted = priorValue
             }
             UINotificationFeedbackGenerator().notificationOccurred(.error)

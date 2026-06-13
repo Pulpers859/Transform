@@ -250,6 +250,7 @@ struct ExerciseCard: View {
     @State private var restTimerTask: Task<Void, Never>?
     @State private var showExpandedRestTimer = false
     @State private var didCompleteRestTimer = false
+    @State private var restEndDate: Date?
 
     var latestWeightLog: ExerciseWeightEntry? {
         weightSummary
@@ -552,10 +553,16 @@ struct ExerciseCard: View {
             if remainingRestSeconds == 0 && !didCompleteRestTimer {
                 remainingRestSeconds = exercise.restSeconds
             }
+            // Resume the loop if a timer is running but its task was torn down
+            // (e.g. after the fullscreen cover dismissed this card).
+            if isRestTimerActive && restTimerTask == nil {
+                startRestTimer()
+            }
         }
-        .onDisappear {
-            stopRestTimer()
-        }
+        // Intentionally no stopRestTimer() here: the fullscreen cover fires
+        // onDisappear on this card, and killing the loop there froze a running
+        // timer. The loop is bounded and reads the wall clock, so it is safe to
+        // let it run.
         .fullScreenCover(isPresented: $showExpandedRestTimer) {
             RestTimerFullscreen(
                 exerciseName: exercise.exerciseName,
@@ -701,6 +708,7 @@ struct ExerciseCard: View {
         if remainingRestSeconds <= 0 || remainingRestSeconds > exercise.restSeconds {
             remainingRestSeconds = exercise.restSeconds
         }
+        restEndDate = Date().addingTimeInterval(Double(remainingRestSeconds))
         isRestTimerActive = true
         startRestTimer()
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -710,7 +718,7 @@ struct ExerciseCard: View {
         stopRestTimer()
         restTimerTask = Task { @MainActor in
             while isRestTimerActive && !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                try? await Task.sleep(nanoseconds: 500_000_000)
                 guard !Task.isCancelled else { return }
                 tickRestTimer()
             }
@@ -723,6 +731,10 @@ struct ExerciseCard: View {
     }
 
     func pauseRestTimer() {
+        if let endDate = restEndDate {
+            remainingRestSeconds = max(0, Int(ceil(endDate.timeIntervalSinceNow)))
+        }
+        restEndDate = nil
         isRestTimerActive = false
         stopRestTimer()
     }
@@ -734,13 +746,18 @@ struct ExerciseCard: View {
     }
 
     func tickRestTimer() {
-        guard isRestTimerActive else {
+        guard isRestTimerActive, let endDate = restEndDate else {
             stopRestTimer()
             return
         }
 
-        remainingRestSeconds -= 1
-        if remainingRestSeconds > 0 {
+        // Derive the countdown from the wall clock so it stays correct across
+        // phone lock / app suspension instead of decrementing per tick.
+        let remaining = Int(ceil(endDate.timeIntervalSinceNow))
+        if remaining > 0 {
+            if remaining != remainingRestSeconds {
+                remainingRestSeconds = remaining
+            }
             return
         }
 
