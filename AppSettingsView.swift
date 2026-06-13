@@ -81,9 +81,15 @@ struct AppSettingsView: View {
         if axis == .vertical {
             VStack(alignment: .leading, spacing: 6) {
                 Text(title)
-                TextField(title, text: text, axis: .vertical)
+                    .font(.subheadline.weight(.medium))
+                TextField("Add \(title.lowercased())…", text: text, axis: .vertical)
                     .lineLimit(2...4)
                     .textInputAutocapitalization(.sentences)
+                    .padding(8)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Color.secondary.opacity(0.25), lineWidth: 1)
+                    )
             }
         } else {
             HStack {

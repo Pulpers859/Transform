@@ -84,6 +84,16 @@ struct BodyAnalysisResultView: View {
 struct AnalysisResultContent: View {
     let result: BodyAnalysisResult
 
+    // The core coaching sections an analysis is expected to populate. If all of
+    // these come back empty we surface a notice so a partial result doesn't read
+    // as a complete one.
+    private var isPartialResult: Bool {
+        result.regionBreakdown.isEmpty
+            && result.workoutRecommendations.isEmpty
+            && result.dietRecommendations.isEmpty
+            && result.programmingPriorityAreas.isEmpty
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
 
@@ -234,6 +244,20 @@ struct AnalysisResultContent: View {
                         .font(.body)
                         .foregroundStyle(.secondary)
                 }
+            }
+
+            // Partial-result notice
+            if isPartialResult {
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.yellow)
+                    Text("This analysis came back partial — region breakdown and training/diet recommendations weren't included. Try running it again with clearer, well-lit photos for a full result.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .padding()
+                .background(Color.yellow.opacity(0.12))
+                .clipShape(RoundedRectangle(cornerRadius: 12))
             }
         }
     }
