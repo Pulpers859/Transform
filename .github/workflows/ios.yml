@@ -1,0 +1,61 @@
+name: iOS
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    env:
+      # Update these if you name the project/scheme differently in Xcode.
+      PROJECT: Transform.xcodeproj
+      SCHEME: Transform
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      - name: Build app
+        run: |
+          set -o pipefail
+
+          # Until the Xcode project is committed, there is nothing to build.
+          # Skip cleanly (green) so CI is ready the moment the project lands.
+          if [ ! -d "$PROJECT" ]; then
+            echo "::notice::$PROJECT not found yet — skipping build."
+            echo "Add the Xcode project to the repo root and mark the '$SCHEME' scheme as Shared to enable CI builds."
+            exit 0
+          fi
+
+          # List schemes for debugging if the named scheme can't be found.
+          xcodebuild -list -project "$PROJECT" || true
+
+          # Build for the simulator: no code-signing identity or provisioning
+          # profile is required, so CI runs without any signing secrets.
+          xcodebuild \
+            -project "$PROJECT" \
+            -scheme "$SCHEME" \
+            -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO \
+            clean build
+
+      # Once you add a unit/UI test target, uncomment to run tests in CI.
+      # This needs a concrete booted simulator destination rather than the
+      # generic one used for building.
+      #
+      # - name: Test
+      #   run: |
+      #     xcodebuild \
+      #       -project "$PROJECT" \
+      #       -scheme "$SCHEME" \
+      #       -configuration Debug \
+      #       -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
+      #       CODE_SIGNING_ALLOWED=NO \
+      #       test
