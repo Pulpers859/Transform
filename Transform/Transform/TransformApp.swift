@@ -26,6 +26,7 @@ struct StartupConfiguration {
     let container: ModelContainer?
     let errorMessage: String?
 
+    @MainActor
     static func build() -> StartupConfiguration {
         let schema = Schema([
             WeightEntry.self,
