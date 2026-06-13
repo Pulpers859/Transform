@@ -15,7 +15,7 @@
 ## Default branch expectations
 
 - Stable branch: `main`
-- Working branch: `dev`
+- Working branch: `main`
 - Normal flow:
   - `git fetch --prune`
   - if clean, `git pull --ff-only`

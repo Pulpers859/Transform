@@ -15,7 +15,7 @@ Use this skill to rebuild the minimum correct context for Transform before codin
 4. State the repo's working assumptions before proceeding:
    - work from `C:\Dev\Transform_clean`
    - app source is under `Transform/Transform`
-   - normal work stays on `dev`
+   - normal work stays on `main`
    - sync first when clean
    - push completed work unless the user says not to
 5. Summarize risks in the order that matters for this app:

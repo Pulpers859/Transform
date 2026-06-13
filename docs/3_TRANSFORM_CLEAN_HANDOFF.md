@@ -89,7 +89,7 @@ git checkout dev
 
 ## Secrets / Credential Handling
 - Do not treat repo-tracked files as a safe place for live credentials.
-- `Transform\Transform\Secrets.plist` is expected as an ignored local setup file when AI features are configured, and it should stay uncommitted.
+- Prefer an ignored local `Transform\Config\Secrets.xcconfig` for `ANTHROPIC_API_KEY`, with `Transform\Transform\Secrets.plist` kept only as a fallback local setup path. Neither file should be committed.
 - Prefer example files plus ignored real local secret/config files whenever practical.
 - Before first push of a new app, run a secret scan.
 

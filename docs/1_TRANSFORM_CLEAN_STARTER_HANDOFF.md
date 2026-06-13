@@ -34,7 +34,7 @@ Important operating rules:
 - Preserve real workout quality over merely making the app pass rigid checks.
 - Respect the split `WorkoutGeneratorService` architecture; do not collapse it back into one giant file.
 - Keep evidence/profile logic, metadata logic, blueprint logic, validator logic, fallback logic, and coaching quality in sync.
-- Treat local secrets carefully. `Transform\Transform\Secrets.plist` is expected as an ignored local setup file when AI features are configured; it should stay uncommitted and should not become a dumping ground for live credentials.
+- Treat local secrets carefully. Prefer an ignored local `Transform\Config\Secrets.xcconfig` that sets `ANTHROPIC_API_KEY`, with `Transform\Transform\Secrets.plist` kept only as a fallback local setup path. Neither file should be committed.
 
 Default working behavior:
 - I describe the issue here in chat
