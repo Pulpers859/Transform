@@ -200,6 +200,7 @@ final class AnthropicClient {
                 }
 
                 if shouldRetry(statusCode: httpResponse.statusCode), attempt < maxAttempts {
+                    let delayNanos = retryDelay(for: httpResponse, attempt: attempt)
                     logRequest(
                         requestID: requestID,
                         event: "retry_scheduled",
@@ -207,11 +208,11 @@ final class AnthropicClient {
                             "attempt": "\(attempt)",
                             "status": "\(httpResponse.statusCode)",
                             "reason": "server_status",
-                            "backoff_ms": "\(Int(backoff(attempt: attempt) / 1_000_000))",
+                            "backoff_ms": "\(Int(delayNanos / 1_000_000))",
                             "server_request_id": serverRequestID(from: httpResponse) ?? "n/a"
                         ]
                     )
-                    try await Task.sleep(nanoseconds: backoff(attempt: attempt))
+                    try await Task.sleep(nanoseconds: delayNanos)
                     continue
                 }
 
@@ -430,6 +431,18 @@ final class AnthropicClient {
         let baseNanos: UInt64 = 1_000_000_000
         let multiplier = UInt64(1 << min(attempt - 1, 4))
         return baseNanos * multiplier
+    }
+
+    /// Honor the server's `retry-after` header (capped at 30s) when present, so a
+    /// fixed exponential backoff doesn't immediately trigger another 429 during
+    /// real rate limiting. Falls back to exponential backoff otherwise.
+    private func retryDelay(for response: HTTPURLResponse, attempt: Int) -> UInt64 {
+        if let retryAfter = response.value(forHTTPHeaderField: "retry-after"),
+           let seconds = Double(retryAfter.trimmingCharacters(in: .whitespaces)),
+           seconds > 0 {
+            return UInt64(min(seconds, 30) * 1_000_000_000)
+        }
+        return backoff(attempt: attempt)
     }
 
     private func shouldRetry(statusCode: Int) -> Bool {

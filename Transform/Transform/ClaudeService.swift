@@ -21,8 +21,12 @@ struct AnalysisPhoto: Identifiable {
                 return data
             }
         }
-        // Last resort: lowest quality
-        return resized.jpegData(compressionQuality: 0.1)
+        // Last resort: lowest quality, still subject to the hard API payload cap.
+        if let data = resized.jpegData(compressionQuality: 0.1),
+           data.count <= AnalysisPhoto.maxJPEGBytes {
+            return data
+        }
+        return nil
     }
 
     /// Downscale so the longest edge is at most 2048px (keeps detail, cuts file size)
@@ -281,12 +285,10 @@ class ClaudeService {
 
     /// Extracts the first complete JSON object from a string, handling preamble, markdown fences, and trailing text.
     nonisolated static func extractJSON(from text: String) -> String {
-        var cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        // Strip markdown code fences
-        cleaned = cleaned.replacingOccurrences(of: "```json", with: "")
-        cleaned = cleaned.replacingOccurrences(of: "```", with: "")
-        cleaned = cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Don't blindly strip markdown fences with replacingOccurrences — that can
+        // corrupt a "```" that legitimately appears inside a JSON string value.
+        // Brace-matching from the first '{' naturally skips fences and preamble.
+        let cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
 
         // Find the first '{' and match to its closing '}'
         guard let startIndex = cleaned.firstIndex(of: "{") else {
@@ -296,15 +298,24 @@ class ClaudeService {
         var depth = 0
         var endIndex = cleaned.endIndex
         var inString = false
-        var prevChar: Character = " "
+        var escaped = false
 
         for i in cleaned[startIndex...].indices {
             let ch = cleaned[i]
-            if ch == "\"" && prevChar != "\\" {
-                inString.toggle()
-            } else if !inString {
-                if ch == "{" { depth += 1 }
-                else if ch == "}" {
+            if inString {
+                if escaped {
+                    escaped = false
+                } else if ch == "\\" {
+                    escaped = true
+                } else if ch == "\"" {
+                    inString = false
+                }
+            } else {
+                if ch == "\"" {
+                    inString = true
+                } else if ch == "{" {
+                    depth += 1
+                } else if ch == "}" {
                     depth -= 1
                     if depth == 0 {
                         endIndex = cleaned.index(after: i)
@@ -312,7 +323,6 @@ class ClaudeService {
                     }
                 }
             }
-            prevChar = ch
         }
 
         return String(cleaned[startIndex..<endIndex])

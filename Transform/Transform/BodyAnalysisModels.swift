@@ -106,8 +106,21 @@ nonisolated struct BodyAnalysisResult: Codable {
         metabolicHealthNotes = try container.decode(String.self, forKey: .metabolicHealthNotes)
         psychologicalInsights = try container.decode(String.self, forKey: .psychologicalInsights)
         injuryRiskNotes = try container.decode(String.self, forKey: .injuryRiskNotes)
-        macroTargets = try? container.decode(AnalysisMacroTargets.self, forKey: .macroTargets)
-        structuredTrainingIntent = try? container.decode(StructuredTrainingIntent.self, forKey: .structuredTrainingIntent)
+        // Use decodeIfPresent + logging so a present-but-malformed payload doesn't
+        // silently demote the analysis to config-default macros / fallback training
+        // with no visibility. An absent key still yields nil (same as before).
+        do {
+            macroTargets = try container.decodeIfPresent(AnalysisMacroTargets.self, forKey: .macroTargets)
+        } catch {
+            print("[BodyAnalysisResult] macroTargets present but malformed, dropping: \(error)")
+            macroTargets = nil
+        }
+        do {
+            structuredTrainingIntent = try container.decodeIfPresent(StructuredTrainingIntent.self, forKey: .structuredTrainingIntent)
+        } catch {
+            print("[BodyAnalysisResult] structuredTrainingIntent present but malformed, dropping: \(error)")
+            structuredTrainingIntent = nil
+        }
     }
 }
 
