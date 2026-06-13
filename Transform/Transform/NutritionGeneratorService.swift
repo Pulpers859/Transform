@@ -839,11 +839,9 @@ extension ClaudeService {
     // MARK: - Decode & Sanitize
 
     nonisolated private func decodeNutritionPayload<T: Decodable>(_ type: T.Type, from responseText: String) throws -> T {
-        let cleaned = responseText
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .replacingOccurrences(of: "```json", with: "")
-            .replacingOccurrences(of: "```", with: "")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+        // Brace-match the JSON object rather than blindly stripping ``` fences,
+        // which can corrupt a backtick sequence inside a string value.
+        let cleaned = ClaudeService.extractJSON(from: responseText)
 
         guard let data = cleaned.data(using: .utf8) else {
             throw ClaudeError.parseError("Could not encode nutrition response as data.")
@@ -1125,7 +1123,11 @@ extension ClaudeService {
     }
 
     private func macroTargetLine(from macros: AnalysisMacroTargets?) -> String {
-        guard let m = macros else { return "calories 2300 kcal, protein 200g, carbs 220g, fat 70g (fallback — analysis did not provide macros)" }
+        guard let m = macros else {
+            // Fall back to the user's configured targets rather than fixed numbers.
+            let resolved = MacroTargetResolver.resolve(from: nil)
+            return "calories \(resolved.calories) kcal, protein \(Int(resolved.proteinG))g, carbs \(Int(resolved.carbsG))g, fat \(Int(resolved.fatG))g (from app settings — analysis did not provide macros)"
+        }
         return "calories \(m.calories) kcal, protein \(Int(m.proteinG))g, carbs \(Int(m.carbsG))g, fat \(Int(m.fatG))g"
     }
 

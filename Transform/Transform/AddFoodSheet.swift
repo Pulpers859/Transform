@@ -525,11 +525,7 @@ struct AddFoodSheet: View {
             let text = try await AnthropicClient.shared.sendRequest(body: requestBody, timeout: 90)
             try Task.checkCancellation()
 
-            let cleaned = text
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-                .replacingOccurrences(of: "```json", with: "")
-                .replacingOccurrences(of: "```", with: "")
-                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let cleaned = ClaudeService.extractJSON(from: text)
 
             guard let jsonData = cleaned.data(using: .utf8) else {
                 throw ClaudeError.parseError("Could not decode response")
@@ -539,13 +535,15 @@ struct AddFoodSheet: View {
 
             guard !Task.isCancelled else { return }
 
+            // Clamp to the same ranges the Save button validates against, so a wild
+            // estimate can't silently disable Save.
             foodName = result.foodName
-            calories = "\(result.calories)"
-            protein = String(format: "%.0f", result.proteinG)
-            carbs = String(format: "%.0f", result.carbsG)
-            sugar = String(format: "%.0f", result.sugarG ?? 0)
-            fiber = String(format: "%.0f", result.fiberG ?? 0)
-            fat = String(format: "%.0f", result.fatG)
+            calories = "\(min(max(result.calories, 0), 7000))"
+            protein = String(format: "%.0f", min(max(result.proteinG, 0), 500))
+            carbs = String(format: "%.0f", min(max(result.carbsG, 0), 1000))
+            sugar = String(format: "%.0f", min(max(result.sugarG ?? 0, 0), 300))
+            fiber = String(format: "%.0f", min(max(result.fiberG ?? 0, 0), 150))
+            fat = String(format: "%.0f", min(max(result.fatG, 0), 500))
             UINotificationFeedbackGenerator().notificationOccurred(.success)
         } catch is CancellationError {
             return
@@ -850,6 +848,26 @@ nonisolated struct MacroEstimate: Codable {
     let sugarG: Double?
     let fiberG: Double?
     let fatG: Double
+
+    private enum CodingKeys: String, CodingKey {
+        case foodName, calories, proteinG, carbsG, sugarG, fiberG, fatG
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        foodName = try container.decode(String.self, forKey: .foodName)
+        // Tolerate the model returning calories as a decimal (e.g. 450.0).
+        if let intCalories = try? container.decode(Int.self, forKey: .calories) {
+            calories = intCalories
+        } else {
+            calories = Int((try container.decode(Double.self, forKey: .calories)).rounded())
+        }
+        proteinG = try container.decode(Double.self, forKey: .proteinG)
+        carbsG = try container.decode(Double.self, forKey: .carbsG)
+        sugarG = try container.decodeIfPresent(Double.self, forKey: .sugarG)
+        fiberG = try container.decodeIfPresent(Double.self, forKey: .fiberG)
+        fatG = try container.decode(Double.self, forKey: .fatG)
+    }
 }
 
 struct FoodMemoryItem: Identifiable {

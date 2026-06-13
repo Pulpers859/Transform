@@ -258,12 +258,32 @@ struct NutritionWeekDetail: View {
         GeneratedContentSource.strip(from: week.weekSummary)
     }
 
+    var weekSourceBadge: (label: String, color: Color)? {
+        switch GeneratedContentSource.detect(in: week.weekSummary) {
+        case .aiCoach: return ("AI Coach", .green)
+        case .recoveryEngine: return ("Recovery Engine", .orange)
+        case .none: return nil
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
-                Text(week.phaseFocus)
-                    .font(.subheadline.bold())
-                    .foregroundStyle(.orange)
+                HStack {
+                    Text(week.phaseFocus)
+                        .font(.subheadline.bold())
+                        .foregroundStyle(.orange)
+                    Spacer()
+                    if let badge = weekSourceBadge {
+                        Text(badge.label)
+                            .font(.caption2.bold())
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(badge.color.opacity(0.15))
+                            .foregroundStyle(badge.color)
+                            .clipShape(Capsule())
+                    }
+                }
                 Text(weekSummaryStripped)
                     .font(.caption)
                     .foregroundStyle(.secondary)

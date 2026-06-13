@@ -245,12 +245,11 @@ struct NutritionView: View {
             .onChange(of: savedNutritionProtocols.count) { _, _ in
                 loadSavedNutritionProtocolIfNeeded()
             }
-            .onDisappear {
-                nutritionGenerationTask?.cancel()
-                nutritionGenerationTask = nil
-                isGeneratingNutrition = false
-                generationProgress = ""
-            }
+            // Intentionally do NOT cancel the in-flight generation on disappear:
+            // switching tabs would otherwise discard a multi-minute Opus/Sonnet run
+            // that is billed server-side regardless. The TabView keeps this view
+            // alive, so the task completes and saves. A fresh run already cancels
+            // any prior task at the start of startNutritionGeneration.
         }
     }
 
