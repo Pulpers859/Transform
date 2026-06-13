@@ -110,6 +110,7 @@ extension ClaudeService {
         )
 
         var lastIssues: [String] = []
+        var previousValidationIssues: [String]? = nil
 
         for attempt in 1...generationAttempts {
             do {
@@ -132,6 +133,14 @@ extension ClaudeService {
 
                 lastIssues = issues
                 if attempt < generationAttempts {
+                    // If the prior correction reproduced the identical validator issues, the
+                    // model is stuck — another full correction call would burn API credits for
+                    // no expected gain. Stop early and let the procedural fallback take over.
+                    if let previousValidationIssues, Set(previousValidationIssues) == Set(issues) {
+                        print("[WorkoutGeneratorService] Week 1 correction made no progress (identical validator issues) — stopping retries early.")
+                        break
+                    }
+                    previousValidationIssues = issues
                     requestBody = correctionRequestBody(
                         config: config,
                         toolName: programToolName,
@@ -243,6 +252,7 @@ extension ClaudeService {
         )
 
         var lastIssues: [String] = []
+        var previousValidationIssues: [String]? = nil
 
         for attempt in 1...generationAttempts {
             do {
@@ -272,6 +282,13 @@ extension ClaudeService {
 
                 lastIssues = issues
                 if attempt < generationAttempts {
+                    // Identical validator issues after a correction mean the model is stuck;
+                    // another correction call would waste API credits. Stop early and fall back.
+                    if let previousValidationIssues, Set(previousValidationIssues) == Set(issues) {
+                        print("[WorkoutGeneratorService] Week \(weekNumber) correction made no progress (identical validator issues) — stopping retries early.")
+                        break
+                    }
+                    previousValidationIssues = issues
                     requestBody = correctionRequestBody(
                         config: config,
                         toolName: weekToolName,
