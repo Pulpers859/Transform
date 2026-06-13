@@ -22,7 +22,9 @@
   - inspect status/diff
   - make changes
   - validate what is realistic
-  - `git push` unless told not to
+  - `git add` the completed changes
+  - `git commit` the completed changes
+  - `git push origin main` unless told not to
 
 ## Product priorities
 

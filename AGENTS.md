@@ -11,6 +11,7 @@
 ## Branch Policy
 - Use `main` as the only working branch for this repository.
 - Commit directly to `main` and push directly to `origin/main`.
+- After completing code, config, docs, workflow, or instruction changes, stage them, commit them, and push them to `origin/main` in the same task unless the user explicitly says not to.
 - Do not create, switch to, suggest, or use side branches, feature branches, PR branches, or a `dev` branch.
 - Do not open or suggest pull requests for routine work in this repository.
 - Only use a non-`main` branch or a PR workflow if the user explicitly asks for it in that specific task.
@@ -19,6 +20,8 @@
 - Work from this repo, not the stale copies.
 - If the repo is clean, run `git fetch --prune` and `git pull --ff-only` before normal edits.
 - Push completed repo changes unless the user says not to.
+- Do not leave completed repo changes local-only at handoff time.
+- If only part of the work is complete, either commit and push the finished subset or explicitly tell the user what is still intentionally local and why.
 - Preserve user changes unless the user explicitly asks otherwise.
 - Fix root causes, not cosmetic symptoms.
 - Keep workout quality and evidence-informed programming integrity ahead of validator convenience.

@@ -17,7 +17,7 @@ Use this skill to rebuild the minimum correct context for Transform before codin
    - app source is under `Transform/Transform`
    - normal work stays on `main`
    - sync first when clean
-   - push completed work unless the user says not to
+   - commit and push completed work to `origin/main` unless the user says not to
 5. Summarize risks in the order that matters for this app:
    - workout quality
    - evidence/programming integrity
@@ -42,6 +42,7 @@ When preparing a handoff or orientation note, include:
 ## Rules
 
 - Never treat the Desktop copy as source of truth unless the user explicitly says so.
+- Do not leave completed repo changes local-only when ending a task unless the user explicitly asks for that.
 - Do not collapse the split workout-generator architecture back into one file.
 - Preserve the personal-use baseline context without smuggling it into generic hardcoded prompt defaults.
 - Be explicit about evidence-backed logic versus heuristic choices.
