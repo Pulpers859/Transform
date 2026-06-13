@@ -28,10 +28,14 @@ enum Config {
         !anthropicAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    // Anthropic snapshot IDs from the official models docs. Snapshot IDs are more stable
-    // than free-floating aliases when you want predictable generation behavior over time.
-    static let claudeModel = "claude-opus-4-1-20250805" // Vision tasks (body analysis)
-    static let claudeModelLite = "claude-sonnet-4-20250514" // Text tasks (macro estimation)
+    // Current Anthropic model aliases. The previous snapshot IDs
+    // (claude-opus-4-1-20250805 / claude-sonnet-4-20250514) are deprecated and retire
+    // 2026-06-15, so they are replaced here with the current generation. These models do
+    // NOT accept the `temperature`/`top_p` sampling parameters or assistant-prefill, and
+    // requests that include them return HTTP 400 — both have been removed from request
+    // construction accordingly.
+    static let claudeModel = "claude-opus-4-8" // Vision tasks (body analysis)
+    static let claudeModelLite = "claude-sonnet-4-6" // Text tasks (macro estimation)
 
     static var calorieTarget: Int { AppSettingsStore.calorieTarget }
     static var proteinTargetG: Double { AppSettingsStore.proteinTargetG }

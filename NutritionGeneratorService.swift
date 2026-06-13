@@ -261,10 +261,13 @@ extension ClaudeService {
             "input_schema": toolSchema
         ]
 
+        // NOTE: `temperature` is intentionally omitted. Current Claude models
+        // (Opus 4.8 / Sonnet 4.6) reject the sampling parameter with HTTP 400.
+        // The parameter is retained in the signature for call-site stability.
+        _ = temperature
         return [
             "model": config.model,
             "max_tokens": config.maxTokens,
-            "temperature": temperature,
             "system": systemPrompt,
             "tools": [tool],
             "tool_choice": ["type": "tool", "name": toolName],
