@@ -12,6 +12,7 @@ struct MeasurementsView: View {
     @State private var showDeleteConfirm = false
     @State private var weightToDelete: WeightEntry?
     @State private var measurementToDelete: MeasurementEntry?
+    @State private var showFullHistory = false
 
     enum ChartMetric: String, CaseIterable {
         case weight = "Weight"
@@ -303,7 +304,10 @@ struct MeasurementsView: View {
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding()
             } else {
-                ForEach(mergedDates().prefix(10), id: \.self) { date in
+                let allDates = mergedDates()
+                let visibleDates = showFullHistory ? allDates : Array(allDates.prefix(10))
+
+                ForEach(visibleDates, id: \.self) { date in
                     let weight = weightEntries.first(where: { Calendar.current.isDate($0.date, inSameDayAs: date) })
                     let measurement = measurements.first(where: { Calendar.current.isDate($0.date, inSameDayAs: date) })
 
@@ -330,6 +334,18 @@ struct MeasurementsView: View {
                             }
                         }
                     }
+                }
+
+                if allDates.count > 10 {
+                    Button {
+                        showFullHistory.toggle()
+                    } label: {
+                        Text(showFullHistory ? "Show less" : "View all \(allDates.count) entries")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity)
+                    }
+                    .padding(.top, 4)
                 }
             }
         }

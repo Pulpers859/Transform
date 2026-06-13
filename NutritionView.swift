@@ -418,8 +418,10 @@ struct NutritionView: View {
 
     var mealLogSection: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Meals")
-                .font(.headline)
+            if !todayEntries.isEmpty {
+                Text("Meals")
+                    .font(.headline)
+            }
 
             if todayEntries.isEmpty {
                 VStack(spacing: 8) {

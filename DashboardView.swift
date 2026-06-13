@@ -309,7 +309,7 @@ struct DashboardView: View {
                     )
 
                     VStack(spacing: 0) {
-                        Text("\(todayCalories)")
+                        Text(todayNutrition.isEmpty ? "–" : "\(todayCalories)")
                             .font(.system(size: 22, weight: .black, design: .rounded))
                         Text("kcal")
                             .font(.system(size: 10, weight: .medium))
@@ -329,14 +329,23 @@ struct DashboardView: View {
             }
 
             HStack {
-                Image(systemName: remainingCaloriesToday >= 0 ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
-                    .foregroundStyle(remainingCaloriesToday >= 0 ? Color.green : Color.red)
-                    .font(.caption)
-                Text(remainingCaloriesToday >= 0
-                     ? "\(remainingCaloriesToday) calories remaining today"
-                     : "\(abs(remainingCaloriesToday)) calories over target")
-                    .font(.caption)
-                    .foregroundStyle(remainingCaloriesToday >= 0 ? Color.secondary : Color.red)
+                if todayNutrition.isEmpty {
+                    Image(systemName: "fork.knife")
+                        .foregroundStyle(Color.secondary)
+                        .font(.caption)
+                    Text("Log your first meal to start tracking")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Image(systemName: remainingCaloriesToday >= 0 ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
+                        .foregroundStyle(remainingCaloriesToday >= 0 ? Color.green : Color.red)
+                        .font(.caption)
+                    Text(remainingCaloriesToday >= 0
+                         ? "\(remainingCaloriesToday) calories remaining today"
+                         : "\(abs(remainingCaloriesToday)) calories over target")
+                        .font(.caption)
+                        .foregroundStyle(remainingCaloriesToday >= 0 ? Color.secondary : Color.red)
+                }
                 Spacer()
             }
             .padding(.top, 2)

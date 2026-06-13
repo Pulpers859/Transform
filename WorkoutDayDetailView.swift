@@ -325,12 +325,10 @@ struct ExerciseCard: View {
                     }
                 }
 
-                if latestWeightLog != nil {
-                    ExerciseWeightSnapshotTile(
-                        lastWeightText: latestWeightLog.map { "\(formatWeight($0.weightLbs)) lb" } ?? "-",
-                        bestWeightText: bestWeightText ?? "-"
-                    )
-                }
+                ExerciseWeightSnapshotTile(
+                    lastWeightText: latestWeightLog.map { "\(formatWeight($0.weightLbs)) lb" } ?? "–",
+                    bestWeightText: bestWeightText ?? "–"
+                )
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
