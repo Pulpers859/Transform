@@ -302,6 +302,10 @@ struct DashboardView: View {
                 switch result {
                 case .success(let url):
                     do {
+                        // fileImporter URLs are security-scoped; without acquiring
+                        // access, reading a backup from Files/iCloud fails on device.
+                        let didAccess = url.startAccessingSecurityScopedResource()
+                        defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
                         let data = try Data(contentsOf: url)
                         try DataBackupManager.shared.importBackup(from: data, into: modelContext)
                         backupMessage = "Backup imported successfully."
@@ -1077,6 +1081,8 @@ struct DashboardView: View {
 
     var backupFileName: String {
         let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.calendar = Calendar(identifier: .gregorian)
         formatter.dateFormat = "yyyy-MM-dd_HHmm"
         return "Transform_Backup_\(formatter.string(from: Date()))"
     }

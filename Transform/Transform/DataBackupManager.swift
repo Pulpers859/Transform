@@ -823,6 +823,10 @@ final class DataBackupManager {
     let currentBackupVersion = BackupFormat.currentVersion
     private let supportedBackupVersions = BackupFormat.supportedVersions
 
+    /// Set when the app falls back to an ephemeral in-memory store, so an empty
+    /// store can't overwrite the last good on-disk backup.
+    var suppressAutomaticBackups = false
+
     func exportDocument(using modelContext: ModelContext) throws -> BackupDocument {
         let payload = try buildPayload(using: modelContext)
         let encoder = JSONEncoder()
@@ -865,6 +869,7 @@ final class DataBackupManager {
     }
 
     func writeAutomaticBackup(using modelContext: ModelContext) {
+        guard !suppressAutomaticBackups else { return }
         do {
             let document = try exportDocument(using: modelContext)
             let url = automaticBackupURL()

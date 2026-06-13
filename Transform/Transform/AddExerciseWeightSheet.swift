@@ -12,6 +12,7 @@ struct AddExerciseWeightSheet: View {
     @State private var setLogs: [SetLogDraft] = []
     @State private var notes = ""
     @State private var loggedAt = Date()
+    @State private var didSave = false
 
     private let quickAdjustments: [Double] = [-10, -5, -2.5, 2.5, 5, 10]
 
@@ -455,6 +456,9 @@ struct AddExerciseWeightSheet: View {
             return SetLogEntry(setNumber: draft.setNumber, weightLbs: w, repsCompleted: r)
         }
         guard !validSets.isEmpty else { return }
+        // Guard against a fast double-tap inserting duplicate logs before dismiss.
+        guard !didSave else { return }
+        didSave = true
 
         let topWeight = ExercisePerformanceLog.topSetWeight(from: validSets) ?? validSets[0].weightLbs
         let topReps = ExercisePerformanceLog.topSetReps(from: validSets)
@@ -492,6 +496,7 @@ struct AddExerciseWeightSheet: View {
 
         guard PersistenceReporter.save(modelContext, operation: "exercise set logging") else {
             modelContext.rollback()
+            didSave = false
             UINotificationFeedbackGenerator().notificationOccurred(.error)
             return
         }

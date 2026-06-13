@@ -74,9 +74,12 @@ struct StartupConfiguration {
             )
             do {
                 let fallbackContainer = try ModelContainer(for: schema, configurations: [fallback])
+                // Don't let this empty ephemeral store overwrite the last good
+                // on-disk backup when the app next backgrounds.
+                DataBackupManager.shared.suppressAutomaticBackups = true
                 return StartupConfiguration(
                     container: fallbackContainer,
-                    errorMessage: "Persistent storage failed to initialize. Running in temporary in-memory mode for this launch."
+                    errorMessage: "Persistent storage failed to initialize. Running in temporary in-memory mode for this launch. Changes made now will not be saved permanently."
                 )
             } catch {
                 return StartupConfiguration(

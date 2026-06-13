@@ -4,6 +4,7 @@ import UIKit
 struct AppSettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @FocusState private var isTextInputFocused: Bool
+    @State private var showRestoreDefaultsConfirm = false
 
     // MARK: - Structured fields
 
@@ -302,9 +303,21 @@ struct AppSettingsView: View {
 
                 Section {
                     Button("Restore Defaults", role: .destructive) {
-                        restoreDefaults()
+                        showRestoreDefaultsConfirm = true
                     }
                 }
+            }
+            .confirmationDialog(
+                "Restore Defaults?",
+                isPresented: $showRestoreDefaultsConfirm,
+                titleVisibility: .visible
+            ) {
+                Button("Restore Defaults", role: .destructive) {
+                    restoreDefaults()
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This replaces all your saved profile and target settings with the app defaults.")
             }
             .scrollDismissesKeyboard(.interactively)
             .navigationTitle("Settings")
