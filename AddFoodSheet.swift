@@ -560,7 +560,12 @@ struct AddFoodSheet: View {
             return
         }
 
+        // Filter at the store level so each keystroke fetches only matching rows
+        // instead of pulling the most recent `searchHistoryFetchLimit` entries and
+        // discarding the bulk of them in memory. localizedStandardContains is case-
+        // and diacritic-insensitive, matching the in-memory narrowing in memorySuggestions.
         var descriptor = FetchDescriptor<NutritionEntry>(
+            predicate: #Predicate { $0.notes.localizedStandardContains(query) },
             sortBy: [SortDescriptor(\NutritionEntry.date, order: .reverse)]
         )
         descriptor.fetchLimit = searchHistoryFetchLimit
