@@ -1,20 +1,25 @@
-# Transform Codex Memory
+# Transform Agent Instructions
 
 ## Start Here
 - Source-of-truth repo root: `C:\Dev\Transform_clean`
-- Actual app source tree: `Transform/Transform`
-- Xcode project: `Transform/Transform.xcodeproj`
-- Stable branch: `main`
-- Default working branch: `dev`
+- Current working branch: `main`
+- Use the files in this repo root as the active source tree unless the user explicitly says otherwise.
 - Ignore stale copies unless the user explicitly asks:
   - `C:\Dev\Transform`
   - `C:\Users\Patrick's Computer\OneDrive - WV School of Osteopathic Medicine\Desktop\Transform`
+
+## Branch Policy
+- Use `main` as the only working branch for this repository.
+- Commit directly to `main` and push directly to `origin/main`.
+- Do not create, switch to, suggest, or use side branches, feature branches, PR branches, or a `dev` branch.
+- Do not open or suggest pull requests for routine work in this repository.
+- Only use a non-`main` branch or a PR workflow if the user explicitly asks for it in that specific task.
 
 ## Minimal Working Rules
 - Work from this repo, not the stale copies.
 - If the repo is clean, run `git fetch --prune` and `git pull --ff-only` before normal edits.
 - Push completed repo changes unless the user says not to.
-- Treat `Transform/Transform/Secrets.plist` as local-only and uncommitted.
+- Preserve user changes unless the user explicitly asks otherwise.
 - Fix root causes, not cosmetic symptoms.
 - Keep workout quality and evidence-informed programming integrity ahead of validator convenience.
 - Respect the split `WorkoutGeneratorService` architecture.
@@ -44,8 +49,8 @@
 ## Read Deeper Only When Needed
 - `docs/2_PROJECT_HANDOFF.md`
 - `docs/3_TRANSFORM_CLEAN_HANDOFF.md`
-- `Transform/Transform/CLAUDE.md`
-- `Transform/Transform/EvidenceProfile.md`
+- `CLAUDE.md`
+- `EvidenceProfile.md`
 
 ## Validation Reality
 - Windows is fine for git, file inspection, and framework-light Swift smoke checks.
