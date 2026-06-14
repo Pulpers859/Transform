@@ -698,11 +698,13 @@ struct HistoryRowView: View {
 struct EditWeightSheet: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
+    @Query(sort: \WeightEntry.date, order: .reverse) private var allWeightEntries: [WeightEntry]
     @Bindable var entry: WeightEntry
 
     @State private var weightText: String
     @State private var notes: String
     @State private var selectedDate: Date
+    @State private var showConflictAlert = false
 
     init(entry: WeightEntry) {
         self.entry = entry
@@ -758,18 +760,31 @@ struct EditWeightSheet: View {
                 }
             }
         }
+        .alert("Date Conflict", isPresented: $showConflictAlert) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("A weight entry already exists for that date. Change the date or edit the other entry instead.")
+        }
     }
 
     func save() {
         guard let weight = Double(weightText), (50...999).contains(weight) else { return }
+        let targetDate = Calendar.current.startOfDay(for: selectedDate)
+        if !Calendar.current.isDate(entry.date, inSameDayAs: targetDate),
+           allWeightEntries.contains(where: { $0.id != entry.id && Calendar.current.isDate($0.date, inSameDayAs: targetDate) }) {
+            showConflictAlert = true
+            return
+        }
         entry.weightLbs = weight
         entry.notes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
-        entry.date = Calendar.current.startOfDay(for: selectedDate)
+        entry.date = targetDate
         guard PersistenceReporter.save(modelContext, operation: "edit weight entry") else {
             modelContext.rollback()
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
             return
         }
         DataBackupManager.shared.writeAutomaticBackup(using: modelContext)
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
         dismiss()
     }
 }
