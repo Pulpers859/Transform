@@ -388,7 +388,7 @@ struct DashboardView: View {
                         endPoint: .top
                     )
                 )
-                .frame(height: 220)
+                .frame(height: 230)
 
             Canvas { context, size in
                 let spacing: CGFloat = 28
@@ -403,12 +403,33 @@ struct DashboardView: View {
                     x += spacing
                 }
             }
-            .frame(height: 220)
+            .frame(height: 230)
+
+            VStack(spacing: 0) {
+                Spacer()
+
+                Rectangle()
+                    .fill(
+                        LinearGradient(
+                            colors: [TFColor.accent.opacity(0.6), TFColor.accentWarm.opacity(0.15), .clear],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .frame(height: 2)
+            }
+            .frame(height: 230)
 
             VStack(alignment: .leading, spacing: 14) {
                 HStack(alignment: .top, spacing: 10) {
-                    Rectangle()
-                        .fill(Color.orange)
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(
+                            LinearGradient(
+                                colors: [TFColor.accent, TFColor.accentWarm],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
                         .frame(width: 4, height: 48)
 
                     VStack(alignment: .leading, spacing: 4) {
@@ -420,7 +441,13 @@ struct DashboardView: View {
 
                         Text("Transform.")
                             .font(TFTypography.heroTitle)
-                            .foregroundStyle(.white)
+                            .foregroundStyle(
+                                LinearGradient(
+                                    colors: [.white, TFColor.accentWarm],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )
                     }
                 }
 
@@ -479,7 +506,7 @@ struct DashboardView: View {
             .padding(.horizontal, 20)
             .padding(.bottom, 20)
         }
-        .frame(height: 220)
+        .frame(height: 230)
     }
 
     var greetingText: String {
@@ -496,15 +523,24 @@ struct DashboardView: View {
     var coachingHeadlineCard: some View {
         let (message, color) = coachingHeadline
         return HStack(spacing: 10) {
-            RoundedRectangle(cornerRadius: 2)
+            RoundedRectangle(cornerRadius: 3)
                 .fill(color)
-                .frame(width: 3, height: 32)
+                .frame(width: 4, height: 36)
             Text(message)
-                .font(.caption)
+                .font(.subheadline)
+                .fontWeight(.medium)
                 .foregroundStyle(.primary)
             Spacer()
         }
-        .compactCard()
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: TFRadius.cardCompact)
+                .fill(color.opacity(0.08))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: TFRadius.cardCompact)
+                .strokeBorder(color.opacity(0.2), lineWidth: 1)
+        )
     }
 
     // MARK: - Today's Rings Card
@@ -584,23 +620,33 @@ struct DashboardView: View {
     }
 
     var adherenceLine: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 8) {
             HStack(spacing: 4) {
                 Image(systemName: "fork.knife")
-                    .font(.caption2)
+                    .font(.system(size: 9))
                     .foregroundStyle(.orange)
-                Text("Logged: \(loggedDaysCount)/7 days")
+                Text("Logged: \(loggedDaysCount)/7")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(Color.orange.opacity(0.08))
+            .clipShape(Capsule())
+
             HStack(spacing: 4) {
                 Image(systemName: "flame.fill")
-                    .font(.caption2)
+                    .font(.system(size: 9))
                     .foregroundStyle(.red)
-                Text("Protein: \(proteinHitDays)/\(max(loggedDaysCount, 1)) days")
+                Text("Protein: \(proteinHitDays)/\(max(loggedDaysCount, 1))")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(Color.red.opacity(0.08))
+            .clipShape(Capsule())
+
             Spacer()
         }
     }
@@ -609,13 +655,14 @@ struct DashboardView: View {
         HStack(spacing: 8) {
             RoundedRectangle(cornerRadius: 2)
                 .fill(color)
-                .frame(width: 3, height: 16)
+                .frame(width: 3, height: 18)
             Text(label)
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Spacer()
             Text(value)
-                .font(.caption.bold())
+                .font(.system(size: 14, weight: .bold, design: .rounded))
+                .foregroundStyle(color)
             Text("/ \(target)\(unit)")
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
@@ -716,6 +763,12 @@ struct DashboardView: View {
             .buttonStyle(.plain)
         }
         .dashCard()
+        .overlay(alignment: .top) {
+            Capsule()
+                .fill(TFColor.sleep.opacity(0.5))
+                .frame(width: 40, height: 3)
+                .padding(.top, 6)
+        }
     }
 
     // MARK: - Weight + Recomp Card
@@ -741,9 +794,10 @@ struct DashboardView: View {
             HStack(alignment: .firstTextBaseline, spacing: 4) {
                 Text(currentWeight.map { String(format: "%.1f", $0) } ?? "--")
                     .font(TFTypography.heroMetric)
+                    .foregroundStyle(.primary)
                 Text("lbs")
-                    .font(.system(size: 16, weight: .medium))
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(TFColor.accent.opacity(0.6))
                     .padding(.bottom, 4)
             }
             if let trend = weightTrend.currentTrendWeightLbs {
@@ -769,17 +823,17 @@ struct DashboardView: View {
                 GeometryReader { geo in
                     ZStack(alignment: .leading) {
                         Capsule()
-                            .fill(Color.orange.opacity(0.15))
-                            .frame(height: 6)
+                            .fill(TFColor.accent.opacity(0.12))
+                            .frame(height: 7)
                         Capsule()
                             .fill(
                                 LinearGradient(
-                                    colors: [.orange, .yellow],
+                                    colors: [TFColor.accent, TFColor.accentWarm],
                                     startPoint: .leading,
                                     endPoint: .trailing
                                 )
                             )
-                            .frame(width: geo.size.width * (animateRings ? weightProgress : 0), height: 6)
+                            .frame(width: geo.size.width * (animateRings ? weightProgress : 0), height: 7)
                             .animation(.easeOut(duration: 1.0).delay(0.3), value: animateRings)
                     }
                 }
@@ -1091,13 +1145,18 @@ struct DashboardView: View {
     func deltaBadge(_ delta: Double, invertGood: Bool = false) -> some View {
         let isGood = invertGood ? delta < 0 : delta > 0
         let sign = delta > 0 ? "+" : ""
-        return Text("\(sign)\(String(format: "%.1f", delta)) lbs")
-            .font(.system(size: 11, weight: .bold))
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(isGood ? Color.green.opacity(0.15) : Color.red.opacity(0.15))
-            .foregroundStyle(isGood ? Color.green : Color.red)
-            .clipShape(Capsule())
+        let badgeColor = isGood ? TFColor.success : TFColor.danger
+        return HStack(spacing: 3) {
+            Image(systemName: delta > 0 ? "arrow.up.right" : "arrow.down.right")
+                .font(.system(size: 8, weight: .bold))
+            Text("\(sign)\(String(format: "%.1f", delta)) lbs")
+                .font(.system(size: 11, weight: .bold))
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(badgeColor.opacity(0.15))
+        .foregroundStyle(badgeColor)
+        .clipShape(Capsule())
     }
 }
 

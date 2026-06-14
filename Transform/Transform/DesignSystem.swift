@@ -64,12 +64,18 @@ enum TFRadius {
 
 struct TFSectionLabel: View {
     let text: String
+    var color: Color = TFColor.accent
 
     var body: some View {
-        Text(text.uppercased())
-            .font(TFTypography.sectionTitle)
-            .foregroundStyle(TFColor.accent)
-            .tracking(1.5)
+        HStack(spacing: 6) {
+            Circle()
+                .fill(color)
+                .frame(width: 5, height: 5)
+            Text(text.uppercased())
+                .font(TFTypography.sectionTitle)
+                .foregroundStyle(color)
+                .tracking(1.5)
+        }
     }
 }
 
@@ -83,12 +89,13 @@ struct CardEntrance: ViewModifier {
     func body(content: Content) -> some View {
         content
             .opacity(appeared ? 1 : 0)
-            .offset(y: appeared ? 0 : 12)
+            .offset(y: appeared ? 0 : 24)
+            .scaleEffect(appeared ? 1 : 0.97)
             .onAppear {
                 if reduceMotion {
                     appeared = true
                 } else {
-                    withAnimation(.spring(response: 0.45, dampingFraction: 0.8).delay(Double(index) * 0.06)) {
+                    withAnimation(.spring(response: 0.5, dampingFraction: 0.78).delay(Double(index) * 0.08)) {
                         appeared = true
                     }
                 }

@@ -11,11 +11,20 @@ extension View {
     func heroCard() -> some View {
         self
             .padding(TFSpacing.cardPadding)
-            .background(
+            .background(TFColor.surface)
+            .clipShape(RoundedRectangle(cornerRadius: TFRadius.card))
+            .overlay(
                 RoundedRectangle(cornerRadius: TFRadius.card)
-                    .fill(TFColor.surface)
-                    .shadow(color: TFColor.accent.opacity(0.08), radius: 8, y: 4)
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [TFColor.accent.opacity(0.35), TFColor.accent.opacity(0.05)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        ),
+                        lineWidth: 1.5
+                    )
             )
+            .shadow(color: TFColor.accent.opacity(0.10), radius: 12, y: 6)
     }
 
     func compactCard() -> some View {
