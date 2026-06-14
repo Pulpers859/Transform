@@ -523,7 +523,7 @@ enum MacroTargetResolver {
     }
 }
 
-enum AppSettingsKeys {
+nonisolated enum AppSettingsKeys {
     static let analysisAge = "analysis_profile_age"
     static let analysisSex = "analysis_profile_sex"
     static let analysisBuild = "analysis_profile_build"
