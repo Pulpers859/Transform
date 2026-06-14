@@ -4,6 +4,7 @@ import SwiftData
 struct AddMeasurementSheet: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
+    @Query(sort: \WeightEntry.date, order: .reverse) private var weightEntries: [WeightEntry]
 
     @State private var weightText = ""
     @State private var chestText = ""
@@ -290,8 +291,13 @@ struct AddMeasurementSheet: View {
         }
 
         if let weightToSave {
-            let entry = WeightEntry(date: normalizedDate, weightLbs: weightToSave, notes: trimmedNotes)
-            modelContext.insert(entry)
+            if let existing = weightEntries.first(where: { Calendar.current.isDate($0.date, inSameDayAs: normalizedDate) }) {
+                existing.weightLbs = weightToSave
+                existing.notes = trimmedNotes
+            } else {
+                let entry = WeightEntry(date: normalizedDate, weightLbs: weightToSave, notes: trimmedNotes)
+                modelContext.insert(entry)
+            }
         }
 
         if !allMeasurementsEmpty {
@@ -315,9 +321,11 @@ struct AddMeasurementSheet: View {
 
         guard PersistenceReporter.save(modelContext, operation: "body measurements") else {
             modelContext.rollback()
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
             return
         }
         DataBackupManager.shared.writeAutomaticBackup(using: modelContext)
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
         dismiss()
     }
 

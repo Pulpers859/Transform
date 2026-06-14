@@ -115,9 +115,11 @@ struct AddWeightSheet: View {
 
         guard PersistenceReporter.save(modelContext, operation: "body weight entry") else {
             modelContext.rollback()
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
             return
         }
         DataBackupManager.shared.writeAutomaticBackup(using: modelContext)
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
         dismiss()
     }
 }

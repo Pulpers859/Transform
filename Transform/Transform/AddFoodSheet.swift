@@ -388,7 +388,7 @@ struct AddFoodSheet: View {
                     }
                 }
             }
-            }
+        }
         .alert("Estimation Failed", isPresented: $showAIError) {
             Button("OK", role: .cancel) {}
         } message: {

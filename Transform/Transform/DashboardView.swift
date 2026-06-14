@@ -738,15 +738,15 @@ struct DashboardView: View {
             }
 
             HStack(alignment: .firstTextBaseline, spacing: 4) {
-                Text(weightTrend.currentTrendWeightLbs.map { String(format: "%.1f", $0) } ?? "--")
+                Text(currentWeight.map { String(format: "%.1f", $0) } ?? "--")
                     .font(.system(size: 44, weight: .black, design: .rounded))
                 Text("lbs")
                     .font(.system(size: 16, weight: .medium))
                     .foregroundStyle(.secondary)
                     .padding(.bottom, 4)
             }
-            if let raw = weightTrend.currentRawWeightLbs {
-                Text("7-day trend · latest weigh-in \(String(format: "%.1f", raw)) lb · \(weightTrend.dataQuality.rawValue) data")
+            if let trend = weightTrend.currentTrendWeightLbs {
+                Text("7-day trend \(String(format: "%.1f", trend)) lb · \(weightTrend.dataQuality.rawValue) data")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }

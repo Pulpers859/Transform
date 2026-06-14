@@ -12,6 +12,7 @@ struct MeasurementsView: View {
     @State private var showDeleteConfirm = false
     @State private var weightToDelete: WeightEntry?
     @State private var measurementToDelete: MeasurementEntry?
+    @State private var weightToEdit: WeightEntry?
 
     enum ChartMetric: String, CaseIterable {
         case weight = "Weight"
@@ -87,6 +88,9 @@ struct MeasurementsView: View {
             }
             .sheet(isPresented: $showAddSheet) {
                 AddMeasurementSheet()
+            }
+            .sheet(item: $weightToEdit) { entry in
+                EditWeightSheet(entry: entry)
             }
             .alert("Delete Entry?", isPresented: $showDeleteConfirm) {
                 Button("Delete", role: .destructive) {
@@ -479,10 +483,18 @@ struct MeasurementsView: View {
                     HistoryRowView(
                         date: date,
                         weight: weight,
-                        measurement: measurement
+                        measurement: measurement,
+                        onEditWeight: { entry in
+                            weightToEdit = entry
+                        }
                     )
                     .contextMenu {
                         if let w = weight {
+                            Button {
+                                weightToEdit = w
+                            } label: {
+                                Label("Edit Weight", systemImage: "pencil")
+                            }
                             Button(role: .destructive) {
                                 weightToDelete = w
                                 showDeleteConfirm = true
@@ -584,6 +596,7 @@ struct HistoryRowView: View {
     let date: Date
     let weight: WeightEntry?
     let measurement: MeasurementEntry?
+    var onEditWeight: ((WeightEntry) -> Void)?
     @State private var expanded = false
 
     var body: some View {
@@ -626,14 +639,42 @@ struct HistoryRowView: View {
                 }
             }
 
-            if expanded, let m = measurement {
+            if expanded {
                 Divider()
-                MeasurementDetailGrid(measurement: m)
-                if let timing = m.measurementTiming {
-                    Text("Timing: \(timingDisplayName(timing))")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .padding(.top, 2)
+
+                if let w = weight {
+                    HStack {
+                        Label(String(format: "%.1f lbs", w.weightLbs), systemImage: "scalemass.fill")
+                            .font(.subheadline.bold())
+                            .foregroundStyle(.orange)
+                        if !w.notes.isEmpty {
+                            Text(w.notes)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                        Spacer()
+                        if let onEditWeight {
+                            Button {
+                                onEditWeight(w)
+                            } label: {
+                                Label("Edit", systemImage: "pencil.circle.fill")
+                                    .font(.caption.bold())
+                                    .foregroundStyle(.orange)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+
+                if let m = measurement {
+                    MeasurementDetailGrid(measurement: m)
+                    if let timing = m.measurementTiming {
+                        Text("Timing: \(timingDisplayName(timing))")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .padding(.top, 2)
+                    }
                 }
             }
         }
@@ -651,6 +692,85 @@ struct HistoryRowView: View {
         case "evening": return "Evening"
         default: return timing.capitalized
         }
+    }
+}
+
+struct EditWeightSheet: View {
+    @Environment(\.modelContext) private var modelContext
+    @Environment(\.dismiss) private var dismiss
+    @Bindable var entry: WeightEntry
+
+    @State private var weightText: String
+    @State private var notes: String
+    @State private var selectedDate: Date
+
+    init(entry: WeightEntry) {
+        self.entry = entry
+        _weightText = State(initialValue: String(format: "%.1f", entry.weightLbs))
+        _notes = State(initialValue: entry.notes)
+        _selectedDate = State(initialValue: entry.date)
+    }
+
+    var canSave: Bool {
+        guard let weight = Double(weightText) else { return false }
+        return (50...999).contains(weight)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Date") {
+                    DatePicker("Date", selection: $selectedDate, displayedComponents: .date)
+                        .datePickerStyle(.compact)
+                }
+
+                Section("Weight") {
+                    HStack {
+                        TextField("e.g. 192.4", text: $weightText)
+                            .keyboardType(.decimalPad)
+                            .multilineTextAlignment(.trailing)
+                        Text("lbs")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                Section("Notes") {
+                    TextField("Optional notes...", text: $notes, axis: .vertical)
+                        .lineLimit(2...4)
+                }
+            }
+            .navigationTitle("Edit Weight")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") { save() }
+                        .bold()
+                        .disabled(!canSave)
+                }
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") {
+                        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                    }
+                }
+            }
+        }
+    }
+
+    func save() {
+        guard let weight = Double(weightText), (50...999).contains(weight) else { return }
+        entry.weightLbs = weight
+        entry.notes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
+        entry.date = Calendar.current.startOfDay(for: selectedDate)
+        guard PersistenceReporter.save(modelContext, operation: "edit weight entry") else {
+            modelContext.rollback()
+            return
+        }
+        DataBackupManager.shared.writeAutomaticBackup(using: modelContext)
+        dismiss()
     }
 }
 
