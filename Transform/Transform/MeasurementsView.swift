@@ -752,13 +752,8 @@ struct EditWeightSheet: View {
                         .bold()
                         .disabled(!canSave)
                 }
-                ToolbarItemGroup(placement: .keyboard) {
-                    Spacer()
-                    Button("Done") {
-                        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-                    }
-                }
             }
+            .keyboardDismissToolbar()
         }
         .alert("Date Conflict", isPresented: $showConflictAlert) {
             Button("OK", role: .cancel) {}
@@ -778,13 +773,7 @@ struct EditWeightSheet: View {
         entry.weightLbs = weight
         entry.notes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
         entry.date = targetDate
-        guard PersistenceReporter.save(modelContext, operation: "edit weight entry") else {
-            modelContext.rollback()
-            UINotificationFeedbackGenerator().notificationOccurred(.error)
-            return
-        }
-        DataBackupManager.shared.writeAutomaticBackup(using: modelContext)
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        guard PersistenceReporter.saveWithBackup(modelContext, operation: "edit weight entry") else { return }
         dismiss()
     }
 }

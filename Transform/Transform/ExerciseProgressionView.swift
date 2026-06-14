@@ -32,8 +32,10 @@ struct ExerciseProgressionView: View {
 
     var estimatedOneRepMax: [ProgressionPoint] {
         chartPoints.compactMap { point in
-            guard let reps = point.repsCompleted, reps > 0, reps <= 30 else { return nil }
-            let e1rm = point.weightLbs * (1 + Double(reps) / 30.0)
+            guard let reps = point.repsCompleted, reps > 0, reps <= 15 else { return nil }
+            let brzycki = point.weightLbs * 36.0 / (37.0 - Double(reps))
+            let epley = point.weightLbs * (1.0 + Double(reps) / 30.0)
+            let e1rm = (brzycki + epley) / 2.0
             return ProgressionPoint(date: point.date, weightLbs: e1rm, repsCompleted: nil, setLogs: [])
         }
     }
@@ -508,13 +510,8 @@ struct EditPerformanceLogSheet: View {
                         .bold()
                         .disabled(!canSave)
                 }
-                ToolbarItemGroup(placement: .keyboard) {
-                    Spacer()
-                    Button("Done") {
-                        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-                    }
-                }
             }
+            .keyboardDismissToolbar()
             .confirmationDialog("Delete this log entry?", isPresented: $showDeleteConfirmation, titleVisibility: .visible) {
                 Button("Delete", role: .destructive) { deleteLog() }
                 Button("Cancel", role: .cancel) {}

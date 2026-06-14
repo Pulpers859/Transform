@@ -813,13 +813,7 @@ struct NutritionView: View {
             modelContext.insert(copied)
         }
 
-        guard PersistenceReporter.save(modelContext, operation: "copy yesterday meals") else {
-            modelContext.rollback()
-            UINotificationFeedbackGenerator().notificationOccurred(.error)
-            return
-        }
-        DataBackupManager.shared.writeAutomaticBackup(using: modelContext)
-        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        guard PersistenceReporter.saveWithBackup(modelContext, operation: "copy yesterday meals", haptic: .success) else { return }
     }
 
     @MainActor

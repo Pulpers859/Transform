@@ -56,13 +56,8 @@ struct AddWeightSheet: View {
                     .bold()
                     .disabled(!canSave)
                 }
-                ToolbarItemGroup(placement: .keyboard) {
-                    Spacer()
-                    Button("Done") {
-                        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-                    }
-                }
             }
+            .keyboardDismissToolbar()
             .onAppear {
                 selectedDate = Calendar.current.startOfDay(for: selectedDate)
                 syncExistingEntry()
@@ -113,13 +108,7 @@ struct AddWeightSheet: View {
             modelContext.insert(entry)
         }
 
-        guard PersistenceReporter.save(modelContext, operation: "body weight entry") else {
-            modelContext.rollback()
-            UINotificationFeedbackGenerator().notificationOccurred(.error)
-            return
-        }
-        DataBackupManager.shared.writeAutomaticBackup(using: modelContext)
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        guard PersistenceReporter.saveWithBackup(modelContext, operation: "body weight entry") else { return }
         dismiss()
     }
 }

@@ -98,13 +98,8 @@ struct AddMeasurementSheet: View {
                         .bold()
                         .disabled(!canSave)
                 }
-                ToolbarItemGroup(placement: .keyboard) {
-                    Spacer()
-                    Button("Done") {
-                        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-                    }
-                }
             }
+            .keyboardDismissToolbar()
             .alert("Invalid Entry", isPresented: $showValidationAlert) {
                 Button("OK", role: .cancel) {}
             } message: {
@@ -319,13 +314,7 @@ struct AddMeasurementSheet: View {
             modelContext.insert(m)
         }
 
-        guard PersistenceReporter.save(modelContext, operation: "body measurements") else {
-            modelContext.rollback()
-            UINotificationFeedbackGenerator().notificationOccurred(.error)
-            return
-        }
-        DataBackupManager.shared.writeAutomaticBackup(using: modelContext)
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        guard PersistenceReporter.saveWithBackup(modelContext, operation: "body measurements") else { return }
         dismiss()
     }
 

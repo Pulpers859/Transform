@@ -381,13 +381,8 @@ struct AddFoodSheet: View {
                         .bold()
                         .disabled(!canSave)
                 }
-                ToolbarItemGroup(placement: .keyboard) {
-                    Spacer()
-                    Button("Done") {
-                        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-                    }
-                }
             }
+            .keyboardDismissToolbar()
         }
         .alert("Estimation Failed", isPresented: $showAIError) {
             Button("OK", role: .cancel) {}
@@ -625,13 +620,7 @@ struct AddFoodSheet: View {
             fiberG: item.fiberG
         )
         modelContext.insert(entry)
-        guard PersistenceReporter.save(modelContext, operation: "quick food log") else {
-            modelContext.rollback()
-            UINotificationFeedbackGenerator().notificationOccurred(.error)
-            return
-        }
-        DataBackupManager.shared.writeAutomaticBackup(using: modelContext)
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        guard PersistenceReporter.saveWithBackup(modelContext, operation: "quick food log") else { return }
         dismiss()
     }
 
@@ -699,12 +688,7 @@ struct AddFoodSheet: View {
             fat: payload.fat
         )
 
-        guard PersistenceReporter.save(modelContext, operation: "food entry") else {
-            modelContext.rollback()
-            UINotificationFeedbackGenerator().notificationOccurred(.error)
-            return
-        }
-        DataBackupManager.shared.writeAutomaticBackup(using: modelContext)
+        guard PersistenceReporter.saveWithBackup(modelContext, operation: "food entry") else { return }
         dismiss()
     }
 
