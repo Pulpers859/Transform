@@ -157,9 +157,9 @@ struct AddExerciseWeightSheet: View {
         Button(action: action) {
             VStack(alignment: .leading, spacing: 6) {
                 Text(title.uppercased())
-                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .font(TFTypography.sectionTitle)
                     .foregroundStyle(accent)
-                    .tracking(1.2)
+                    .tracking(1.5)
 
                 HStack(alignment: .firstTextBaseline, spacing: 4) {
                     Text(formatWeight(weight))
@@ -534,10 +534,7 @@ struct AddExerciseWeightSheet: View {
     }
 
     func sectionLabel(_ text: String) -> some View {
-        Text(text.uppercased())
-            .font(.system(size: 11, weight: .bold, design: .monospaced))
-            .foregroundStyle(.orange)
-            .tracking(1.4)
+        TFSectionLabel(text: text)
     }
 
     func metricChip(icon: String, text: String) -> some View {

@@ -268,16 +268,22 @@ struct DashboardView: View {
                         heroHeader
                             .padding(.bottom, 24)
 
-                        VStack(spacing: 16) {
+                        VStack(spacing: TFSpacing.cardGap) {
                             coachingHeadlineCard
+                                .cardEntrance(index: 0)
                             todayRingsCard
+                                .cardEntrance(index: 1)
                             weightAndRecompCard
+                                .cardEntrance(index: 2)
                             sleepRecoveryCard
+                                .cardEntrance(index: 3)
                             WorkoutTimingInsightsCard()
+                                .cardEntrance(index: 4)
                             weekCalorieChart
+                                .cardEntrance(index: 5)
                             bottomPadding
                         }
-                        .padding(.horizontal, 16)
+                        .padding(.horizontal, TFSpacing.horizontalMargin)
                     }
                 }
                 .ignoresSafeArea(edges: .top)
@@ -377,7 +383,7 @@ struct DashboardView: View {
             Rectangle()
                 .fill(
                     LinearGradient(
-                        colors: [Color(.systemBackground), Color.black.opacity(0.92)],
+                        colors: [TFColor.heroGradientBottom, TFColor.heroGradientTop],
                         startPoint: .bottom,
                         endPoint: .top
                     )
@@ -407,13 +413,13 @@ struct DashboardView: View {
 
                     VStack(alignment: .leading, spacing: 4) {
                         Text(greetingText)
-                            .font(.system(size: 13, weight: .medium, design: .monospaced))
+                            .font(TFTypography.greeting)
                             .foregroundStyle(.white.opacity(0.5))
                             .textCase(.uppercase)
                             .tracking(2)
 
                         Text("Transform.")
-                            .font(.system(size: 36, weight: .black, design: .default))
+                            .font(TFTypography.heroTitle)
                             .foregroundStyle(.white)
                     }
                 }
@@ -439,7 +445,7 @@ struct DashboardView: View {
                         }
                     } label: {
                         Label("Backup", systemImage: "externaldrive.badge.plus")
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(TFTypography.chipLabel)
                             .foregroundStyle(.white.opacity(0.9))
                             .padding(.horizontal, 10)
                             .padding(.vertical, 7)
@@ -451,7 +457,7 @@ struct DashboardView: View {
                         showSettings = true
                     } label: {
                         Label("Settings", systemImage: "gearshape.fill")
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(TFTypography.chipLabel)
                             .foregroundStyle(.white.opacity(0.9))
                             .padding(.horizontal, 10)
                             .padding(.vertical, 7)
@@ -462,7 +468,7 @@ struct DashboardView: View {
                     Spacer()
 
                     Text(Date().formatted(.dateTime.weekday(.wide).month().day()))
-                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                        .font(TFTypography.datePill)
                         .foregroundStyle(.white.opacity(0.6))
                         .padding(.horizontal, 12)
                         .padding(.vertical, 6)
@@ -498,9 +504,7 @@ struct DashboardView: View {
                 .foregroundStyle(.primary)
             Spacer()
         }
-        .padding(12)
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .compactCard()
     }
 
     // MARK: - Today's Rings Card
@@ -543,9 +547,9 @@ struct DashboardView: View {
 
                     VStack(spacing: 0) {
                         Text("\(todayCalories)")
-                            .font(.system(size: 22, weight: .black, design: .rounded))
+                            .font(TFTypography.ringValue)
                         Text("kcal")
-                            .font(.system(size: 10, weight: .medium))
+                            .font(TFTypography.ringUnit)
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -576,9 +580,7 @@ struct DashboardView: View {
 
             adherenceLine
         }
-        .padding(16)
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .heroCard()
     }
 
     var adherenceLine: some View {
@@ -682,15 +684,16 @@ struct DashboardView: View {
                 }
                 .font(.caption2)
             } else {
-                HStack(spacing: 12) {
+                HStack(spacing: TFSpacing.innerGap) {
                     Image(systemName: "bed.double.fill")
                         .font(.title2)
-                        .foregroundStyle(.blue)
+                        .foregroundStyle(TFColor.sleep)
+                        .symbolEffect(.pulse.byLayer, options: .repeating.speed(0.3))
                     VStack(alignment: .leading, spacing: 3) {
                         Text("No sleep logged yet")
-                            .font(.subheadline.bold())
+                            .font(TFTypography.cardTitle)
                         Text("A 10-second daily log is enough to build useful recovery context.")
-                            .font(.caption)
+                            .font(TFTypography.body)
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -712,9 +715,7 @@ struct DashboardView: View {
             }
             .buttonStyle(.plain)
         }
-        .padding(16)
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .dashCard()
     }
 
     // MARK: - Weight + Recomp Card
@@ -739,7 +740,7 @@ struct DashboardView: View {
 
             HStack(alignment: .firstTextBaseline, spacing: 4) {
                 Text(currentWeight.map { String(format: "%.1f", $0) } ?? "--")
-                    .font(.system(size: 44, weight: .black, design: .rounded))
+                    .font(TFTypography.heroMetric)
                 Text("lbs")
                     .font(.system(size: 16, weight: .medium))
                     .foregroundStyle(.secondary)
@@ -875,9 +876,7 @@ struct DashboardView: View {
                     .foregroundStyle(.secondary)
             }
         }
-        .padding(16)
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .heroCard()
     }
 
     @ViewBuilder
@@ -930,7 +929,7 @@ struct DashboardView: View {
             }
         }()
         return Text(interpretation.rawValue)
-            .font(.system(size: 9, weight: .bold))
+            .font(TFTypography.badgeLabel)
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
             .background(color.opacity(0.12))
@@ -941,14 +940,14 @@ struct DashboardView: View {
     func dashboardConfidenceBadge(_ confidence: ProgressConfidence) -> some View {
         let color: Color = {
             switch confidence {
-            case .high: return .green
-            case .moderate: return .orange
+            case .high: return TFColor.success
+            case .moderate: return TFColor.warning
             case .low: return .yellow
             case .insufficient: return .secondary
             }
         }()
         return Text(confidence.rawValue)
-            .font(.system(size: 9, weight: .bold))
+            .font(TFTypography.badgeLabel)
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
             .background(color.opacity(0.12))
@@ -1010,9 +1009,7 @@ struct DashboardView: View {
 
             analysisFreshnessLine
         }
-        .padding(16)
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .dashCard()
     }
 
     var analysisFreshnessLine: some View {
@@ -1088,10 +1085,7 @@ struct DashboardView: View {
     }
 
     func sectionLabel(_ text: String) -> some View {
-        Text(text.uppercased())
-            .font(.system(size: 10, weight: .bold, design: .monospaced))
-            .foregroundStyle(.orange)
-            .tracking(1.5)
+        TFSectionLabel(text: text)
     }
 
     func deltaBadge(_ delta: Double, invertGood: Bool = false) -> some View {

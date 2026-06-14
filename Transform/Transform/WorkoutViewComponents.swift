@@ -191,10 +191,7 @@ struct RestDayDetailView: View {
 
     func detailCard(title: String, text: String) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(title.uppercased())
-                .font(.system(size: 10, weight: .bold, design: .monospaced))
-                .foregroundStyle(.orange)
-                .tracking(1.2)
+            TFSectionLabel(text: title)
             Text(text)
                 .font(.body)
                 .fixedSize(horizontal: false, vertical: true)
@@ -252,10 +249,7 @@ struct WorkoutTimingInsightsCard: View {
                     Image(systemName: "clock.arrow.circlepath")
                         .font(.caption)
                         .foregroundStyle(.orange)
-                    Text("WORKOUT TIMING")
-                        .font(.system(size: 10, weight: .bold, design: .monospaced))
-                        .foregroundStyle(.orange)
-                        .tracking(1.5)
+                    TFSectionLabel(text: "Workout Timing")
                     Spacer()
                     Text("\(timedSessions.count) sessions")
                         .font(.caption2)

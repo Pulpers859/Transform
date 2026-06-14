@@ -165,10 +165,7 @@ struct ExerciseProgressionView: View {
 
     var weightChart: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("TOP SET WEIGHT")
-                .font(.system(size: 10, weight: .bold, design: .monospaced))
-                .foregroundStyle(.orange)
-                .tracking(1.5)
+            TFSectionLabel(text: "Top Set Weight")
 
             Chart(chartPoints) { point in
                 LineMark(
@@ -210,8 +207,8 @@ struct ExerciseProgressionView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text("ESTIMATED 1RM")
-                    .font(.system(size: 10, weight: .bold, design: .monospaced))
-                    .foregroundStyle(.purple)
+                    .font(TFTypography.sectionTitle)
+                    .foregroundStyle(TFColor.measurement)
                     .tracking(1.5)
                 Spacer()
                 Text("Epley formula")
@@ -271,27 +268,27 @@ struct ExerciseProgressionView: View {
     }
 
     var emptyState: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 12) {
             Image(systemName: "dumbbell")
-                .font(.title)
-                .foregroundStyle(.tertiary)
-            Text("No weight logs yet for this exercise.")
-                .font(.caption)
+                .font(.system(size: 36, weight: .light))
+                .foregroundStyle(TFColor.accent.opacity(0.4))
+                .symbolEffect(.pulse.byLayer, options: .repeating.speed(0.3))
+            Text("No weight logs yet")
+                .font(TFTypography.cardTitle)
+            Text("Log weights during your workout to track progression over time.")
+                .font(TFTypography.body)
                 .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity)
         .padding(24)
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .dashCard()
     }
 
     var logHistory: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text("SESSION HISTORY")
-                    .font(.system(size: 10, weight: .bold, design: .monospaced))
-                    .foregroundStyle(.orange)
-                    .tracking(1.5)
+                TFSectionLabel(text: "Session History")
                 Spacer()
                 Text("Tap to edit")
                     .font(.caption2)
@@ -405,10 +402,7 @@ struct EditPerformanceLogSheet: View {
                     .clipShape(RoundedRectangle(cornerRadius: 16))
 
                     VStack(alignment: .leading, spacing: 12) {
-                        Text("SETS")
-                            .font(.system(size: 10, weight: .bold, design: .monospaced))
-                            .foregroundStyle(.orange)
-                            .tracking(1.5)
+                        TFSectionLabel(text: "Sets")
 
                         ForEach(Array(editableSets.enumerated()), id: \.element.id) { index, _ in
                             HStack(spacing: 10) {
@@ -470,7 +464,7 @@ struct EditPerformanceLogSheet: View {
 
                     VStack(alignment: .leading, spacing: 8) {
                         Text("NOTES")
-                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                            .font(TFTypography.sectionTitle)
                             .foregroundStyle(.secondary)
                             .tracking(1.5)
 

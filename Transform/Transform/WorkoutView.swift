@@ -81,37 +81,40 @@ struct WorkoutView: View {
 
     var emptyState: some View {
         VStack(spacing: 24) {
-            Spacer().frame(height: 40)
+            Spacer().frame(height: 32)
 
             Image(systemName: "figure.strengthtraining.traditional")
-                .font(.system(size: 56))
-                .foregroundStyle(.orange.opacity(0.6))
+                .font(.system(size: 48, weight: .light))
+                .foregroundStyle(TFColor.accent.opacity(0.5))
+                .symbolEffect(.pulse.byLayer, options: .repeating.speed(0.3))
 
             VStack(spacing: 8) {
                 Text("No Workout Program")
-                    .font(.title2.bold())
+                    .font(TFTypography.cardTitle)
+                    .fontWeight(.bold)
                 Text("Generate a personalized 4-week program one week at a time, based on your latest body analysis.")
-                    .font(.subheadline)
+                    .font(TFTypography.body)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 32)
             }
 
             if let analysis = latestAnalysis, let result = analysis.decodedResult {
-                VStack(spacing: 12) {
-                    HStack(spacing: 12) {
+                VStack(spacing: TFSpacing.innerGap) {
+                    HStack(spacing: TFSpacing.innerGap) {
                         if let image = UIImage(data: analysis.photoData) {
                             Image(uiImage: image)
                                 .resizable()
                                 .scaledToFill()
                                 .frame(width: 48, height: 60)
-                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                                .clipShape(RoundedRectangle(cornerRadius: TFRadius.inner))
                         }
 
-                        VStack(alignment: .leading, spacing: 4) {
+                        VStack(alignment: .leading, spacing: TFSpacing.microGap) {
                             Text("Latest Analysis")
-                                .font(.caption.bold())
-                                .foregroundStyle(.orange)
+                                .font(TFTypography.caption)
+                                .fontWeight(.bold)
+                                .foregroundStyle(TFColor.accent)
                             Text(analysis.date.formatted(date: .abbreviated, time: .omitted))
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
@@ -124,30 +127,26 @@ struct WorkoutView: View {
                         }
                         Spacer()
                     }
-                    .padding(12)
-                    .background(Color(.secondarySystemBackground))
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .compactCard()
 
                     generateWeekOneButton(analysis: analysis, result: result)
                     if !canUseAI {
                         Text(Config.anthropicKeyInlineHelpText)
                             .font(.caption2)
-                            .foregroundStyle(.red)
+                            .foregroundStyle(TFColor.danger)
                     }
                 }
             } else {
-                VStack(spacing: 8) {
+                VStack(spacing: TFSpacing.tightGap) {
                     Image(systemName: "camera.viewfinder")
                         .font(.title2)
                         .foregroundStyle(.secondary)
                     Text("Run a body analysis first to generate a tailored program.")
-                        .font(.caption)
+                        .font(TFTypography.body)
                         .foregroundStyle(.tertiary)
                         .multilineTextAlignment(.center)
                 }
-                .padding()
-                .background(Color(.secondarySystemBackground))
-                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .compactCard()
             }
 
             Spacer()
@@ -540,10 +539,7 @@ struct WorkoutView: View {
 
         return VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("PROGRAM PROGRESS")
-                    .font(.system(size: 10, weight: .bold, design: .monospaced))
-                    .foregroundStyle(.orange)
-                    .tracking(1.5)
+                TFSectionLabel(text: "Program Progress")
                 Spacer()
                 Text("\(completedDays) of \(program.maxWeeks * 7) days")
                     .font(.caption)

@@ -181,10 +181,7 @@ struct WorkoutDayDetailView: View {
 
     var exerciseList: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("EXERCISES")
-                .font(.system(size: 10, weight: .bold, design: .monospaced))
-                .foregroundStyle(.orange)
-                .tracking(1.5)
+            TFSectionLabel(text: "Exercises")
 
             ForEach(day.sortedExercises) { exercise in
                 ExerciseCard(

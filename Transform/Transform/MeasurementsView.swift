@@ -470,11 +470,20 @@ struct MeasurementsView: View {
                 .font(.headline)
 
             if weightEntries.isEmpty && measurements.isEmpty {
-                Text("No entries yet. Tap + to log your first measurement.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .padding()
+                VStack(spacing: 12) {
+                    Image(systemName: "ruler")
+                        .font(.system(size: 32, weight: .light))
+                        .foregroundStyle(TFColor.measurement.opacity(0.5))
+                    Text("No entries yet")
+                        .font(TFTypography.cardTitle)
+                    Text("Tap + to log your first measurement and start tracking body changes.")
+                        .font(TFTypography.body)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 24)
+                .compactCard()
             } else {
                 ForEach(mergedDates().prefix(10), id: \.self) { date in
                     let weight = weightEntries.first(where: { Calendar.current.isDate($0.date, inSameDayAs: date) })

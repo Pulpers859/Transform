@@ -664,21 +664,21 @@ struct NutritionView: View {
                 .font(.headline)
 
             if todayEntries.isEmpty {
-                VStack(spacing: 8) {
+                VStack(spacing: 12) {
                     Image(systemName: "fork.knife")
-                        .font(.system(size: 32))
-                        .foregroundStyle(.orange.opacity(0.5))
+                        .font(.system(size: 36, weight: .light))
+                        .foregroundStyle(TFColor.accent.opacity(0.5))
+                        .symbolEffect(.pulse.byLayer, options: .repeating.speed(0.3))
                     Text("No meals logged yet")
-                        .font(.subheadline)
+                        .font(TFTypography.cardTitle)
+                    Text("Tap + to log your first meal and start tracking macros")
+                        .font(TFTypography.body)
                         .foregroundStyle(.secondary)
-                    Text("Tap + to add your first meal")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
+                        .multilineTextAlignment(.center)
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 32)
-                .background(Color(.secondarySystemBackground))
-                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .compactCard()
             } else {
                 ForEach(groupedEntries, id: \.0) { meal, entries in
                     MealGroupView(
