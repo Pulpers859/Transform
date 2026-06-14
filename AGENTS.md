@@ -43,12 +43,20 @@
 - When context, logs, or diffs start ballooning, checkpoint and resume from the recap instead of dragging all raw material forward.
 - Use `.claude/skills/transform-parallel-audit` when a task spans multiple subsystems or risks context sprawl.
 
+## Design Research
+- For substantial UI or UX work, automatically apply `transform-design-research` before implementation.
+- Trigger it for screen redesigns, new flows, onboarding, dashboards, progress or analytics experiences, navigation changes, design-system decisions, accessibility reviews, or requests for a clearer, more polished, premium, cohesive, or native feel.
+- Do not invoke the full research workflow for tiny copy, spacing, or isolated visual bug fixes unless they expose a broader design problem.
+- Use external references to extract principles, not to copy screens or import web conventions into SwiftUI.
+- Implement the resulting direction through the smallest matching SwiftUI, Liquid Glass, refactor, performance, and simulator skills.
+
 ## Skill-First Workflow
 - In this repo, treat the repo-local skills as the default operating path, not an optional extra.
 - Use the matching repo skill automatically when the task clearly fits, unless the user explicitly overrides that choice.
 - At the start of a fresh session in `C:\Dev\Transform_clean`, first apply `transform-handoff` unless the task is already deep in a single known file.
 - If resuming prior work, long threads, generator investigations, or mixed context, apply `transform-context-compact` before broader repo exploration.
 - For broad reviews, mixed evidence gathering, architecture tradeoff work, or repo investigations likely to sprawl, apply `transform-parallel-audit`.
+- For substantial UI/UX design, redesign, new-flow, or visual-system work, automatically apply `transform-design-research`.
 - For generator, validator, blueprint, fallback, retry, or API-cost work, automatically apply `transform-generator-audit`.
 - For GitHub Actions, Xcode build, scheme, workflow, or local-vs-CI mismatch work, automatically apply `transform-ci-triage`.
 - If more than one repo skill could apply, prefer the smallest combination that fits the task instead of loading everything.
@@ -58,6 +66,7 @@
 ## Repo Skills
 - `transform-handoff`: repo orientation, stale-copy warnings, branch workflow, hotspots.
 - `transform-parallel-audit`: bounded parallel or sequential evidence gathering with compact recaps and final synthesis.
+- `transform-design-research`: focused product-reference research, native iOS design synthesis, implementation, and simulator review.
 - `transform-generator-audit`: workout generator, validator, fallback, prompt drift, retry waste.
 - `transform-ci-triage`: GitHub Actions, Xcode build mismatch, workflow drift.
 - `transform-context-compact`: compact summaries, selective context loading, low-token handoffs.

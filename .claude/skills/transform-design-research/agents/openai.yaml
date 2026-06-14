@@ -1,0 +1,4 @@
+interface:
+  display_name: "Transform Design Research"
+  short_description: "Research and implement native Transform UI improvements"
+  default_prompt: "Research this Transform UI task using relevant product references, synthesize a native iOS design direction, implement it with the appropriate SwiftUI skills, and validate it in the simulator."
