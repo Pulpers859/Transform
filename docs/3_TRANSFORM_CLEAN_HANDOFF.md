@@ -89,7 +89,7 @@ git checkout dev
 
 ## Secrets / Credential Handling
 - Do not treat repo-tracked files as a safe place for live credentials.
-- Prefer an ignored local `Transform\Config\Secrets.xcconfig` for `ANTHROPIC_API_KEY`, with `Transform\Transform\Secrets.plist` kept only as a fallback local setup path. Neither file should be committed.
+- Prefer entering the Anthropic key in the app so it is stored in iOS Keychain. Ignored local `Transform\Config\Secrets.xcconfig` and `Transform\Transform\Secrets.plist` files remain build-time fallbacks and should never be committed.
 - Prefer example files plus ignored real local secret/config files whenever practical.
 - Before first push of a new app, run a secret scan.
 

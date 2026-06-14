@@ -5,6 +5,11 @@ struct AppSettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @FocusState private var isTextInputFocused: Bool
     @State private var showRestoreDefaultsConfirm = false
+    @State private var showDeleteAPIKeyConfirm = false
+    @State private var apiKeySetupPresentation: APIKeySetupPresentation?
+    @State private var hasAnthropicAPIKey = Config.hasAnthropicKey
+    @State private var hasKeychainAPIKey = AnthropicAPIKeyStore.storedKey != nil
+    @State private var apiKeyErrorMessage: String?
 
     // MARK: - Structured fields
 
@@ -137,6 +142,33 @@ struct AppSettingsView: View {
                         Text("Dark").tag(2)
                     }
                     .pickerStyle(.segmented)
+                }
+
+                Section("AI") {
+                    LabeledContent("Anthropic API Key") {
+                        Text(hasAnthropicAPIKey ? "Configured" : "Not Configured")
+                            .foregroundStyle(hasAnthropicAPIKey ? Color.green : Color.secondary)
+                    }
+
+                    Button(hasKeychainAPIKey ? "Replace API Key" : "Add API Key") {
+                        apiKeySetupPresentation = .settings
+                    }
+
+                    if hasKeychainAPIKey {
+                        Button("Remove API Key", role: .destructive) {
+                            showDeleteAPIKeyConfirm = true
+                        }
+                    }
+
+                    if let apiKeyErrorMessage {
+                        Text(apiKeyErrorMessage)
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    } else {
+                        Text("Keys entered here are stored in this device's Keychain and are never committed to GitHub.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
 
                 Section("Body Analysis Profile") {
@@ -319,6 +351,26 @@ struct AppSettingsView: View {
             } message: {
                 Text("This replaces all your saved profile and target settings with the app defaults.")
             }
+            .confirmationDialog(
+                "Remove API Key?",
+                isPresented: $showDeleteAPIKeyConfirm,
+                titleVisibility: .visible
+            ) {
+                Button("Remove API Key", role: .destructive) {
+                    deleteAPIKey()
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("AI features will be unavailable unless a local build configuration provides another key.")
+            }
+            .sheet(item: $apiKeySetupPresentation) { presentation in
+                APIKeySetupView(presentation: presentation) {
+                    refreshAPIKeyStatus()
+                }
+            }
+            .onAppear {
+                refreshAPIKeyStatus()
+            }
             .scrollDismissesKeyboard(.interactively)
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
@@ -403,6 +455,21 @@ struct AppSettingsView: View {
         heightInches = min(max(heightInches, 0), 11)
         if heightCm > 0 {
             heightCm = min(max(heightCm, 100), 250)
+        }
+    }
+
+    private func refreshAPIKeyStatus() {
+        hasKeychainAPIKey = AnthropicAPIKeyStore.storedKey != nil
+        hasAnthropicAPIKey = Config.hasAnthropicKey
+        apiKeyErrorMessage = nil
+    }
+
+    private func deleteAPIKey() {
+        do {
+            try AnthropicAPIKeyStore.delete()
+            refreshAPIKeyStatus()
+        } catch {
+            apiKeyErrorMessage = error.localizedDescription
         }
     }
 

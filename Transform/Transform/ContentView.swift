@@ -9,6 +9,7 @@ struct ContentView: View {
     let startupWarning: String?
     @State private var didShowStartupWarning = false
     @State private var appAlert: AppAlertContent?
+    @State private var apiKeySetupPresentation: APIKeySetupPresentation?
 
     var resolvedColorScheme: ColorScheme? {
         switch appearanceMode {
@@ -58,20 +59,19 @@ struct ContentView: View {
                 didShowStartupWarning = true
                 appAlert = AppAlertContent(
                     title: "Storage Warning",
-                    message: startupWarning
+                    message: startupWarning,
+                    onDismiss: showAPIKeySetupIfNeeded
                 )
             } else if !didShowStartupWarning, let generationCrash = WorkoutGenerationDiagnostics.consumeUnexpectedTerminationMessage() {
                 didShowStartupWarning = true
                 appAlert = AppAlertContent(
                     title: "Generation Interrupted",
-                    message: generationCrash
+                    message: generationCrash,
+                    onDismiss: showAPIKeySetupIfNeeded
                 )
-            } else if !didShowStartupWarning, let apiKeyWarning = Config.anthropicKeyStartupAlertMessage {
+            } else if !didShowStartupWarning {
                 didShowStartupWarning = true
-                appAlert = AppAlertContent(
-                    title: "API Key Setup",
-                    message: apiKeyWarning
-                )
+                showAPIKeySetupIfNeeded()
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .persistenceSaveFailed)) { notification in
@@ -86,8 +86,19 @@ struct ContentView: View {
             Alert(
                 title: Text(alert.title),
                 message: Text(alert.message),
-                dismissButton: .default(Text("OK"))
+                dismissButton: .default(Text("OK")) {
+                    alert.onDismiss?()
+                }
             )
+        }
+        .sheet(item: $apiKeySetupPresentation) { presentation in
+            APIKeySetupView(presentation: presentation) {}
+        }
+    }
+
+    private func showAPIKeySetupIfNeeded() {
+        if !Config.hasAnthropicKey {
+            apiKeySetupPresentation = .startup
         }
     }
 }
@@ -96,4 +107,11 @@ struct AppAlertContent: Identifiable {
     let id = UUID()
     let title: String
     let message: String
+    let onDismiss: (() -> Void)?
+
+    init(title: String, message: String, onDismiss: (() -> Void)? = nil) {
+        self.title = title
+        self.message = message
+        self.onDismiss = onDismiss
+    }
 }

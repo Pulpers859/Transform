@@ -1079,7 +1079,7 @@ enum AnthropicAPIKeyStatus: Equatable {
         case .configured:
             return ""
         case .missingConfiguration(let infoPlistKey, _):
-            return "AI is unavailable. Transform did not find a usable \(infoPlistKey) in the generated Info.plist or a bundled Secrets.plist."
+            return "AI is unavailable. Add your Anthropic API key in Transform Settings. Transform also accepts \(infoPlistKey) from a local build configuration."
         case .invalidInfoPlistValue(let infoPlistKey, _):
             return "AI is unavailable. \(infoPlistKey) in the generated Info.plist is empty or still set to a placeholder."
         case .unreadableSecretsFile:
@@ -1096,16 +1096,9 @@ enum AnthropicAPIKeyStatus: Equatable {
         return """
         \(inlineHelpText)
 
-        Supported setup:
-        1. Preferred: create a local ignored file at \(APIKeyProvider.localXCConfigRelativePath).
-        2. Add ANTHROPIC_API_KEY = your_real_key to that file and rebuild the app.
-        3. Or create a local Secrets.plist at \(APIKeyProvider.localSecretsPlistRelativePath) with ANTHROPIC_API_KEY.
-        4. Leave either file uncommitted.
+        Open Settings and choose Add API Key. The key is stored in this device's Keychain and never committed to GitHub.
 
-        Runtime checks:
-        - Info.plist key: \(APIKeyProvider.infoPlistKey)
-        - Bundled plist path: \(expectedBundlePath)
-        - Example local xcconfig: \(APIKeyProvider.localXCConfigExampleRelativePath)
+        Local build configuration and Secrets.plist remain available as fallback setup methods.
         """
     }
 
@@ -1139,6 +1132,20 @@ enum APIKeyProvider {
     }
 
     static var anthropicKeyStatus: AnthropicAPIKeyStatus {
+        if let keychainKey = AnthropicAPIKeyStore.storedKey {
+            return validatedStatus(
+                rawValue: keychainKey,
+                invalidMissingStatus: .missingConfiguration(
+                    expectedInfoPlistKey: infoPlistKey,
+                    expectedBundlePath: expectedBundleSecretsPath
+                ),
+                invalidPlaceholderStatus: .missingConfiguration(
+                    expectedInfoPlistKey: infoPlistKey,
+                    expectedBundlePath: expectedBundleSecretsPath
+                )
+            )
+        }
+
         let infoPlistStatus = infoPlistKeyStatus
         if case .configured = infoPlistStatus {
             return infoPlistStatus
