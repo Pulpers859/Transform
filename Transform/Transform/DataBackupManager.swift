@@ -4,8 +4,8 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 nonisolated private enum BackupFormat {
-    static let currentVersion = 7
-    static let supportedVersions: Set<Int> = [1, 2, 3, 4, 5, 6, 7]
+    static let currentVersion = 8
+    static let supportedVersions: Set<Int> = [1, 2, 3, 4, 5, 6, 7, 8]
 }
 
 @MainActor
@@ -66,6 +66,7 @@ nonisolated struct TransformBackupPayload: Codable {
     let workouts: [WorkoutProgramSnapshot]
     let exerciseWeights: [ExerciseWeightSnapshot]?
     let exercisePerformanceLogs: [ExercisePerformanceLogSnapshot]?
+    let profileSettings: ProfileSettingsSnapshot?
 
     init(
         version: Int,
@@ -79,7 +80,8 @@ nonisolated struct TransformBackupPayload: Codable {
         analyses: [AnalysisSnapshot],
         workouts: [WorkoutProgramSnapshot],
         exerciseWeights: [ExerciseWeightSnapshot]?,
-        exercisePerformanceLogs: [ExercisePerformanceLogSnapshot]?
+        exercisePerformanceLogs: [ExercisePerformanceLogSnapshot]?,
+        profileSettings: ProfileSettingsSnapshot? = nil
     ) {
         self.version = version
         self.exportedAt = exportedAt
@@ -93,6 +95,7 @@ nonisolated struct TransformBackupPayload: Codable {
         self.workouts = workouts
         self.exerciseWeights = exerciseWeights
         self.exercisePerformanceLogs = exercisePerformanceLogs
+        self.profileSettings = profileSettings
     }
 }
 
@@ -302,6 +305,127 @@ nonisolated struct ExercisePerformanceLogSnapshot: Codable {
     let muscleTarget: String
     let canonicalExerciseKey: String?
     let setLogsJSON: String?
+}
+
+nonisolated struct ProfileSettingsSnapshot: Codable {
+    let age: String?
+    let sex: String?
+    let build: String?
+    let height: String?
+    let currentWeight: String?
+    let occupation: String?
+    let trainingFrequency: String?
+    let trainingAge: String?
+    let equipmentAccess: String?
+    let averageSleep: String?
+    let painHistory: String?
+    let activityLevel: String?
+    let primaryGoal: String?
+    let lifestyleConstraints: String?
+    let weightValue: String?
+    let weightUnit: String?
+    let goalDetail: String?
+    let ageValue: Int?
+    let heightFeet: Int?
+    let heightInches: Int?
+    let heightCm: Int?
+    let heightUnit: String?
+    let trainingDays: Int?
+    let sleepHours: Double?
+    let sleepNotes: String?
+    let calorieTarget: Int?
+    let proteinTarget: Double?
+    let carbTarget: Double?
+    let fatTarget: Double?
+    let bodyWeightGoal: Double?
+    let medicalCurrentInjury: Bool?
+    let medicalPainDuringExercise: Bool?
+    let medicalCardioMetabolic: Bool?
+    let medicalMedications: Bool?
+    let medicalPregnancySurgery: Bool?
+    let medicalSymptoms: Bool?
+
+    static func fromUserDefaults() -> ProfileSettingsSnapshot {
+        let d = UserDefaults.standard
+        return ProfileSettingsSnapshot(
+            age: d.string(forKey: AppSettingsKeys.analysisAge),
+            sex: d.string(forKey: AppSettingsKeys.analysisSex),
+            build: d.string(forKey: AppSettingsKeys.analysisBuild),
+            height: d.string(forKey: AppSettingsKeys.analysisHeight),
+            currentWeight: d.string(forKey: AppSettingsKeys.analysisCurrentWeight),
+            occupation: d.string(forKey: AppSettingsKeys.analysisOccupation),
+            trainingFrequency: d.string(forKey: AppSettingsKeys.analysisTrainingFrequency),
+            trainingAge: d.string(forKey: AppSettingsKeys.analysisTrainingAge),
+            equipmentAccess: d.string(forKey: AppSettingsKeys.analysisEquipmentAccess),
+            averageSleep: d.string(forKey: AppSettingsKeys.analysisAverageSleep),
+            painHistory: d.string(forKey: AppSettingsKeys.analysisPainHistory),
+            activityLevel: d.string(forKey: AppSettingsKeys.analysisActivityLevel),
+            primaryGoal: d.string(forKey: AppSettingsKeys.analysisPrimaryGoal),
+            lifestyleConstraints: d.string(forKey: AppSettingsKeys.analysisLifestyleConstraints),
+            weightValue: d.string(forKey: AppSettingsKeys.analysisWeightValue),
+            weightUnit: d.string(forKey: AppSettingsKeys.analysisWeightUnit),
+            goalDetail: d.string(forKey: AppSettingsKeys.analysisGoalDetail),
+            ageValue: d.object(forKey: AppSettingsKeys.analysisAgeValue) as? Int,
+            heightFeet: d.object(forKey: AppSettingsKeys.analysisHeightFeet) as? Int,
+            heightInches: d.object(forKey: AppSettingsKeys.analysisHeightInches) as? Int,
+            heightCm: d.object(forKey: AppSettingsKeys.analysisHeightCm) as? Int,
+            heightUnit: d.string(forKey: AppSettingsKeys.analysisHeightUnit),
+            trainingDays: d.object(forKey: AppSettingsKeys.analysisTrainingDays) as? Int,
+            sleepHours: d.object(forKey: AppSettingsKeys.analysisSleepHours) as? Double,
+            sleepNotes: d.string(forKey: AppSettingsKeys.analysisSleepNotes),
+            calorieTarget: d.object(forKey: AppSettingsKeys.calorieTarget) as? Int,
+            proteinTarget: d.object(forKey: AppSettingsKeys.proteinTarget) as? Double,
+            carbTarget: d.object(forKey: AppSettingsKeys.carbTarget) as? Double,
+            fatTarget: d.object(forKey: AppSettingsKeys.fatTarget) as? Double,
+            bodyWeightGoal: d.object(forKey: AppSettingsKeys.bodyWeightGoal) as? Double,
+            medicalCurrentInjury: d.object(forKey: AppSettingsKeys.medicalCurrentInjury) as? Bool,
+            medicalPainDuringExercise: d.object(forKey: AppSettingsKeys.medicalPainDuringExercise) as? Bool,
+            medicalCardioMetabolic: d.object(forKey: AppSettingsKeys.medicalCardioMetabolic) as? Bool,
+            medicalMedications: d.object(forKey: AppSettingsKeys.medicalMedications) as? Bool,
+            medicalPregnancySurgery: d.object(forKey: AppSettingsKeys.medicalPregnancySurgery) as? Bool,
+            medicalSymptoms: d.object(forKey: AppSettingsKeys.medicalSymptoms) as? Bool
+        )
+    }
+
+    func applyToUserDefaults() {
+        let d = UserDefaults.standard
+        if let v = age { d.set(v, forKey: AppSettingsKeys.analysisAge) }
+        if let v = sex { d.set(v, forKey: AppSettingsKeys.analysisSex) }
+        if let v = build { d.set(v, forKey: AppSettingsKeys.analysisBuild) }
+        if let v = height { d.set(v, forKey: AppSettingsKeys.analysisHeight) }
+        if let v = currentWeight { d.set(v, forKey: AppSettingsKeys.analysisCurrentWeight) }
+        if let v = occupation { d.set(v, forKey: AppSettingsKeys.analysisOccupation) }
+        if let v = trainingFrequency { d.set(v, forKey: AppSettingsKeys.analysisTrainingFrequency) }
+        if let v = trainingAge { d.set(v, forKey: AppSettingsKeys.analysisTrainingAge) }
+        if let v = equipmentAccess { d.set(v, forKey: AppSettingsKeys.analysisEquipmentAccess) }
+        if let v = averageSleep { d.set(v, forKey: AppSettingsKeys.analysisAverageSleep) }
+        if let v = painHistory { d.set(v, forKey: AppSettingsKeys.analysisPainHistory) }
+        if let v = activityLevel { d.set(v, forKey: AppSettingsKeys.analysisActivityLevel) }
+        if let v = primaryGoal { d.set(v, forKey: AppSettingsKeys.analysisPrimaryGoal) }
+        if let v = lifestyleConstraints { d.set(v, forKey: AppSettingsKeys.analysisLifestyleConstraints) }
+        if let v = weightValue { d.set(v, forKey: AppSettingsKeys.analysisWeightValue) }
+        if let v = weightUnit { d.set(v, forKey: AppSettingsKeys.analysisWeightUnit) }
+        if let v = goalDetail { d.set(v, forKey: AppSettingsKeys.analysisGoalDetail) }
+        if let v = ageValue { d.set(v, forKey: AppSettingsKeys.analysisAgeValue) }
+        if let v = heightFeet { d.set(v, forKey: AppSettingsKeys.analysisHeightFeet) }
+        if let v = heightInches { d.set(v, forKey: AppSettingsKeys.analysisHeightInches) }
+        if let v = heightCm { d.set(v, forKey: AppSettingsKeys.analysisHeightCm) }
+        if let v = heightUnit { d.set(v, forKey: AppSettingsKeys.analysisHeightUnit) }
+        if let v = trainingDays { d.set(v, forKey: AppSettingsKeys.analysisTrainingDays) }
+        if let v = sleepHours { d.set(v, forKey: AppSettingsKeys.analysisSleepHours) }
+        if let v = sleepNotes { d.set(v, forKey: AppSettingsKeys.analysisSleepNotes) }
+        if let v = calorieTarget { d.set(v, forKey: AppSettingsKeys.calorieTarget) }
+        if let v = proteinTarget { d.set(v, forKey: AppSettingsKeys.proteinTarget) }
+        if let v = carbTarget { d.set(v, forKey: AppSettingsKeys.carbTarget) }
+        if let v = fatTarget { d.set(v, forKey: AppSettingsKeys.fatTarget) }
+        if let v = bodyWeightGoal { d.set(v, forKey: AppSettingsKeys.bodyWeightGoal) }
+        if let v = medicalCurrentInjury { d.set(v, forKey: AppSettingsKeys.medicalCurrentInjury) }
+        if let v = medicalPainDuringExercise { d.set(v, forKey: AppSettingsKeys.medicalPainDuringExercise) }
+        if let v = medicalCardioMetabolic { d.set(v, forKey: AppSettingsKeys.medicalCardioMetabolic) }
+        if let v = medicalMedications { d.set(v, forKey: AppSettingsKeys.medicalMedications) }
+        if let v = medicalPregnancySurgery { d.set(v, forKey: AppSettingsKeys.medicalPregnancySurgery) }
+        if let v = medicalSymptoms { d.set(v, forKey: AppSettingsKeys.medicalSymptoms) }
+    }
 }
 
 @MainActor private extension WeightSnapshot {
@@ -904,7 +1028,8 @@ final class DataBackupManager {
             analyses: mainActorMap(analyses, AnalysisSnapshot.init),
             workouts: mainActorMap(workouts, WorkoutProgramSnapshot.init),
             exerciseWeights: mainActorMap(exerciseWeights, ExerciseWeightSnapshot.init),
-            exercisePerformanceLogs: mainActorMap(exercisePerformanceLogs, ExercisePerformanceLogSnapshot.init)
+            exercisePerformanceLogs: mainActorMap(exercisePerformanceLogs, ExercisePerformanceLogSnapshot.init),
+            profileSettings: ProfileSettingsSnapshot.fromUserDefaults()
         )
     }
 
@@ -1022,6 +1147,8 @@ final class DataBackupManager {
         }
 
         _ = try ExerciseWeightStore.normalizeAndConsolidate(in: modelContext)
+
+        payload.profileSettings?.applyToUserDefaults()
     }
 
     private func migrateLegacyPayload(_ legacy: LegacyTransformBackupPayload) -> TransformBackupPayload {
