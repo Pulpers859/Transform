@@ -28,36 +28,46 @@ struct PhotoComparisonView: View {
     }
 
     var comparisonContent: some View {
-        VStack(spacing: 16) {
+        // Clamp at point of use: stored indices can fall out of bounds if `sessions`
+        // shrinks (e.g. an analysis is deleted) while this view is on screen.
+        let safeLeft = min(max(leftIndex, 0), sessions.count - 1)
+        let safeRight = min(max(rightIndex, 0), sessions.count - 1)
+        return VStack(spacing: 16) {
             HStack(spacing: 12) {
                 photoColumn(index: $leftIndex, label: "Before")
                 photoColumn(index: $rightIndex, label: "After")
             }
             .padding(.horizontal)
 
-            if let leftResult = sessions[leftIndex].decodedResult,
-               let rightResult = sessions[rightIndex].decodedResult {
+            if let leftResult = sessions[safeLeft].decodedResult,
+               let rightResult = sessions[safeRight].decodedResult {
                 comparisonDetails(before: leftResult, after: rightResult)
             }
 
             Spacer()
         }
         .padding(.top)
+        .onChange(of: sessions.count) { _, newCount in
+            leftIndex = min(max(leftIndex, 0), max(newCount - 1, 0))
+            rightIndex = min(max(rightIndex, 0), max(newCount - 1, 0))
+        }
     }
 
     func photoColumn(index: Binding<Int>, label: String) -> some View {
-        VStack(spacing: 8) {
+        let safeIndex = min(max(index.wrappedValue, 0), sessions.count - 1)
+        return VStack(spacing: 8) {
             Text(label)
                 .font(.caption.bold())
                 .foregroundStyle(.secondary)
 
-            if let image = UIImage(data: sessions[index.wrappedValue].photoData) {
+            if let image = UIImage(data: sessions[safeIndex].photoData) {
                 Image(uiImage: image)
                     .resizable()
                     .scaledToFill()
                     .frame(maxWidth: .infinity)
                     .aspectRatio(3/4, contentMode: .fit)
                     .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .accessibilityLabel("\(label) photo, \(sessions[safeIndex].date.formatted(date: .abbreviated, time: .omitted)), \(sessions[safeIndex].pose)")
             } else {
                 RoundedRectangle(cornerRadius: 12)
                     .fill(Color(.tertiarySystemBackground))
@@ -78,7 +88,7 @@ struct PhotoComparisonView: View {
             .pickerStyle(.menu)
             .tint(.orange)
 
-            Text(sessions[index.wrappedValue].pose)
+            Text(sessions[safeIndex].pose)
                 .font(.caption2)
                 .foregroundStyle(.secondary)
         }

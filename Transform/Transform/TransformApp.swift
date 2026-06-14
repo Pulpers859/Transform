@@ -78,9 +78,18 @@ struct StartupConfiguration {
                 // Don't let this empty ephemeral store overwrite the last good
                 // on-disk backup when the app next backgrounds.
                 DataBackupManager.shared.suppressAutomaticBackups = true
+                // Recover the last good on-disk backup into the ephemeral store so a
+                // storage failure shows the user's data for this session instead of an
+                // empty app. The restore is additive/dedupe-guarded and suppressing
+                // auto-backups above prevents it from overwriting the good file.
+                let recoveryContext = ModelContext(fallbackContainer)
+                let restored = DataBackupManager.shared.restoreFromAutomaticBackupIfAvailable(into: recoveryContext)
+                let fallbackMessage = restored
+                    ? "Persistent storage failed to initialize. Your most recent backup has been loaded for this session, but changes made now will not be saved permanently. Relaunch to retry permanent storage."
+                    : "Persistent storage failed to initialize. Running in temporary in-memory mode for this launch. Changes made now will not be saved permanently."
                 return StartupConfiguration(
                     container: fallbackContainer,
-                    errorMessage: "Persistent storage failed to initialize. Running in temporary in-memory mode for this launch. Changes made now will not be saved permanently."
+                    errorMessage: fallbackMessage
                 )
             } catch {
                 return StartupConfiguration(

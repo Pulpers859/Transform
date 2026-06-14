@@ -997,10 +997,33 @@ final class DataBackupManager {
         do {
             let document = try exportDocument(using: modelContext)
             let url = automaticBackupURL()
-            try document.data.write(to: url, options: [.atomic])
+            // The backup contains body photos and health/medical PII. Encrypt it at
+            // rest with file protection so it is unreadable while the device is locked.
+            try document.data.write(to: url, options: [.atomic, .completeFileProtection])
         } catch {
             // Keep backup writes best-effort and non-blocking.
             print("[Backup] Automatic backup failed: \(error.localizedDescription)")
+        }
+    }
+
+    /// Merges the last automatic backup (if any) into the given context. Used to
+    /// recover user data when the persistent store fails to initialize and the app
+    /// falls back to an in-memory store, so a storage failure isn't silent total
+    /// data loss. The merge is additive and dedupe-guarded, so this is safe even if
+    /// the target store already holds data. Returns true if a backup was applied.
+    @discardableResult
+    func restoreFromAutomaticBackupIfAvailable(into modelContext: ModelContext) -> Bool {
+        let url = automaticBackupURL()
+        guard FileManager.default.fileExists(atPath: url.path),
+              let data = try? Data(contentsOf: url) else {
+            return false
+        }
+        do {
+            try importBackup(from: data, into: modelContext)
+            return true
+        } catch {
+            print("[Backup] Automatic backup restore failed: \(error.localizedDescription)")
+            return false
         }
     }
 

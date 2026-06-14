@@ -12,6 +12,7 @@ struct WorkoutView: View {
     @State private var showError = false
     @State private var showDeleteConfirm = false
     @State private var programToDelete: WorkoutProgram?
+    @State private var showStartOverConfirm = false
     @State private var selectedWeek = 1
     @State private var showGeneratorLab = false
     @State private var generationTask: Task<Void, Never>?
@@ -58,6 +59,16 @@ struct WorkoutView: View {
                 }
             } message: {
                 Text("This will permanently remove this workout program and all progress.")
+            }
+            .alert("Start Over?", isPresented: $showStartOverConfirm) {
+                Button("Start Over", role: .destructive) {
+                    if let result = latestAnalysis?.decodedResult {
+                        startRegeneration(from: result, sourceAnalysisDate: latestAnalysis?.date)
+                    }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This replaces your current program with a brand-new Week 1 and clears existing weeks and progress. This also uses AI generation credits.")
             }
             .sheet(isPresented: $showGeneratorLab) {
                 WorkoutGeneratorLabView()
@@ -584,9 +595,9 @@ struct WorkoutView: View {
 
     func dangerZone(_ program: WorkoutProgram) -> some View {
         VStack(spacing: 12) {
-            if let result = latestAnalysis?.decodedResult {
+            if latestAnalysis?.decodedResult != nil {
                 Button {
-                    startRegeneration(from: result, sourceAnalysisDate: latestAnalysis?.date)
+                    showStartOverConfirm = true
                 } label: {
                     HStack {
                         if isGenerating {

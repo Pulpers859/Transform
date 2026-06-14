@@ -96,16 +96,20 @@ nonisolated struct BodyAnalysisResult: Codable {
         adherenceAssessment = try container.decodeIfPresent(String.self, forKey: .adherenceAssessment) ?? ""
         analysisLimitations = try container.decodeIfPresent(String.self, forKey: .analysisLimitations) ?? ""
         inputContext = try? container.decodeIfPresent(AnalysisInputContext.self, forKey: .inputContext)
-        regionBreakdown = try container.decode([RegionAssessment].self, forKey: .regionBreakdown)
-        topLeverageChange = try container.decode(String.self, forKey: .topLeverageChange)
-        priorityMuscles = try container.decode([String].self, forKey: .priorityMuscles)
-        workoutRecommendations = try container.decode([String].self, forKey: .workoutRecommendations)
-        dietRecommendations = try container.decode([String].self, forKey: .dietRecommendations)
-        posturalNotes = try container.decode(String.self, forKey: .posturalNotes)
-        estimatedBodyFat = try container.decode(String.self, forKey: .estimatedBodyFat)
-        metabolicHealthNotes = try container.decode(String.self, forKey: .metabolicHealthNotes)
-        psychologicalInsights = try container.decode(String.self, forKey: .psychologicalInsights)
-        injuryRiskNotes = try container.decode(String.self, forKey: .injuryRiskNotes)
+        // Only `overallAssessment` is treated as required identity. Every other
+        // field degrades to an empty default so that one missing/renamed key in a
+        // stored or newer-schema payload can't throw and silently demote the entire
+        // analysis to the thin legacy fallback (decodedResult uses `try?`).
+        regionBreakdown = try container.decodeIfPresent([RegionAssessment].self, forKey: .regionBreakdown) ?? []
+        topLeverageChange = try container.decodeIfPresent(String.self, forKey: .topLeverageChange) ?? ""
+        priorityMuscles = try container.decodeIfPresent([String].self, forKey: .priorityMuscles) ?? []
+        workoutRecommendations = try container.decodeIfPresent([String].self, forKey: .workoutRecommendations) ?? []
+        dietRecommendations = try container.decodeIfPresent([String].self, forKey: .dietRecommendations) ?? []
+        posturalNotes = try container.decodeIfPresent(String.self, forKey: .posturalNotes) ?? ""
+        estimatedBodyFat = try container.decodeIfPresent(String.self, forKey: .estimatedBodyFat) ?? ""
+        metabolicHealthNotes = try container.decodeIfPresent(String.self, forKey: .metabolicHealthNotes) ?? ""
+        psychologicalInsights = try container.decodeIfPresent(String.self, forKey: .psychologicalInsights) ?? ""
+        injuryRiskNotes = try container.decodeIfPresent(String.self, forKey: .injuryRiskNotes) ?? ""
         // Use decodeIfPresent + logging so a present-but-malformed payload doesn't
         // silently demote the analysis to config-default macros / fallback training
         // with no visibility. An absent key still yields nil (same as before).

@@ -9,6 +9,7 @@ extension Notification.Name {
 enum PersistenceReporter {
     static let messageUserInfoKey = "message"
 
+    @MainActor
     @discardableResult
     static func save(_ modelContext: ModelContext, operation: String) -> Bool {
         do {
