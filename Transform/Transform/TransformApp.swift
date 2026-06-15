@@ -57,14 +57,23 @@ struct StartupConfiguration {
 
             do {
                 try SleepEpisodeMigration.migrateIfNeeded(using: maintenanceContext)
+            } catch {
+                maintenanceContext.rollback()
+                print("[Startup] Sleep migration failed: \(error.localizedDescription)")
+            }
+
+            do {
                 if try ExerciseWeightStore.normalizeAndConsolidate(in: maintenanceContext) {
                     try maintenanceContext.save()
                 }
-                SleepTrendStore.refresh(using: maintenanceContext)
             } catch {
                 maintenanceContext.rollback()
-                maintenanceWarning = "Stored health or progression data could not be fully normalized at startup. The app loaded, but recent migrated entries may need review."
+                print("[Startup] Exercise normalization failed: \(error.localizedDescription)")
+                maintenanceWarning = "Stored progression data could not be fully normalized at startup. The app loaded, but recent entries may need review."
             }
+
+            SleepTrendStore.refresh(using: maintenanceContext)
+            DataIntegrityMonitor.checkOnStartup(using: maintenanceContext)
 
             return StartupConfiguration(container: container, errorMessage: maintenanceWarning)
         } catch {
@@ -99,6 +108,79 @@ struct StartupConfiguration {
             }
         }
     }
+}
+
+// MARK: - Data Integrity Monitor
+
+enum DataIntegrityMonitor {
+    private static let countsKey = "transform.startupEntryCounts"
+
+    struct Counts: Codable {
+        let sleep: Int
+        let weight: Int
+        let nutrition: Int
+        let measurement: Int
+        let timestamp: Date
+    }
+
+    static func checkOnStartup(using modelContext: ModelContext) {
+        guard let previous = loadPreviousCounts() else {
+            saveCounts(using: modelContext)
+            return
+        }
+
+        guard let current = currentCounts(using: modelContext) else { return }
+
+        let sleepDrop = previous.sleep - current.sleep
+        let weightDrop = previous.weight - current.weight
+        let nutritionDrop = previous.nutrition - current.nutrition
+        let totalDrop = (previous.sleep + previous.weight + previous.nutrition + previous.measurement)
+                      - (current.sleep + current.weight + current.nutrition + current.measurement)
+
+        if sleepDrop > 2 || weightDrop > 2 || nutritionDrop > 5 || totalDrop > 10 {
+            print("[Integrity] DATA LOSS DETECTED at startup.")
+            print("[Integrity] Previous (\(previous.timestamp)): sleep=\(previous.sleep) weight=\(previous.weight) nutrition=\(previous.nutrition) measurement=\(previous.measurement)")
+            print("[Integrity] Current: sleep=\(current.sleep) weight=\(current.weight) nutrition=\(current.nutrition) measurement=\(current.measurement)")
+            print("[Integrity] Drop: sleep=\(sleepDrop) weight=\(weightDrop) nutrition=\(nutritionDrop) total=\(totalDrop)")
+            NotificationCenter.default.post(
+                name: .dataIntegrityWarning,
+                object: nil,
+                userInfo: ["message": "Data loss detected: \(totalDrop) entries missing since last launch. Check rolling backups in Documents folder."]
+            )
+        }
+
+        saveCounts(using: modelContext)
+    }
+
+    private static func currentCounts(using modelContext: ModelContext) -> Counts? {
+        do {
+            return Counts(
+                sleep: try modelContext.fetchCount(FetchDescriptor<SleepEntry>()),
+                weight: try modelContext.fetchCount(FetchDescriptor<WeightEntry>()),
+                nutrition: try modelContext.fetchCount(FetchDescriptor<NutritionEntry>()),
+                measurement: try modelContext.fetchCount(FetchDescriptor<MeasurementEntry>()),
+                timestamp: Date()
+            )
+        } catch {
+            print("[Integrity] Could not fetch entry counts: \(error.localizedDescription)")
+            return nil
+        }
+    }
+
+    private static func saveCounts(using modelContext: ModelContext) {
+        guard let counts = currentCounts(using: modelContext),
+              let data = try? JSONEncoder().encode(counts) else { return }
+        UserDefaults.standard.set(data, forKey: countsKey)
+    }
+
+    private static func loadPreviousCounts() -> Counts? {
+        guard let data = UserDefaults.standard.data(forKey: countsKey) else { return nil }
+        return try? JSONDecoder().decode(Counts.self, from: data)
+    }
+}
+
+extension Notification.Name {
+    static let dataIntegrityWarning = Notification.Name("transform.dataIntegrityWarning")
 }
 
 struct StartupErrorView: View {

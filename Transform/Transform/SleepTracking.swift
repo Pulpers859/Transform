@@ -180,7 +180,12 @@ enum SleepTrendStore {
 }
 
 enum SleepEpisodeMigration {
+    private static let migrationCompleteKey = "transform.sleepEpisodeMigrationV1Complete"
+
     static func migrateIfNeeded(using modelContext: ModelContext) throws {
+        if UserDefaults.standard.bool(forKey: migrationCompleteKey) {
+            return
+        }
         let entries = try modelContext.fetch(FetchDescriptor<SleepEntry>())
         var changed = false
         for entry in entries where entry.startDate == nil || entry.endDate == nil {
@@ -199,6 +204,7 @@ enum SleepEpisodeMigration {
         if changed {
             try modelContext.save()
         }
+        UserDefaults.standard.set(true, forKey: migrationCompleteKey)
     }
 }
 

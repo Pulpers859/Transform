@@ -996,12 +996,26 @@ final class DataBackupManager {
         guard !suppressAutomaticBackups else { return }
         do {
             let document = try exportDocument(using: modelContext)
-            let url = automaticBackupURL()
+            let counts = try? entryCounts(using: modelContext)
+            if let counts, let lastKnown = loadLastKnownCounts() {
+                let sleepDrop = lastKnown.sleep - counts.sleep
+                let totalDrop = lastKnown.total - counts.total
+                if sleepDrop > 3 || totalDrop > 10 {
+                    print("[Backup] Skipping auto-backup: significant data drop detected (sleep: \(lastKnown.sleep)->\(counts.sleep), total: \(lastKnown.total)->\(counts.total)). Preserving existing backups.")
+                    return
+                }
+            }
+
+            rotateBackups()
+            let url = automaticBackupURL(slot: 0)
             // The backup contains body photos and health/medical PII. Encrypt it at
             // rest with file protection so it is unreadable while the device is locked.
             try document.data.write(to: url, options: [.atomic, .completeFileProtection])
+
+            if let counts {
+                saveLastKnownCounts(counts)
+            }
         } catch {
-            // Keep backup writes best-effort and non-blocking.
             print("[Backup] Automatic backup failed: \(error.localizedDescription)")
         }
     }
@@ -1025,6 +1039,54 @@ final class DataBackupManager {
             print("[Backup] Automatic backup restore failed: \(error.localizedDescription)")
             return false
         }
+    }
+
+    private static let backupSlots = 3
+
+    private func automaticBackupURL(slot: Int) -> URL {
+        let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first ?? FileManager.default.temporaryDirectory
+        return slot == 0
+            ? dir.appendingPathComponent("Transform_AutoBackup.json")
+            : dir.appendingPathComponent("Transform_AutoBackup_\(slot).json")
+    }
+
+    private func rotateBackups() {
+        let fm = FileManager.default
+        for slot in stride(from: Self.backupSlots - 1, through: 1, by: -1) {
+            let dest = automaticBackupURL(slot: slot)
+            let source = automaticBackupURL(slot: slot - 1)
+            try? fm.removeItem(at: dest)
+            if fm.fileExists(atPath: source.path) {
+                try? fm.copyItem(at: source, to: dest)
+            }
+        }
+    }
+
+    struct EntryCounts: Codable {
+        let sleep: Int
+        let weight: Int
+        let nutrition: Int
+        let total: Int
+    }
+
+    private func entryCounts(using modelContext: ModelContext) throws -> EntryCounts {
+        let sleep = try modelContext.fetchCount(FetchDescriptor<SleepEntry>())
+        let weight = try modelContext.fetchCount(FetchDescriptor<WeightEntry>())
+        let nutrition = try modelContext.fetchCount(FetchDescriptor<NutritionEntry>())
+        return EntryCounts(sleep: sleep, weight: weight, nutrition: nutrition, total: sleep + weight + nutrition)
+    }
+
+    private static let countsKey = "transform.lastKnownEntryCounts"
+
+    private func saveLastKnownCounts(_ counts: EntryCounts) {
+        if let data = try? JSONEncoder().encode(counts) {
+            UserDefaults.standard.set(data, forKey: Self.countsKey)
+        }
+    }
+
+    private func loadLastKnownCounts() -> EntryCounts? {
+        guard let data = UserDefaults.standard.data(forKey: Self.countsKey) else { return nil }
+        return try? JSONDecoder().decode(EntryCounts.self, from: data)
     }
 
     private func buildPayload(using modelContext: ModelContext) throws -> TransformBackupPayload {
@@ -1191,9 +1253,9 @@ final class DataBackupManager {
         )
     }
 
+    @available(*, deprecated, message: "Use automaticBackupURL(slot:) instead")
     private func automaticBackupURL() -> URL {
-        let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first ?? FileManager.default.temporaryDirectory
-        return dir.appendingPathComponent("Transform_AutoBackup.json")
+        automaticBackupURL(slot: 0)
     }
 }
 
