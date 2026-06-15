@@ -1,0 +1,5 @@
+When evaluating external UI/UX resources, component libraries, design systems, visual reference sites, or design-oriented agent skills for this app, read `docs/AI_UI_UX_RESOURCE_EVALUATION_PLAYBOOK.md` first and follow its `Adopt / Adapt / Reference / Skip` process.
+
+Do not use this playbook for every UI task by default. Use it when the work involves design-system decisions, component library selection, UI inspiration sources, redesign planning, or deciding whether an external UI/UX repo or website should influence the app.
+
+Use the playbook as a neutral decision framework, not as a preset recommendation. Inspect this app's actual platform, workflows, implementation stack, design maturity, and constraints before deciding what fits.
