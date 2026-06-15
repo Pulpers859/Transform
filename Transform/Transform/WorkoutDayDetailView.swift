@@ -240,13 +240,6 @@ struct ExerciseCard: View {
     let onToggle: () -> Void
     let onLogWeight: () -> Void
 
-    @State private var isRestTimerActive = false
-    @State private var remainingRestSeconds = 0
-    @State private var restTimerTask: Task<Void, Never>?
-    @State private var showExpandedRestTimer = false
-    @State private var didCompleteRestTimer = false
-    @State private var restEndDate: Date?
-
     var latestWeightLog: ExerciseWeightEntry? {
         weightSummary
     }
@@ -299,54 +292,6 @@ struct ExerciseCard: View {
         return parsedPrescription?.tempo
     }
 
-    var restDisplayText: String {
-        if didCompleteRestTimer {
-            return "00:00"
-        }
-        if isRestTimerActive {
-            return formatCountdown(remainingRestSeconds)
-        }
-        if remainingRestSeconds != exercise.restSeconds {
-            return formatCountdown(remainingRestSeconds)
-        }
-        return formatRest(exercise.restSeconds)
-    }
-
-    var restStatusLabel: String {
-        if didCompleteRestTimer {
-            return "Complete"
-        }
-        if isRestTimerActive {
-            return "Running"
-        }
-        if remainingRestSeconds != exercise.restSeconds {
-            return "Paused"
-        }
-        return "Rest"
-    }
-
-    var restProgress: Double {
-        guard exercise.restSeconds > 0 else { return 0 }
-        if didCompleteRestTimer {
-            return 1
-        }
-        let clampedRemaining = min(max(remainingRestSeconds, 0), exercise.restSeconds)
-        return 1 - (Double(clampedRemaining) / Double(exercise.restSeconds))
-    }
-
-    var timerAccent: Color {
-        if didCompleteRestTimer {
-            return TFColor.success
-        }
-        if isRestTimerActive {
-            return remainingRestSeconds <= 15 ? TFColor.danger : TFColor.accent
-        }
-        if remainingRestSeconds != exercise.restSeconds {
-            return TFColor.warning
-        }
-        return TFColor.accent
-    }
-
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 12) {
@@ -386,7 +331,7 @@ struct ExerciseCard: View {
             Divider().padding(.horizontal, 14)
 
             if exercise.restSeconds > 0 {
-                restTimerPanel
+                ExerciseRestTimerView(exercise: exercise)
                 Divider().padding(.horizontal, 14)
             }
 
@@ -545,35 +490,6 @@ struct ExerciseCard: View {
             RoundedRectangle(cornerRadius: 12)
                 .stroke(exercise.isCompleted ? TFColor.success.opacity(0.2) : Color.clear, lineWidth: 1)
         )
-        .onAppear {
-            if remainingRestSeconds == 0 && !didCompleteRestTimer {
-                remainingRestSeconds = exercise.restSeconds
-            }
-            // Resume the loop if a timer is running but its task was torn down
-            // (e.g. after the fullscreen cover dismissed this card).
-            if isRestTimerActive && restTimerTask == nil {
-                startRestTimer()
-            }
-        }
-        // Intentionally no stopRestTimer() here: the fullscreen cover fires
-        // onDisappear on this card, and killing the loop there froze a running
-        // timer. The loop is bounded and reads the wall clock, so it is safe to
-        // let it run.
-        .fullScreenCover(isPresented: $showExpandedRestTimer) {
-            RestTimerFullscreen(
-                exerciseName: exercise.exerciseName,
-                exerciseNumber: exercise.order + 1,
-                prescriptionLabel: "\(exercise.sets) sets x \(exercise.reps) reps",
-                statusLabel: restStatusLabel,
-                timeText: restDisplayText,
-                accent: timerAccent,
-                isTimerActive: isRestTimerActive,
-                progress: restProgress,
-                onToggle: { toggleRestTimer() },
-                onReset: { resetRestTimer() },
-                onClose: { showExpandedRestTimer = false }
-            )
-        }
     }
 
     var setLogBreakdown: some View {
@@ -619,167 +535,6 @@ struct ExerciseCard: View {
         .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
     }
 
-    var restTimerPanel: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text("Rest Timer:")
-                    .font(.title3)
-                    .foregroundStyle(.primary)
-                Text(restDisplayText)
-                    .font(.title3.bold())
-                    .foregroundStyle(timerAccent)
-                    .monospacedDigit()
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-                    .frame(minWidth: 58, alignment: .leading)
-                Spacer()
-
-                Button {
-                    showExpandedRestTimer = true
-                } label: {
-                    Image(systemName: "arrow.up.left.and.arrow.down.right")
-                        .font(.caption.bold())
-                        .foregroundStyle(.secondary)
-                        .padding(8)
-                        .background(Color.primary.opacity(0.06))
-                        .clipShape(Circle())
-                }
-                .buttonStyle(.plain)
-            }
-
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule()
-                        .fill(timerAccent.opacity(0.14))
-                    Capsule()
-                        .fill(timerAccent)
-                        .frame(width: geo.size.width * max(0, min(restProgress, 1)))
-                }
-            }
-            .frame(height: 8)
-
-            HStack(spacing: 10) {
-                Button {
-                    toggleRestTimer()
-                } label: {
-                    Label(isRestTimerActive ? "Pause" : (remainingRestSeconds != exercise.restSeconds ? "Resume" : "Start Rest"), systemImage: isRestTimerActive ? "pause.fill" : "play.fill")
-                        .font(.subheadline.bold())
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .background(timerAccent)
-                        .foregroundStyle(.white)
-                        .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
-                }
-                .buttonStyle(.plain)
-
-                Button {
-                    resetRestTimer()
-                } label: {
-                    Label("Reset", systemImage: "arrow.counterclockwise")
-                        .font(.subheadline.bold())
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .background(Color.primary.opacity(0.06))
-                        .foregroundStyle(.primary)
-                        .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 14)
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("Rest timer: \(restStatusLabel), \(restDisplayText)")
-    }
-
-    func toggleRestTimer() {
-        if isRestTimerActive {
-            pauseRestTimer()
-            return
-        }
-
-        if didCompleteRestTimer {
-            didCompleteRestTimer = false
-            remainingRestSeconds = exercise.restSeconds
-        }
-
-        if remainingRestSeconds <= 0 || remainingRestSeconds > exercise.restSeconds {
-            remainingRestSeconds = exercise.restSeconds
-        }
-        restEndDate = Date().addingTimeInterval(Double(remainingRestSeconds))
-        isRestTimerActive = true
-        startRestTimer()
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-    }
-
-    func startRestTimer() {
-        stopRestTimer()
-        restTimerTask = Task { @MainActor in
-            while isRestTimerActive && !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 500_000_000)
-                guard !Task.isCancelled else { return }
-                tickRestTimer()
-            }
-        }
-    }
-
-    func stopRestTimer() {
-        restTimerTask?.cancel()
-        restTimerTask = nil
-    }
-
-    func pauseRestTimer() {
-        if let endDate = restEndDate {
-            remainingRestSeconds = max(0, Int(ceil(endDate.timeIntervalSinceNow)))
-        }
-        restEndDate = nil
-        isRestTimerActive = false
-        stopRestTimer()
-    }
-
-    func resetRestTimer() {
-        pauseRestTimer()
-        didCompleteRestTimer = false
-        remainingRestSeconds = exercise.restSeconds
-    }
-
-    func tickRestTimer() {
-        guard isRestTimerActive, let endDate = restEndDate else {
-            stopRestTimer()
-            return
-        }
-
-        // Derive the countdown from the wall clock so it stays correct across
-        // phone lock / app suspension instead of decrementing per tick.
-        let remaining = Int(ceil(endDate.timeIntervalSinceNow))
-        if remaining > 0 {
-            if remaining != remainingRestSeconds {
-                remainingRestSeconds = remaining
-            }
-            return
-        }
-
-        pauseRestTimer()
-        remainingRestSeconds = 0
-        didCompleteRestTimer = true
-        UINotificationFeedbackGenerator().notificationOccurred(.success)
-    }
-
-    func formatCountdown(_ seconds: Int) -> String {
-        let clamped = max(seconds, 0)
-        let min = clamped / 60
-        let sec = clamped % 60
-        return String(format: "%02d:%02d", min, sec)
-    }
-
-    func formatRest(_ seconds: Int) -> String {
-        if seconds >= 60 {
-            let min = seconds / 60
-            let sec = seconds % 60
-            return sec > 0 ? "\(min)m \(sec)s" : "\(min)m"
-        }
-        return "\(seconds)s"
-    }
 
     func formatWeight(_ weight: Double) -> String {
         if weight.rounded() == weight {
@@ -862,6 +617,224 @@ struct ExerciseWeightSnapshotTile: View {
         .frame(maxWidth: .infinity)
         .padding(.horizontal, 12)
         .padding(.vertical, 14)
+    }
+}
+
+struct ExerciseRestTimerView: View {
+    let exercise: WorkoutExercise
+
+    @State private var isRestTimerActive = false
+    @State private var remainingRestSeconds = 0
+    @State private var restTimerTask: Task<Void, Never>?
+    @State private var showExpandedRestTimer = false
+    @State private var didCompleteRestTimer = false
+    @State private var restEndDate: Date?
+
+    var restDisplayText: String {
+        if didCompleteRestTimer { return "00:00" }
+        if isRestTimerActive { return formatCountdown(remainingRestSeconds) }
+        if remainingRestSeconds != exercise.restSeconds { return formatCountdown(remainingRestSeconds) }
+        return formatRest(exercise.restSeconds)
+    }
+
+    var restStatusLabel: String {
+        if didCompleteRestTimer { return "Complete" }
+        if isRestTimerActive { return "Running" }
+        if remainingRestSeconds != exercise.restSeconds { return "Paused" }
+        return "Rest"
+    }
+
+    var restProgress: Double {
+        guard exercise.restSeconds > 0 else { return 0 }
+        if didCompleteRestTimer { return 1 }
+        let clampedRemaining = min(max(remainingRestSeconds, 0), exercise.restSeconds)
+        return 1 - (Double(clampedRemaining) / Double(exercise.restSeconds))
+    }
+
+    var timerAccent: Color {
+        if didCompleteRestTimer { return TFColor.success }
+        if isRestTimerActive { return remainingRestSeconds <= 15 ? TFColor.danger : TFColor.accent }
+        if remainingRestSeconds != exercise.restSeconds { return TFColor.warning }
+        return TFColor.accent
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text("Rest Timer:")
+                    .font(.title3)
+                    .foregroundStyle(.primary)
+                Text(restDisplayText)
+                    .font(.title3.bold())
+                    .foregroundStyle(timerAccent)
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                    .frame(minWidth: 58, alignment: .leading)
+                Spacer()
+
+                Button {
+                    showExpandedRestTimer = true
+                } label: {
+                    Image(systemName: "arrow.up.left.and.arrow.down.right")
+                        .font(.caption.bold())
+                        .foregroundStyle(.secondary)
+                        .padding(8)
+                        .background(Color.primary.opacity(0.06))
+                        .clipShape(Circle())
+                }
+                .buttonStyle(.plain)
+            }
+
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(timerAccent.opacity(0.14))
+                    Capsule()
+                        .fill(timerAccent)
+                        .frame(width: geo.size.width * max(0, min(restProgress, 1)))
+                }
+            }
+            .frame(height: 8)
+
+            HStack(spacing: 10) {
+                Button {
+                    toggleRestTimer()
+                } label: {
+                    Label(isRestTimerActive ? "Pause" : (remainingRestSeconds != exercise.restSeconds ? "Resume" : "Start Rest"), systemImage: isRestTimerActive ? "pause.fill" : "play.fill")
+                        .font(.subheadline.bold())
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(timerAccent)
+                        .foregroundStyle(.white)
+                        .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
+                }
+                .buttonStyle(.plain)
+
+                Button {
+                    resetRestTimer()
+                } label: {
+                    Label("Reset", systemImage: "arrow.counterclockwise")
+                        .font(.subheadline.bold())
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(Color.primary.opacity(0.06))
+                        .foregroundStyle(.primary)
+                        .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 14)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Rest timer: \(restStatusLabel), \(restDisplayText)")
+        .onAppear {
+            if remainingRestSeconds == 0 && !didCompleteRestTimer {
+                remainingRestSeconds = exercise.restSeconds
+            }
+            if isRestTimerActive && restTimerTask == nil {
+                startRestTimer()
+            }
+        }
+        .fullScreenCover(isPresented: $showExpandedRestTimer) {
+            RestTimerFullscreen(
+                exerciseName: exercise.exerciseName,
+                exerciseNumber: exercise.order + 1,
+                prescriptionLabel: "\(exercise.sets) sets x \(exercise.reps) reps",
+                statusLabel: restStatusLabel,
+                timeText: restDisplayText,
+                accent: timerAccent,
+                isTimerActive: isRestTimerActive,
+                progress: restProgress,
+                onToggle: { toggleRestTimer() },
+                onReset: { resetRestTimer() },
+                onClose: { showExpandedRestTimer = false }
+            )
+        }
+    }
+
+    func toggleRestTimer() {
+        if isRestTimerActive {
+            pauseRestTimer()
+            return
+        }
+        if didCompleteRestTimer {
+            didCompleteRestTimer = false
+            remainingRestSeconds = exercise.restSeconds
+        }
+        if remainingRestSeconds <= 0 || remainingRestSeconds > exercise.restSeconds {
+            remainingRestSeconds = exercise.restSeconds
+        }
+        restEndDate = Date().addingTimeInterval(Double(remainingRestSeconds))
+        isRestTimerActive = true
+        startRestTimer()
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    }
+
+    func startRestTimer() {
+        stopRestTimer()
+        restTimerTask = Task { @MainActor in
+            while isRestTimerActive && !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 500_000_000)
+                guard !Task.isCancelled else { return }
+                tickRestTimer()
+            }
+        }
+    }
+
+    func stopRestTimer() {
+        restTimerTask?.cancel()
+        restTimerTask = nil
+    }
+
+    func pauseRestTimer() {
+        if let endDate = restEndDate {
+            remainingRestSeconds = max(0, Int(ceil(endDate.timeIntervalSinceNow)))
+        }
+        restEndDate = nil
+        isRestTimerActive = false
+        stopRestTimer()
+    }
+
+    func resetRestTimer() {
+        pauseRestTimer()
+        didCompleteRestTimer = false
+        remainingRestSeconds = exercise.restSeconds
+    }
+
+    func tickRestTimer() {
+        guard isRestTimerActive, let endDate = restEndDate else {
+            stopRestTimer()
+            return
+        }
+        let remaining = Int(ceil(endDate.timeIntervalSinceNow))
+        if remaining > 0 {
+            if remaining != remainingRestSeconds {
+                remainingRestSeconds = remaining
+            }
+            return
+        }
+        pauseRestTimer()
+        remainingRestSeconds = 0
+        didCompleteRestTimer = true
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+    }
+
+    func formatCountdown(_ seconds: Int) -> String {
+        let clamped = max(seconds, 0)
+        let min = clamped / 60
+        let sec = clamped % 60
+        return String(format: "%02d:%02d", min, sec)
+    }
+
+    func formatRest(_ seconds: Int) -> String {
+        if seconds >= 60 {
+            let min = seconds / 60
+            let sec = seconds % 60
+            return sec > 0 ? "\(min)m \(sec)s" : "\(min)m"
+        }
+        return "\(seconds)s"
     }
 }
 
@@ -1301,7 +1274,7 @@ struct ProgressionSuggestion {
             return ProgressionSuggestion(
                 icon: "arrow.down.circle.fill",
                 text: "Stay at \(formatWeight(lastWeight)) lb, focus on form and full ROM",
-                color: .yellow
+                color: TFColor.warning
             )
         }
 

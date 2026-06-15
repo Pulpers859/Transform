@@ -109,6 +109,23 @@ extension View {
     }
 }
 
+// MARK: - Image Downsampling
+
+extension UIImage {
+    static func downsampledImage(from data: Data, maxDimension: CGFloat) -> UIImage? {
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: maxDimension * UIScreen.main.scale
+        ]
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+              let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else {
+            return nil
+        }
+        return UIImage(cgImage: cgImage)
+    }
+}
+
 // MARK: - Empty State Template
 
 struct TFEmptyState: View {

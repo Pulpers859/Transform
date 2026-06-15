@@ -89,29 +89,42 @@ struct ExerciseProgressionView: View {
         let topWeight = ExercisePerformanceLog.topSetWeight(from: latestLog.decodedSetLogs) ?? latestLog.weightLbs
         let topReps = ExercisePerformanceLog.topSetReps(from: latestLog.decodedSetLogs) ?? latestLog.repsCompleted
 
+        var bestWeight = 0.0
+        var bestLogDate: Date?
+        var bestReps: Int?
+        var bestNotes = ""
+        for log in logs {
+            let w = ExercisePerformanceLog.topSetWeight(from: log.decodedSetLogs) ?? log.weightLbs
+            if w > bestWeight + 0.001 || (abs(w - bestWeight) <= 0.001 && log.loggedAt > (bestLogDate ?? .distantPast)) {
+                bestWeight = w
+                bestLogDate = log.loggedAt
+                bestReps = ExercisePerformanceLog.topSetReps(from: log.decodedSetLogs) ?? log.repsCompleted
+                bestNotes = log.notes
+            }
+        }
+
         if let entry = allWeightEntries.first(where: { $0.canonicalExerciseKey == canonicalKey }) {
             entry.loggedAt = latestLog.loggedAt
             entry.weightLbs = topWeight
             entry.repsCompleted = topReps
             entry.notes = latestLog.notes
-
-            var bestWeight = 0.0
-            var bestLogDate: Date?
-            var bestReps: Int?
-            var bestNotes = ""
-            for log in logs {
-                let w = ExercisePerformanceLog.topSetWeight(from: log.decodedSetLogs) ?? log.weightLbs
-                if w > bestWeight + 0.001 || (abs(w - bestWeight) <= 0.001 && log.loggedAt > (bestLogDate ?? .distantPast)) {
-                    bestWeight = w
-                    bestLogDate = log.loggedAt
-                    bestReps = ExercisePerformanceLog.topSetReps(from: log.decodedSetLogs) ?? log.repsCompleted
-                    bestNotes = log.notes
-                }
-            }
             entry.bestWeightLbs = bestWeight
             entry.bestLoggedAt = bestLogDate
             entry.bestRepsCompleted = bestReps
             entry.bestNotes = bestNotes
+        } else {
+            let entry = ExerciseWeightEntry(
+                loggedAt: latestLog.loggedAt,
+                exerciseName: latestLog.exerciseName,
+                weightLbs: topWeight,
+                repsCompleted: topReps,
+                notes: latestLog.notes
+            )
+            entry.bestWeightLbs = bestWeight
+            entry.bestLoggedAt = bestLogDate
+            entry.bestRepsCompleted = bestReps
+            entry.bestNotes = bestNotes
+            modelContext.insert(entry)
         }
 
         PersistenceReporter.save(modelContext, operation: "recalculate weight summary after edit")

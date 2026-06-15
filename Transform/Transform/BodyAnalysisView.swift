@@ -1004,10 +1004,11 @@ struct BodyAnalysisView: View {
 
 struct PastSessionRow: View {
     let session: BodyAnalysisSession
+    @State private var thumbnail: UIImage?
 
     var body: some View {
         HStack(spacing: 12) {
-            if let image = UIImage(data: session.photoData) {
+            if let image = thumbnail {
                 Image(uiImage: image)
                     .resizable()
                     .scaledToFill()
@@ -1042,6 +1043,11 @@ struct PastSessionRow: View {
         .padding(12)
         .background(TFColor.surface)
         .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
+        .task {
+            if thumbnail == nil {
+                thumbnail = UIImage.downsampledImage(from: session.photoData, maxDimension: 56)
+            }
+        }
     }
 }
 

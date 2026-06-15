@@ -17,6 +17,7 @@ struct WorkoutView: View {
     @State private var showGeneratorLab = false
     @State private var generationTask: Task<Void, Never>?
     @State private var feedbackDay: WorkoutDay?
+    @State private var analysisThumbnail: UIImage?
 
     var currentProgram: WorkoutProgram? { programs.first }
     var latestAnalysis: BodyAnalysisSession? { analysisSessions.first }
@@ -43,6 +44,11 @@ struct WorkoutView: View {
             }
             .workoutTabBarClearance()
             .navigationTitle("Workout")
+            .task(id: latestAnalysis?.date) {
+                if let data = latestAnalysis?.photoData {
+                    analysisThumbnail = UIImage.downsampledImage(from: data, maxDimension: 60)
+                }
+            }
             .alert("Generation Error", isPresented: $showError) {
                 Button("OK", role: .cancel) {}
             } message: {
@@ -113,7 +119,7 @@ struct WorkoutView: View {
             if let analysis = latestAnalysis, let result = analysis.decodedResult {
                 VStack(spacing: TFSpacing.innerGap) {
                     HStack(spacing: TFSpacing.innerGap) {
-                        if let image = UIImage(data: analysis.photoData) {
+                        if let image = analysisThumbnail {
                             Image(uiImage: image)
                                 .resizable()
                                 .scaledToFill()

@@ -319,10 +319,7 @@ class ExerciseWeightEntry {
             .split(whereSeparator: { $0.isWhitespace || $0.isNewline })
             .map(String.init)
             .map { token in
-                if token.hasSuffix("s"), token.count > 3 {
-                    return String(token.dropLast())
-                }
-                return token
+                return stemForCanonicalKey(token)
             }
             .filter { token in
                 !token.isEmpty && !stopWords.contains(token)
@@ -333,6 +330,25 @@ class ExerciseWeightEntry {
         }
 
         return tokens.sorted().joined(separator: " ")
+    }
+
+    private static func stemForCanonicalKey(_ token: String) -> String {
+        guard token.count > 3 else { return token }
+        if token.hasSuffix("sses") { return String(token.dropLast(2)) }
+        if token.hasSuffix("ches") || token.hasSuffix("shes") || token.hasSuffix("xes") || token.hasSuffix("zes") {
+            return String(token.dropLast(2))
+        }
+        if token.hasSuffix("ies") && token.count > 4 {
+            return String(token.dropLast(3)) + "y"
+        }
+        if token.hasSuffix("es") && token.count > 4 {
+            let beforeEs = token[token.index(token.endIndex, offsetBy: -3)]
+            if "aeiou".contains(beforeEs) { return String(token.dropLast(1)) }
+            return String(token.dropLast(2))
+        }
+        if token.hasSuffix("ss") { return token }
+        if token.hasSuffix("s") { return String(token.dropLast()) }
+        return token
     }
 }
 
@@ -378,7 +394,12 @@ class ExercisePerformanceLog {
 
     var decodedSetLogs: [SetLogEntry] {
         guard !setLogsJSON.isEmpty else { return [] }
-        return (try? JSONDecoder().decode([SetLogEntry].self, from: Data(setLogsJSON.utf8))) ?? []
+        do {
+            return try JSONDecoder().decode([SetLogEntry].self, from: Data(setLogsJSON.utf8))
+        } catch {
+            print("[ExerciseLog] Failed to decode set logs for '\(exerciseName)': \(error.localizedDescription)")
+            return []
+        }
     }
 
     static func encodeSetLogs(_ logs: [SetLogEntry]) -> String {
@@ -488,6 +509,28 @@ enum ExerciseWeightStore {
             return match
         }
         return nil
+    }
+
+    @discardableResult
+    static func normalizePerformanceLogs(in modelContext: ModelContext) throws -> Bool {
+        let descriptor = FetchDescriptor<ExercisePerformanceLog>()
+        let fetched = try modelContext.fetch(descriptor)
+        guard !fetched.isEmpty else { return false }
+
+        var changed = false
+        for log in fetched {
+            let correctKey = ExerciseWeightEntry.canonicalLookupKey(log.exerciseName)
+            if log.canonicalExerciseKey != correctKey {
+                log.canonicalExerciseKey = correctKey
+                changed = true
+            }
+            let correctNorm = ExerciseWeightEntry.normalize(log.exerciseName)
+            if log.normalizedExerciseName != correctNorm {
+                log.normalizedExerciseName = correctNorm
+                changed = true
+            }
+        }
+        return changed
     }
 
     nonisolated private struct BestRecord {

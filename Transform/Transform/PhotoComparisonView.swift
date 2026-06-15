@@ -60,7 +60,7 @@ struct PhotoComparisonView: View {
                 .font(.caption.bold())
                 .foregroundStyle(.secondary)
 
-            if let image = UIImage(data: sessions[safeIndex].photoData) {
+            if let image = UIImage.downsampledImage(from: sessions[safeIndex].photoData, maxDimension: 400) {
                 Image(uiImage: image)
                     .resizable()
                     .scaledToFill()

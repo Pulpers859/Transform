@@ -999,9 +999,10 @@ final class DataBackupManager {
             let counts = try? entryCounts(using: modelContext)
             if let counts, let lastKnown = loadLastKnownCounts() {
                 let sleepDrop = lastKnown.sleep - counts.sleep
+                let exerciseLogDrop = lastKnown.exerciseLogs - counts.exerciseLogs
                 let totalDrop = lastKnown.total - counts.total
-                if sleepDrop > 3 || totalDrop > 10 {
-                    print("[Backup] Skipping auto-backup: significant data drop detected (sleep: \(lastKnown.sleep)->\(counts.sleep), total: \(lastKnown.total)->\(counts.total)). Preserving existing backups.")
+                if sleepDrop > 3 || exerciseLogDrop > 3 || totalDrop > 10 {
+                    print("[Backup] Skipping auto-backup: significant data drop detected (sleep: \(lastKnown.sleep)->\(counts.sleep), exerciseLogs: \(lastKnown.exerciseLogs)->\(counts.exerciseLogs), total: \(lastKnown.total)->\(counts.total)). Preserving existing backups.")
                     return
                 }
             }
@@ -1066,14 +1067,24 @@ final class DataBackupManager {
         let sleep: Int
         let weight: Int
         let nutrition: Int
+        let exerciseLogs: Int
         let total: Int
+
+        init(sleep: Int, weight: Int, nutrition: Int, exerciseLogs: Int = 0, total: Int) {
+            self.sleep = sleep
+            self.weight = weight
+            self.nutrition = nutrition
+            self.exerciseLogs = exerciseLogs
+            self.total = total
+        }
     }
 
     private func entryCounts(using modelContext: ModelContext) throws -> EntryCounts {
         let sleep = try modelContext.fetchCount(FetchDescriptor<SleepEntry>())
         let weight = try modelContext.fetchCount(FetchDescriptor<WeightEntry>())
         let nutrition = try modelContext.fetchCount(FetchDescriptor<NutritionEntry>())
-        return EntryCounts(sleep: sleep, weight: weight, nutrition: nutrition, total: sleep + weight + nutrition)
+        let exerciseLogs = try modelContext.fetchCount(FetchDescriptor<ExercisePerformanceLog>())
+        return EntryCounts(sleep: sleep, weight: weight, nutrition: nutrition, exerciseLogs: exerciseLogs, total: sleep + weight + nutrition + exerciseLogs)
     }
 
     private static let countsKey = "transform.lastKnownEntryCounts"
