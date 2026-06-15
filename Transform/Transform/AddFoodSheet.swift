@@ -219,8 +219,8 @@ struct AddFoodSheet: View {
                                                     .font(.caption2.bold())
                                                     .padding(.horizontal, 6)
                                                     .padding(.vertical, 2)
-                                                    .background(Color.orange.opacity(0.15))
-                                                    .foregroundStyle(.orange)
+                                                    .background(TFColor.accent.opacity(0.15))
+                                                    .foregroundStyle(TFColor.accent)
                                                     .clipShape(Capsule())
                                                 if item.source == .favorite {
                                                     Image(systemName: "star.fill")
@@ -234,7 +234,7 @@ struct AddFoodSheet: View {
                                         }
                                         Spacer()
                                         Image(systemName: "arrow.down.circle")
-                                            .foregroundStyle(.orange)
+                                            .foregroundStyle(TFColor.accent)
                                     }
                                 }
                                 .buttonStyle(.plain)
@@ -306,10 +306,10 @@ struct AddFoodSheet: View {
                     } label: {
                         HStack(spacing: 6) {
                             Image(systemName: showAdvancedMacros ? "chevron.up.circle.fill" : "chevron.down.circle")
-                                .foregroundStyle(.orange)
+                                .foregroundStyle(TFColor.accent)
                             Text(showAdvancedMacros ? "Hide Advanced (Fiber, Sugars)" : "Show Advanced (Fiber, Sugars)")
                                 .font(.caption.bold())
-                                .foregroundStyle(.orange)
+                                .foregroundStyle(TFColor.accent)
                         }
                     }
                 }
@@ -324,7 +324,7 @@ struct AddFoodSheet: View {
                             } label: {
                                 Label("Estimate with AI", systemImage: "sparkles")
                                     .font(.subheadline.bold())
-                                    .foregroundStyle(.orange)
+                                    .foregroundStyle(TFColor.accent)
                             }
                         } else {
                             Text("Describe what you ate")
@@ -346,7 +346,7 @@ struct AddFoodSheet: View {
                                 }
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 10)
-                                .background(aiDescription.isEmpty || isEstimating ? Color.orange.opacity(0.4) : Color.orange)
+                                .background(aiDescription.isEmpty || isEstimating ? TFColor.accent.opacity(0.4) : TFColor.accent)
                                 .foregroundStyle(.white)
                                 .clipShape(RoundedRectangle(cornerRadius: 8))
                             }
@@ -355,7 +355,7 @@ struct AddFoodSheet: View {
                             if !canUseAI {
                                 Text(Config.anthropicKeyInlineHelpText)
                                     .font(.caption2)
-                                    .foregroundStyle(.red)
+                                    .foregroundStyle(TFColor.danger)
                             }
                         }
                     }
@@ -367,7 +367,7 @@ struct AddFoodSheet: View {
 
                 Section {
                     Toggle("Save as favorite food", isOn: $saveAsFavorite)
-                        .tint(.orange)
+                        .tint(TFColor.accent)
                 }
             }
             .navigationTitle("Add Food")
@@ -465,7 +465,7 @@ struct AddFoodSheet: View {
             } label: {
                 Image(systemName: "plus.circle.fill")
                     .font(.title3)
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(TFColor.accent)
             }
             .buttonStyle(.plain)
             .disabled(isLoggingQuickEntry)
@@ -806,7 +806,7 @@ struct MacroInputRow: View {
                 .frame(width: 100)
                 .padding(.vertical, 6)
                 .padding(.horizontal, 8)
-                .background(Color(.tertiarySystemBackground))
+                .background(TFColor.surfaceElevated)
                 .clipShape(RoundedRectangle(cornerRadius: 8))
                 .focused(focusedField, equals: field)
                 .submitLabel(nextField == nil ? .done : .next)

@@ -26,13 +26,13 @@ struct BodyAnalysisResultView: View {
                             .resizable()
                             .scaledToFit()
                             .frame(maxHeight: 300)
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                            .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
 
                         Text(photo.pose)
                             .font(.caption.bold())
                             .padding(.horizontal, 10)
                             .padding(.vertical, 5)
-                            .background(.orange)
+                            .background(TFColor.accent)
                             .foregroundStyle(.white)
                             .clipShape(Capsule())
                             .padding(10)
@@ -53,7 +53,7 @@ struct BodyAnalysisResultView: View {
                                         .font(.caption2.bold())
                                         .padding(.horizontal, 8)
                                         .padding(.vertical, 4)
-                                        .background(.orange)
+                                        .background(TFColor.accent)
                                         .foregroundStyle(.white)
                                         .clipShape(Capsule())
                                         .padding(6)
@@ -75,14 +75,14 @@ struct BodyAnalysisResultView: View {
                     VStack(spacing: 6) {
                         Label("Cannot save — critical validation issues detected", systemImage: "exclamationmark.triangle.fill")
                             .font(.caption.bold())
-                            .foregroundStyle(.red)
+                            .foregroundStyle(TFColor.danger)
                         Text("Long-press the result to open the debug panel and review issues. Re-run the analysis to try again.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
                     .padding()
-                    .background(Color.red.opacity(0.08))
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .background(TFColor.danger.opacity(0.08))
+                    .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
                     .padding(.top, 8)
                 } else {
                     Button(action: {
@@ -91,9 +91,9 @@ struct BodyAnalysisResultView: View {
                         Label("Save Analysis", systemImage: "square.and.arrow.down")
                             .frame(maxWidth: .infinity)
                             .padding()
-                            .background(.orange)
+                            .background(TFColor.accent)
                             .foregroundStyle(.white)
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                            .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
                             .bold()
                     }
                     .padding(.top, 8)
@@ -129,7 +129,7 @@ struct BodyAnalysisResultView: View {
             HStack {
                 Label("Analysis Debug", systemImage: "ant.fill")
                     .font(.subheadline.bold())
-                    .foregroundStyle(.purple)
+                    .foregroundStyle(TFColor.measurement)
                 Spacer()
                 Button {
                     withAnimation { showDebugPanel = false }
@@ -153,8 +153,8 @@ struct BodyAnalysisResultView: View {
             }
         }
         .padding()
-        .background(Color.purple.opacity(0.06))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .background(TFColor.measurement.opacity(0.06))
+        .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
     }
 
     func debugCopyButton(title: String, payload: String) -> some View {
@@ -169,8 +169,8 @@ struct BodyAnalysisResultView: View {
                 .font(.caption.bold())
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 10)
-                .background(Color.purple.opacity(0.12))
-                .foregroundStyle(.purple)
+                .background(TFColor.measurement.opacity(0.12))
+                .foregroundStyle(TFColor.measurement)
                 .clipShape(RoundedRectangle(cornerRadius: 8))
         }
     }
@@ -254,7 +254,7 @@ struct AnalysisResultContent: View {
                 SectionCard(title: "Estimated Body Fat", icon: "percent") {
                     Text(result.estimatedBodyFat)
                         .font(.title2.bold())
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(TFColor.accent)
                 }
             }
 
@@ -269,8 +269,8 @@ struct AnalysisResultContent: View {
                         .foregroundStyle(.white.opacity(0.9))
                 }
                 .padding()
-                .background(Color.orange)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .background(TFColor.accent)
+                .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
             }
 
             CollapsibleSectionCard(title: "Photo-Based Scope", icon: "info.circle", isExpanded: $showScopeSection) {
@@ -320,8 +320,8 @@ struct AnalysisResultContent: View {
                             .font(.caption.bold())
                             .padding(.horizontal, 10)
                             .padding(.vertical, 6)
-                            .background(Color.orange.opacity(0.15))
-                            .foregroundStyle(.orange)
+                            .background(TFColor.accent.opacity(0.15))
+                            .foregroundStyle(TFColor.accent)
                             .clipShape(Capsule())
                     }
                 }
@@ -339,8 +339,8 @@ struct AnalysisResultContent: View {
                             .font(.caption.bold())
                             .padding(.horizontal, 10)
                             .padding(.vertical, 6)
-                            .background(Color.red.opacity(0.12))
-                            .foregroundStyle(.red)
+                            .background(TFColor.danger.opacity(0.12))
+                            .foregroundStyle(TFColor.danger)
                             .clipShape(Capsule())
                     }
                 }
@@ -403,7 +403,7 @@ struct AnalysisResultContent: View {
                                     }
                                 }
                                 .font(.caption)
-                                .foregroundStyle(.orange)
+                                .foregroundStyle(TFColor.accent)
                                 .padding(.top, 2)
                             }
                         }
@@ -440,7 +440,7 @@ struct AnalysisResultContent: View {
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text(note.0)
                                         .font(.caption.bold())
-                                        .foregroundStyle(.orange)
+                                        .foregroundStyle(TFColor.accent)
                                     Text(note.1)
                                         .font(.body)
                                         .foregroundStyle(.primary)
@@ -470,9 +470,9 @@ struct RegionRow: View {
 
     var priorityColor: Color {
         switch region.priority {
-        case "High": return .red
-        case "Medium": return .orange
-        default: return .green
+        case "High": return TFColor.danger
+        case "Medium": return TFColor.accent
+        default: return TFColor.success
         }
     }
 
@@ -498,7 +498,7 @@ struct RegionRow: View {
             }
         }
         .padding(10)
-        .background(Color(.secondarySystemBackground))
+        .background(TFColor.surface)
         .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 }
@@ -512,12 +512,12 @@ struct SectionCard<Content: View>: View {
         VStack(alignment: .leading, spacing: 12) {
             Label(title, systemImage: icon)
                 .font(.headline)
-                .foregroundStyle(.orange)
+                .foregroundStyle(TFColor.accent)
             content()
         }
         .padding()
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .background(TFColor.surface)
+        .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
     }
 }
 
@@ -535,7 +535,7 @@ struct CollapsibleSectionCard<Content: View>: View {
                 HStack {
                     Label(title, systemImage: icon)
                         .font(.headline)
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(TFColor.accent)
                     Spacer()
                     Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
                         .font(.caption)
@@ -549,8 +549,8 @@ struct CollapsibleSectionCard<Content: View>: View {
             }
         }
         .padding()
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .background(TFColor.surface)
+        .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
     }
 }
 
@@ -561,7 +561,7 @@ struct BulletList: View {
         VStack(alignment: .leading, spacing: 8) {
             ForEach(items, id: \.self) { item in
                 HStack(alignment: .top, spacing: 8) {
-                    Text("\u{2022}").foregroundStyle(.orange)
+                    Text("\u{2022}").foregroundStyle(TFColor.accent)
                     Text(item).font(.subheadline)
                 }
             }
@@ -587,7 +587,7 @@ struct CompactContextCard: View {
                         HStack(alignment: .top, spacing: 8) {
                             Image(systemName: "circle.fill")
                                 .font(.system(size: 6))
-                                .foregroundStyle(.orange)
+                                .foregroundStyle(TFColor.accent)
                                 .padding(.top, 6)
                             Text(item)
                                 .font(.subheadline)
@@ -604,7 +604,7 @@ struct CompactContextCard: View {
                             VStack(alignment: .leading, spacing: 6) {
                                 Text(section.title)
                                     .font(.caption.bold())
-                                    .foregroundStyle(.orange)
+                                    .foregroundStyle(TFColor.accent)
                                 ForEach(section.items, id: \.self) { item in
                                     Text("• \(item)")
                                         .font(.caption)
@@ -617,7 +617,7 @@ struct CompactContextCard: View {
                 } label: {
                     Text(isExpanded ? "Hide details" : "Show details")
                         .font(.caption.bold())
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(TFColor.accent)
                 }
             }
         }
@@ -632,8 +632,8 @@ struct ValidationReportCard: View {
 
     private var headerColor: Color {
         switch report.highestSeverity {
-        case .critical, .error: return .red
-        case .warning: return .orange
+        case .critical, .error: return TFColor.danger
+        case .warning: return TFColor.accent
         default: return .secondary
         }
     }
@@ -689,7 +689,7 @@ struct ValidationReportCard: View {
         }
         .padding()
         .background(headerColor.opacity(0.08))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
     }
 
     private var headerText: String {
@@ -704,9 +704,9 @@ struct ValidationReportCard: View {
 
     private func severityColor(_ severity: AnalysisValidationSeverity) -> Color {
         switch severity {
-        case .critical: return .red
-        case .error: return .red.opacity(0.8)
-        case .warning: return .orange
+        case .critical: return TFColor.danger
+        case .error: return TFColor.danger.opacity(0.8)
+        case .warning: return TFColor.accent
         case .info: return .secondary
         }
     }

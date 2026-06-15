@@ -81,7 +81,7 @@ struct MeasurementsView: View {
                         showAddSheet = true
                     } label: {
                         Image(systemName: "plus.circle.fill")
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(TFColor.accent)
                             .font(.title3)
                     }
                 }
@@ -132,7 +132,7 @@ struct MeasurementsView: View {
             HStack {
                 Label("Trend Analysis", systemImage: "chart.line.uptrend.xyaxis")
                     .font(.subheadline.bold())
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(TFColor.accent)
                 Spacer()
                 confidenceBadge(trend.progressConfidence)
             }
@@ -180,7 +180,7 @@ struct MeasurementsView: View {
             if let ratio = trend.waistToWeightRatio {
                 Text(ratio)
                     .font(.caption)
-                    .foregroundStyle(.purple)
+                    .foregroundStyle(TFColor.measurement)
                     .padding(.top, 2)
             }
 
@@ -189,8 +189,8 @@ struct MeasurementsView: View {
                 .foregroundStyle(.secondary)
         }
         .padding()
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .background(TFColor.surface)
+        .clipShape(RoundedRectangle(cornerRadius: TFRadius.card))
     }
 
     func trendRow(label: String, value: String?, change: Double?, unit: String, invertDelta: Bool) -> some View {
@@ -207,9 +207,9 @@ struct MeasurementsView: View {
                 let sign = change > 0 ? "+" : ""
                 let color: Color = {
                     if invertDelta {
-                        return change < 0 ? .green : .red
+                        return change < 0 ? TFColor.success : TFColor.danger
                     }
-                    return change > 0 ? .green : .red
+                    return change > 0 ? TFColor.success : TFColor.danger
                 }()
                 Text("\(sign)\(String(format: "%.1f", change)) \(unit)")
                     .font(.caption.bold())
@@ -225,9 +225,9 @@ struct MeasurementsView: View {
     func confidenceBadge(_ confidence: ProgressConfidence) -> some View {
         let color: Color = {
             switch confidence {
-            case .high: return .green
-            case .moderate: return .orange
-            case .low: return .yellow
+            case .high: return TFColor.success
+            case .moderate: return TFColor.accent
+            case .low: return TFColor.warning
             case .insufficient: return .secondary
             }
         }()
@@ -243,10 +243,10 @@ struct MeasurementsView: View {
     func interpretationBadge(_ interpretation: MeasurementInterpretation) -> some View {
         let color: Color = {
             switch interpretation {
-            case .likelyFatLoss: return .green
-            case .likelyRecomposition: return .blue
-            case .likelyMassGain: return .orange
-            case .possibleNoise: return .yellow
+            case .likelyFatLoss: return TFColor.success
+            case .likelyRecomposition: return TFColor.info
+            case .likelyMassGain: return TFColor.accent
+            case .possibleNoise: return TFColor.warning
             case .insufficientData: return .secondary
             case .stableNoChange: return .secondary
             }
@@ -282,7 +282,7 @@ struct MeasurementsView: View {
                     delta: latestWeight.map { $0.weightLbs - Config.bodyWeightGoalLbs },
                     deltaUnit: "to go",
                     icon: "target",
-                    color: .blue,
+                    color: TFColor.info,
                     invertDelta: true
                 )
             }
@@ -310,7 +310,7 @@ struct MeasurementsView: View {
                             delta: prev.chestIn.map { chest - $0 },
                             deltaUnit: "in",
                             icon: "arrow.left.and.right",
-                            color: .green
+                            color: TFColor.success
                         )
                     }
                 }
@@ -324,7 +324,7 @@ struct MeasurementsView: View {
                             delta: prev.rightArmIn.map { arm - $0 },
                             deltaUnit: "in",
                             icon: "figure.strengthtraining.traditional",
-                            color: .red
+                            color: TFColor.danger
                         )
                     }
 
@@ -357,7 +357,7 @@ struct MeasurementsView: View {
                         }
                         .padding(.horizontal, 14)
                         .padding(.vertical, 8)
-                        .background(selectedChart == metric ? Color.orange : Color(.secondarySystemBackground))
+                        .background(selectedChart == metric ? TFColor.accent : TFColor.surface)
                         .foregroundStyle(selectedChart == metric ? .white : .primary)
                         .clipShape(Capsule())
                         .font(.subheadline.bold())
@@ -374,8 +374,8 @@ struct MeasurementsView: View {
                     .padding(.top, 4)
             }
             .padding()
-            .background(Color(.secondarySystemBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .background(TFColor.surface)
+            .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
         }
     }
 
@@ -403,7 +403,7 @@ struct MeasurementsView: View {
                 x: .value("Date", entry.date),
                 y: .value("Weight", entry.weightLbs)
             )
-            .foregroundStyle(Color.orange)
+            .foregroundStyle(TFColor.accent)
             .interpolationMethod(.catmullRom)
 
             AreaMark(
@@ -411,14 +411,14 @@ struct MeasurementsView: View {
                 yStart: .value("Baseline", minWeight),
                 yEnd: .value("Weight", entry.weightLbs)
             )
-            .foregroundStyle(Color.orange.opacity(0.1))
+            .foregroundStyle(TFColor.accent.opacity(0.1))
             .interpolationMethod(.catmullRom)
 
             PointMark(
                 x: .value("Date", entry.date),
                 y: .value("Weight", entry.weightLbs)
             )
-            .foregroundStyle(Color.orange)
+            .foregroundStyle(TFColor.accent)
             .symbolSize(30)
         }
         .chartXAxis {
@@ -443,14 +443,14 @@ struct MeasurementsView: View {
                 x: .value("Date", date),
                 y: .value(label, value)
             )
-            .foregroundStyle(Color.purple)
+            .foregroundStyle(TFColor.measurement)
             .interpolationMethod(.catmullRom)
 
             PointMark(
                 x: .value("Date", date),
                 y: .value(label, value)
             )
-            .foregroundStyle(Color.purple)
+            .foregroundStyle(TFColor.measurement)
             .symbolSize(30)
         }
         .chartXAxis {
@@ -558,7 +558,7 @@ struct MetricCard: View {
     var deltaColor: Color {
         guard let d = delta else { return .secondary }
         let isPositive = d > 0
-        return (isPositive == !invertDelta) ? .green : .red
+        return (isPositive == !invertDelta) ? TFColor.success : TFColor.danger
     }
 
     var deltaText: String {
@@ -594,8 +594,8 @@ struct MetricCard: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .background(TFColor.surface)
+        .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
     }
 }
 
@@ -625,17 +625,17 @@ struct HistoryRowView: View {
                             if let w = weight {
                                 Label(String(format: "%.1f lbs", w.weightLbs), systemImage: "scalemass")
                                     .font(.caption)
-                                    .foregroundStyle(.orange)
+                                    .foregroundStyle(TFColor.accent)
                             }
                             if let m = measurement {
                                 HStack(spacing: 4) {
                                     Label("Measurements", systemImage: "ruler")
                                         .font(.caption)
-                                        .foregroundStyle(.purple)
+                                        .foregroundStyle(TFColor.measurement)
                                     if !m.isStandardMeasurement {
                                         Image(systemName: "exclamationmark.triangle.fill")
                                             .font(.caption2)
-                                            .foregroundStyle(.yellow)
+                                            .foregroundStyle(TFColor.warning)
                                     }
                                 }
                             }
@@ -655,7 +655,7 @@ struct HistoryRowView: View {
                     HStack {
                         Label(String(format: "%.1f lbs", w.weightLbs), systemImage: "scalemass.fill")
                             .font(.subheadline.bold())
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(TFColor.accent)
                         if !w.notes.isEmpty {
                             Text(w.notes)
                                 .font(.caption2)
@@ -669,7 +669,7 @@ struct HistoryRowView: View {
                             } label: {
                                 Label("Edit", systemImage: "pencil.circle.fill")
                                     .font(.caption.bold())
-                                    .foregroundStyle(.orange)
+                                    .foregroundStyle(TFColor.accent)
                             }
                             .buttonStyle(.plain)
                         }
@@ -688,8 +688,8 @@ struct HistoryRowView: View {
             }
         }
         .padding(12)
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .background(TFColor.surface)
+        .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
     }
 
     func timingDisplayName(_ timing: String) -> String {
@@ -820,7 +820,7 @@ struct MeasurementDetailGrid: View {
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 6)
-                .background(Color(.tertiarySystemBackground))
+                .background(TFColor.surfaceElevated)
                 .clipShape(RoundedRectangle(cornerRadius: 8))
             }
         }

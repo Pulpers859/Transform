@@ -155,7 +155,7 @@ struct BodyAnalysisView: View {
                         if !canUseAI {
                             Text(Config.anthropicKeyInlineHelpText)
                                 .font(.caption2)
-                                .foregroundStyle(.red)
+                                .foregroundStyle(TFColor.danger)
                         }
                     }
                     if !sessions.isEmpty {
@@ -248,7 +248,7 @@ struct BodyAnalysisView: View {
                         currentPose = "Front"
                     }
                     .font(.caption)
-                    .foregroundStyle(.red)
+                    .foregroundStyle(TFColor.danger)
                 }
             }
 
@@ -270,19 +270,19 @@ struct BodyAnalysisView: View {
             }
         }
         .padding()
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .background(TFColor.surface)
+        .clipShape(RoundedRectangle(cornerRadius: TFRadius.card))
     }
 
     var emptyPhotoPlaceholder: some View {
-        RoundedRectangle(cornerRadius: 12)
-            .fill(Color(.tertiarySystemBackground))
+        RoundedRectangle(cornerRadius: TFRadius.cardCompact)
+            .fill(TFColor.surfaceElevated)
             .frame(height: 200)
             .overlay {
                 VStack(spacing: 12) {
                     Image(systemName: "camera.viewfinder")
                         .font(.system(size: 44))
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(TFColor.accent)
                     Text("Add photos for analysis")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
@@ -308,7 +308,7 @@ struct BodyAnalysisView: View {
                         .font(.caption2.bold())
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
-                        .background(.orange)
+                        .background(TFColor.accent)
                         .foregroundStyle(.white)
                         .clipShape(Capsule())
                         .padding(6)
@@ -343,7 +343,7 @@ struct BodyAnalysisView: View {
                             }
                             .padding(.horizontal, 12)
                             .padding(.vertical, 6)
-                            .background(currentPose == pose ? Color.orange : Color(.tertiarySystemBackground))
+                            .background(currentPose == pose ? TFColor.accent : TFColor.surfaceElevated)
                             .foregroundStyle(currentPose == pose ? .white : .primary)
                             .clipShape(Capsule())
                             .font(.caption.bold())
@@ -368,7 +368,7 @@ struct BodyAnalysisView: View {
             Label(label, systemImage: icon)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 12)
-                .background(Color(.tertiarySystemBackground))
+                .background(TFColor.surfaceElevated)
                 .clipShape(RoundedRectangle(cornerRadius: 10))
         }
         .foregroundStyle(.primary)
@@ -389,7 +389,7 @@ struct BodyAnalysisView: View {
                     clearCheckIn()
                 }
                 .font(.caption)
-                .foregroundStyle(.orange)
+                .foregroundStyle(TFColor.accent)
                 .disabled(!hasCheckInContext)
             }
 
@@ -413,14 +413,14 @@ struct BodyAnalysisView: View {
                     VStack(alignment: .leading, spacing: 4) {
                         Label("Sleep episodes added automatically", systemImage: "bed.double.fill")
                             .font(.caption.bold())
-                            .foregroundStyle(.blue)
+                            .foregroundStyle(TFColor.sleep)
                         Text(derivedSleepTrendSummary)
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(10)
-                    .background(Color.blue.opacity(0.08))
+                    .background(TFColor.sleep.opacity(0.08))
                     .clipShape(RoundedRectangle(cornerRadius: 10))
                 }
                 checkInField(
@@ -457,8 +457,8 @@ struct BodyAnalysisView: View {
                 .foregroundStyle(.secondary)
         }
         .padding()
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .background(TFColor.surface)
+        .clipShape(RoundedRectangle(cornerRadius: TFRadius.card))
     }
 
     @ViewBuilder
@@ -470,8 +470,8 @@ struct BodyAnalysisView: View {
                 .lineLimit(2...4)
                 .textInputAutocapitalization(.sentences)
                 .padding(12)
-                .background(Color(.tertiarySystemBackground))
-                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .background(TFColor.surfaceElevated)
+                .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
         }
     }
 
@@ -500,7 +500,7 @@ struct BodyAnalysisView: View {
             }
         }
         .padding(10)
-        .background(Color(.tertiarySystemBackground))
+        .background(TFColor.surfaceElevated)
         .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 
@@ -508,7 +508,7 @@ struct BodyAnalysisView: View {
         SectionCardLike {
             Label("Auto Progress Context", systemImage: "arrow.trianglehead.2.clockwise")
                 .font(.headline)
-                .foregroundStyle(.orange)
+                .foregroundStyle(TFColor.accent)
 
             CompactContextCard(
                 intro: "Transform will use recent app data from since your last analysis instead of treating the new photos like an isolated snapshot.",
@@ -535,7 +535,7 @@ struct BodyAnalysisView: View {
                 HStack {
                     Image(systemName: "ruler")
                         .font(.caption)
-                        .foregroundStyle(.purple)
+                        .foregroundStyle(TFColor.measurement)
                     Text(measurementEntries.isEmpty ? "Add Circumference Measurements" : "View All Measurements")
                         .font(.caption.bold())
                     Spacer()
@@ -544,7 +544,7 @@ struct BodyAnalysisView: View {
                         .foregroundStyle(.secondary)
                 }
                 .padding(12)
-                .background(Color(.secondarySystemBackground))
+                .background(TFColor.surface)
                 .clipShape(RoundedRectangle(cornerRadius: 10))
             }
             .buttonStyle(.plain)
@@ -556,7 +556,7 @@ struct BodyAnalysisView: View {
             HStack {
                 Label("Measurement Trend", systemImage: "ruler")
                     .font(.headline)
-                    .foregroundStyle(.purple)
+                    .foregroundStyle(TFColor.measurement)
                 Spacer()
                 measurementConfidenceBadge(trend.progressConfidence)
             }
@@ -573,7 +573,7 @@ struct BodyAnalysisView: View {
                             let sign = change > 0 ? "+" : ""
                             Text("\(sign)\(String(format: "%.1f", change))")
                                 .font(.caption.bold())
-                                .foregroundStyle(change < 0 ? .green : .red)
+                                .foregroundStyle(change < 0 ? TFColor.success : TFColor.danger)
                         }
                     }
                 }
@@ -589,7 +589,7 @@ struct BodyAnalysisView: View {
                             let sign = change > 0 ? "+" : ""
                             Text("\(sign)\(String(format: "%.1f", change))")
                                 .font(.caption.bold())
-                                .foregroundStyle(change < 0 ? .green : .red)
+                                .foregroundStyle(change < 0 ? TFColor.success : TFColor.danger)
                         }
                     }
                 }
@@ -606,7 +606,7 @@ struct BodyAnalysisView: View {
             if trend.sessionsCount >= 2, let ratio = trend.waistToWeightRatio {
                 Text(ratio)
                     .font(.caption)
-                    .foregroundStyle(.purple)
+                    .foregroundStyle(TFColor.measurement)
             }
 
             Text("This measurement data will be included in the analysis prompt to sharpen body composition assessment.")
@@ -618,9 +618,9 @@ struct BodyAnalysisView: View {
     func measurementConfidenceBadge(_ confidence: ProgressConfidence) -> some View {
         let color: Color = {
             switch confidence {
-            case .high: return .green
-            case .moderate: return .orange
-            case .low: return .yellow
+            case .high: return TFColor.success
+            case .moderate: return TFColor.accent
+            case .low: return TFColor.warning
             case .insufficient: return .secondary
             }
         }()
@@ -636,10 +636,10 @@ struct BodyAnalysisView: View {
     func measurementInterpretationBadge(_ interpretation: MeasurementInterpretation) -> some View {
         let color: Color = {
             switch interpretation {
-            case .likelyFatLoss: return .green
-            case .likelyRecomposition: return .blue
-            case .likelyMassGain: return .orange
-            case .possibleNoise: return .yellow
+            case .likelyFatLoss: return TFColor.success
+            case .likelyRecomposition: return TFColor.info
+            case .likelyMassGain: return TFColor.accent
+            case .possibleNoise: return TFColor.warning
             case .insufficientData: return .secondary
             case .stableNoChange: return .secondary
             }
@@ -659,8 +659,8 @@ struct BodyAnalysisView: View {
             content()
         }
         .padding()
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .background(TFColor.surface)
+        .clipShape(RoundedRectangle(cornerRadius: TFRadius.card))
     }
 
     // MARK: - Photo Quality Card
@@ -673,7 +673,7 @@ struct BodyAnalysisView: View {
         return VStack(alignment: .leading, spacing: 10) {
             Label("Photo Quality Check", systemImage: "checklist")
                 .font(.subheadline.bold())
-                .foregroundStyle(.orange)
+                .foregroundStyle(TFColor.accent)
 
             VStack(alignment: .leading, spacing: 6) {
                 qualityRow(label: "Full body visible", met: true)
@@ -687,22 +687,22 @@ struct BodyAnalysisView: View {
                 let missingNames = missing.sorted().joined(separator: ", ")
                 Text("Missing: \(missingNames) — assessment will be less confident for those regions.")
                     .font(.caption)
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(TFColor.accent)
             } else {
                 Text("All four angles covered — full confidence available.")
                     .font(.caption)
-                    .foregroundStyle(.green)
+                    .foregroundStyle(TFColor.success)
             }
         }
         .padding()
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .background(TFColor.surface)
+        .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
     }
 
     func qualityRow(label: String, met: Bool) -> some View {
         HStack(spacing: 8) {
             Image(systemName: met ? "checkmark.circle.fill" : "circle")
-                .foregroundStyle(met ? .green : .secondary)
+                .foregroundStyle(met ? TFColor.success : .secondary)
                 .font(.caption)
             Text(label)
                 .font(.caption)
@@ -735,9 +735,9 @@ struct BodyAnalysisView: View {
                 }
                 .frame(maxWidth: .infinity)
                 .padding()
-                .background(isAnalyzing ? Color.orange.opacity(0.6) : Color.orange)
+                .background(isAnalyzing ? TFColor.accent.opacity(0.6) : TFColor.accent)
                 .foregroundStyle(.white)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
                 .bold()
             }
             .disabled(isAnalyzing || !canUseAI)
@@ -756,7 +756,7 @@ struct BodyAnalysisView: View {
             if !completeness.missingFields.isEmpty {
                 HStack(spacing: 6) {
                     Image(systemName: completeness.fraction >= 0.6 ? "checkmark.circle" : "exclamationmark.triangle")
-                        .foregroundStyle(completeness.fraction >= 0.85 ? .green : completeness.fraction >= 0.6 ? .orange : .red)
+                        .foregroundStyle(completeness.fraction >= 0.85 ? TFColor.success : completeness.fraction >= 0.6 ? TFColor.accent : TFColor.danger)
                     Text(completeness.summary)
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -777,7 +777,7 @@ struct BodyAnalysisView: View {
                     NavigationLink(destination: PhotoComparisonView(sessions: sessions)) {
                         Label("Compare", systemImage: "photo.on.rectangle.angled")
                             .font(.caption.bold())
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(TFColor.accent)
                     }
                 }
             }
@@ -1030,8 +1030,8 @@ struct PastSessionRow: View {
                             .font(.caption2)
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2)
-                            .background(Color.orange.opacity(0.15))
-                            .foregroundStyle(.orange)
+                            .background(TFColor.accent.opacity(0.15))
+                            .foregroundStyle(TFColor.accent)
                             .clipShape(Capsule())
                     }
                     Spacer()
@@ -1041,13 +1041,13 @@ struct PastSessionRow: View {
                 }
                 Text(session.programmingPrioritySummary)
                     .font(.caption)
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(TFColor.accent)
                     .lineLimit(1)
             }
         }
         .padding(12)
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .background(TFColor.surface)
+        .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
     }
 }
 
@@ -1063,7 +1063,7 @@ struct SavedAnalysisView: View {
                     Image(uiImage: image)
                         .resizable()
                         .scaledToFit()
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                        .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
                 }
 
                 SectionCard(title: "Assessment", icon: "doc.text") {
@@ -1072,7 +1072,7 @@ struct SavedAnalysisView: View {
 
                 SectionCard(title: "Top Muscle Groups to Prioritize", icon: "flame.fill") {
                     Text(session.programmingPrioritySummary)
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(TFColor.accent)
                 }
 
                 SectionCard(title: "Diet Note", icon: "fork.knife") {
@@ -1109,13 +1109,13 @@ struct SavedFullAnalysisView: View {
                             .resizable()
                             .scaledToFit()
                             .frame(maxHeight: 300)
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                            .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
 
                         Text(session.pose)
                             .font(.caption.bold())
                             .padding(.horizontal, 10)
                             .padding(.vertical, 5)
-                            .background(.orange)
+                            .background(TFColor.accent)
                             .foregroundStyle(.white)
                             .clipShape(Capsule())
                             .padding(10)
@@ -1164,7 +1164,7 @@ struct SavedFullAnalysisView: View {
             HStack {
                 Label("Analysis Debug", systemImage: "ant.fill")
                     .font(.subheadline.bold())
-                    .foregroundStyle(.purple)
+                    .foregroundStyle(TFColor.measurement)
                 Spacer()
                 Button {
                     withAnimation { showDebugPanel = false }
@@ -1181,8 +1181,8 @@ struct SavedFullAnalysisView: View {
             }
         }
         .padding()
-        .background(Color.purple.opacity(0.06))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .background(TFColor.measurement.opacity(0.06))
+        .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
     }
 
     func savedDebugCopyButton(title: String, payload: String) -> some View {
@@ -1197,8 +1197,8 @@ struct SavedFullAnalysisView: View {
                 .font(.caption.bold())
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 10)
-                .background(Color.purple.opacity(0.12))
-                .foregroundStyle(.purple)
+                .background(TFColor.measurement.opacity(0.12))
+                .foregroundStyle(TFColor.measurement)
                 .clipShape(RoundedRectangle(cornerRadius: 8))
         }
     }

@@ -125,7 +125,7 @@ struct AddMeasurementSheet: View {
             VStack(alignment: .leading, spacing: 8) {
                 Label("Measurement Protocol", systemImage: "checkmark.shield")
                     .font(.subheadline.bold())
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(TFColor.accent)
 
                 VStack(alignment: .leading, spacing: 4) {
                     protocolRow("Measure in the morning if possible")
@@ -203,7 +203,7 @@ struct AddMeasurementSheet: View {
             if !isStandardMeasurement {
                 Text("Non-standard measurements are flagged in trend analysis so they don't create false progress or regression signals.")
                     .font(.caption)
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(TFColor.accent)
             }
         } header: {
             Text("Measurement Context")
@@ -232,10 +232,10 @@ struct AddMeasurementSheet: View {
 
     func severityColor(_ severity: AnalysisValidationSeverity) -> Color {
         switch severity {
-        case .critical: return .red
-        case .error: return .red
-        case .warning: return .orange
-        case .info: return .blue
+        case .critical: return TFColor.danger
+        case .error: return TFColor.danger
+        case .warning: return TFColor.accent
+        case .info: return TFColor.info
         }
     }
 

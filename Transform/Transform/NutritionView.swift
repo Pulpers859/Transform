@@ -192,7 +192,7 @@ struct NutritionView: View {
                         showAddSheet = true
                     } label: {
                         Image(systemName: "plus.circle.fill")
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(TFColor.accent)
                             .font(.title3)
                     }
                 }
@@ -261,7 +261,7 @@ struct NutritionView: View {
                 selectedDate = Calendar.current.date(byAdding: .day, value: -1, to: selectedDate) ?? selectedDate
             } label: {
                 Image(systemName: "chevron.left")
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(TFColor.accent)
                     .padding(8)
             }
 
@@ -282,7 +282,7 @@ struct NutritionView: View {
                 selectedDate = Calendar.current.date(byAdding: .day, value: 1, to: selectedDate) ?? selectedDate
             } label: {
                 Image(systemName: "chevron.right")
-                    .foregroundStyle(isToday ? Color.secondary : Color.orange)
+                    .foregroundStyle(isToday ? Color.secondary : TFColor.accent)
                     .padding(8)
             }
             .disabled(isToday)
@@ -303,7 +303,7 @@ struct NutritionView: View {
                     MacroRing(
                         value: Double(totalCalories),
                         target: Double(activeMacroTargets.calories),
-                        color: .orange,
+                        color: TFColor.accent,
                         lineWidth: 14,
                         size: 140
                     )
@@ -325,23 +325,23 @@ struct NutritionView: View {
                 VStack(alignment: .trailing, spacing: 4) {
                     Text(remainingCalories >= 0 ? "\(remainingCalories)" : "\(abs(remainingCalories))")
                         .font(.title3.bold())
-                        .foregroundStyle(remainingCalories >= 0 ? Color.green : Color.red)
+                        .foregroundStyle(remainingCalories >= 0 ? TFColor.success : TFColor.danger)
                     Text(remainingCalories >= 0 ? "remaining" : "over")
                         .font(.caption)
                         .foregroundStyle(.secondary)
 
                     Divider().padding(.vertical, 4)
 
-                    miniMacroRow(label: "F", value: totalFat, target: activeMacroTargets.fatG, color: .yellow)
-                    miniMacroRow(label: "C", value: totalCarbs, target: activeMacroTargets.carbsG, color: .blue)
-                    miniMacroRow(label: "Fi", value: totalFiber, target: fiberTargetG, color: .green)
+                    miniMacroRow(label: "F", value: totalFat, target: activeMacroTargets.fatG, color: TFColor.fat)
+                    miniMacroRow(label: "C", value: totalCarbs, target: activeMacroTargets.carbsG, color: TFColor.carbs)
+                    miniMacroRow(label: "Fi", value: totalFiber, target: fiberTargetG, color: TFColor.success)
                     miniMacroRow(label: "S", value: totalSugar, target: sugarTargetG, color: .pink)
-                    miniMacroRow(label: "P", value: totalProtein, target: activeMacroTargets.proteinG, color: .red)
+                    miniMacroRow(label: "P", value: totalProtein, target: activeMacroTargets.proteinG, color: TFColor.protein)
                 }
             }
             .padding()
-            .background(Color(.secondarySystemBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 16))
+            .background(TFColor.surface)
+            .clipShape(RoundedRectangle(cornerRadius: TFRadius.card))
         }
     }
 
@@ -372,14 +372,14 @@ struct NutritionView: View {
                 label: "Calories",
                 value: Double(totalCalories),
                 target: Double(activeMacroTargets.calories),
-                color: .orange,
+                color: TFColor.accent,
                 unit: "kcal"
             )
-            MacroProgressBar(label: "Fat", value: totalFat, target: activeMacroTargets.fatG, color: .yellow)
-            MacroProgressBar(label: "Total Carbs", value: totalCarbs, target: activeMacroTargets.carbsG, color: .blue)
-            MacroProgressBar(label: "Fiber", value: totalFiber, target: fiberTargetG, color: .green)
+            MacroProgressBar(label: "Fat", value: totalFat, target: activeMacroTargets.fatG, color: TFColor.fat)
+            MacroProgressBar(label: "Total Carbs", value: totalCarbs, target: activeMacroTargets.carbsG, color: TFColor.carbs)
+            MacroProgressBar(label: "Fiber", value: totalFiber, target: fiberTargetG, color: TFColor.success)
             MacroProgressBar(label: "Sugars", value: totalSugar, target: sugarTargetG, color: .pink)
-            MacroProgressBar(label: "Protein", value: totalProtein, target: activeMacroTargets.proteinG, color: .red)
+            MacroProgressBar(label: "Protein", value: totalProtein, target: activeMacroTargets.proteinG, color: TFColor.protein)
 
             Text("Carbs are split into fiber and sugars with analysis-aware targets.")
                 .font(.caption2)
@@ -395,12 +395,12 @@ struct NutritionView: View {
                     }
                 }
                 .font(.caption2)
-                .foregroundStyle(.orange)
+                .foregroundStyle(TFColor.accent)
             }
         }
         .padding()
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .background(TFColor.surface)
+        .clipShape(RoundedRectangle(cornerRadius: TFRadius.card))
     }
 
     var macroTargetSourceText: String {
@@ -446,7 +446,7 @@ struct NutritionView: View {
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.borderedProminent)
-                    .tint(.orange)
+                    .tint(TFColor.accent)
 
                     if savedNutritionProtocols.first?.appliedMacroOverride != nil {
                         Button {
@@ -477,7 +477,7 @@ struct NutritionView: View {
             if !macroReviewError.isEmpty {
                 Text(macroReviewError)
                     .font(.caption)
-                    .foregroundStyle(.red)
+                    .foregroundStyle(TFColor.danger)
             }
 
             Button {
@@ -492,12 +492,12 @@ struct NutritionView: View {
                 .frame(maxWidth: .infinity)
             }
             .buttonStyle(.bordered)
-            .tint(.orange)
+            .tint(TFColor.accent)
             .disabled(!macroReviewGate.isEligible || isGeneratingMacroReview || !canUseAI)
         }
         .padding()
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .background(TFColor.surface)
+        .clipShape(RoundedRectangle(cornerRadius: TFRadius.card))
     }
 
     func macroReviewTarget(_ label: String, _ value: String) -> some View {
@@ -531,14 +531,14 @@ struct NutritionView: View {
             HStack(alignment: .center) {
                 Label("AI 4-Week Nutrition Protocol", systemImage: "cart.fill")
                     .font(.headline)
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(TFColor.accent)
                 Spacer()
                 Text("Body-analysis driven")
                     .font(.caption.bold())
                     .padding(.horizontal, 10)
                     .padding(.vertical, 5)
-                    .background(Color.orange.opacity(0.15))
-                    .foregroundStyle(.orange)
+                    .background(TFColor.accent.opacity(0.15))
+                    .foregroundStyle(TFColor.accent)
                     .clipShape(Capsule())
             }
 
@@ -549,7 +549,7 @@ struct NutritionView: View {
             if latestAnalysis == nil {
                 Text("Run a Body Analysis first — this protocol is generated from its expert recommendations.")
                     .font(.caption2)
-                    .foregroundStyle(.red)
+                    .foregroundStyle(TFColor.danger)
             }
 
             HStack {
@@ -563,7 +563,7 @@ struct NutritionView: View {
                     }
                 }
                 .pickerStyle(.menu)
-                .tint(.orange)
+                .tint(TFColor.accent)
             }
 
             if selectedShiftWorkMode != .normal {
@@ -571,7 +571,7 @@ struct NutritionView: View {
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .padding(8)
-                    .background(Color(.tertiarySystemBackground))
+                    .background(TFColor.surfaceElevated)
                     .clipShape(RoundedRectangle(cornerRadius: 8))
             }
 
@@ -591,7 +591,7 @@ struct NutritionView: View {
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 10)
-                .background((isGeneratingNutrition || !canUseAI || latestAnalysis == nil) ? Color.orange.opacity(0.5) : Color.orange)
+                .background((isGeneratingNutrition || !canUseAI || latestAnalysis == nil) ? TFColor.accent.opacity(0.5) : TFColor.accent)
                 .foregroundStyle(.white)
                 .clipShape(RoundedRectangle(cornerRadius: 10))
                 .bold()
@@ -601,13 +601,13 @@ struct NutritionView: View {
             if !canUseAI {
                 Text(Config.anthropicKeyInlineHelpText)
                     .font(.caption2)
-                    .foregroundStyle(.red)
+                    .foregroundStyle(TFColor.danger)
             }
 
             if !nutritionErrorMessage.isEmpty {
                 Text(nutritionErrorMessage)
                     .font(.caption2)
-                    .foregroundStyle(.red)
+                    .foregroundStyle(TFColor.danger)
             }
 
             if let program = nutritionProgram {
@@ -628,8 +628,8 @@ struct NutritionView: View {
             }
         }
         .padding()
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .background(TFColor.surface)
+        .clipShape(RoundedRectangle(cornerRadius: TFRadius.card))
     }
 
     var weekSelector: some View {
@@ -647,7 +647,7 @@ struct NutritionView: View {
                             .font(.caption.bold())
                             .padding(.horizontal, 12)
                             .padding(.vertical, 6)
-                            .background(selectedWeek == week ? Color.orange : Color(.tertiarySystemBackground))
+                            .background(selectedWeek == week ? TFColor.accent : TFColor.surfaceElevated)
                             .foregroundStyle(selectedWeek == week ? .white : .primary)
                             .clipShape(Capsule())
                     }
@@ -715,7 +715,7 @@ struct NutritionView: View {
                     .font(.caption.bold())
                     .padding(.horizontal, 10)
                     .padding(.vertical, 7)
-                    .background(Color(.secondarySystemBackground))
+                    .background(TFColor.surface)
                     .clipShape(Capsule())
                     .foregroundStyle(.primary)
                 }
@@ -741,9 +741,9 @@ struct NutritionView: View {
                         .font(.caption.bold())
                         .padding(.horizontal, 10)
                         .padding(.vertical, 7)
-                        .background(hasYesterday ? Color.orange.opacity(0.15) : Color(.tertiarySystemBackground))
+                        .background(hasYesterday ? TFColor.accent.opacity(0.15) : TFColor.surfaceElevated)
                         .clipShape(Capsule())
-                        .foregroundStyle(hasYesterday ? Color.orange : Color.secondary)
+                        .foregroundStyle(hasYesterday ? TFColor.accent : Color.secondary)
                         .disabled(!hasYesterday)
                     }
                 }

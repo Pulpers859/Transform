@@ -102,7 +102,7 @@ struct WorkoutSessionFeedbackSheet: View {
                         Text("\(rating)")
                             .font(.headline)
                             .frame(maxWidth: .infinity, minHeight: 38)
-                            .background(value.wrappedValue == rating ? Color.orange : Color(.tertiarySystemFill))
+                            .background(value.wrappedValue == rating ? TFColor.accent : Color(.tertiarySystemFill))
                             .foregroundStyle(value.wrappedValue == rating ? .white : .primary)
                             .clipShape(RoundedRectangle(cornerRadius: 9))
                     }

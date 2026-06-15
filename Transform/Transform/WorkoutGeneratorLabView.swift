@@ -206,7 +206,7 @@ struct WorkoutGeneratorLabView: View {
             }
         }
         .padding(16)
-        .background(Color(.secondarySystemBackground))
+        .background(TFColor.surface)
         .clipShape(RoundedRectangle(cornerRadius: 18))
     }
 
@@ -239,14 +239,14 @@ struct WorkoutGeneratorLabView: View {
             }
 
             if selectedMode == .liveAI {
-                warningBanner(text: liveAICreditWarning, color: .orange)
+                warningBanner(text: liveAICreditWarning, color: TFColor.accent)
                 if !canUseAI {
-                    warningBanner(text: Config.anthropicKeyInlineHelpText, color: .red)
+                    warningBanner(text: Config.anthropicKeyInlineHelpText, color: TFColor.danger)
                 }
             }
         }
         .padding(16)
-        .background(Color(.secondarySystemBackground))
+        .background(TFColor.surface)
         .clipShape(RoundedRectangle(cornerRadius: 18))
     }
 
@@ -272,7 +272,7 @@ struct WorkoutGeneratorLabView: View {
             }
         }
         .padding(16)
-        .background(Color(.secondarySystemBackground))
+        .background(TFColor.surface)
         .clipShape(RoundedRectangle(cornerRadius: 18))
     }
 
@@ -303,7 +303,7 @@ struct WorkoutGeneratorLabView: View {
             }
         }
         .padding(16)
-        .background(Color(.secondarySystemBackground))
+        .background(TFColor.surface)
         .clipShape(RoundedRectangle(cornerRadius: 18))
     }
 
@@ -318,7 +318,7 @@ struct WorkoutGeneratorLabView: View {
                         refreshAnalysisJSONFromSelection()
                     }
                     .font(.caption.bold())
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(TFColor.accent)
                 }
                 .padding(.top, 8)
             } label: {
@@ -333,7 +333,7 @@ struct WorkoutGeneratorLabView: View {
                             refreshPreviousWeekJSONFromCurrentProgram()
                         }
                         .font(.caption.bold())
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(TFColor.accent)
                     }
                     .padding(.top, 8)
                 } label: {
@@ -351,7 +351,7 @@ struct WorkoutGeneratorLabView: View {
                                 replayJSON = report?.finalJSON ?? replayJSON
                             }
                             .font(.caption.bold())
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(TFColor.accent)
 
                             Spacer()
 
@@ -360,7 +360,7 @@ struct WorkoutGeneratorLabView: View {
                                     replayJSON = currentProgram.programJSON
                                 }
                                 .font(.caption.bold())
-                                .foregroundStyle(.orange)
+                                .foregroundStyle(TFColor.accent)
                             }
                         }
                     }
@@ -371,7 +371,7 @@ struct WorkoutGeneratorLabView: View {
             }
         }
         .padding(16)
-        .background(Color(.secondarySystemBackground))
+        .background(TFColor.surface)
         .clipShape(RoundedRectangle(cornerRadius: 18))
     }
 
@@ -393,9 +393,9 @@ struct WorkoutGeneratorLabView: View {
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 14)
-            .background(canRun ? Color.orange : Color.orange.opacity(0.4))
+            .background(canRun ? TFColor.accent : TFColor.accent.opacity(0.4))
             .foregroundStyle(.white)
-            .clipShape(RoundedRectangle(cornerRadius: 16))
+            .clipShape(RoundedRectangle(cornerRadius: TFRadius.card))
             .font(.headline.bold())
         }
         .buttonStyle(.plain)
@@ -428,7 +428,7 @@ struct WorkoutGeneratorLabView: View {
 
             if let terminalError = report.terminalError,
                !terminalError.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                warningBanner(text: terminalError, color: .red)
+                warningBanner(text: terminalError, color: TFColor.danger)
             }
 
             HStack(spacing: 10) {
@@ -440,7 +440,7 @@ struct WorkoutGeneratorLabView: View {
             }
 
             if !report.warnings.isEmpty {
-                warningBanner(text: report.warningsText, color: .yellow)
+                warningBanner(text: report.warningsText, color: TFColor.warning)
             }
 
             disclosureBlock(title: "Validator Issues", subtitle: "\(report.finalIssues.count)") {
@@ -484,7 +484,7 @@ struct WorkoutGeneratorLabView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(10)
                             .background(Color.primary.opacity(0.04))
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                            .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
                         }
                     }
                 }
@@ -516,7 +516,7 @@ struct WorkoutGeneratorLabView: View {
                                 if day.isRestDay {
                                     Text("Rest / Recovery")
                                         .font(.caption.bold())
-                                        .foregroundStyle(.orange)
+                                        .foregroundStyle(TFColor.accent)
                                 } else {
                                     ForEach(Array(day.exercises.enumerated()), id: \.offset) { index, exercise in
                                         Text("\(index + 1). \(exercise.exerciseName) • \(exercise.sets)x\(exercise.reps)")
@@ -528,14 +528,14 @@ struct WorkoutGeneratorLabView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(12)
                             .background(Color.primary.opacity(0.04))
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                            .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
                         }
                     }
                 }
             }
         }
         .padding(16)
-        .background(Color(.secondarySystemBackground))
+        .background(TFColor.surface)
         .clipShape(RoundedRectangle(cornerRadius: 18))
     }
 
@@ -810,7 +810,7 @@ struct WorkoutGeneratorLabView: View {
     func sectionTitle(_ text: String) -> some View {
         Text(text.uppercased())
             .font(.system(size: 11, weight: .bold, design: .monospaced))
-            .foregroundStyle(.orange)
+            .foregroundStyle(TFColor.accent)
             .tracking(1.3)
     }
 
@@ -826,7 +826,7 @@ struct WorkoutGeneratorLabView: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, 10)
         .background(Color.primary.opacity(0.05))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
     }
 
     func warningBanner(text: String, color: Color) -> some View {
@@ -839,7 +839,7 @@ struct WorkoutGeneratorLabView: View {
         }
         .padding(12)
         .background(color.opacity(0.08))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
     }
 
     func contextField(title: String, text: Binding<String>) -> some View {
@@ -871,9 +871,9 @@ struct WorkoutGeneratorLabView: View {
             .frame(minHeight: minHeight)
             .padding(8)
             .background(Color(.systemBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
             .overlay(
-                RoundedRectangle(cornerRadius: 12)
+                RoundedRectangle(cornerRadius: TFRadius.cardCompact)
                     .stroke(Color.primary.opacity(0.08), lineWidth: 1)
             )
     }
@@ -910,7 +910,7 @@ struct WorkoutGeneratorLabView: View {
             }
             .padding(10)
             .background(Color.primary.opacity(0.04))
-            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
         }
     }
 
@@ -922,9 +922,9 @@ struct WorkoutGeneratorLabView: View {
                 .font(.caption.bold())
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 10)
-                .background(Color.orange.opacity(0.12))
-                .foregroundStyle(.orange)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .background(TFColor.accent.opacity(0.12))
+                .foregroundStyle(TFColor.accent)
+                .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
         }
         .buttonStyle(.plain)
     }
@@ -937,10 +937,10 @@ struct WorkoutGeneratorLabView: View {
             .padding(.vertical, 6)
             .background(
                 isTerminalFailure
-                    ? Color.red.opacity(0.15)
-                    : (report.usedFallback ? Color.orange.opacity(0.15) : Color.green.opacity(0.15))
+                    ? TFColor.danger.opacity(0.15)
+                    : (report.usedFallback ? TFColor.accent.opacity(0.15) : TFColor.success.opacity(0.15))
             )
-            .foregroundStyle(isTerminalFailure ? .red : (report.usedFallback ? .orange : .green))
+            .foregroundStyle(isTerminalFailure ? TFColor.danger : (report.usedFallback ? TFColor.accent : TFColor.success))
             .clipShape(Capsule())
     }
 

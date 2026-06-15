@@ -67,7 +67,7 @@ struct MacroProgressBar: View {
                 Spacer()
                 Text("\(Int(value))\(unit)")
                     .font(.subheadline.bold())
-                    .foregroundStyle(isOver ? .red : .primary)
+                    .foregroundStyle(isOver ? TFColor.danger : .primary)
                 Text("/ \(Int(target))\(unit)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -80,7 +80,7 @@ struct MacroProgressBar: View {
                         .frame(height: 8)
 
                     RoundedRectangle(cornerRadius: 4)
-                        .fill(isOver ? Color.red : color)
+                        .fill(isOver ? TFColor.danger : color)
                         .frame(width: geo.size.width * progress, height: 8)
                         .animation(.easeInOut(duration: 0.4), value: progress)
                 }
@@ -115,7 +115,7 @@ struct MealGroupView: View {
             HStack {
                 Label(mealName, systemImage: mealIcon)
                     .font(.subheadline.bold())
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(TFColor.accent)
                 Spacer()
                 Text("\(totalCals) kcal")
                     .font(.caption.bold())
@@ -129,7 +129,7 @@ struct MealGroupView: View {
                 } label: {
                     Image(systemName: "plus")
                         .font(.caption.bold())
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(TFColor.accent)
                         .padding(6)
                 }
             }
@@ -143,8 +143,8 @@ struct MealGroupView: View {
                 FoodRowView(entry: entry, onDelete: { onDelete(entry) })
             }
         }
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .background(TFColor.surface)
+        .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
     }
 }
 
@@ -162,15 +162,15 @@ struct FoodRowView: View {
                     .lineLimit(1)
                 HStack(spacing: 8) {
                     Text("P: \(Int(entry.proteinG))g")
-                        .foregroundStyle(.red)
+                        .foregroundStyle(TFColor.protein)
                     Text("C: \(Int(entry.carbsG))g")
-                        .foregroundStyle(.blue)
+                        .foregroundStyle(TFColor.carbs)
                     Text("S: \(Int(entry.sugarG))g")
                         .foregroundStyle(.pink)
                     Text("Fi: \(Int(entry.fiberG))g")
-                        .foregroundStyle(.green)
+                        .foregroundStyle(TFColor.success)
                     Text("F: \(Int(entry.fatG))g")
-                        .foregroundStyle(.yellow)
+                        .foregroundStyle(TFColor.fat)
                 }
                 .font(.caption2)
             }
@@ -203,9 +203,9 @@ struct NutritionProgramHeader: View {
     var sourceBadge: (label: String, color: Color)? {
         switch GeneratedContentSource.detect(in: program.programSummary) {
         case .aiCoach:
-            return ("AI Coach", .green)
+            return ("AI Coach", TFColor.success)
         case .recoveryEngine:
-            return ("Recovery Engine", .orange)
+            return ("Recovery Engine", TFColor.accent)
         case nil:
             return nil
         }
@@ -237,11 +237,11 @@ struct NutritionProgramHeader: View {
             if !program.proteinCoverageNote.isEmpty {
                 Text(program.proteinCoverageNote)
                     .font(.caption.bold())
-                    .foregroundStyle(.green)
+                    .foregroundStyle(TFColor.success)
             }
         }
         .padding(10)
-        .background(Color(.tertiarySystemBackground))
+        .background(TFColor.surfaceElevated)
         .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 }
@@ -260,8 +260,8 @@ struct NutritionWeekDetail: View {
 
     var weekSourceBadge: (label: String, color: Color)? {
         switch GeneratedContentSource.detect(in: week.weekSummary) {
-        case .aiCoach: return ("AI Coach", .green)
-        case .recoveryEngine: return ("Recovery Engine", .orange)
+        case .aiCoach: return ("AI Coach", TFColor.success)
+        case .recoveryEngine: return ("Recovery Engine", TFColor.accent)
         case .none: return nil
         }
     }
@@ -272,7 +272,7 @@ struct NutritionWeekDetail: View {
                 HStack {
                     Text(week.phaseFocus)
                         .font(.subheadline.bold())
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(TFColor.accent)
                     Spacer()
                     if let badge = weekSourceBadge {
                         Text(badge.label)
@@ -329,10 +329,10 @@ struct NutritionTemplateMacroRow: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            macroPill(label: "kcal", value: "\(template.totalCalories)", color: .orange)
-            macroPill(label: "P", value: "\(template.totalProteinG)g", color: .red)
-            macroPill(label: "C", value: "\(template.totalCarbsG)g", color: .blue)
-            macroPill(label: "F", value: "\(template.totalFatG)g", color: .yellow)
+            macroPill(label: "kcal", value: "\(template.totalCalories)", color: TFColor.accent)
+            macroPill(label: "P", value: "\(template.totalProteinG)g", color: TFColor.protein)
+            macroPill(label: "C", value: "\(template.totalCarbsG)g", color: TFColor.carbs)
+            macroPill(label: "F", value: "\(template.totalFatG)g", color: TFColor.fat)
         }
     }
 
@@ -369,7 +369,7 @@ struct NutritionMealCard: View {
             HStack {
                 Label(meal.mealName, systemImage: mealIcon)
                     .font(.subheadline.bold())
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(TFColor.accent)
                 Spacer()
                 Text("\(meal.approxCalories) kcal")
                     .font(.caption.bold())
@@ -381,9 +381,9 @@ struct NutritionMealCard: View {
                 .foregroundStyle(.primary)
 
             HStack(spacing: 10) {
-                Text("P: \(meal.approxProteinG)g").foregroundStyle(.red)
-                Text("C: \(meal.approxCarbsG)g").foregroundStyle(.blue)
-                Text("F: \(meal.approxFatG)g").foregroundStyle(.yellow)
+                Text("P: \(meal.approxProteinG)g").foregroundStyle(TFColor.protein)
+                Text("C: \(meal.approxCarbsG)g").foregroundStyle(TFColor.carbs)
+                Text("F: \(meal.approxFatG)g").foregroundStyle(TFColor.fat)
             }
             .font(.caption2.bold())
 
@@ -401,7 +401,7 @@ struct NutritionMealCard: View {
             }
         }
         .padding(10)
-        .background(Color(.tertiarySystemBackground))
+        .background(TFColor.surfaceElevated)
         .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 }
@@ -413,7 +413,7 @@ struct NutritionGroceryCategoryCard: View {
         VStack(alignment: .leading, spacing: 6) {
             Text(category.category)
                 .font(.subheadline.bold())
-                .foregroundStyle(.orange)
+                .foregroundStyle(TFColor.accent)
 
             ForEach(category.items) { item in
                 VStack(alignment: .leading, spacing: 2) {
@@ -440,7 +440,7 @@ struct NutritionGroceryCategoryCard: View {
             }
         }
         .padding(10)
-        .background(Color(.tertiarySystemBackground))
+        .background(TFColor.surfaceElevated)
         .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 }
@@ -474,15 +474,15 @@ struct AdherenceSnapshotCard: View {
             }
         }
         .padding()
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .background(TFColor.surface)
+        .clipShape(RoundedRectangle(cornerRadius: TFRadius.card))
     }
 
     private var headerRow: some View {
         HStack(alignment: .center) {
             Label("Adherence Snapshot", systemImage: "chart.bar.fill")
                 .font(.headline)
-                .foregroundStyle(.orange)
+                .foregroundStyle(TFColor.accent)
             Spacer()
             Text(metrics.dataQuality.rawValue)
                 .font(.caption.bold())
@@ -509,10 +509,10 @@ struct AdherenceSnapshotCard: View {
                 HStack(spacing: 4) {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .font(.caption2)
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(TFColor.accent)
                     Text("\(metrics.incompleteDays) days look incomplete (<1000 kcal or <2 meals) — missing dinner or snacks?")
                         .font(.caption2)
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(TFColor.accent)
                 }
             }
         }
@@ -538,7 +538,7 @@ struct AdherenceSnapshotCard: View {
                 Spacer()
                 Text("\(Int((rate * 100).rounded()))%")
                     .font(.caption.bold())
-                    .foregroundStyle(rate >= 0.6 ? Color.green : (rate >= 0.4 ? Color.yellow : Color.red))
+                    .foregroundStyle(rate >= 0.6 ? TFColor.success : (rate >= 0.4 ? TFColor.warning : TFColor.danger))
             }
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
@@ -546,7 +546,7 @@ struct AdherenceSnapshotCard: View {
                         .fill(Color.gray.opacity(0.15))
                         .frame(height: 6)
                     RoundedRectangle(cornerRadius: 4)
-                        .fill(rate >= 0.6 ? Color.green : (rate >= 0.4 ? Color.yellow : Color.red))
+                        .fill(rate >= 0.6 ? TFColor.success : (rate >= 0.4 ? TFColor.warning : TFColor.danger))
                         .frame(width: geo.size.width * min(rate, 1.0), height: 6)
                 }
             }
@@ -561,7 +561,7 @@ struct AdherenceSnapshotCard: View {
         HStack {
             Image(systemName: "fork.knife")
                 .font(.caption2)
-                .foregroundStyle(.red)
+                .foregroundStyle(TFColor.protein)
             Text("Target: ~\(range.low)–\(range.high)g protein × 3–5 feedings")
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -602,7 +602,7 @@ struct AdherenceSnapshotCard: View {
                     Spacer()
                     Text("\(change > 0 ? "+" : "")\(String(format: "%.1f", change)) lb/week")
                         .font(.caption.bold())
-                        .foregroundStyle(change > 0.2 ? Color.red : (change < -0.2 ? Color.green : Color.primary))
+                        .foregroundStyle(change > 0.2 ? TFColor.danger : (change < -0.2 ? TFColor.success : Color.primary))
                 }
             }
 
@@ -630,7 +630,7 @@ struct AdherenceSnapshotCard: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Label("Primary Bottleneck", systemImage: "exclamationmark.triangle.fill")
                         .font(.caption.bold())
-                        .foregroundStyle(.red)
+                        .foregroundStyle(TFColor.protein)
                     Text(bottleneck)
                         .font(.caption)
                 }
@@ -639,7 +639,7 @@ struct AdherenceSnapshotCard: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Label("Next Step", systemImage: "arrow.right.circle.fill")
                         .font(.caption.bold())
-                        .foregroundStyle(.green)
+                        .foregroundStyle(TFColor.success)
                     Text(action)
                         .font(.caption)
                 }
@@ -649,17 +649,17 @@ struct AdherenceSnapshotCard: View {
 
     private var qualityColor: Color {
         switch metrics.dataQuality {
-        case .veryLow, .low: return .red
-        case .moderate: return .yellow
-        case .good, .excellent: return .green
+        case .veryLow, .low: return TFColor.danger
+        case .moderate: return TFColor.warning
+        case .good, .excellent: return TFColor.success
         }
     }
 
     private var trendStatusColor: Color {
         switch metrics.weightTrendStatus {
-        case .onTrack: return .green
-        case .tooFast, .gaining: return .red
-        case .tooSlow: return .yellow
+        case .onTrack: return TFColor.success
+        case .tooFast, .gaining: return TFColor.danger
+        case .tooSlow: return TFColor.warning
         case .unknown: return .gray
         }
     }

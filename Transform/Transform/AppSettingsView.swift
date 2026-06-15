@@ -66,7 +66,7 @@ struct AppSettingsView: View {
                     if let apiKeyErrorMessage {
                         Text(apiKeyErrorMessage)
                             .font(.caption)
-                            .foregroundStyle(.red)
+                            .foregroundStyle(TFColor.danger)
                     } else {
                         Text("Keys are stored in this device's Keychain and never committed to GitHub.")
                             .font(.caption)

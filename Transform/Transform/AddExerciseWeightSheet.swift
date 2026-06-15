@@ -104,7 +104,7 @@ struct AddExerciseWeightSheet: View {
             }
         }
         .padding(16)
-        .background(Color(.secondarySystemBackground))
+        .background(TFColor.surface)
         .clipShape(RoundedRectangle(cornerRadius: 20))
     }
 
@@ -133,16 +133,16 @@ struct AddExerciseWeightSheet: View {
                     weight: resolvedBestWeight(from: summary),
                     reps: resolvedBestReps(from: summary),
                     date: resolvedBestDate(from: summary),
-                    accent: .green
+                    accent: TFColor.success
                 ) {
                     applyWeightToAll(resolvedBestWeight(from: summary), reps: resolvedBestReps(from: summary))
                 }
             }
             .background(Color(.systemBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 16))
+            .clipShape(RoundedRectangle(cornerRadius: TFRadius.card))
         }
         .padding(16)
-        .background(Color(.secondarySystemBackground))
+        .background(TFColor.surface)
         .clipShape(RoundedRectangle(cornerRadius: 20))
     }
 
@@ -201,7 +201,7 @@ struct AddExerciseWeightSheet: View {
                 } label: {
                     Label("Add Set", systemImage: "plus.circle.fill")
                         .font(.caption.bold())
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(TFColor.accent)
                 }
                 .buttonStyle(.plain)
             }
@@ -217,7 +217,7 @@ struct AddExerciseWeightSheet: View {
                     } label: {
                         Label("Copy Set 1 to all", systemImage: "doc.on.doc")
                             .font(.caption.bold())
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(TFColor.accent)
                     }
                     .buttonStyle(.plain)
 
@@ -229,7 +229,7 @@ struct AddExerciseWeightSheet: View {
                         } label: {
                             Label("Remove last", systemImage: "minus.circle")
                                 .font(.caption.bold())
-                                .foregroundStyle(.red)
+                                .foregroundStyle(TFColor.danger)
                         }
                         .buttonStyle(.plain)
                     }
@@ -238,7 +238,7 @@ struct AddExerciseWeightSheet: View {
             }
         }
         .padding(16)
-        .background(Color(.secondarySystemBackground))
+        .background(TFColor.surface)
         .clipShape(RoundedRectangle(cornerRadius: 20))
     }
 
@@ -246,7 +246,7 @@ struct AddExerciseWeightSheet: View {
         HStack(spacing: 10) {
             Text("Set \(draft.setNumber)")
                 .font(.caption.bold())
-                .foregroundStyle(.orange)
+                .foregroundStyle(TFColor.accent)
                 .frame(width: 44, alignment: .leading)
 
             HStack(spacing: 4) {
@@ -262,7 +262,7 @@ struct AddExerciseWeightSheet: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
             .background(Color(.systemBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
 
             quickAdjustButton(index: index)
 
@@ -283,7 +283,7 @@ struct AddExerciseWeightSheet: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
             .background(Color(.systemBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
         }
     }
 
@@ -344,7 +344,7 @@ struct AddExerciseWeightSheet: View {
             }
         }
         .padding(16)
-        .background(Color(.secondarySystemBackground))
+        .background(TFColor.surface)
         .clipShape(RoundedRectangle(cornerRadius: 20))
     }
 
@@ -372,9 +372,9 @@ struct AddExerciseWeightSheet: View {
                         .font(.headline.bold())
                         .frame(minWidth: 120)
                         .padding(.vertical, 14)
-                        .background(canSave ? Color.orange : Color.orange.opacity(0.4))
+                        .background(canSave ? TFColor.accent : TFColor.accent.opacity(0.4))
                         .foregroundStyle(.white)
-                        .clipShape(RoundedRectangle(cornerRadius: 16))
+                        .clipShape(RoundedRectangle(cornerRadius: TFRadius.card))
                 }
                 .disabled(!canSave)
             }
@@ -545,8 +545,8 @@ struct AddExerciseWeightSheet: View {
         .font(.caption.bold())
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
-        .background(Color.orange.opacity(0.12))
-        .foregroundStyle(.orange)
+        .background(TFColor.accent.opacity(0.12))
+        .foregroundStyle(TFColor.accent)
         .clipShape(Capsule())
     }
 

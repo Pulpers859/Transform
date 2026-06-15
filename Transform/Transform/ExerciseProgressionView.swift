@@ -132,7 +132,7 @@ struct ExerciseProgressionView: View {
                     progressBadge(
                         label: "Top set",
                         value: String(format: "%+.1f lb", delta),
-                        color: delta >= 0 ? .green : .red
+                        color: delta >= 0 ? TFColor.success : TFColor.danger
                     )
                     progressBadge(
                         label: "Over",
@@ -144,8 +144,8 @@ struct ExerciseProgressionView: View {
         }
         .padding()
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .background(TFColor.surface)
+        .clipShape(RoundedRectangle(cornerRadius: TFRadius.card))
     }
 
     func progressBadge(label: String, value: String, color: Color) -> some View {
@@ -172,7 +172,7 @@ struct ExerciseProgressionView: View {
                     x: .value("Date", point.date),
                     y: .value("Weight", point.weightLbs)
                 )
-                .foregroundStyle(Color.orange)
+                .foregroundStyle(TFColor.accent)
                 .lineStyle(StrokeStyle(lineWidth: 2.5))
                 .interpolationMethod(.monotone)
 
@@ -180,7 +180,7 @@ struct ExerciseProgressionView: View {
                     x: .value("Date", point.date),
                     y: .value("Weight", point.weightLbs)
                 )
-                .foregroundStyle(Color.orange)
+                .foregroundStyle(TFColor.accent)
                 .symbolSize(30)
             }
             .chartYScale(domain: weightDomain)
@@ -199,8 +199,8 @@ struct ExerciseProgressionView: View {
             .frame(height: 200)
         }
         .padding()
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .background(TFColor.surface)
+        .clipShape(RoundedRectangle(cornerRadius: TFRadius.card))
     }
 
     var e1rmChart: some View {
@@ -221,7 +221,7 @@ struct ExerciseProgressionView: View {
                     x: .value("Date", point.date),
                     y: .value("e1RM", point.weightLbs)
                 )
-                .foregroundStyle(Color.purple.opacity(0.7))
+                .foregroundStyle(TFColor.measurement.opacity(0.7))
                 .lineStyle(StrokeStyle(lineWidth: 2, dash: [5, 3]))
                 .interpolationMethod(.monotone)
 
@@ -229,7 +229,7 @@ struct ExerciseProgressionView: View {
                     x: .value("Date", point.date),
                     y: .value("e1RM", point.weightLbs)
                 )
-                .foregroundStyle(Color.purple)
+                .foregroundStyle(TFColor.measurement)
                 .symbolSize(20)
             }
             .chartXAxis {
@@ -247,8 +247,8 @@ struct ExerciseProgressionView: View {
             .frame(height: 160)
         }
         .padding()
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .background(TFColor.surface)
+        .clipShape(RoundedRectangle(cornerRadius: TFRadius.card))
     }
 
     var singleEntryCard: some View {
@@ -263,8 +263,8 @@ struct ExerciseProgressionView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(24)
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .background(TFColor.surface)
+        .clipShape(RoundedRectangle(cornerRadius: TFRadius.card))
     }
 
     var emptyState: some View {
@@ -308,7 +308,7 @@ struct ExerciseProgressionView: View {
                             Spacer()
                             Text("\(formatWeight(point.weightLbs)) lb")
                                 .font(.caption.bold())
-                                .foregroundStyle(.orange)
+                                .foregroundStyle(TFColor.accent)
                             if let reps = point.repsCompleted {
                                 Text("\u{00D7} \(reps)")
                                     .font(.caption)
@@ -343,8 +343,8 @@ struct ExerciseProgressionView: View {
             }
         }
         .padding()
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .background(TFColor.surface)
+        .clipShape(RoundedRectangle(cornerRadius: TFRadius.card))
     }
 
     func formatWeight(_ weight: Double) -> String {
@@ -398,8 +398,8 @@ struct EditPerformanceLogSheet: View {
                     }
                     .padding()
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color(.secondarySystemBackground))
-                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                    .background(TFColor.surface)
+                    .clipShape(RoundedRectangle(cornerRadius: TFRadius.card))
 
                     VStack(alignment: .leading, spacing: 12) {
                         TFSectionLabel(text: "Sets")
@@ -408,7 +408,7 @@ struct EditPerformanceLogSheet: View {
                             HStack(spacing: 10) {
                                 Text("Set \(editableSets[index].setNumber)")
                                     .font(.caption.bold())
-                                    .foregroundStyle(.orange)
+                                    .foregroundStyle(TFColor.accent)
                                     .frame(width: 44, alignment: .leading)
 
                                 HStack(spacing: 4) {
@@ -423,7 +423,7 @@ struct EditPerformanceLogSheet: View {
                                 .padding(.horizontal, 12)
                                 .padding(.vertical, 10)
                                 .background(Color(.systemBackground))
-                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                                .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
 
                                 Text("\u{00D7}")
                                     .font(.caption.bold())
@@ -441,7 +441,7 @@ struct EditPerformanceLogSheet: View {
                                 .padding(.horizontal, 12)
                                 .padding(.vertical, 10)
                                 .background(Color(.systemBackground))
-                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                                .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
 
                                 if editableSets.count > 1 {
                                     Button {
@@ -450,7 +450,7 @@ struct EditPerformanceLogSheet: View {
                                     } label: {
                                         Image(systemName: "trash")
                                             .font(.caption)
-                                            .foregroundStyle(.red)
+                                            .foregroundStyle(TFColor.danger)
                                             .padding(6)
                                     }
                                     .buttonStyle(.plain)
@@ -459,8 +459,8 @@ struct EditPerformanceLogSheet: View {
                         }
                     }
                     .padding()
-                    .background(Color(.secondarySystemBackground))
-                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                    .background(TFColor.surface)
+                    .clipShape(RoundedRectangle(cornerRadius: TFRadius.card))
 
                     VStack(alignment: .leading, spacing: 8) {
                         Text("NOTES")
@@ -472,11 +472,11 @@ struct EditPerformanceLogSheet: View {
                             .lineLimit(2...4)
                             .padding(12)
                             .background(Color(.systemBackground))
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                            .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
                     }
                     .padding()
-                    .background(Color(.secondarySystemBackground))
-                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                    .background(TFColor.surface)
+                    .clipShape(RoundedRectangle(cornerRadius: TFRadius.card))
 
                     Button(role: .destructive) {
                         showDeleteConfirmation = true
@@ -485,9 +485,9 @@ struct EditPerformanceLogSheet: View {
                             .font(.subheadline.bold())
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 14)
-                            .background(Color.red.opacity(0.1))
-                            .foregroundStyle(.red)
-                            .clipShape(RoundedRectangle(cornerRadius: 16))
+                            .background(TFColor.danger.opacity(0.1))
+                            .foregroundStyle(TFColor.danger)
+                            .clipShape(RoundedRectangle(cornerRadius: TFRadius.card))
                     }
                 }
                 .padding()

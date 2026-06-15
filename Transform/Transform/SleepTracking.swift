@@ -446,7 +446,7 @@ struct SleepHistoryView: View {
                             Spacer()
                             Text(SleepFormatting.duration(episode.resolvedDurationHours))
                                 .font(.title3.bold())
-                                .foregroundStyle(.blue)
+                                .foregroundStyle(TFColor.sleep)
                             Image(systemName: "chevron.right")
                                 .font(.caption)
                                 .foregroundStyle(.tertiary)
@@ -468,7 +468,7 @@ struct SleepHistoryView: View {
                     editorRequest = SleepEditorRequest(episode: nil)
                 } label: {
                     Image(systemName: "plus.circle.fill")
-                        .foregroundStyle(.blue)
+                        .foregroundStyle(TFColor.sleep)
                 }
             }
         }
