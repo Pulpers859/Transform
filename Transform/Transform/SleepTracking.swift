@@ -253,7 +253,7 @@ struct SleepEntryEditor: View {
                         Spacer()
                         Text(SleepFormatting.duration(durationHours))
                             .font(.headline)
-                            .foregroundStyle(durationHours < 0.25 ? .red : .blue)
+                            .foregroundStyle(durationHours < 0.25 ? TFColor.danger : TFColor.sleep)
                     }
 
                     Picker("Sleep quality", selection: $quality) {

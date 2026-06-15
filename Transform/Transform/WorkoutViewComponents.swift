@@ -16,9 +16,10 @@ struct TrainingDayCard: View {
             } label: {
                 Image(systemName: day.isCompleted ? "checkmark.circle.fill" : "circle")
                     .font(.title3)
-                    .foregroundStyle(day.isCompleted ? .green : .secondary)
+                    .foregroundStyle(day.isCompleted ? TFColor.success : .secondary)
             }
             .buttonStyle(.plain)
+            .accessibilityLabel(day.isCompleted ? "Mark Day \(day.dayNumber) incomplete" : "Mark Day \(day.dayNumber) complete")
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
@@ -112,9 +113,10 @@ struct RestDayCard: View {
             } label: {
                 Image(systemName: day.isCompleted ? "checkmark.circle.fill" : "circle")
                     .font(.title3)
-                    .foregroundStyle(day.isCompleted ? .green : .secondary)
+                    .foregroundStyle(day.isCompleted ? TFColor.success : .secondary)
             }
             .buttonStyle(.plain)
+            .accessibilityLabel(day.isCompleted ? "Mark Day \(day.dayNumber) incomplete" : "Mark Day \(day.dayNumber) complete")
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack {

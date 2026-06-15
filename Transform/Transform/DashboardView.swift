@@ -193,34 +193,34 @@ struct DashboardView: View {
     var coachingHeadline: (String, Color) {
         // Priority 1: Insufficient data
         if loggedDaysCount < 3 {
-            return ("Log meals consistently — only \(loggedDaysCount)/7 days tracked this week", .orange)
+            return ("Log meals consistently — only \(loggedDaysCount)/7 days tracked this week", TFColor.accent)
         }
 
         // Priority 2: Risk flags
         if let trend = dashboardMeasurementTrend {
             if trend.interpretation == .likelyFatLoss,
                let rate = trend.weightChangeRatePerWeek, rate < -2.0 {
-                return ("Fat loss is fast — consider slowing the deficit to protect performance", .orange)
+                return ("Fat loss is fast — consider slowing the deficit to protect performance", TFColor.accent)
             }
         }
 
         if let daysAgo = analysisDaysAgo, daysAgo > 56 {
-            return ("AI targets are \(daysAgo) days old — consider re-analyzing before adjusting further", .orange)
+            return ("AI targets are \(daysAgo) days old — consider re-analyzing before adjusting further", TFColor.accent)
         }
 
         // Priority 3: Acute recovery constraint
         if let sleepTrend, sleepTrend.acuteLoggedDays >= 2 {
             if sleepTrend.threeDayAverageHours < 5 {
-                return ("Acute sleep restriction — keep today's training submaximal and trim low-priority fatigue", .orange)
+                return ("Acute sleep restriction — keep today's training submaximal and trim low-priority fatigue", TFColor.accent)
             }
             if sleepTrend.hasRecentPostCallRecovery || sleepTrend.underFiveHours > 0 {
-                return ("Recovery is constrained — prioritize technique, hydration, and an achievable session today", .orange)
+                return ("Recovery is constrained — prioritize technique, hydration, and an achievable session today", TFColor.accent)
             }
         }
 
         // Priority 4: Major protein gap (standalone — before body trends)
         if proteinRate < 0.35 && loggedDaysCount >= 3 {
-            return ("Protein is the priority — hitting target on only \(proteinHitDays)/\(loggedDaysCount) logged days", .orange)
+            return ("Protein is the priority — hitting target on only \(proteinHitDays)/\(loggedDaysCount) logged days", TFColor.accent)
         }
 
         // Priority 5: Body trends (with protein caveat when applicable)
@@ -228,16 +228,16 @@ struct DashboardView: View {
             let caveat = proteinCaveat.map { " — \($0)" } ?? ""
             switch trend.interpretation {
             case .likelyRecomposition:
-                return ("Waist trending down, weight stable\(caveat.isEmpty ? " — stay the course" : caveat)", caveat.isEmpty ? .green : .orange)
+                return ("Waist trending down, weight stable\(caveat.isEmpty ? " — stay the course" : caveat)", caveat.isEmpty ? TFColor.success : TFColor.accent)
             case .likelyFatLoss:
-                return ("Fat loss tracking well\(caveat.isEmpty ? " — waist and weight both down" : caveat)", caveat.isEmpty ? .green : .orange)
+                return ("Fat loss tracking well\(caveat.isEmpty ? " — waist and weight both down" : caveat)", caveat.isEmpty ? TFColor.success : TFColor.accent)
             case .possibleNoise:
                 return ("Recent changes may be noise — keep logging for clarity", .secondary)
             case .likelyMassGain:
                 if trend.waistToWeightRatio != nil && trend.waistChangeIn.map({ $0 <= 0.1 }) == true {
                     return ("Weight rising but waist controlled — check training performance before adjusting", .secondary)
                 }
-                return ("Weight and waist both rising — review targets if fat loss is the goal", .orange)
+                return ("Weight and waist both rising — review targets if fat loss is the goal", TFColor.accent)
             default:
                 break
             }
@@ -245,12 +245,12 @@ struct DashboardView: View {
 
         // Priority 6: Moderate protein gap (no body trend to attach to)
         if proteinRate < 0.5 && loggedDaysCount >= 3 {
-            return ("Protein is the gap — hitting target on only \(proteinHitDays)/\(loggedDaysCount) logged days", .orange)
+            return ("Protein is the gap — hitting target on only \(proteinHitDays)/\(loggedDaysCount) logged days", TFColor.accent)
         }
 
         // Priority 7: Praise
         if proteinRate >= 0.7 && loggedDaysCount >= 5 {
-            return ("Strong week — logging consistent, protein adherence solid", .green)
+            return ("Strong week — logging consistent, protein adherence solid", TFColor.success)
         }
 
         return ("Keep logging — consistency is what unlocks meaningful trends", .secondary)
@@ -541,6 +541,8 @@ struct DashboardView: View {
             RoundedRectangle(cornerRadius: TFRadius.cardCompact)
                 .strokeBorder(color.opacity(0.2), lineWidth: 1)
         )
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Coaching: \(message)")
     }
 
     // MARK: - Today's Rings Card
@@ -590,6 +592,8 @@ struct DashboardView: View {
                     }
                 }
                 .frame(width: 140, height: 140)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Today's macros: \(todayCalories) of \(activeMacroTargets.calories) calories, \(Int(todayProtein)) of \(Int(activeMacroTargets.proteinG)) grams protein, \(Int(todayCarbs)) of \(Int(activeMacroTargets.carbsG)) grams carbs, \(Int(todayFat)) of \(Int(activeMacroTargets.fatG)) grams fat")
 
                 VStack(alignment: .leading, spacing: 10) {
                     ringLegendRow(color: .orange, label: "Calories", value: "\(todayCalories)", target: "\(activeMacroTargets.calories)", unit: "kcal")
@@ -714,7 +718,7 @@ struct DashboardView: View {
                         "\(trend.underSixHours) short",
                         systemImage: trend.underSixHours > 0 ? "exclamationmark.triangle.fill" : "checkmark.circle.fill"
                     )
-                    .foregroundStyle(trend.underSixHours > 0 ? .orange : .green)
+                    .foregroundStyle(trend.underSixHours > 0 ? TFColor.accent : TFColor.success)
 
                     Label(
                         "\(trend.variabilityLabel) variability",
@@ -800,6 +804,8 @@ struct DashboardView: View {
                     .foregroundStyle(TFColor.accent.opacity(0.6))
                     .padding(.bottom, 4)
             }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Current weight: \(currentWeight.map { String(format: "%.1f", $0) } ?? "no data") pounds")
             if let trend = weightTrend.currentTrendWeightLbs {
                 Text("7-day trend \(String(format: "%.1f", trend)) lb · \(weightTrend.dataQuality.rawValue) data")
                     .font(.caption2)
@@ -954,7 +960,7 @@ struct DashboardView: View {
                         if let change = trend.waistChangeIn, abs(change) > 0.05 {
                             Text(String(format: "%+.1f", change))
                                 .font(.caption2.bold())
-                                .foregroundStyle(change < 0 ? .green : .red)
+                                .foregroundStyle(change < 0 ? TFColor.success : TFColor.danger)
                         }
                     }
                 }
@@ -1069,7 +1075,7 @@ struct DashboardView: View {
     var analysisFreshnessLine: some View {
         HStack(spacing: 4) {
             if let daysAgo = analysisDaysAgo {
-                let color: Color = daysAgo <= 30 ? .green : (daysAgo <= 45 ? .orange : .red)
+                let color: Color = daysAgo <= 30 ? TFColor.success : (daysAgo <= 45 ? TFColor.accent : TFColor.danger)
                 Image(systemName: "sparkles")
                     .font(.caption2)
                     .foregroundStyle(color)
@@ -1179,5 +1185,6 @@ struct AnimatedRing: View {
                 .animation(.easeOut(duration: 0.8), value: progress)
         }
         .frame(width: size, height: size)
+        .accessibilityHidden(true)
     }
 }

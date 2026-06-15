@@ -198,9 +198,7 @@ struct ExerciseProgressionView: View {
             }
             .frame(height: 200)
         }
-        .padding()
-        .background(TFColor.surface)
-        .clipShape(RoundedRectangle(cornerRadius: TFRadius.card))
+        .dashCard()
     }
 
     var e1rmChart: some View {
@@ -246,9 +244,7 @@ struct ExerciseProgressionView: View {
             }
             .frame(height: 160)
         }
-        .padding()
-        .background(TFColor.surface)
-        .clipShape(RoundedRectangle(cornerRadius: TFRadius.card))
+        .dashCard()
     }
 
     var singleEntryCard: some View {
@@ -342,9 +338,7 @@ struct ExerciseProgressionView: View {
                 }
             }
         }
-        .padding()
-        .background(TFColor.surface)
-        .clipShape(RoundedRectangle(cornerRadius: TFRadius.card))
+        .dashCard()
     }
 
     func formatWeight(_ weight: Double) -> String {

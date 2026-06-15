@@ -90,9 +90,7 @@ struct WorkoutDayDetailView: View {
                     .frame(width: 36)
             }
         }
-        .padding(16)
-        .background(TFColor.surface)
-        .clipShape(RoundedRectangle(cornerRadius: TFRadius.card))
+        .dashCard()
     }
 
     var weekBadge: some View {
@@ -360,6 +358,7 @@ struct ExerciseCard: View {
                         .foregroundStyle(exercise.isCompleted ? TFColor.success : .secondary)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(exercise.isCompleted ? "Mark \(exercise.exerciseName) incomplete" : "Mark \(exercise.exerciseName) complete")
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(exercise.exerciseName)
@@ -689,6 +688,8 @@ struct ExerciseCard: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 14)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Rest timer: \(restStatusLabel), \(restDisplayText)")
     }
 
     func toggleRestTimer() {

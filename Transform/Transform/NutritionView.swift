@@ -398,9 +398,7 @@ struct NutritionView: View {
                 .foregroundStyle(TFColor.accent)
             }
         }
-        .padding()
-        .background(TFColor.surface)
-        .clipShape(RoundedRectangle(cornerRadius: TFRadius.card))
+        .dashCard()
     }
 
     var macroTargetSourceText: String {
@@ -422,7 +420,7 @@ struct NutritionView: View {
                 Spacer()
                 Text(macroReviewGate.isEligible ? "READY" : "LOCKED")
                     .font(.system(size: 9, weight: .bold, design: .monospaced))
-                    .foregroundStyle(macroReviewGate.isEligible ? .green : .secondary)
+                    .foregroundStyle(macroReviewGate.isEligible ? TFColor.success : .secondary)
             }
 
             if let review = savedMacroReview {
@@ -495,9 +493,7 @@ struct NutritionView: View {
             .tint(TFColor.accent)
             .disabled(!macroReviewGate.isEligible || isGeneratingMacroReview || !canUseAI)
         }
-        .padding()
-        .background(TFColor.surface)
-        .clipShape(RoundedRectangle(cornerRadius: TFRadius.card))
+        .dashCard()
     }
 
     func macroReviewTarget(_ label: String, _ value: String) -> some View {
@@ -627,9 +623,7 @@ struct NutritionView: View {
                     .foregroundStyle(.secondary)
             }
         }
-        .padding()
-        .background(TFColor.surface)
-        .clipShape(RoundedRectangle(cornerRadius: TFRadius.card))
+        .dashCard()
     }
 
     var weekSelector: some View {

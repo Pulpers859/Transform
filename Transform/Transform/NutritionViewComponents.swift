@@ -473,9 +473,7 @@ struct AdherenceSnapshotCard: View {
                 actionSection
             }
         }
-        .padding()
-        .background(TFColor.surface)
-        .clipShape(RoundedRectangle(cornerRadius: TFRadius.card))
+        .dashCard()
     }
 
     private var headerRow: some View {

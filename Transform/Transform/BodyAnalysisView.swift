@@ -269,9 +269,7 @@ struct BodyAnalysisView: View {
                 addPhotoSection
             }
         }
-        .padding()
-        .background(TFColor.surface)
-        .clipShape(RoundedRectangle(cornerRadius: TFRadius.card))
+        .dashCard()
     }
 
     var emptyPhotoPlaceholder: some View {
@@ -456,9 +454,7 @@ struct BodyAnalysisView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
-        .padding()
-        .background(TFColor.surface)
-        .clipShape(RoundedRectangle(cornerRadius: TFRadius.card))
+        .dashCard()
     }
 
     @ViewBuilder
@@ -658,9 +654,7 @@ struct BodyAnalysisView: View {
         VStack(alignment: .leading, spacing: 12) {
             content()
         }
-        .padding()
-        .background(TFColor.surface)
-        .clipShape(RoundedRectangle(cornerRadius: TFRadius.card))
+        .dashCard()
     }
 
     // MARK: - Photo Quality Card

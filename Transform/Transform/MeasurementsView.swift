@@ -188,9 +188,7 @@ struct MeasurementsView: View {
                 .font(.caption2)
                 .foregroundStyle(.secondary)
         }
-        .padding()
-        .background(TFColor.surface)
-        .clipShape(RoundedRectangle(cornerRadius: TFRadius.card))
+        .dashCard()
     }
 
     func trendRow(label: String, value: String?, change: Double?, unit: String, invertDelta: Bool) -> some View {

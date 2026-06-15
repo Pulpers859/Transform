@@ -273,9 +273,7 @@ struct WorkoutView: View {
             }
 
         }
-        .padding(16)
-        .background(TFColor.surface)
-        .clipShape(RoundedRectangle(cornerRadius: TFRadius.card))
+        .dashCard()
         .onLongPressGesture(minimumDuration: 1.2) {
             openGeneratorLab()
         }
@@ -586,9 +584,7 @@ struct WorkoutView: View {
                     .foregroundStyle(.secondary)
             }
         }
-        .padding(16)
-        .background(TFColor.surface)
-        .clipShape(RoundedRectangle(cornerRadius: TFRadius.card))
+        .dashCard()
     }
 
     // MARK: - Danger Zone
