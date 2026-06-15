@@ -1055,39 +1055,22 @@ enum AppSettingsStore {
 
 enum AnthropicAPIKeyStatus: Equatable {
     case configured(String)
-    case missingConfiguration(expectedInfoPlistKey: String, expectedBundlePath: String)
-    case invalidInfoPlistValue(infoPlistKey: String, expectedBundlePath: String)
-    case unreadableSecretsFile(expectedBundlePath: String)
-    case missingKey(expectedBundlePath: String)
-    case placeholderValue(expectedBundlePath: String)
+    case notConfigured
 
     var apiKey: String? {
         switch self {
-        case .configured(let key):
-            return key
-        default:
-            return nil
+        case .configured(let key): return key
+        case .notConfigured: return nil
         }
     }
 
-    var isConfigured: Bool {
-        apiKey != nil
-    }
+    var isConfigured: Bool { apiKey != nil }
 
     var inlineHelpText: String {
         switch self {
-        case .configured:
-            return ""
-        case .missingConfiguration(let infoPlistKey, _):
-            return "AI is unavailable. Add your Anthropic API key in Transform Settings. Transform also accepts \(infoPlistKey) from a local build configuration."
-        case .invalidInfoPlistValue(let infoPlistKey, _):
-            return "AI is unavailable. \(infoPlistKey) in the generated Info.plist is empty or still set to a placeholder."
-        case .unreadableSecretsFile:
-            return "AI is unavailable. Transform found Secrets.plist but could not read it as a valid property list."
-        case .missingKey:
-            return "AI is unavailable. Secrets.plist is bundled, but ANTHROPIC_API_KEY is missing or empty."
-        case .placeholderValue:
-            return "AI is unavailable. Secrets.plist still contains the placeholder key instead of your real ANTHROPIC_API_KEY."
+        case .configured: return ""
+        case .notConfigured:
+            return "AI is unavailable. Add your Anthropic API key in Transform Settings."
         }
     }
 
@@ -1096,155 +1079,24 @@ enum AnthropicAPIKeyStatus: Equatable {
         return """
         \(inlineHelpText)
 
-        Open Settings and choose Add API Key. The key is stored in this device's Keychain and never committed to GitHub.
-
-        Local build configuration and Secrets.plist remain available as fallback setup methods.
+        Open Settings and choose Add API Key. The key is stored in this device's Keychain and never leaves the device.
         """
     }
 
     var requestFailureMessage: String {
         startupAlertMessage ?? inlineHelpText
     }
-
-    private var expectedBundlePath: String {
-        switch self {
-        case .configured:
-            return APIKeyProvider.expectedBundleSecretsPath
-        case .missingConfiguration(_, let path),
-             .invalidInfoPlistValue(_, let path),
-             .unreadableSecretsFile(let path),
-             .missingKey(let path),
-             .placeholderValue(let path):
-            return path
-        }
-    }
 }
 
 enum APIKeyProvider {
-    static let infoPlistKey = "ANTHROPIC_API_KEY"
-    private static let secretsPlistName = "Secrets"
-    static let localXCConfigRelativePath = "Transform/Config/Secrets.xcconfig"
-    static let localXCConfigExampleRelativePath = "Transform/Config/Secrets.xcconfig.example"
-    static let localSecretsPlistRelativePath = "Transform/Transform/Secrets.plist"
-
-    static var expectedBundleSecretsPath: String {
-        (Bundle.main.bundlePath as NSString).appendingPathComponent("\(secretsPlistName).plist")
-    }
-
     static var anthropicKeyStatus: AnthropicAPIKeyStatus {
-        if let keychainKey = AnthropicAPIKeyStore.storedKey {
-            return validatedStatus(
-                rawValue: keychainKey,
-                invalidMissingStatus: .missingConfiguration(
-                    expectedInfoPlistKey: infoPlistKey,
-                    expectedBundlePath: expectedBundleSecretsPath
-                ),
-                invalidPlaceholderStatus: .missingConfiguration(
-                    expectedInfoPlistKey: infoPlistKey,
-                    expectedBundlePath: expectedBundleSecretsPath
-                )
-            )
+        guard let raw = AnthropicAPIKeyStore.storedKey else {
+            return .notConfigured
         }
-
-        let infoPlistStatus = infoPlistKeyStatus
-        if case .configured = infoPlistStatus {
-            return infoPlistStatus
-        }
-
-        let secretsStatus = bundledSecretsStatus
-        if case .configured = secretsStatus {
-            return secretsStatus
-        }
-
-        switch infoPlistStatus {
-        case .invalidInfoPlistValue:
-            return infoPlistStatus
-        default:
-            break
-        }
-
-        switch secretsStatus {
-        case .unreadableSecretsFile, .missingKey, .placeholderValue:
-            return secretsStatus
-        default:
-            return .missingConfiguration(
-                expectedInfoPlistKey: infoPlistKey,
-                expectedBundlePath: expectedBundleSecretsPath
-            )
-        }
-    }
-
-    private static var infoPlistKeyStatus: AnthropicAPIKeyStatus {
-        let expectedPath = expectedBundleSecretsPath
-        guard let rawValue = Bundle.main.object(forInfoDictionaryKey: infoPlistKey) as? String else {
-            return .missingConfiguration(
-                expectedInfoPlistKey: infoPlistKey,
-                expectedBundlePath: expectedPath
-            )
-        }
-
-        return validatedStatus(
-            rawValue: rawValue,
-            invalidMissingStatus: .invalidInfoPlistValue(
-                infoPlistKey: infoPlistKey,
-                expectedBundlePath: expectedPath
-            ),
-            invalidPlaceholderStatus: .invalidInfoPlistValue(
-                infoPlistKey: infoPlistKey,
-                expectedBundlePath: expectedPath
-            )
-        )
-    }
-
-    private static var bundledSecretsStatus: AnthropicAPIKeyStatus {
-        let expectedPath = expectedBundleSecretsPath
-
-        guard let url = Bundle.main.url(forResource: secretsPlistName, withExtension: "plist") else {
-            return .missingConfiguration(
-                expectedInfoPlistKey: infoPlistKey,
-                expectedBundlePath: expectedPath
-            )
-        }
-
-        guard let data = try? Data(contentsOf: url),
-              let object = try? PropertyListSerialization.propertyList(from: data, format: nil),
-              let dictionary = object as? [String: Any] else {
-            return .unreadableSecretsFile(expectedBundlePath: expectedPath)
-        }
-
-        guard let rawValue = dictionary[infoPlistKey] as? String else {
-            return .missingKey(expectedBundlePath: expectedPath)
-        }
-
-        return validatedStatus(
-            rawValue: rawValue,
-            invalidMissingStatus: .missingKey(expectedBundlePath: expectedPath),
-            invalidPlaceholderStatus: .placeholderValue(expectedBundlePath: expectedPath)
-        )
-    }
-
-    private static func validatedStatus(
-        rawValue: String,
-        invalidMissingStatus: AnthropicAPIKeyStatus,
-        invalidPlaceholderStatus: AnthropicAPIKeyStatus
-    ) -> AnthropicAPIKeyStatus {
-        let cleaned = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !cleaned.isEmpty else {
-            return invalidMissingStatus
-        }
-
-        guard !placeholderValues.contains(cleaned.lowercased()) else {
-            return invalidPlaceholderStatus
-        }
-
+        let cleaned = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty else { return .notConfigured }
         return .configured(cleaned)
     }
-
-    private static let placeholderValues: Set<String> = [
-        "your_api_key_here",
-        "sk-ant-your-real-key-goes-here",
-        "$(anthropic_api_key)"
-    ]
 }
 
 enum GeneratedContentSource: String, CaseIterable {

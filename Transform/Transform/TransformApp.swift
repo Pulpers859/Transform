@@ -193,7 +193,7 @@ struct StartupErrorView: View {
             VStack(spacing: 16) {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.system(size: 42))
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(TFColor.accent)
 
                 Text("Transform Could Not Start")
                     .font(.title2.bold())

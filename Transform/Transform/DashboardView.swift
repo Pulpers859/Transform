@@ -603,13 +603,13 @@ struct DashboardView: View {
 
             HStack {
                 Image(systemName: remainingCaloriesToday >= 0 ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
-                    .foregroundStyle(remainingCaloriesToday >= 0 ? Color.green : Color.red)
+                    .foregroundStyle(remainingCaloriesToday >= 0 ? TFColor.success : TFColor.danger)
                     .font(.caption)
                 Text(remainingCaloriesToday >= 0
                      ? "\(remainingCaloriesToday) calories remaining today"
                      : "\(abs(remainingCaloriesToday)) calories over target")
                     .font(.caption)
-                    .foregroundStyle(remainingCaloriesToday >= 0 ? Color.secondary : Color.red)
+                    .foregroundStyle(remainingCaloriesToday >= 0 ? Color.secondary : TFColor.danger)
                 Spacer()
             }
             .padding(.top, 2)
@@ -624,27 +624,27 @@ struct DashboardView: View {
             HStack(spacing: 4) {
                 Image(systemName: "fork.knife")
                     .font(.system(size: 9))
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(TFColor.accent)
                 Text("Logged: \(loggedDaysCount)/7")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
-            .background(Color.orange.opacity(0.08))
+            .background(TFColor.accent.opacity(0.08))
             .clipShape(Capsule())
 
             HStack(spacing: 4) {
                 Image(systemName: "flame.fill")
                     .font(.system(size: 9))
-                    .foregroundStyle(.red)
+                    .foregroundStyle(TFColor.danger)
                 Text("Protein: \(proteinHitDays)/\(max(loggedDaysCount, 1))")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
-            .background(Color.red.opacity(0.08))
+            .background(TFColor.danger.opacity(0.08))
             .clipShape(Capsule())
 
             Spacer()
@@ -724,7 +724,7 @@ struct DashboardView: View {
 
                     if trend.hasRecentPostCallRecovery {
                         Label("Post-call", systemImage: "cross.case.fill")
-                            .foregroundStyle(.blue)
+                            .foregroundStyle(TFColor.sleep)
                     }
 
                     Spacer()
@@ -758,7 +758,7 @@ struct DashboardView: View {
                     Image(systemName: "chevron.right")
                         .font(.caption)
                 }
-                .foregroundStyle(.blue)
+                .foregroundStyle(TFColor.sleep)
             }
             .buttonStyle(.plain)
         }
@@ -816,7 +816,7 @@ struct DashboardView: View {
                         let remaining = abs(current - Config.bodyWeightGoalLbs)
                         Text(String(format: "%.1f lb to goal", remaining))
                             .font(.caption.bold())
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(TFColor.accent)
                     }
                 }
 
@@ -896,7 +896,7 @@ struct DashboardView: View {
                         y: .value("Trend weight", entry.trendWeightLbs),
                         series: .value("Series", "7-day trend")
                     )
-                    .foregroundStyle(Color.orange)
+                    .foregroundStyle(TFColor.accent)
                     .lineStyle(StrokeStyle(lineWidth: 2.5))
                     .interpolationMethod(.monotone)
                 }
@@ -942,7 +942,7 @@ struct DashboardView: View {
             HStack(spacing: 6) {
                 Image(systemName: "ruler")
                     .font(.caption2)
-                    .foregroundStyle(.purple)
+                    .foregroundStyle(TFColor.measurement)
 
                 dashboardInterpretationBadge(trend.interpretation)
 
@@ -967,7 +967,7 @@ struct DashboardView: View {
             if let signal = trend.waistToWeightRatio {
                 Text(signal)
                     .font(.caption2)
-                    .foregroundStyle(.purple)
+                    .foregroundStyle(TFColor.measurement)
             }
         }
     }
@@ -1022,13 +1022,13 @@ struct DashboardView: View {
                 )
                 .foregroundStyle(
                     Calendar.current.isDateInToday(date)
-                    ? Color.orange
-                    : Color.orange.opacity(0.35)
+                    ? TFColor.accent
+                    : TFColor.accent.opacity(0.35)
                 )
                 .cornerRadius(4)
 
                 RuleMark(y: .value("Target", activeMacroTargets.calories))
-                    .foregroundStyle(Color.orange.opacity(0.4))
+                    .foregroundStyle(TFColor.accent.opacity(0.4))
                     .lineStyle(StrokeStyle(lineWidth: 1, dash: [4]))
             }
             .chartXAxis {
@@ -1055,7 +1055,7 @@ struct DashboardView: View {
                     .foregroundStyle(.tertiary)
                 Text("\(Int(weekAverageCalories)) kcal")
                     .font(.caption2.bold())
-                    .foregroundStyle(weekAverageCalories > Double(activeMacroTargets.calories) ? Color.red : Color.green)
+                    .foregroundStyle(weekAverageCalories > Double(activeMacroTargets.calories) ? TFColor.danger : TFColor.success)
                 Text("· Target: \(activeMacroTargets.calories) kcal")
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
@@ -1079,7 +1079,7 @@ struct DashboardView: View {
                 if daysAgo > 42 {
                     Text("· Consider re-analyzing")
                         .font(.caption2)
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(TFColor.accent)
                 }
             } else {
                 Image(systemName: "sparkles")

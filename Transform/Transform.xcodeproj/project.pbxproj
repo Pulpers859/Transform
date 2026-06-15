@@ -28,7 +28,6 @@
 		019311C22FBE3D370000F766 /* TransformTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TransformTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		019311CC2FBE3D370000F766 /* TransformUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TransformUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		A1D000001234567890000001 /* Config/TransformShared.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Config/TransformShared.xcconfig; sourceTree = "<group>"; };
-		A1D000001234567890000002 /* Config/Secrets.xcconfig.example */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Config/Secrets.xcconfig.example; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -87,7 +86,6 @@
 			isa = PBXGroup;
 			children = (
 				A1D000001234567890000001 /* Config/TransformShared.xcconfig */,
-				A1D000001234567890000002 /* Config/Secrets.xcconfig.example */,
 			);
 			name = Config;
 			sourceTree = "<group>";
@@ -397,7 +395,6 @@
 				DEVELOPMENT_TEAM = R4L58G49L2;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_ANTHROPIC_API_KEY = "$(ANTHROPIC_API_KEY)";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Transform uses the camera so you can capture physique photos for body analysis.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Transform uses your photo library so you can choose physique photos for body analysis.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -435,7 +432,6 @@
 				DEVELOPMENT_TEAM = R4L58G49L2;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_ANTHROPIC_API_KEY = "$(ANTHROPIC_API_KEY)";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Transform uses the camera so you can capture physique photos for body analysis.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Transform uses your photo library so you can choose physique photos for body analysis.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;

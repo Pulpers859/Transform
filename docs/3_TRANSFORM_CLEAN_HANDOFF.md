@@ -89,8 +89,8 @@ git checkout dev
 
 ## Secrets / Credential Handling
 - Do not treat repo-tracked files as a safe place for live credentials.
-- Prefer entering the Anthropic key in the app so it is stored in iOS Keychain. Ignored local `Transform\Config\Secrets.xcconfig` and `Transform\Transform\Secrets.plist` files remain build-time fallbacks and should never be committed.
-- Prefer example files plus ignored real local secret/config files whenever practical.
+- The Anthropic API key is entered in-app and stored in iOS Keychain. Build-time key injection has been removed.
+- Do not reintroduce build-time key fallbacks (xcconfig, Secrets.plist, Info.plist key).
 - Before first push of a new app, run a secret scan.
 
 ## Engineering / Architecture Expectations

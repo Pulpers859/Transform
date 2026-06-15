@@ -34,7 +34,7 @@ Important operating rules:
 - Preserve real workout quality over merely making the app pass rigid checks.
 - Respect the split `WorkoutGeneratorService` architecture; do not collapse it back into one giant file.
 - Keep evidence/profile logic, metadata logic, blueprint logic, validator logic, fallback logic, and coaching quality in sync.
-- Treat local secrets carefully. The preferred personal-use setup is entering the Anthropic key in the app so it is stored in iOS Keychain. Ignored local `Transform\Config\Secrets.xcconfig` and `Transform\Transform\Secrets.plist` files remain build-time fallbacks and should never be committed.
+- The Anthropic API key is entered in-app and stored in iOS Keychain. Build-time key injection (xcconfig/Info.plist) has been removed.
 
 Default working behavior:
 - I describe the issue here in chat

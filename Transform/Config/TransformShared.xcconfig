@@ -1,6 +1,2 @@
 // Shared local configuration bridge for Transform.
-// Create an uncommitted sibling file named Secrets.xcconfig with:
-// ANTHROPIC_API_KEY = sk-ant-...
-
-ANTHROPIC_API_KEY =
-#include? "Secrets.xcconfig"
+// API key is stored in iOS Keychain via in-app setup — no build-time key injection needed.

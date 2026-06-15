@@ -108,7 +108,7 @@ struct PhotoComparisonView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Priority Shift")
                         .font(.caption.bold())
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(TFColor.accent)
 
                     HStack(alignment: .top, spacing: 12) {
                         VStack(alignment: .leading, spacing: 2) {
@@ -156,7 +156,7 @@ struct PhotoComparisonView: View {
                     }
                     HStack(spacing: 4) {
                         Circle()
-                            .fill(Color.orange)
+                            .fill(TFColor.accent)
                             .frame(width: 6, height: 6)
                         Text(after)
                             .font(.caption)
@@ -166,7 +166,7 @@ struct PhotoComparisonView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(10)
-        .background(Color(.secondarySystemBackground))
+        .background(TFColor.surface)
         .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 }

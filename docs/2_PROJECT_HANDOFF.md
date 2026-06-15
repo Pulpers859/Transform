@@ -46,7 +46,7 @@
 - Audit adjacent risks after making fixes.
 - Run the checks that are realistically available in the current environment.
 - Clearly distinguish evidence-backed logic from heuristics.
-- Treat secrets as local-only by default whenever possible. The preferred personal-use setup is entering the Anthropic key in the app so it is stored in iOS Keychain. Ignored local `Transform\Config\Secrets.xcconfig` and `Transform\Transform\Secrets.plist` files remain build-time fallbacks and should never contain committed live keys.
+- The Anthropic API key is entered in-app and stored in iOS Keychain. Build-time key injection (xcconfig/Info.plist) has been removed. Do not reintroduce build-time key fallbacks.
 
 ## Product Priorities
 Order matters:

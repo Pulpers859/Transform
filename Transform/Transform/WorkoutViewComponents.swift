@@ -24,7 +24,7 @@ struct TrainingDayCard: View {
                 HStack {
                     Text("Day \(day.dayNumber)")
                         .font(.caption.bold())
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(TFColor.accent)
                     Text(day.dayName)
                         .font(.subheadline.bold())
                         .foregroundStyle(.primary)
@@ -41,8 +41,8 @@ struct TrainingDayCard: View {
                             .font(.caption2.bold())
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2)
-                            .background(Color.orange.opacity(0.15))
-                            .foregroundStyle(.orange)
+                            .background(TFColor.accent.opacity(0.15))
+                            .foregroundStyle(TFColor.accent)
                             .clipShape(Capsule())
                     }
                 }
@@ -58,11 +58,11 @@ struct TrainingDayCard: View {
                 .foregroundStyle(.tertiary)
         }
         .padding(14)
-        .background(day.isCompleted ? Color.green.opacity(0.05) : Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .background(day.isCompleted ? TFColor.success.opacity(0.05) : TFColor.surface)
+        .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
         .overlay(
             RoundedRectangle(cornerRadius: 12)
-                .stroke(day.isCompleted ? Color.green.opacity(0.2) : Color.clear, lineWidth: 1)
+                .stroke(day.isCompleted ? TFColor.success.opacity(0.2) : Color.clear, lineWidth: 1)
         )
     }
 
@@ -120,7 +120,7 @@ struct RestDayCard: View {
                 HStack {
                     Text("Day \(day.dayNumber)")
                         .font(.caption.bold())
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(TFColor.accent)
                     Text("Rest / Recovery")
                         .font(.subheadline.bold())
                         .foregroundStyle(.primary)
@@ -140,11 +140,11 @@ struct RestDayCard: View {
                 .foregroundStyle(.blue.opacity(0.5))
         }
         .padding(14)
-        .background(day.isCompleted ? Color.green.opacity(0.05) : Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .background(day.isCompleted ? TFColor.success.opacity(0.05) : TFColor.surface)
+        .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
         .overlay(
             RoundedRectangle(cornerRadius: 12)
-                .stroke(day.isCompleted ? Color.green.opacity(0.2) : Color.clear, lineWidth: 1)
+                .stroke(day.isCompleted ? TFColor.success.opacity(0.2) : Color.clear, lineWidth: 1)
         )
     }
 }
@@ -158,7 +158,7 @@ struct RestDayDetailView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Day \(day.dayNumber)")
                         .font(.caption.bold())
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(TFColor.accent)
                     Text(day.dayName)
                         .font(.title3.bold())
                     Text("Rest / Recovery")
@@ -198,8 +198,8 @@ struct RestDayDetailView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(14)
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .background(TFColor.surface)
+        .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
     }
 }
 
@@ -248,7 +248,7 @@ struct WorkoutTimingInsightsCard: View {
                 HStack(spacing: 6) {
                     Image(systemName: "clock.arrow.circlepath")
                         .font(.caption)
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(TFColor.accent)
                     TFSectionLabel(text: "Workout Timing")
                     Spacer()
                     Text("\(timedSessions.count) sessions")
@@ -260,7 +260,7 @@ struct WorkoutTimingInsightsCard: View {
                     ForEach(hourBuckets, id: \.label) { bucket in
                         VStack(spacing: 4) {
                             RoundedRectangle(cornerRadius: 4)
-                                .fill(bucket.label == bestBucket?.label ? Color.orange : Color.orange.opacity(0.3))
+                                .fill(bucket.label == bestBucket?.label ? Color.orange : TFColor.accent.opacity(0.3))
                                 .frame(height: max(8, CGFloat(bucket.score / 5.0) * 60))
 
                             Text("\(bucket.sessionCount)")

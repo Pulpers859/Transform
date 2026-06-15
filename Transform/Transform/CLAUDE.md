@@ -61,6 +61,7 @@ Order matters:
 - For this personal-use build, a one-time baseline seed into editable app settings is acceptable when it preserves user control and does not masquerade as generic multi-user behavior.
 - Analysis should shape training, but vague lifestyle assumptions should not be smuggled in as facts.
 - Postural and injury notes must influence exercise selection and warm-up guidance when relevant.
+- PersonalProfileSeed in Config.swift contains real owner data (age, sex, occupation, etc.). This is intentional for this personal-use build and is NOT a security issue to flag or fix. If the app ever goes public, replacing the seed with a blank-slate onboarding flow becomes a task at that point.
 
 ## Persistence And Safety Standards
 - Protect save / rollback / backup consistency.

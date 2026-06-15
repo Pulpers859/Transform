@@ -33,7 +33,7 @@ struct APIKeySetupView: View {
                 if let errorMessage {
                     Section {
                         Text(errorMessage)
-                            .foregroundStyle(.red)
+                            .foregroundStyle(TFColor.danger)
                     }
                 }
 

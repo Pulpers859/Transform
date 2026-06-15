@@ -74,10 +74,10 @@ struct WorkoutDayDetailView: View {
                 GeometryReader { geo in
                     ZStack(alignment: .leading) {
                         Capsule()
-                            .fill(Color.orange.opacity(0.15))
+                            .fill(TFColor.accent.opacity(0.15))
                             .frame(height: 6)
                         Capsule()
-                            .fill(Color.orange)
+                            .fill(TFColor.accent)
                             .frame(width: geo.size.width * exerciseProgress, height: 6)
                             .animation(.easeOut(duration: 0.4), value: exerciseProgress)
                     }
@@ -86,13 +86,13 @@ struct WorkoutDayDetailView: View {
 
                 Text("\(completedExerciseCount)/\(totalExerciseCount)")
                     .font(.caption.bold())
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(TFColor.accent)
                     .frame(width: 36)
             }
         }
         .padding(16)
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .background(TFColor.surface)
+        .clipShape(RoundedRectangle(cornerRadius: TFRadius.card))
     }
 
     var weekBadge: some View {
@@ -100,8 +100,8 @@ struct WorkoutDayDetailView: View {
             .font(.caption.bold())
             .padding(.horizontal, 10)
             .padding(.vertical, 5)
-            .background(Color.orange.opacity(0.15))
-            .foregroundStyle(.orange)
+            .background(TFColor.accent.opacity(0.15))
+            .foregroundStyle(TFColor.accent)
             .clipShape(Capsule())
     }
 
@@ -111,7 +111,7 @@ struct WorkoutDayDetailView: View {
         VStack(alignment: .leading, spacing: 10) {
             Label("Session Notes", systemImage: "note.text")
                 .font(.headline)
-                .foregroundStyle(.orange)
+                .foregroundStyle(TFColor.accent)
 
             if !sessionNoteSections.summary.isEmpty {
                 Text(sessionNoteSections.summary)
@@ -123,13 +123,13 @@ struct WorkoutDayDetailView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Warm-up Checklist")
                         .font(.caption.bold())
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(TFColor.accent)
 
                     ForEach(sessionNoteSections.warmupSteps, id: \.self) { step in
                         HStack(alignment: .top, spacing: 8) {
                             Image(systemName: "circle.fill")
                                 .font(.system(size: 5))
-                                .foregroundStyle(.orange)
+                                .foregroundStyle(TFColor.accent)
                                 .padding(.top, 6)
 
                             Text(step)
@@ -143,8 +143,8 @@ struct WorkoutDayDetailView: View {
             }
         }
         .padding()
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .background(TFColor.surface)
+        .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
     }
 
     var sessionFeedbackCard: some View {
@@ -153,7 +153,7 @@ struct WorkoutDayDetailView: View {
         } label: {
             HStack(spacing: 12) {
                 Image(systemName: day.hasSessionFeedback ? "checkmark.bubble.fill" : "bubble.left.and.exclamationmark.bubble.right")
-                    .foregroundStyle(day.hasSessionFeedback ? .green : .orange)
+                    .foregroundStyle(day.hasSessionFeedback ? TFColor.success : TFColor.accent)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(day.hasSessionFeedback ? "Session Feedback" : "Add Session Feedback")
                         .font(.subheadline.bold())
@@ -171,8 +171,8 @@ struct WorkoutDayDetailView: View {
                     .foregroundStyle(.tertiary)
             }
             .padding()
-            .background(Color(.secondarySystemBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .background(TFColor.surface)
+            .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
         }
         .buttonStyle(.plain)
     }
@@ -338,15 +338,15 @@ struct ExerciseCard: View {
 
     var timerAccent: Color {
         if didCompleteRestTimer {
-            return .green
+            return TFColor.success
         }
         if isRestTimerActive {
-            return remainingRestSeconds <= 15 ? .red : .orange
+            return remainingRestSeconds <= 15 ? TFColor.danger : TFColor.accent
         }
         if remainingRestSeconds != exercise.restSeconds {
-            return .yellow
+            return TFColor.warning
         }
-        return .orange
+        return TFColor.accent
     }
 
     var body: some View {
@@ -357,7 +357,7 @@ struct ExerciseCard: View {
                 } label: {
                     Image(systemName: exercise.isCompleted ? "checkmark.circle.fill" : "circle")
                         .font(.title3)
-                        .foregroundStyle(exercise.isCompleted ? .green : .secondary)
+                        .foregroundStyle(exercise.isCompleted ? TFColor.success : .secondary)
                 }
                 .buttonStyle(.plain)
 
@@ -370,7 +370,7 @@ struct ExerciseCard: View {
                     if !exercise.muscleTarget.isEmpty {
                         Text(exercise.muscleTarget)
                             .font(.caption2)
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(TFColor.accent)
                     }
                 }
 
@@ -442,10 +442,10 @@ struct ExerciseCard: View {
                 HStack(spacing: 6) {
                     Image(systemName: status.isSkipped ? "forward.fill" : "arrow.triangle.swap")
                         .font(.caption2)
-                        .foregroundStyle(status.isSkipped ? .red : .yellow)
+                        .foregroundStyle(status.isSkipped ? TFColor.danger : TFColor.warning)
                     Text(status.shortLabel)
                         .font(.caption2.bold())
-                        .foregroundStyle(status.isSkipped ? .red : .yellow)
+                        .foregroundStyle(status.isSkipped ? TFColor.danger : TFColor.warning)
                     Spacer()
                     Button {
                         exercise.completionStatus = nil
@@ -460,7 +460,7 @@ struct ExerciseCard: View {
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
-                .background(status.isSkipped ? Color.red.opacity(0.06) : Color.yellow.opacity(0.06))
+                .background(status.isSkipped ? TFColor.danger.opacity(0.06) : TFColor.warning.opacity(0.06))
             }
 
             Divider().padding(.horizontal, 14)
@@ -470,7 +470,7 @@ struct ExerciseCard: View {
                 } label: {
                     Label("Log Sets", systemImage: "plus.circle.fill")
                         .font(.caption.bold())
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(TFColor.accent)
                 }
                 .buttonStyle(.plain)
 
@@ -531,7 +531,7 @@ struct ExerciseCard: View {
                 HStack(alignment: .top, spacing: 6) {
                     Image(systemName: "lightbulb.fill")
                         .font(.caption2)
-                        .foregroundStyle(.yellow)
+                        .foregroundStyle(TFColor.warning)
                     Text(cleanedCoachingNote)
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -540,11 +540,11 @@ struct ExerciseCard: View {
                 .padding(.vertical, 10)
             }
         }
-        .background(exercise.isCompleted ? Color.green.opacity(0.05) : Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .background(exercise.isCompleted ? TFColor.success.opacity(0.05) : TFColor.surface)
+        .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
         .overlay(
             RoundedRectangle(cornerRadius: 12)
-                .stroke(exercise.isCompleted ? Color.green.opacity(0.2) : Color.clear, lineWidth: 1)
+                .stroke(exercise.isCompleted ? TFColor.success.opacity(0.2) : Color.clear, lineWidth: 1)
         )
         .onAppear {
             if remainingRestSeconds == 0 && !didCompleteRestTimer {
@@ -588,7 +588,7 @@ struct ExerciseCard: View {
                 HStack(spacing: 8) {
                     Text("Set \(set.setNumber)")
                         .font(.caption2.bold())
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(TFColor.accent)
                         .frame(width: 38, alignment: .leading)
                     Text("\(formatWeight(set.weightLbs)) lb")
                         .font(.caption.bold())
@@ -607,7 +607,7 @@ struct ExerciseCard: View {
                 HStack(spacing: 4) {
                     Image(systemName: "trophy.fill")
                         .font(.system(size: 8))
-                        .foregroundStyle(.yellow)
+                        .foregroundStyle(TFColor.warning)
                     Text("Best: \(best)")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
@@ -617,7 +617,7 @@ struct ExerciseCard: View {
         }
         .padding(10)
         .background(Color.primary.opacity(0.04))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
     }
 
     var restTimerPanel: some View {
@@ -669,7 +669,7 @@ struct ExerciseCard: View {
                         .padding(.vertical, 12)
                         .background(timerAccent)
                         .foregroundStyle(.white)
-                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                        .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
                 }
                 .buttonStyle(.plain)
 
@@ -682,7 +682,7 @@ struct ExerciseCard: View {
                         .padding(.vertical, 12)
                         .background(Color.primary.opacity(0.06))
                         .foregroundStyle(.primary)
-                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                        .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
                 }
                 .buttonStyle(.plain)
             }
@@ -799,7 +799,7 @@ struct ExerciseStat: View {
         VStack(spacing: 6) {
             Image(systemName: icon)
                 .font(.subheadline.bold())
-                .foregroundStyle(.orange)
+                .foregroundStyle(TFColor.accent)
                 .frame(height: 16)
 
             Text(value)
@@ -816,7 +816,7 @@ struct ExerciseStat: View {
         .frame(maxWidth: .infinity)
         .padding(12)
         .background(Color.primary.opacity(0.04))
-        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
     }
 }
 
@@ -834,7 +834,7 @@ struct ExerciseWeightSnapshotTile: View {
             weightColumn(title: "Best", value: bestWeightText, reps: bestRepsText)
         }
         .background(Color.primary.opacity(0.04))
-        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
     }
 
     func weightColumn(title: String, value: String, reps: String?) -> some View {
@@ -1085,12 +1085,9 @@ enum WorkoutIntensity: String {
 
     var color: Color {
         switch self {
-        case .light:
-            return .green
-        case .moderate:
-            return .yellow
-        case .heavy:
-            return .red
+        case .light: return TFColor.success
+        case .moderate: return TFColor.warning
+        case .heavy: return TFColor.danger
         }
     }
 }
@@ -1242,7 +1239,7 @@ struct ProgressionSuggestion {
                 return ProgressionSuggestion(
                     icon: "arrow.up.circle.fill",
                     text: "Increase to \(formatWeight(suggestedWeight)) lb next session",
-                    color: .green
+                    color: TFColor.success
                 )
             }
 
@@ -1251,7 +1248,7 @@ struct ProgressionSuggestion {
                 return ProgressionSuggestion(
                     icon: "flame.fill",
                     text: "Strong top set — hit \(repRange.high) on \(needed) more set\(needed == 1 ? "" : "s") before increasing",
-                    color: .orange
+                    color: TFColor.accent
                 )
             }
 
@@ -1259,7 +1256,7 @@ struct ProgressionSuggestion {
                 return ProgressionSuggestion(
                     icon: "arrow.down.circle.fill",
                     text: "Stay at \(formatWeight(lastWeight)) lb, focus on form and full ROM",
-                    color: .yellow
+                    color: TFColor.warning
                 )
             }
 
@@ -1268,7 +1265,7 @@ struct ProgressionSuggestion {
                 return ProgressionSuggestion(
                     icon: "arrow.right.circle.fill",
                     text: "On track — build all sets to \(repRange.high) reps (lowest was \(minReps))",
-                    color: .blue
+                    color: TFColor.info
                 )
             }
 
@@ -1277,7 +1274,7 @@ struct ProgressionSuggestion {
                 return ProgressionSuggestion(
                     icon: "arrow.down.circle.fill",
                     text: "Stay at \(formatWeight(lastWeight)) lb, focus on form and full ROM",
-                    color: .yellow
+                    color: TFColor.warning
                 )
             }
 
@@ -1295,7 +1292,7 @@ struct ProgressionSuggestion {
             return ProgressionSuggestion(
                 icon: "arrow.up.circle.fill",
                 text: "Increase to \(formatWeight(suggestedWeight)) lb next session",
-                color: .green
+                color: TFColor.success
             )
         }
 

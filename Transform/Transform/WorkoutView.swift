@@ -184,9 +184,9 @@ struct WorkoutView: View {
             }
             .frame(maxWidth: .infinity)
             .padding()
-            .background(isGenerating ? Color.orange.opacity(0.6) : Color.orange)
+            .background(isGenerating ? TFColor.accent.opacity(0.6) : TFColor.accent)
             .foregroundStyle(.white)
-            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
             .bold()
         }
         .disabled(isGenerating || !canUseAI)
@@ -230,12 +230,12 @@ struct WorkoutView: View {
                     programHeaderBadge(
                         program.splitType,
                         foreground: .orange,
-                        background: Color.orange.opacity(0.15)
+                        background: TFColor.accent.opacity(0.15)
                     )
                     programHeaderBadge(
                         "Week \(program.currentWeek) of \(program.maxWeeks)",
                         foreground: .blue,
-                        background: Color.blue.opacity(0.15)
+                        background: TFColor.info.opacity(0.15)
                     )
                     if let sourceBadge = generationSourceBadge(for: program.programSummary) {
                         programHeaderBadge(
@@ -264,8 +264,8 @@ struct WorkoutView: View {
                                 .font(.caption2.bold())
                                 .padding(.horizontal, 8)
                                 .padding(.vertical, 4)
-                                .background(Color.orange.opacity(0.15))
-                                .foregroundStyle(.orange)
+                                .background(TFColor.accent.opacity(0.15))
+                                .foregroundStyle(TFColor.accent)
                                 .clipShape(Capsule())
                         }
                     }
@@ -274,8 +274,8 @@ struct WorkoutView: View {
 
         }
         .padding(16)
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .background(TFColor.surface)
+        .clipShape(RoundedRectangle(cornerRadius: TFRadius.card))
         .onLongPressGesture(minimumDuration: 1.2) {
             openGeneratorLab()
         }
@@ -300,14 +300,14 @@ struct WorkoutView: View {
                 HStack(spacing: 6) {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .font(.caption2)
-                        .foregroundStyle(.yellow)
+                        .foregroundStyle(TFColor.warning)
                     Text("\(warnings.count) validator warning\(warnings.count == 1 ? "" : "s")")
                         .font(.caption.bold())
-                        .foregroundStyle(.yellow)
+                        .foregroundStyle(TFColor.warning)
                 }
             }
             .padding(10)
-            .background(Color.yellow.opacity(0.08))
+            .background(TFColor.warning.opacity(0.08))
             .clipShape(RoundedRectangle(cornerRadius: 10))
         }
     }
@@ -334,7 +334,7 @@ struct WorkoutView: View {
                         }
                         .padding(.horizontal, 16)
                         .padding(.vertical, 10)
-                        .background(selectedWeek == week ? Color.orange : Color(.secondarySystemBackground))
+                        .background(selectedWeek == week ? TFColor.accent : TFColor.surface)
                         .foregroundStyle(selectedWeek == week ? .white : .primary)
                         .clipShape(RoundedRectangle(cornerRadius: 10))
                     }
@@ -351,7 +351,7 @@ struct WorkoutView: View {
                         }
                         .padding(.horizontal, 16)
                         .padding(.vertical, 10)
-                        .background(Color(.tertiarySystemBackground))
+                        .background(TFColor.surfaceElevated)
                         .foregroundStyle(.tertiary)
                         .clipShape(RoundedRectangle(cornerRadius: 10))
                     }
@@ -459,13 +459,13 @@ struct WorkoutView: View {
             switch kind {
             case .added:
                 Image(systemName: "plus.circle.fill")
-                    .foregroundStyle(.green)
+                    .foregroundStyle(TFColor.success)
             case .removed:
                 Image(systemName: "minus.circle.fill")
-                    .foregroundStyle(.red)
+                    .foregroundStyle(TFColor.danger)
             case .setsChanged:
                 Image(systemName: "arrow.up.arrow.down.circle.fill")
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(TFColor.accent)
             case .repsChanged:
                 Image(systemName: "arrow.left.arrow.right.circle.fill")
                     .foregroundStyle(.purple)
@@ -534,9 +534,9 @@ struct WorkoutView: View {
                 }
                 .frame(maxWidth: .infinity)
                 .padding()
-                .background(isGenerating ? Color.orange.opacity(0.6) : Color.orange)
+                .background(isGenerating ? TFColor.accent.opacity(0.6) : TFColor.accent)
                 .foregroundStyle(.white)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
             }
             .disabled(isGenerating || !canUseAI)
         }
@@ -560,12 +560,12 @@ struct WorkoutView: View {
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
                     Capsule()
-                        .fill(Color.orange.opacity(0.15))
+                        .fill(TFColor.accent.opacity(0.15))
                         .frame(height: 8)
                     Capsule()
                         .fill(
                             LinearGradient(
-                                colors: [.orange, .yellow],
+                                colors: [TFColor.accent, TFColor.accentWarm],
                                 startPoint: .leading,
                                 endPoint: .trailing
                             )
@@ -579,7 +579,7 @@ struct WorkoutView: View {
             HStack {
                 Text("\(Int(overallProgress * 100))% complete")
                     .font(.caption.bold())
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(TFColor.accent)
                 Spacer()
                 Text("Week \(program.currentWeek)/\(program.maxWeeks) generated")
                     .font(.caption)
@@ -587,8 +587,8 @@ struct WorkoutView: View {
             }
         }
         .padding(16)
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .background(TFColor.surface)
+        .clipShape(RoundedRectangle(cornerRadius: TFRadius.card))
     }
 
     // MARK: - Danger Zone
@@ -609,9 +609,9 @@ struct WorkoutView: View {
                     .font(.subheadline.bold())
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)
-                    .background(Color(.secondarySystemBackground))
-                    .foregroundStyle(.orange)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .background(TFColor.surface)
+                    .foregroundStyle(TFColor.accent)
+                    .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
                 }
                 .disabled(isGenerating || !canUseAI)
             }
@@ -627,9 +627,9 @@ struct WorkoutView: View {
                 .font(.subheadline.bold())
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 12)
-                .background(Color.red.opacity(0.1))
-                .foregroundStyle(.red)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .background(TFColor.danger.opacity(0.1))
+                .foregroundStyle(TFColor.danger)
+                .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
             }
             .disabled(isGenerating)
         }
@@ -968,9 +968,9 @@ struct WorkoutView: View {
     func generationSourceBadge(for summary: String) -> (label: String, foreground: Color, background: Color)? {
         switch GeneratedContentSource.detect(in: summary) {
         case .aiCoach:
-            return (GeneratedContentSource.aiCoach.label, .green, Color.green.opacity(0.15))
+            return (GeneratedContentSource.aiCoach.label, .green, TFColor.success.opacity(0.15))
         case .recoveryEngine:
-            return (GeneratedContentSource.recoveryEngine.label, .orange, Color.orange.opacity(0.15))
+            return (GeneratedContentSource.recoveryEngine.label, .orange, TFColor.accent.opacity(0.15))
         case nil:
             return nil
         }
