@@ -34,6 +34,18 @@
 - Use `.claude/skills/transform-context-compact` when reviving old work or preparing a handoff.
 - Use `repomix` only for external full-repo handoffs, not normal local work.
 
+## External Agent Reconciliation
+- If the user mentions prior work by another agent today, another machine, another terminal, or another conversation, do not assume the current diff or latest local commit tells the full story.
+- Before new edits, rebases, resets, or sync decisions, reconcile external-agent work against the current repo state.
+- Ask for or inspect the outside artifact when available, such as a transcript, chat export, commit list, screenshot, or claimed fix summary.
+- Compare three things explicitly:
+  - what the outside agent claimed to change
+  - what exists now in local files and local git history
+  - what exists now on `origin/main`
+- Report the result in plain terms: present, missing, partially landed, or overwritten.
+- If overlap exists, preserve the newer or safer behavior intentionally rather than assuming the most recent diff is the whole truth.
+- Do not say the repo is fully assessed or in sync until this reconciliation step is complete when external agent work is part of the context.
+
 ## Parallel Audit and Recap
 - For broad audits or multi-subsystem tasks, split the work into 2-4 bounded lanes instead of one giant repo sweep.
 - Keep one primary agent or session responsible for scoping, synthesis, and final judgment.
@@ -74,6 +86,7 @@
 ## Read Deeper Only When Needed
 - `docs/2_PROJECT_HANDOFF.md`
 - `docs/3_TRANSFORM_CLEAN_HANDOFF.md`
+- `docs/EXTERNAL_AGENT_RECONCILIATION.md`
 - `CLAUDE.md`
 - `EvidenceProfile.md`
 
