@@ -739,9 +739,7 @@ struct WorkoutView: View {
                 UINotificationFeedbackGenerator().notificationOccurred(.error)
                 return
             }
-            // The generated program is already persisted here. Keep the expensive full-export
-            // backup off the live AI generation path so a backup write cannot masquerade as a
-            // workout-generation crash.
+            DataBackupManager.shared.scheduleAutomaticBackup(using: modelContext)
             WorkoutGenerationDiagnostics.markStage("finalizing generated week 1 program")
             selectedWeek = 1
             UINotificationFeedbackGenerator().notificationOccurred(.success)
@@ -832,6 +830,7 @@ struct WorkoutView: View {
                 UINotificationFeedbackGenerator().notificationOccurred(.error)
                 return
             }
+            DataBackupManager.shared.scheduleAutomaticBackup(using: modelContext)
             WorkoutGenerationDiagnostics.markStage("finalizing generated week \(nextWeek) program")
             selectedWeek = nextWeek
             UINotificationFeedbackGenerator().notificationOccurred(.success)

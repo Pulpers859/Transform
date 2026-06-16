@@ -4,8 +4,8 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 nonisolated private enum BackupFormat {
-    static let currentVersion = 8
-    static let supportedVersions: Set<Int> = [1, 2, 3, 4, 5, 6, 7, 8]
+    static let currentVersion = 9
+    static let supportedVersions: Set<Int> = [1, 2, 3, 4, 5, 6, 7, 8, 9]
 }
 
 @MainActor
@@ -62,6 +62,7 @@ nonisolated struct TransformBackupPayload: Codable {
     let nutrition: [NutritionSnapshot]
     let favorites: [FavoriteFoodSnapshot]
     let savedNutritionProtocols: [SavedNutritionProtocolSnapshot]?
+    let progressPhotos: [ProgressPhotoSnapshot]?
     let analyses: [AnalysisSnapshot]
     let workouts: [WorkoutProgramSnapshot]
     let exerciseWeights: [ExerciseWeightSnapshot]?
@@ -77,6 +78,7 @@ nonisolated struct TransformBackupPayload: Codable {
         nutrition: [NutritionSnapshot],
         favorites: [FavoriteFoodSnapshot],
         savedNutritionProtocols: [SavedNutritionProtocolSnapshot]?,
+        progressPhotos: [ProgressPhotoSnapshot]?,
         analyses: [AnalysisSnapshot],
         workouts: [WorkoutProgramSnapshot],
         exerciseWeights: [ExerciseWeightSnapshot]?,
@@ -91,6 +93,7 @@ nonisolated struct TransformBackupPayload: Codable {
         self.nutrition = nutrition
         self.favorites = favorites
         self.savedNutritionProtocols = savedNutritionProtocols
+        self.progressPhotos = progressPhotos
         self.analyses = analyses
         self.workouts = workouts
         self.exerciseWeights = exerciseWeights
@@ -224,6 +227,14 @@ nonisolated struct SavedNutritionProtocolSnapshot: Codable {
     let appliedFatG: Double?
 }
 
+nonisolated struct ProgressPhotoSnapshot: Codable {
+    let date: Date
+    let pose: String
+    let imageData: Data
+    let aiAnalysis: String?
+    let notes: String
+}
+
 nonisolated struct AnalysisSnapshot: Codable {
     let date: Date
     let photoData: Data
@@ -344,6 +355,18 @@ nonisolated struct ProfileSettingsSnapshot: Codable {
     let medicalMedications: Bool?
     let medicalPregnancySurgery: Bool?
     let medicalSymptoms: Bool?
+    let analysisCheckInTrainingContext: String?
+    let analysisCheckInBodyweightTrend: String?
+    let analysisCheckInRecoverySleep: String?
+    let analysisCheckInStressSchedule: String?
+    let analysisCheckInSorenessPain: String?
+    let analysisCheckInNutritionAdherence: String?
+    let analysisCheckInHungerLevel: Int?
+    let analysisCheckInEnergyLevel: Int?
+    let analysisCheckInCravingsLevel: Int?
+    let derivedSleepTrendSummary: String?
+    let appearanceMode: Int?
+    let nutritionShiftWorkMode: String?
 
     static func fromUserDefaults() -> ProfileSettingsSnapshot {
         let d = UserDefaults.standard
@@ -383,7 +406,19 @@ nonisolated struct ProfileSettingsSnapshot: Codable {
             medicalCardioMetabolic: d.object(forKey: AppSettingsKeys.medicalCardioMetabolic) as? Bool,
             medicalMedications: d.object(forKey: AppSettingsKeys.medicalMedications) as? Bool,
             medicalPregnancySurgery: d.object(forKey: AppSettingsKeys.medicalPregnancySurgery) as? Bool,
-            medicalSymptoms: d.object(forKey: AppSettingsKeys.medicalSymptoms) as? Bool
+            medicalSymptoms: d.object(forKey: AppSettingsKeys.medicalSymptoms) as? Bool,
+            analysisCheckInTrainingContext: d.string(forKey: AppSettingsKeys.analysisCheckInTrainingContext),
+            analysisCheckInBodyweightTrend: d.string(forKey: AppSettingsKeys.analysisCheckInBodyweightTrend),
+            analysisCheckInRecoverySleep: d.string(forKey: AppSettingsKeys.analysisCheckInRecoverySleep),
+            analysisCheckInStressSchedule: d.string(forKey: AppSettingsKeys.analysisCheckInStressSchedule),
+            analysisCheckInSorenessPain: d.string(forKey: AppSettingsKeys.analysisCheckInSorenessPain),
+            analysisCheckInNutritionAdherence: d.string(forKey: AppSettingsKeys.analysisCheckInNutritionAdherence),
+            analysisCheckInHungerLevel: d.object(forKey: AppSettingsKeys.analysisCheckInHungerLevel) as? Int,
+            analysisCheckInEnergyLevel: d.object(forKey: AppSettingsKeys.analysisCheckInEnergyLevel) as? Int,
+            analysisCheckInCravingsLevel: d.object(forKey: AppSettingsKeys.analysisCheckInCravingsLevel) as? Int,
+            derivedSleepTrendSummary: d.string(forKey: AppSettingsKeys.derivedSleepTrendSummary),
+            appearanceMode: d.object(forKey: AppSettingsKeys.appearanceMode) as? Int,
+            nutritionShiftWorkMode: d.string(forKey: AppSettingsKeys.nutritionShiftWorkMode)
         )
     }
 
@@ -425,6 +460,18 @@ nonisolated struct ProfileSettingsSnapshot: Codable {
         if let v = medicalMedications { d.set(v, forKey: AppSettingsKeys.medicalMedications) }
         if let v = medicalPregnancySurgery { d.set(v, forKey: AppSettingsKeys.medicalPregnancySurgery) }
         if let v = medicalSymptoms { d.set(v, forKey: AppSettingsKeys.medicalSymptoms) }
+        if let v = analysisCheckInTrainingContext { d.set(v, forKey: AppSettingsKeys.analysisCheckInTrainingContext) }
+        if let v = analysisCheckInBodyweightTrend { d.set(v, forKey: AppSettingsKeys.analysisCheckInBodyweightTrend) }
+        if let v = analysisCheckInRecoverySleep { d.set(v, forKey: AppSettingsKeys.analysisCheckInRecoverySleep) }
+        if let v = analysisCheckInStressSchedule { d.set(v, forKey: AppSettingsKeys.analysisCheckInStressSchedule) }
+        if let v = analysisCheckInSorenessPain { d.set(v, forKey: AppSettingsKeys.analysisCheckInSorenessPain) }
+        if let v = analysisCheckInNutritionAdherence { d.set(v, forKey: AppSettingsKeys.analysisCheckInNutritionAdherence) }
+        if let v = analysisCheckInHungerLevel { d.set(v, forKey: AppSettingsKeys.analysisCheckInHungerLevel) }
+        if let v = analysisCheckInEnergyLevel { d.set(v, forKey: AppSettingsKeys.analysisCheckInEnergyLevel) }
+        if let v = analysisCheckInCravingsLevel { d.set(v, forKey: AppSettingsKeys.analysisCheckInCravingsLevel) }
+        if let v = derivedSleepTrendSummary { d.set(v, forKey: AppSettingsKeys.derivedSleepTrendSummary) }
+        if let v = appearanceMode { d.set(v, forKey: AppSettingsKeys.appearanceMode) }
+        if let v = nutritionShiftWorkMode { d.set(v, forKey: AppSettingsKeys.nutritionShiftWorkMode) }
     }
 }
 
@@ -637,6 +684,33 @@ nonisolated struct ProfileSettingsSnapshot: Codable {
         model.appliedCarbsG = appliedCarbsG
         model.appliedFatG = appliedFatG
         return model
+    }
+}
+
+@MainActor private extension ProgressPhotoSnapshot {
+    init(_ photo: ProgressPhoto) {
+        self.init(
+            date: photo.date,
+            pose: photo.pose,
+            imageData: photo.imageData,
+            aiAnalysis: photo.aiAnalysis,
+            notes: photo.notes
+        )
+    }
+
+    var dedupeKey: String {
+        "\(date.timeIntervalSince1970)-\(pose)-\(imageData.count)-\(notes)-\(aiAnalysis ?? "")"
+    }
+
+    func makeModel() -> ProgressPhoto {
+        let photo = ProgressPhoto(
+            date: date,
+            pose: pose,
+            imageData: imageData,
+            notes: notes
+        )
+        photo.aiAnalysis = aiAnalysis
+        return photo
     }
 }
 
@@ -998,11 +1072,8 @@ final class DataBackupManager {
             let document = try exportDocument(using: modelContext)
             let counts = try? entryCounts(using: modelContext)
             if let counts, let lastKnown = loadLastKnownCounts() {
-                let sleepDrop = lastKnown.sleep - counts.sleep
-                let exerciseLogDrop = lastKnown.exerciseLogs - counts.exerciseLogs
-                let totalDrop = lastKnown.total - counts.total
-                if sleepDrop > 3 || exerciseLogDrop > 3 || totalDrop > 10 {
-                    print("[Backup] Skipping auto-backup: significant data drop detected (sleep: \(lastKnown.sleep)->\(counts.sleep), exerciseLogs: \(lastKnown.exerciseLogs)->\(counts.exerciseLogs), total: \(lastKnown.total)->\(counts.total)). Preserving existing backups.")
+                if counts.hasSignificantDrop(comparedTo: lastKnown) {
+                    print("[Backup] Skipping auto-backup: significant data drop detected. Previous: \(lastKnown.debugSummary) Current: \(counts.debugSummary) Drop: \(counts.dropSummary(comparedTo: lastKnown)). Preserving existing backups.")
                     return
                 }
             }
@@ -1067,24 +1138,177 @@ final class DataBackupManager {
         let sleep: Int
         let weight: Int
         let nutrition: Int
+        let measurement: Int
+        let exerciseWeights: Int
         let exerciseLogs: Int
-        let total: Int
+        let analyses: Int
+        let workouts: Int
+        let favorites: Int
+        let savedNutritionProtocols: Int
+        let progressPhotos: Int
 
-        init(sleep: Int, weight: Int, nutrition: Int, exerciseLogs: Int = 0, total: Int) {
+        private enum CodingKeys: String, CodingKey {
+            case sleep
+            case weight
+            case nutrition
+            case measurement
+            case exerciseWeights
+            case exerciseLogs
+            case analyses
+            case workouts
+            case favorites
+            case savedNutritionProtocols
+            case progressPhotos
+            case total
+        }
+
+        init(
+            sleep: Int,
+            weight: Int,
+            nutrition: Int,
+            measurement: Int = 0,
+            exerciseWeights: Int = 0,
+            exerciseLogs: Int = 0,
+            analyses: Int = 0,
+            workouts: Int = 0,
+            favorites: Int = 0,
+            savedNutritionProtocols: Int = 0,
+            progressPhotos: Int = 0
+        ) {
             self.sleep = sleep
             self.weight = weight
             self.nutrition = nutrition
+            self.measurement = measurement
+            self.exerciseWeights = exerciseWeights
             self.exerciseLogs = exerciseLogs
-            self.total = total
+            self.analyses = analyses
+            self.workouts = workouts
+            self.favorites = favorites
+            self.savedNutritionProtocols = savedNutritionProtocols
+            self.progressPhotos = progressPhotos
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            sleep = try container.decodeIfPresent(Int.self, forKey: .sleep) ?? 0
+            weight = try container.decodeIfPresent(Int.self, forKey: .weight) ?? 0
+            nutrition = try container.decodeIfPresent(Int.self, forKey: .nutrition) ?? 0
+            measurement = try container.decodeIfPresent(Int.self, forKey: .measurement) ?? 0
+            exerciseWeights = try container.decodeIfPresent(Int.self, forKey: .exerciseWeights) ?? 0
+            exerciseLogs = try container.decodeIfPresent(Int.self, forKey: .exerciseLogs) ?? 0
+            analyses = try container.decodeIfPresent(Int.self, forKey: .analyses) ?? 0
+            workouts = try container.decodeIfPresent(Int.self, forKey: .workouts) ?? 0
+            favorites = try container.decodeIfPresent(Int.self, forKey: .favorites) ?? 0
+            savedNutritionProtocols = try container.decodeIfPresent(Int.self, forKey: .savedNutritionProtocols) ?? 0
+            progressPhotos = try container.decodeIfPresent(Int.self, forKey: .progressPhotos) ?? 0
+        }
+
+        func encode(to encoder: Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(sleep, forKey: .sleep)
+            try container.encode(weight, forKey: .weight)
+            try container.encode(nutrition, forKey: .nutrition)
+            try container.encode(measurement, forKey: .measurement)
+            try container.encode(exerciseWeights, forKey: .exerciseWeights)
+            try container.encode(exerciseLogs, forKey: .exerciseLogs)
+            try container.encode(analyses, forKey: .analyses)
+            try container.encode(workouts, forKey: .workouts)
+            try container.encode(favorites, forKey: .favorites)
+            try container.encode(savedNutritionProtocols, forKey: .savedNutritionProtocols)
+            try container.encode(progressPhotos, forKey: .progressPhotos)
+            try container.encode(total, forKey: .total)
+        }
+
+        var total: Int {
+            sleep
+                + weight
+                + nutrition
+                + measurement
+                + exerciseWeights
+                + exerciseLogs
+                + analyses
+                + workouts
+                + favorites
+                + savedNutritionProtocols
+                + progressPhotos
+        }
+
+        var debugSummary: String {
+            "sleep=\(sleep) weight=\(weight) nutrition=\(nutrition) measurement=\(measurement) exerciseWeights=\(exerciseWeights) exerciseLogs=\(exerciseLogs) analyses=\(analyses) workouts=\(workouts) favorites=\(favorites) savedProtocols=\(savedNutritionProtocols) progressPhotos=\(progressPhotos)"
+        }
+
+        func dropSummary(comparedTo previous: EntryCounts) -> String {
+            "sleep=\(previous.sleep - sleep) weight=\(previous.weight - weight) nutrition=\(previous.nutrition - nutrition) measurement=\(previous.measurement - measurement) exerciseWeights=\(previous.exerciseWeights - exerciseWeights) exerciseLogs=\(previous.exerciseLogs - exerciseLogs) analyses=\(previous.analyses - analyses) workouts=\(previous.workouts - workouts) favorites=\(previous.favorites - favorites) savedProtocols=\(previous.savedNutritionProtocols - savedNutritionProtocols) progressPhotos=\(previous.progressPhotos - progressPhotos) total=\(previous.total - total)"
+        }
+
+        func hasSignificantDrop(comparedTo previous: EntryCounts) -> Bool {
+            let measurementDrop = previous.measurement - measurement
+            let exerciseWeightDrop = previous.exerciseWeights - exerciseWeights
+            let exerciseLogDrop = previous.exerciseLogs - exerciseLogs
+            let analysesDrop = previous.analyses - analyses
+            let workoutsDrop = previous.workouts - workouts
+            let favoritesDrop = previous.favorites - favorites
+            let savedProtocolDrop = previous.savedNutritionProtocols - savedNutritionProtocols
+            let progressPhotoDrop = previous.progressPhotos - progressPhotos
+            let totalDrop = previous.total - total
+
+            return (previous.sleep - sleep) > 2
+                || (previous.weight - weight) > 2
+                || (previous.nutrition - nutrition) > 5
+                || measurementDrop > 2
+                || exerciseWeightDrop > 2
+                || exerciseLogDrop > 2
+                || analysesDrop > 1
+                || workoutsDrop > 1
+                || favoritesDrop > 10
+                || savedProtocolDrop > 1
+                || progressPhotoDrop > 1
+                || totalDrop > 10
+        }
+
+        func shouldAttemptAutomaticRecovery(comparedTo previous: EntryCounts) -> Bool {
+            let totalDrop = previous.total - total
+            let zeroedHighValueCategories = [
+                previous.exerciseLogs > 0 && exerciseLogs == 0,
+                previous.exerciseWeights > 0 && exerciseWeights == 0,
+                previous.analyses > 0 && analyses == 0,
+                previous.workouts > 0 && workouts == 0,
+                previous.savedNutritionProtocols > 0 && savedNutritionProtocols == 0
+            ].filter { $0 }.count
+
+            return totalDrop > 10
+                || (previous.exerciseLogs > 2 && exerciseLogs == 0)
+                || (previous.exerciseWeights > 2 && exerciseWeights == 0)
+                || zeroedHighValueCategories >= 2
         }
     }
 
-    private func entryCounts(using modelContext: ModelContext) throws -> EntryCounts {
+    func entryCounts(using modelContext: ModelContext) throws -> EntryCounts {
         let sleep = try modelContext.fetchCount(FetchDescriptor<SleepEntry>())
         let weight = try modelContext.fetchCount(FetchDescriptor<WeightEntry>())
         let nutrition = try modelContext.fetchCount(FetchDescriptor<NutritionEntry>())
+        let measurement = try modelContext.fetchCount(FetchDescriptor<MeasurementEntry>())
+        let exerciseWeights = try modelContext.fetchCount(FetchDescriptor<ExerciseWeightEntry>())
         let exerciseLogs = try modelContext.fetchCount(FetchDescriptor<ExercisePerformanceLog>())
-        return EntryCounts(sleep: sleep, weight: weight, nutrition: nutrition, exerciseLogs: exerciseLogs, total: sleep + weight + nutrition + exerciseLogs)
+        let analyses = try modelContext.fetchCount(FetchDescriptor<BodyAnalysisSession>())
+        let workouts = try modelContext.fetchCount(FetchDescriptor<WorkoutProgram>())
+        let favorites = try modelContext.fetchCount(FetchDescriptor<FavoriteFood>())
+        let savedNutritionProtocols = try modelContext.fetchCount(FetchDescriptor<SavedNutritionProtocol>())
+        let progressPhotos = try modelContext.fetchCount(FetchDescriptor<ProgressPhoto>())
+
+        return EntryCounts(
+            sleep: sleep,
+            weight: weight,
+            nutrition: nutrition,
+            measurement: measurement,
+            exerciseWeights: exerciseWeights,
+            exerciseLogs: exerciseLogs,
+            analyses: analyses,
+            workouts: workouts,
+            favorites: favorites,
+            savedNutritionProtocols: savedNutritionProtocols,
+            progressPhotos: progressPhotos
+        )
     }
 
     private static let countsKey = "transform.lastKnownEntryCounts"
@@ -1100,6 +1324,38 @@ final class DataBackupManager {
         return try? JSONDecoder().decode(EntryCounts.self, from: data)
     }
 
+    @MainActor
+    func scheduleAutomaticBackup(using modelContext: ModelContext) {
+        guard !suppressAutomaticBackups else { return }
+        Task { @MainActor in
+            await Task.yield()
+            writeAutomaticBackup(using: modelContext)
+        }
+    }
+
+    @MainActor
+    func attemptAutomaticRecoveryIfNeeded(using modelContext: ModelContext) -> String? {
+        guard
+            let previous = loadLastKnownCounts(),
+            let current = try? entryCounts(using: modelContext),
+            current.shouldAttemptAutomaticRecovery(comparedTo: previous)
+        else {
+            return nil
+        }
+
+        guard restoreFromAutomaticBackupIfAvailable(into: modelContext) else {
+            return nil
+        }
+
+        guard let recovered = try? entryCounts(using: modelContext) else {
+            return "Stored data looked incomplete at startup, so Transform restored the most recent automatic backup."
+        }
+
+        guard recovered.total > current.total else { return nil }
+
+        return "Stored data looked incomplete at startup, so Transform restored the most recent automatic backup and recovered \(recovered.total - current.total) records."
+    }
+
     private func buildPayload(using modelContext: ModelContext) throws -> TransformBackupPayload {
         let weights = try modelContext.fetch(FetchDescriptor<WeightEntry>())
         let sleep = try modelContext.fetch(FetchDescriptor<SleepEntry>())
@@ -1107,6 +1363,7 @@ final class DataBackupManager {
         let nutrition = try modelContext.fetch(FetchDescriptor<NutritionEntry>())
         let favorites = try modelContext.fetch(FetchDescriptor<FavoriteFood>())
         let savedNutritionProtocols = try modelContext.fetch(FetchDescriptor<SavedNutritionProtocol>())
+        let progressPhotos = try modelContext.fetch(FetchDescriptor<ProgressPhoto>())
         let analyses = try modelContext.fetch(FetchDescriptor<BodyAnalysisSession>())
         let workouts = try modelContext.fetch(FetchDescriptor<WorkoutProgram>())
         let exerciseWeights = try modelContext.fetch(FetchDescriptor<ExerciseWeightEntry>())
@@ -1121,6 +1378,7 @@ final class DataBackupManager {
             nutrition: mainActorMap(nutrition, NutritionSnapshot.init),
             favorites: mainActorMap(favorites, FavoriteFoodSnapshot.init),
             savedNutritionProtocols: mainActorMap(savedNutritionProtocols, SavedNutritionProtocolSnapshot.init),
+            progressPhotos: mainActorMap(progressPhotos, ProgressPhotoSnapshot.init),
             analyses: mainActorMap(analyses, AnalysisSnapshot.init),
             workouts: mainActorMap(workouts, WorkoutProgramSnapshot.init),
             exerciseWeights: mainActorMap(exerciseWeights, ExerciseWeightSnapshot.init),
@@ -1136,6 +1394,7 @@ final class DataBackupManager {
         let existingNutrition = try modelContext.fetch(FetchDescriptor<NutritionEntry>())
         let existingFavorites = try modelContext.fetch(FetchDescriptor<FavoriteFood>())
         let existingSavedNutritionProtocols = try modelContext.fetch(FetchDescriptor<SavedNutritionProtocol>())
+        let existingProgressPhotos = try modelContext.fetch(FetchDescriptor<ProgressPhoto>())
         let existingAnalyses = try modelContext.fetch(FetchDescriptor<BodyAnalysisSession>())
         let existingWorkouts = try modelContext.fetch(FetchDescriptor<WorkoutProgram>())
         var existingExerciseWeights = try modelContext.fetch(FetchDescriptor<ExerciseWeightEntry>())
@@ -1149,6 +1408,7 @@ final class DataBackupManager {
         var savedNutritionProtocolKeys = Set(mainActorMap(existingSavedNutritionProtocols) {
             SavedNutritionProtocolSnapshot($0).dedupeKey
         })
+        var progressPhotoKeys = Set(mainActorMap(existingProgressPhotos) { ProgressPhotoSnapshot($0).dedupeKey })
         var analysisKeys = Set(mainActorMap(existingAnalyses) { AnalysisSnapshot($0).dedupeKey })
         var workoutKeys = Set(mainActorMap(existingWorkouts) { $0.id.uuidString })
         var exerciseWeightKeys = Set(mainActorMap(existingExerciseWeights) { ExerciseWeightSnapshot($0).dedupeKey })
@@ -1204,6 +1464,13 @@ final class DataBackupManager {
             savedNutritionProtocolKeys.insert(key)
         }
 
+        for item in payload.progressPhotos ?? [] {
+            let key = item.dedupeKey
+            guard !progressPhotoKeys.contains(key) else { continue }
+            modelContext.insert(item.makeModel())
+            progressPhotoKeys.insert(key)
+        }
+
         for item in payload.analyses {
             let key = item.dedupeKey
             guard !analysisKeys.contains(key) else { continue }
@@ -1257,6 +1524,7 @@ final class DataBackupManager {
             nutrition: mainActorMap(legacy.nutrition) { $0.makeNutritionSnapshot() },
             favorites: [],
             savedNutritionProtocols: nil,
+            progressPhotos: nil,
             analyses: legacy.analyses,
             workouts: legacy.workouts,
             exerciseWeights: [],

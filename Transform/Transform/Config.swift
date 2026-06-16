@@ -570,6 +570,7 @@ nonisolated enum AppSettingsKeys {
     static let proteinTarget = "nutrition_protein_target"
     static let carbTarget = "nutrition_carb_target"
     static let fatTarget = "nutrition_fat_target"
+    static let nutritionShiftWorkMode = "nutrition_shift_work_mode"
     static let bodyWeightGoal = "body_weight_goal"
     static let appearanceMode = "app_appearance_mode"
 }

@@ -82,6 +82,16 @@ struct ContentView: View {
                 message: message
             )
         }
+        .onReceive(NotificationCenter.default.publisher(for: .dataIntegrityWarning)) { notification in
+            let fallbackMessage = "Stored data looks incomplete compared with the last launch. Check your rolling backup and export a manual backup before making more changes."
+            let message = (notification.userInfo?[PersistenceReporter.messageUserInfoKey] as? String)
+                ?? (notification.userInfo?["message"] as? String)
+                ?? fallbackMessage
+            appAlert = AppAlertContent(
+                title: "Data Integrity Warning",
+                message: message
+            )
+        }
         .alert(item: $appAlert) { alert in
             Alert(
                 title: Text(alert.title),

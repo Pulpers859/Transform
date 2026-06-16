@@ -394,7 +394,7 @@ struct ExerciseCard: View {
                     Button {
                         exercise.completionStatus = nil
                         if status.isSkipped { exercise.isCompleted = false }
-                        PersistenceReporter.save(modelContext, operation: "clear exercise status")
+                        PersistenceReporter.saveWithBackup(modelContext, operation: "clear exercise status", haptic: .success)
                     } label: {
                         Text("Clear")
                             .font(.caption2)
@@ -425,7 +425,7 @@ struct ExerciseCard: View {
                             if status.isSkipped {
                                 exercise.isCompleted = true
                             }
-                            PersistenceReporter.save(modelContext, operation: "set exercise status")
+                            PersistenceReporter.saveWithBackup(modelContext, operation: "set exercise status", haptic: .success)
                         } label: {
                             Text(status.rawValue)
                         }

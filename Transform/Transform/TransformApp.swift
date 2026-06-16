@@ -76,8 +76,18 @@ struct StartupConfiguration {
                 maintenanceWarning = "Stored progression data could not be fully normalized at startup. The app loaded, but recent entries may need review."
             }
 
+            if let recoveryMessage = DataBackupManager.shared.attemptAutomaticRecoveryIfNeeded(using: maintenanceContext) {
+                maintenanceWarning = [maintenanceWarning, recoveryMessage]
+                    .compactMap { $0 }
+                    .joined(separator: "\n\n")
+            }
+
             SleepTrendStore.refresh(using: maintenanceContext)
-            DataIntegrityMonitor.checkOnStartup(using: maintenanceContext)
+            if let integrityMessage = DataIntegrityMonitor.checkOnStartup(using: maintenanceContext) {
+                maintenanceWarning = [maintenanceWarning, integrityMessage]
+                    .compactMap { $0 }
+                    .joined(separator: "\n\n")
+            }
 
             return StartupConfiguration(container: container, errorMessage: maintenanceWarning)
         } catch {
@@ -120,65 +130,83 @@ enum DataIntegrityMonitor {
     private static let countsKey = "transform.startupEntryCounts"
 
     struct Counts: Codable {
-        let sleep: Int
-        let weight: Int
-        let nutrition: Int
-        let measurement: Int
-        let exerciseWeights: Int
-        let exerciseLogs: Int
+        let entries: DataBackupManager.EntryCounts
         let timestamp: Date
 
-        init(sleep: Int, weight: Int, nutrition: Int, measurement: Int, exerciseWeights: Int = 0, exerciseLogs: Int = 0, timestamp: Date) {
-            self.sleep = sleep
-            self.weight = weight
-            self.nutrition = nutrition
-            self.measurement = measurement
-            self.exerciseWeights = exerciseWeights
-            self.exerciseLogs = exerciseLogs
+        private enum CodingKeys: String, CodingKey {
+            case entries
+            case timestamp
+            case sleep
+            case weight
+            case nutrition
+            case measurement
+            case exerciseWeights
+            case exerciseLogs
+        }
+
+        init(entries: DataBackupManager.EntryCounts, timestamp: Date) {
+            self.entries = entries
             self.timestamp = timestamp
         }
-    }
 
-    static func checkOnStartup(using modelContext: ModelContext) {
-        guard let previous = loadPreviousCounts() else {
-            saveCounts(using: modelContext)
-            return
-        }
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            timestamp = try container.decodeIfPresent(Date.self, forKey: .timestamp) ?? Date()
 
-        guard let current = currentCounts(using: modelContext) else { return }
+            if let decodedEntries = try container.decodeIfPresent(DataBackupManager.EntryCounts.self, forKey: .entries) {
+                entries = decodedEntries
+                return
+            }
 
-        let sleepDrop = previous.sleep - current.sleep
-        let weightDrop = previous.weight - current.weight
-        let nutritionDrop = previous.nutrition - current.nutrition
-        let exerciseWeightDrop = previous.exerciseWeights - current.exerciseWeights
-        let exerciseLogDrop = previous.exerciseLogs - current.exerciseLogs
-        let totalDrop = (previous.sleep + previous.weight + previous.nutrition + previous.measurement + previous.exerciseWeights + previous.exerciseLogs)
-                      - (current.sleep + current.weight + current.nutrition + current.measurement + current.exerciseWeights + current.exerciseLogs)
-
-        if sleepDrop > 2 || weightDrop > 2 || nutritionDrop > 5 || exerciseLogDrop > 2 || totalDrop > 10 {
-            print("[Integrity] DATA LOSS DETECTED at startup.")
-            print("[Integrity] Previous (\(previous.timestamp)): sleep=\(previous.sleep) weight=\(previous.weight) nutrition=\(previous.nutrition) measurement=\(previous.measurement) exerciseWeights=\(previous.exerciseWeights) exerciseLogs=\(previous.exerciseLogs)")
-            print("[Integrity] Current: sleep=\(current.sleep) weight=\(current.weight) nutrition=\(current.nutrition) measurement=\(current.measurement) exerciseWeights=\(current.exerciseWeights) exerciseLogs=\(current.exerciseLogs)")
-            print("[Integrity] Drop: sleep=\(sleepDrop) weight=\(weightDrop) nutrition=\(nutritionDrop) exerciseWeights=\(exerciseWeightDrop) exerciseLogs=\(exerciseLogDrop) total=\(totalDrop)")
-            NotificationCenter.default.post(
-                name: .dataIntegrityWarning,
-                object: nil,
-                userInfo: ["message": "Data loss detected: \(totalDrop) entries missing since last launch. Check rolling backups in Documents folder."]
+            entries = DataBackupManager.EntryCounts(
+                sleep: try container.decodeIfPresent(Int.self, forKey: .sleep) ?? 0,
+                weight: try container.decodeIfPresent(Int.self, forKey: .weight) ?? 0,
+                nutrition: try container.decodeIfPresent(Int.self, forKey: .nutrition) ?? 0,
+                measurement: try container.decodeIfPresent(Int.self, forKey: .measurement) ?? 0,
+                exerciseWeights: try container.decodeIfPresent(Int.self, forKey: .exerciseWeights) ?? 0,
+                exerciseLogs: try container.decodeIfPresent(Int.self, forKey: .exerciseLogs) ?? 0
             )
         }
 
+        func encode(to encoder: Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(entries, forKey: .entries)
+            try container.encode(timestamp, forKey: .timestamp)
+        }
+    }
+
+    static func checkOnStartup(using modelContext: ModelContext) -> String? {
+        guard let previous = loadPreviousCounts() else {
+            saveCounts(using: modelContext)
+            return nil
+        }
+
+        guard let current = currentCounts(using: modelContext) else { return nil }
+
+        if current.entries.hasSignificantDrop(comparedTo: previous.entries) {
+            print("[Integrity] DATA LOSS DETECTED at startup.")
+            print("[Integrity] Previous (\(previous.timestamp)): \(previous.entries.debugSummary)")
+            print("[Integrity] Current: \(current.entries.debugSummary)")
+            print("[Integrity] Drop: \(current.entries.dropSummary(comparedTo: previous.entries))")
+            let totalDrop = previous.entries.total - current.entries.total
+            let message = "Data loss detected: \(totalDrop) entries missing since last launch. Check the rolling backup and export a manual backup before making more changes."
+            NotificationCenter.default.post(
+                name: .dataIntegrityWarning,
+                object: nil,
+                userInfo: ["message": message]
+            )
+            saveCounts(using: modelContext)
+            return message
+        }
+
         saveCounts(using: modelContext)
+        return nil
     }
 
     private static func currentCounts(using modelContext: ModelContext) -> Counts? {
         do {
             return Counts(
-                sleep: try modelContext.fetchCount(FetchDescriptor<SleepEntry>()),
-                weight: try modelContext.fetchCount(FetchDescriptor<WeightEntry>()),
-                nutrition: try modelContext.fetchCount(FetchDescriptor<NutritionEntry>()),
-                measurement: try modelContext.fetchCount(FetchDescriptor<MeasurementEntry>()),
-                exerciseWeights: try modelContext.fetchCount(FetchDescriptor<ExerciseWeightEntry>()),
-                exerciseLogs: try modelContext.fetchCount(FetchDescriptor<ExercisePerformanceLog>()),
+                entries: try DataBackupManager.shared.entryCounts(using: modelContext),
                 timestamp: Date()
             )
         } catch {
