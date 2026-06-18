@@ -16,6 +16,18 @@
 - Do not open or suggest pull requests for routine work in this repository.
 - Only use a non-`main` branch or a PR workflow if the user explicitly asks for it in that specific task.
 
+## origin/main Is Source Of Truth — Stale-Local-`main` Trap (READ BEFORE ANY COMMIT)
+- `origin/main` is the canonical, authoritative tree. The remote always wins over a local snapshot.
+- Cloud / remote-execution containers have shipped a STALE local `main` that is an UNRELATED history: no shared merge-base with `origin/main`, a different file layout, and missing source files. Committing onto it and pushing would be rejected — or, if force-pushed, would DESTROY the real `origin/main` history. This has actually happened in this repo; the user describes it as "it gets my data lost."
+- Before editing, ALWAYS confirm local `main` really matches `origin/main`:
+  - `git fetch --prune`
+  - `git rev-list --left-right --count origin/main...main` — expect `0   0`; any large "behind" count or divergence is a red flag.
+  - `git merge-base main origin/main` — EMPTY output means UNRELATED histories = the local `main` is a stale/junk snapshot, NOT your real tree.
+  - Sanity-check the tree: the app source must exist (e.g. `Transform/Transform/Transform/WorkoutGeneratorService.swift`) and the Swift file count should look right (~49), not a smaller different layout.
+- If local `main` is behind, diverged, or unrelated: do NOT commit on it. Re-point onto the real tree first with `git checkout -B main origin/main`, re-verify the source is present, THEN make changes.
+- NEVER `git push --force` / `--force-with-lease` to `origin/main`. Push clean fast-forwards only. If a push is non-fast-forward, STOP and reconcile — never overwrite the remote.
+- After pushing, confirm it was a fast-forward (`old..new`), not a forced replacement, and that the prior `origin/main` commits are still ancestors.
+
 ## Minimal Working Rules
 - Work from this repo, not the stale copies.
 - If the repo is clean, run `git fetch --prune` and `git pull --ff-only` before normal edits.

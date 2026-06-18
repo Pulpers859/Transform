@@ -26,6 +26,18 @@
   - `git commit` the completed changes
   - `git push origin main` unless told not to
 
+## CRITICAL: verify local `main` == `origin/main` before committing
+
+- `origin/main` is the source of truth. Cloud / remote-execution containers have shipped a STALE
+  local `main` on an UNRELATED history (no merge-base, different layout, missing files). Committing
+  on it and force-pushing would WIPE the real `origin/main` — the user calls this "it gets my data lost."
+- Before any edit/commit, run:
+  - `git rev-list --left-right --count origin/main...main` (expect `0   0`)
+  - `git merge-base main origin/main` (EMPTY = unrelated histories = stale junk local `main`)
+- If stale/diverged/unrelated: `git checkout -B main origin/main`, confirm app source exists
+  (`Transform/Transform/Transform/WorkoutGeneratorService.swift`, ~49 Swift files), THEN edit.
+- NEVER force-push `origin/main`. Fast-forward pushes only; if rejected, stop and reconcile.
+
 ## Product priorities
 
 1. Workout quality
