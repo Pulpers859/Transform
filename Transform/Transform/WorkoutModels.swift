@@ -162,6 +162,18 @@ enum ExerciseCompletionStatus: String, CaseIterable, Identifiable {
         case .substituted: return "Substituted"
         }
     }
+
+    /// Plain reason phrase used in longitudinal skip-history summaries fed to the generator.
+    var historyReason: String {
+        switch self {
+        case .completed: return "completed"
+        case .completedModified: return "modified"
+        case .skippedTime: return "ran out of time"
+        case .skippedEquipment: return "equipment unavailable"
+        case .skippedPain: return "pain/discomfort"
+        case .substituted: return "substituted"
+        }
+    }
 }
 
 // MARK: - Workout Exercise

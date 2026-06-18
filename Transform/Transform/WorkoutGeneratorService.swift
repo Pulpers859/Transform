@@ -139,7 +139,7 @@ extension ClaudeService {
 
     // MARK: - Generate Week 1 (Initial)
 
-    func generateWeekOne(from analysisResult: BodyAnalysisResult, performanceHistory: String? = nil) async throws -> WorkoutProgramGenerationResult {
+    func generateWeekOne(from analysisResult: BodyAnalysisResult, performanceHistory: String? = nil, skipHistory: String? = nil) async throws -> WorkoutProgramGenerationResult {
         WorkoutGenerationDiagnostics.markStage("building week 1 analysis context")
         let analysisSummary = analysisContext(from: analysisResult)
         let trainingIntent = trainingIntentPlan(from: analysisResult)
@@ -154,7 +154,7 @@ extension ClaudeService {
         let config = weekOneConfig
         let toolSchema = programToolSchema()
         let systemPrompt = weekOneSystemPrompt()
-        let userPrompt = weekOneUserPrompt(context: context, performanceHistory: performanceHistory)
+        let userPrompt = weekOneUserPrompt(context: context, performanceHistory: performanceHistory, skipHistory: skipHistory)
         let requestContext = workoutRequestContext(
             phase: "week_one",
             weekNumber: 1,
@@ -442,7 +442,8 @@ extension ClaudeService {
         splitType: String,
         programName: String,
         performanceHistory: String? = nil,
-        sessionFeedbackSummary: String? = nil
+        sessionFeedbackSummary: String? = nil,
+        skipHistory: String? = nil
     ) async throws -> WorkoutWeekGenerationResult {
         let dayStart = ((weekNumber - 1) * 7) + 1
         let dayEnd = weekNumber * 7
@@ -482,7 +483,8 @@ extension ClaudeService {
             previousWeekReference: previousWeekReference,
             analysisContext: context,
             performanceHistory: performanceHistory,
-            sessionFeedbackSummary: sessionFeedbackSummary
+            sessionFeedbackSummary: sessionFeedbackSummary,
+            skipHistory: skipHistory
         )
         let requestContext = workoutRequestContext(
             phase: "next_week",

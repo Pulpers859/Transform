@@ -686,7 +686,13 @@ struct WorkoutView: View {
 
         do {
             let performanceHistory = compactPerformanceHistory(from: exerciseWeightEntries)
-            let generationResult = try await ClaudeService.shared.generateWeekOne(from: result, performanceHistory: performanceHistory)
+            // `programs` still holds the prior mesocycle here (it isn't deleted until below),
+            // so recurring skip/substitution patterns carry across the mesocycle boundary.
+            let generationResult = try await ClaudeService.shared.generateWeekOne(
+                from: result,
+                performanceHistory: performanceHistory,
+                skipHistory: recurringSkipHistory(across: programs)
+            )
             let response = generationResult.response
             try Task.checkCancellation()
             WorkoutGenerationDiagnostics.markStage("encoding generated week 1 program")
@@ -784,7 +790,8 @@ struct WorkoutView: View {
                 sessionFeedbackSummary: sessionFeedbackSummary(
                     for: program,
                     weekNumber: program.currentWeek
-                )
+                ),
+                skipHistory: recurringSkipHistory(for: program)
             )
             let response = generationResult.response
             try Task.checkCancellation()
@@ -910,16 +917,24 @@ struct WorkoutView: View {
     }
 
     func sessionFeedbackSummary(for program: WorkoutProgram, weekNumber: Int) -> String? {
-        let completed = program.sortedDays.filter {
-            $0.weekNumber == weekNumber && !$0.isRestDay && $0.hasSessionFeedback
+        // Include any non-rest day that EITHER has an explicit session rating OR has
+        // exercises the user skipped / substituted / modified. Previously this required the
+        // separate feedback sheet to be submitted, so skip selections silently never reached
+        // the generator unless the user also rated the session. Skip data now flows on its own.
+        func dayHasSkips(_ day: WorkoutDay) -> Bool {
+            day.sortedExercises.contains { exercise in
+                guard let status = exercise.completionStatus else { return false }
+                return status != .completed
+            }
         }
-        guard !completed.isEmpty else { return nil }
 
-        return completed.map { day in
-            let performance = day.performanceRating?.rawValue ?? "Not rated"
-            let note = day.sessionFeedbackNotes.trimmingCharacters(in: .whitespacesAndNewlines)
-            let noteSuffix = note.isEmpty ? "" : " Note: \(String(note.prefix(160)))"
+        let relevant = program.sortedDays.filter { day in
+            guard day.weekNumber == weekNumber, !day.isRestDay else { return false }
+            return day.hasSessionFeedback || dayHasSkips(day)
+        }
+        guard !relevant.isEmpty else { return nil }
 
+        return relevant.map { day in
             let skippedExercises = day.sortedExercises.filter { exercise in
                 guard let status = exercise.completionStatus else { return false }
                 return status != .completed
@@ -943,9 +958,79 @@ struct WorkoutView: View {
                 }
             }
 
-            return "Day \(day.dayNumber) \(day.dayName) [\(day.muscleGroups)]: effort \(day.sessionEffort)/5, stimulus \(day.stimulusQuality)/5, joint pain \(day.jointPain)/5, performance \(performance).\(noteSuffix)\(skipSuffix)\(timingSuffix)"
+            let dayHeader = "Day \(day.dayNumber) \(day.dayName) [\(day.muscleGroups)]"
+
+            // Without a submitted rating, the effort/stimulus/joint-pain/performance fields are
+            // just zeroed defaults — reporting them as real ratings would mislead the model.
+            guard day.hasSessionFeedback else {
+                return "\(dayHeader): no session rating submitted.\(skipSuffix)\(timingSuffix)"
+            }
+
+            let performance = day.performanceRating?.rawValue ?? "Not rated"
+            let note = day.sessionFeedbackNotes.trimmingCharacters(in: .whitespacesAndNewlines)
+            let noteSuffix = note.isEmpty ? "" : " Note: \(String(note.prefix(160)))"
+            return "\(dayHeader): effort \(day.sessionEffort)/5, stimulus \(day.stimulusQuality)/5, joint pain \(day.jointPain)/5, performance \(performance).\(noteSuffix)\(skipSuffix)\(timingSuffix)"
         }
         .joined(separator: "\n")
+    }
+
+    /// Aggregates recurring skip / substitution / modification patterns across the supplied
+    /// programs so persistent adherence signals — especially pain — survive across weeks AND
+    /// across mesocycle boundaries, rather than being reset every program. Returns nil when
+    /// there is nothing worth flagging.
+    func recurringSkipHistory(across programs: [WorkoutProgram]) -> String? {
+        var byExercise: [String: [ExerciseCompletionStatus: Int]] = [:]
+        for program in programs {
+            for day in program.sortedDays where !day.isRestDay {
+                for exercise in day.sortedExercises {
+                    guard let status = exercise.completionStatus, status != .completed else { continue }
+                    let name = exercise.exerciseName.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !name.isEmpty else { continue }
+                    byExercise[name, default: [:]][status, default: 0] += 1
+                }
+            }
+        }
+        guard !byExercise.isEmpty else { return nil }
+
+        struct Entry {
+            let name: String
+            let counts: [ExerciseCompletionStatus: Int]
+            var total: Int { counts.values.reduce(0, +) }
+            var painCount: Int { counts[.skippedPain] ?? 0 }
+            // Surface a movement if the issue recurs, or if it ever caused pain (a safety signal
+            // worth acting on even once).
+            var isSignificant: Bool { total >= 2 || painCount >= 1 }
+        }
+
+        let reasonOrder: [ExerciseCompletionStatus] = [
+            .skippedPain, .skippedEquipment, .skippedTime, .substituted, .completedModified
+        ]
+
+        let entries = byExercise
+            .map { Entry(name: $0.key, counts: $0.value) }
+            .filter { $0.isSignificant }
+            .sorted { lhs, rhs in
+                if lhs.painCount != rhs.painCount { return lhs.painCount > rhs.painCount }
+                if lhs.total != rhs.total { return lhs.total > rhs.total }
+                return lhs.name < rhs.name
+            }
+            .prefix(8) // cap prompt size / API cost; worst offenders come first
+
+        guard !entries.isEmpty else { return nil }
+
+        let lines = entries.map { entry -> String in
+            let reasonParts = reasonOrder.compactMap { status -> String? in
+                guard let count = entry.counts[status], count > 0 else { return nil }
+                return "\(status.historyReason) \(count)x"
+            }
+            return "\(entry.name): \(reasonParts.joined(separator: ", "))"
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    /// In-mesocycle convenience: recurrence across the weeks of a single program so far.
+    func recurringSkipHistory(for program: WorkoutProgram) -> String? {
+        recurringSkipHistory(across: [program])
     }
 
     func deleteProgram(_ program: WorkoutProgram) {

@@ -272,7 +272,7 @@ extension ClaudeService {
         """
     }
 
-    func weekOneUserPrompt(context: String, performanceHistory: String? = nil) -> String {
+    func weekOneUserPrompt(context: String, performanceHistory: String? = nil, skipHistory: String? = nil) -> String {
         """
         Build Week 1 of this individual's 4-week mesocycle. Treat the coaching inputs below as
         the source of truth — every day, every exercise, and every note should be traceable back
@@ -282,6 +282,7 @@ extension ClaudeService {
         \(context)
         --- end Coaching Inputs ---
         \(performanceHistorySection(from: performanceHistory))
+        \(skipHistorySection(from: skipHistory))
         Requirements:
         - Name the program and split meaningfully (reference the analysis, not a generic label).
         - In programSummary, state in ONE sentence what this 4-week arc is designed to accomplish
@@ -383,7 +384,8 @@ extension ClaudeService {
         previousWeekReference: String,
         analysisContext: String,
         performanceHistory: String? = nil,
-        sessionFeedbackSummary: String? = nil
+        sessionFeedbackSummary: String? = nil,
+        skipHistory: String? = nil
     ) -> String {
         """
         Generate Week \(weekNumber) (days \(dayStart)-\(dayEnd)) of the mesocycle.
@@ -397,6 +399,7 @@ extension ClaudeService {
         --- end previous week ---
         \(performanceHistorySection(from: performanceHistory))
         \(sessionFeedbackSection(from: sessionFeedbackSummary))
+        \(skipHistorySection(from: skipHistory))
         Phase guidance for Week \(weekNumber):
         \(phaseGuidance(for: weekNumber))
 
@@ -431,6 +434,33 @@ extension ClaudeService {
         selection, progression, or the lowest-priority volume. Do not infer a diagnosis, and do
         not overreact to one session when the rest of the week was productive.
         --- end completed-session feedback ---
+        """
+    }
+
+    private func skipHistorySection(from summary: String?) -> String {
+        guard let summary,
+              !summary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return ""
+        }
+        return """
+
+        --- Recurring skip / substitution history (persistent across weeks and mesocycles) ---
+        \(summary)
+        These are movements the user has repeatedly skipped, substituted, or modified. Treat this
+        as a persistent adherence signal and respond by REASON, not by dropping prime volume:
+        - pain/discomfort: regress or replace the movement with a joint-friendlier variant that
+          keeps the same training target, and add specific warm-up/mobility for the involved area.
+          Do not keep prescribing a movement that repeatedly causes pain.
+        - equipment unavailable: choose an equipment-flexible alternative that hits the same
+          muscle/pattern with the gear the user actually has.
+        - ran out of time: sequence this work earlier or trim the LOWEST-priority volume instead
+          of cutting a prime movement; consider a slightly more time-efficient variant.
+        - substituted: if a substitution recurs, adopt it (or an equivalent) as the prescribed
+          movement so it stops being an ad hoc swap.
+        - modified: keep the intended stimulus but reflect the modification the user keeps making.
+        Use canonical exercise names so weight-history continuity is preserved. Do not overhaul the
+        whole split — make targeted, evidence-informed swaps for the flagged movements only.
+        --- end recurring skip / substitution history ---
         """
     }
 
