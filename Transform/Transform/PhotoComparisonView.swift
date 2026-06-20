@@ -86,7 +86,7 @@ struct PhotoComparisonView: View {
                 }
             }
             .pickerStyle(.menu)
-            .tint(.orange)
+            .tint(TFColor.accent)
 
             Text(sessions[safeIndex].pose)
                 .font(.caption2)

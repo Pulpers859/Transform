@@ -603,7 +603,7 @@ struct WorkoutView: View {
                 } label: {
                     HStack {
                         if isGenerating {
-                            ProgressView().tint(.orange).scaleEffect(0.8)
+                            ProgressView().tint(TFColor.accent).scaleEffect(0.8)
                         }
                         Image(systemName: "arrow.clockwise")
                         Text(isGenerating ? "Regenerating..." : "Start Over (New Week 1)")
@@ -742,20 +742,20 @@ struct WorkoutView: View {
                 modelContext.rollback()
                 errorMessage = "Could not save the generated program. Please try again."
                 showError = true
-                UINotificationFeedbackGenerator().notificationOccurred(.error)
+                TFHaptics.error()
                 return
             }
             DataBackupManager.shared.scheduleAutomaticBackup(using: modelContext)
             WorkoutGenerationDiagnostics.markStage("finalizing generated week 1 program")
             selectedWeek = 1
-            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            TFHaptics.success()
         } catch is CancellationError {
             return
         } catch {
             guard !Task.isCancelled else { return }
             errorMessage = error.localizedDescription
             showError = true
-            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            TFHaptics.error()
         }
     }
 
@@ -834,20 +834,20 @@ struct WorkoutView: View {
                 program.validatorWarnings = priorWarnings
                 errorMessage = "Could not save the generated week. Please try again."
                 showError = true
-                UINotificationFeedbackGenerator().notificationOccurred(.error)
+                TFHaptics.error()
                 return
             }
             DataBackupManager.shared.scheduleAutomaticBackup(using: modelContext)
             WorkoutGenerationDiagnostics.markStage("finalizing generated week \(nextWeek) program")
             selectedWeek = nextWeek
-            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            TFHaptics.success()
         } catch is CancellationError {
             return
         } catch {
             guard !Task.isCancelled else { return }
             errorMessage = error.localizedDescription
             showError = true
-            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            TFHaptics.error()
         }
     }
 
@@ -906,11 +906,11 @@ struct WorkoutView: View {
             for (exercise, priorValue) in priorExerciseCompletion {
                 exercise.isCompleted = priorValue
             }
-            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            TFHaptics.error()
             return
         }
         DataBackupManager.shared.writeAutomaticBackup(using: modelContext)
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        TFHaptics.impact(.light)
         if day.isCompleted && !day.isRestDay {
             feedbackDay = day
         }
@@ -1037,17 +1037,17 @@ struct WorkoutView: View {
         modelContext.delete(program)
         guard PersistenceReporter.save(modelContext, operation: "workout program deletion") else {
             modelContext.rollback()
-            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            TFHaptics.error()
             return
         }
         DataBackupManager.shared.writeAutomaticBackup(using: modelContext)
         selectedWeek = 1
         programToDelete = nil
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        TFHaptics.impact(.medium)
     }
 
     func openGeneratorLab() {
-        UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+        TFHaptics.impact(.soft)
         showGeneratorLab = true
     }
 
@@ -1127,7 +1127,7 @@ struct WorkoutView: View {
             errorMessage = failureMessage
             showError = true
             print("[WorkoutView] JSON encoding failed: \(error)")
-            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            TFHaptics.error()
             return nil
         }
     }

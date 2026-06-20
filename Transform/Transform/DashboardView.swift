@@ -559,7 +559,7 @@ struct DashboardView: View {
                         .font(.caption.bold())
                 }
                 .buttonStyle(.bordered)
-                .tint(.orange)
+                .tint(TFColor.accent)
             }
 
             HStack(spacing: 20) {
@@ -687,7 +687,7 @@ struct DashboardView: View {
                         .font(.caption.bold())
                 }
                 .buttonStyle(.bordered)
-                .tint(.blue)
+                .tint(TFColor.sleep)
             }
 
             if let trend = sleepTrend {
@@ -789,7 +789,7 @@ struct DashboardView: View {
                         .font(.caption.bold())
                 }
                 .buttonStyle(.bordered)
-                .tint(.orange)
+                .tint(TFColor.accent)
                 if let delta = weightTrend.weeklyChangeLbs {
                     deltaBadge(delta, invertGood: true)
                 }

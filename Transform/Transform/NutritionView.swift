@@ -749,12 +749,12 @@ struct NutritionView: View {
         modelContext.delete(entry)
         guard PersistenceReporter.save(modelContext, operation: "nutrition entry deletion") else {
             modelContext.rollback()
-            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            TFHaptics.error()
             return
         }
         DataBackupManager.shared.writeAutomaticBackup(using: modelContext)
         entryToDelete = nil
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        TFHaptics.impact(.medium)
     }
 
     func yesterdayEntries(for meal: String) -> [NutritionEntry] {
@@ -825,10 +825,10 @@ struct NutritionView: View {
                     measurementTrend: measurementTrend
                 )
                 try saveMacroReview(review)
-                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                TFHaptics.success()
             } catch {
                 macroReviewError = error.localizedDescription
-                UINotificationFeedbackGenerator().notificationOccurred(.error)
+                TFHaptics.error()
             }
         }
     }
@@ -862,7 +862,7 @@ struct NutritionView: View {
             return
         }
         DataBackupManager.shared.writeAutomaticBackup(using: modelContext)
-        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        TFHaptics.success()
     }
 
     func clearMacroOverride() {
@@ -878,7 +878,7 @@ struct NutritionView: View {
             return
         }
         DataBackupManager.shared.writeAutomaticBackup(using: modelContext)
-        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        TFHaptics.success()
     }
 
     func nutritionPersistenceRecord() -> SavedNutritionProtocol {
@@ -929,7 +929,7 @@ struct NutritionView: View {
             if let warning = generated.partialGenerationWarning {
                 nutritionErrorMessage = warning
             }
-            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            TFHaptics.success()
         } catch is CancellationError {
             return
         } catch {
@@ -937,7 +937,7 @@ struct NutritionView: View {
             nutritionErrorMessage = "Generation failed: \(error.localizedDescription)"
             nutritionProgram = priorProgram
             followupWeeks = priorFollowups
-            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            TFHaptics.error()
         }
     }
 
@@ -1067,7 +1067,7 @@ struct NutritionView: View {
         guard PersistenceReporter.save(modelContext, operation: "saved nutrition protocol") else {
             modelContext.rollback()
             nutritionErrorMessage = "Could not save the nutrition protocol. Please try again."
-            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            TFHaptics.error()
             return
         }
         DataBackupManager.shared.scheduleAutomaticBackup(using: modelContext)

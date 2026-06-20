@@ -108,12 +108,12 @@ struct MeasurementsView: View {
                     if deletedSomething {
                         guard PersistenceReporter.save(modelContext, operation: "measurement history deletion") else {
                             modelContext.rollback()
-                            UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
+                            TFHaptics.impact(.heavy)
                             return
                         }
                         DataBackupManager.shared.writeAutomaticBackup(using: modelContext)
                     }
-                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    TFHaptics.impact(.medium)
                 }
                 Button("Cancel", role: .cancel) {
                     weightToDelete = nil

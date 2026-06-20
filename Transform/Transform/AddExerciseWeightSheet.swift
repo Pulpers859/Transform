@@ -497,11 +497,11 @@ struct AddExerciseWeightSheet: View {
         guard PersistenceReporter.save(modelContext, operation: "exercise set logging") else {
             modelContext.rollback()
             didSave = false
-            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            TFHaptics.error()
             return
         }
         DataBackupManager.shared.writeAutomaticBackup(using: modelContext)
-        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        TFHaptics.success()
         dismiss()
     }
 

@@ -67,7 +67,7 @@ struct BodyAnalysisResultView: View {
                 AnalysisResultContent(result: result)
                     .onLongPressGesture(minimumDuration: 1.2) {
                         withAnimation { showDebugPanel.toggle() }
-                        UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+                        TFHaptics.impact(.soft)
                     }
 
                 // Save button
@@ -163,7 +163,7 @@ struct BodyAnalysisResultView: View {
             withAnimation(.easeOut(duration: 0.2)) {
                 toastMessage = "\(title) copied"
             }
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            TFHaptics.impact(.light)
         } label: {
             Text(title)
                 .font(.caption.bold())

@@ -539,14 +539,14 @@ struct AddFoodSheet: View {
             sugar = String(format: "%.0f", min(max(result.sugarG ?? 0, 0), 300))
             fiber = String(format: "%.0f", min(max(result.fiberG ?? 0, 0), 150))
             fat = String(format: "%.0f", min(max(result.fatG, 0), 500))
-            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            TFHaptics.success()
         } catch is CancellationError {
             return
         } catch {
             guard !Task.isCancelled else { return }
             aiError = error.localizedDescription
             showAIError = true
-            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            TFHaptics.error()
         }
     }
 

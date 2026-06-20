@@ -145,11 +145,11 @@ struct WorkoutSessionFeedbackSheet: View {
             day.sessionFeedbackNotes = priorNotes
             day.sessionStartedAt = priorStartedAt
             day.sessionEndedAt = priorEndedAt
-            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            TFHaptics.error()
             return
         }
         DataBackupManager.shared.writeAutomaticBackup(using: modelContext)
-        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        TFHaptics.success()
         dismiss()
     }
 }

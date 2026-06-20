@@ -46,7 +46,7 @@ struct ContentView: View {
                 }
         }
         .preferredColorScheme(resolvedColorScheme)
-        .tint(.orange)
+        .tint(TFColor.accent)
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .inactive || newPhase == .background {
                 if !WorkoutGenerationDiagnostics.isActive {

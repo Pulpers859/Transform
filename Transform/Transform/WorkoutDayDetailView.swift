@@ -207,11 +207,11 @@ struct WorkoutDayDetailView: View {
             modelContext.rollback()
             exercise.isCompleted = previousExerciseState
             day.isCompleted = previousDayState
-            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            TFHaptics.error()
             return
         }
         DataBackupManager.shared.writeAutomaticBackup(using: modelContext)
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        TFHaptics.impact(.light)
         if day.isCompleted && !previousDayState {
             feedbackDay = day
         }
@@ -769,7 +769,7 @@ struct ExerciseRestTimerView: View {
         restEndDate = Date().addingTimeInterval(Double(remainingRestSeconds))
         isRestTimerActive = true
         startRestTimer()
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        TFHaptics.impact(.light)
     }
 
     func startRestTimer() {
@@ -818,7 +818,7 @@ struct ExerciseRestTimerView: View {
         pauseRestTimer()
         remainingRestSeconds = 0
         didCompleteRestTimer = true
-        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        TFHaptics.success()
     }
 
     func formatCountdown(_ seconds: Int) -> String {

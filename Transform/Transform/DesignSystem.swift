@@ -1,4 +1,30 @@
 import SwiftUI
+import UIKit
+
+// MARK: - Haptics
+
+/// Centralized haptic feedback. Keeps intensity choices consistent across the
+/// app and provides one place to tune — or globally disable — feedback later.
+enum TFHaptics {
+    /// A physical "tap" impact. Use for confirmations and lightweight actions.
+    static func impact(_ style: UIImpactFeedbackGenerator.FeedbackStyle = .light) {
+        UIImpactFeedbackGenerator(style: style).impactOccurred()
+    }
+
+    /// A semantic notification (success / warning / error).
+    static func notify(_ type: UINotificationFeedbackGenerator.FeedbackType) {
+        UINotificationFeedbackGenerator().notificationOccurred(type)
+    }
+
+    /// A selection tick. Use when moving between discrete values (pickers, steppers).
+    static func selection() {
+        UISelectionFeedbackGenerator().selectionChanged()
+    }
+
+    static func success() { notify(.success) }
+    static func warning() { notify(.warning) }
+    static func error() { notify(.error) }
+}
 
 // MARK: - Type Scale
 

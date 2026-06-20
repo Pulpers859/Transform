@@ -192,7 +192,7 @@ struct BodyAnalysisView: View {
                     if let nextPose = unusedPoses.first {
                         currentPose = nextPose
                     }
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    TFHaptics.impact(.light)
                 }
             }
             .onDisappear {
@@ -314,7 +314,7 @@ struct BodyAnalysisView: View {
                 .overlay(alignment: .topLeading) {
                     Button {
                         photos.remove(at: index)
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        TFHaptics.impact(.light)
                     } label: {
                         Image(systemName: "xmark.circle.fill")
                             .font(.title3)
@@ -856,14 +856,14 @@ struct BodyAnalysisView: View {
             analysisResult = result
             validationReport = report
             showResult = true
-            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            TFHaptics.success()
         } catch is CancellationError {
             return
         } catch {
             guard !Task.isCancelled else { return }
             errorMessage = error.localizedDescription
             showError = true
-            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            TFHaptics.error()
         }
     }
 
@@ -886,7 +886,7 @@ struct BodyAnalysisView: View {
             errorMessage = "Could not save this analysis because the full result could not be encoded."
             showError = true
             print("[BodyAnalysisView] Failed to encode analysis result for storage: \(error)")
-            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            TFHaptics.error()
             return
         }
 
@@ -902,7 +902,7 @@ struct BodyAnalysisView: View {
         modelContext.insert(session)
         guard PersistenceReporter.save(modelContext, operation: "analysis session") else {
             modelContext.rollback()
-            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            TFHaptics.error()
             return
         }
         DataBackupManager.shared.scheduleAutomaticBackup(using: modelContext)
@@ -910,19 +910,19 @@ struct BodyAnalysisView: View {
         currentPose = poses.first ?? "Front"
         analysisResult = nil
         showResult = false
-        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        TFHaptics.success()
     }
 
     func deleteSession(_ session: BodyAnalysisSession) {
         modelContext.delete(session)
         guard PersistenceReporter.save(modelContext, operation: "analysis session deletion") else {
             modelContext.rollback()
-            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            TFHaptics.error()
             return
         }
         DataBackupManager.shared.writeAutomaticBackup(using: modelContext)
         sessionToDelete = nil
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        TFHaptics.impact(.medium)
     }
 
     func clearCheckIn() {
@@ -1125,7 +1125,7 @@ struct SavedFullAnalysisView: View {
                 AnalysisResultContent(result: result)
                     .onLongPressGesture(minimumDuration: 1.2) {
                         withAnimation { showDebugPanel.toggle() }
-                        UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+                        TFHaptics.impact(.soft)
                     }
             }
             .padding()
@@ -1190,7 +1190,7 @@ struct SavedFullAnalysisView: View {
             withAnimation(.easeOut(duration: 0.2)) {
                 toastMessage = "\(title) copied"
             }
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            TFHaptics.impact(.light)
         } label: {
             Text(title)
                 .font(.caption.bold())

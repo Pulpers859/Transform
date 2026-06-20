@@ -36,15 +36,15 @@ enum PersistenceReporter {
     ) -> Bool {
         guard save(modelContext, operation: operation) else {
             modelContext.rollback()
-            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            TFHaptics.error()
             return false
         }
         DataBackupManager.shared.writeAutomaticBackup(using: modelContext)
         switch haptic {
         case .success, .warning:
-            UINotificationFeedbackGenerator().notificationOccurred(haptic)
+            TFHaptics.notify(haptic)
         default:
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            TFHaptics.impact(.light)
         }
         return true
     }
