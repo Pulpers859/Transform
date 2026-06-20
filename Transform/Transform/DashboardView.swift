@@ -930,6 +930,9 @@ struct DashboardView: View {
                 }
                 .chartYScale(domain: weightTrendDomain)
                 .frame(height: 120)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Body weight trend chart")
+                .accessibilityValue(weightChartAccessibilitySummary)
             } else {
                 Text("Log at least two entries to see your trend graph.")
                     .font(.caption2)
@@ -1054,6 +1057,9 @@ struct DashboardView: View {
                 }
             }
             .frame(height: 140)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("7-day calorie intake chart")
+            .accessibilityValue(weekCalorieAccessibilitySummary)
 
             HStack(spacing: 4) {
                 Text("7-day avg:")
@@ -1132,6 +1138,23 @@ struct DashboardView: View {
 
     var bottomPadding: some View {
         Color.clear.frame(height: 20)
+    }
+
+    // MARK: - Chart Accessibility Summaries
+
+    var weightChartAccessibilitySummary: String {
+        var parts: [String] = []
+        if let trend = weightTrend.currentTrendWeightLbs {
+            parts.append("7-day trend \(String(format: "%.1f", trend)) pounds")
+        }
+        if let weekly = weightTrend.weeklyChangeLbs {
+            parts.append(String(format: "%+.1f pounds per week", weekly))
+        }
+        return parts.isEmpty ? "Not enough data yet" : parts.joined(separator: ", ")
+    }
+
+    var weekCalorieAccessibilitySummary: String {
+        "7-day average \(Int(weekAverageCalories)) calories against a target of \(activeMacroTargets.calories)"
     }
 
     // MARK: - Helpers

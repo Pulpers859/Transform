@@ -62,7 +62,7 @@ struct TrainingDayCard: View {
         .background(day.isCompleted ? TFColor.success.opacity(0.05) : TFColor.surface)
         .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
         .overlay(
-            RoundedRectangle(cornerRadius: 12)
+            RoundedRectangle(cornerRadius: TFRadius.cardCompact)
                 .stroke(day.isCompleted ? TFColor.success.opacity(0.2) : Color.clear, lineWidth: 1)
         )
     }
@@ -139,13 +139,13 @@ struct RestDayCard: View {
 
             Image(systemName: "bed.double.fill")
                 .font(.caption)
-                .foregroundStyle(.blue.opacity(0.5))
+                .foregroundStyle(TFColor.sleep.opacity(0.5))
         }
         .padding(14)
         .background(day.isCompleted ? TFColor.success.opacity(0.05) : TFColor.surface)
         .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
         .overlay(
-            RoundedRectangle(cornerRadius: 12)
+            RoundedRectangle(cornerRadius: TFRadius.cardCompact)
                 .stroke(day.isCompleted ? TFColor.success.opacity(0.2) : Color.clear, lineWidth: 1)
         )
     }

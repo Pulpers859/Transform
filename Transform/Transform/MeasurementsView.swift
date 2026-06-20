@@ -436,6 +436,13 @@ struct MeasurementsView: View {
                 return (entry.date, val)
             }
 
+        let chartSummary: String = {
+            guard let first = sorted.first?.1, let last = sorted.last?.1 else {
+                return "Not enough data yet"
+            }
+            return String(format: "latest %.1f, %+.1f since the first entry", last, last - first)
+        }()
+
         return Chart(sorted, id: \.0) { (date, value) in
             LineMark(
                 x: .value("Date", date),
@@ -458,6 +465,9 @@ struct MeasurementsView: View {
             }
         }
         .chartYScale(domain: .automatic(includesZero: false))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(label) trend chart")
+        .accessibilityValue(chartSummary)
     }
 
     // MARK: - History Section

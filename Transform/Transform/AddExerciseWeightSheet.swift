@@ -376,6 +376,7 @@ struct AddExerciseWeightSheet: View {
                         .foregroundStyle(.white)
                         .clipShape(RoundedRectangle(cornerRadius: TFRadius.card))
                 }
+                .pressable()
                 .disabled(!canSave)
             }
             .padding(.horizontal, 16)

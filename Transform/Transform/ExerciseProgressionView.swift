@@ -40,6 +40,20 @@ struct ExerciseProgressionView: View {
         }
     }
 
+    var weightChartSummary: String {
+        guard let first = chartPoints.first?.weightLbs, let last = chartPoints.last?.weightLbs else {
+            return "Not enough data yet"
+        }
+        return String(format: "latest %.1f pounds, %+.1f since the first logged set", last, last - first)
+    }
+
+    var e1rmChartSummary: String {
+        guard let first = estimatedOneRepMax.first?.weightLbs, let last = estimatedOneRepMax.last?.weightLbs else {
+            return "Not enough data yet"
+        }
+        return String(format: "latest %.0f pounds estimated, %+.0f since the first estimate", last, last - first)
+    }
+
     var weightDomain: ClosedRange<Double> {
         let allWeights = chartPoints.map(\.weightLbs) + estimatedOneRepMax.map(\.weightLbs)
         guard let lo = allWeights.min(), let hi = allWeights.max() else { return 0...100 }
@@ -210,6 +224,9 @@ struct ExerciseProgressionView: View {
                 }
             }
             .frame(height: 200)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Top set weight trend chart")
+            .accessibilityValue(weightChartSummary)
         }
         .dashCard()
     }
@@ -256,6 +273,9 @@ struct ExerciseProgressionView: View {
                 }
             }
             .frame(height: 160)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Estimated one-rep max trend chart")
+            .accessibilityValue(e1rmChartSummary)
         }
         .dashCard()
     }
