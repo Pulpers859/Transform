@@ -195,6 +195,7 @@ struct WorkoutView: View {
             .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
             .bold()
         }
+        .pressable()
         .disabled(isGenerating || !canUseAI)
     }
 
@@ -542,6 +543,7 @@ struct WorkoutView: View {
                 .foregroundStyle(.white)
                 .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
             }
+            .pressable()
             .disabled(isGenerating || !canUseAI)
         }
     }
@@ -615,6 +617,7 @@ struct WorkoutView: View {
                     .foregroundStyle(TFColor.accent)
                     .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
                 }
+                .pressable()
                 .disabled(isGenerating || !canUseAI)
             }
 
@@ -633,6 +636,7 @@ struct WorkoutView: View {
                 .foregroundStyle(TFColor.danger)
                 .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
             }
+            .pressable()
             .disabled(isGenerating)
         }
     }

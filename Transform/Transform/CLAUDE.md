@@ -85,7 +85,8 @@ Findings should come first, ordered by severity, with file references. Summaries
 - Make direct changes when the path is clear.
 - After each fix, do another harsh adjacent-risk pass.
 - If you cannot validate something fully, say exactly what was and was not validated.
-- On Windows, use the Swift sanity check for smoke validation when possible. On macOS, prefer real Xcode or simulator validation.
+- On Windows / Linux / cloud containers, use the Swift sanity check for smoke validation when possible; these environments cannot build the iOS app, so keep changes correct-by-inspection and compile-safe.
+- The owner validates by building in Xcode and running on a physical iPhone. That is the source of truth. Do NOT suggest or wait on the iOS Simulator — it is intentionally not used (slow, and it can't exercise haptics, the camera/body-analysis flow, or real on-device feel). Hand off device testing to the owner as the preferred path, not a fallback.
 
 ## Files Usually Relevant For Core AI / Training Work
 - `ClaudeService.swift`

@@ -592,6 +592,7 @@ struct NutritionView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 10))
                 .bold()
             }
+            .pressable()
             .disabled(isGeneratingNutrition || !canUseAI || latestAnalysis == nil)
 
             if !canUseAI {

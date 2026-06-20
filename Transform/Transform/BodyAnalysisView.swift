@@ -734,6 +734,7 @@ struct BodyAnalysisView: View {
                 .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
                 .bold()
             }
+            .pressable()
             .disabled(isAnalyzing || !canUseAI)
 
             Text("Photo analysis is strongest for visible physique patterns and broad training priorities. It is more limited for injury, posture, metabolic, and adherence assessment without added history or check-in data.")

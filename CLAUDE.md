@@ -103,5 +103,7 @@
 - `EvidenceProfile.md`
 
 ## Validation Reality
-- Windows is fine for git, file inspection, and framework-light Swift smoke checks.
-- Real iOS build and simulator validation is best on macOS/Xcode.
+- Windows / Linux / cloud containers are fine for git, file inspection, and framework-light Swift smoke checks. They CANNOT build this iOS app (no Xcode), so agents in those environments must make changes that are correct-by-inspection and compile-safe, then hand off to the owner for the real build.
+- The owner's validation workflow is: build in Xcode and run on a physical iPhone. This is the source of truth for "does it work."
+- Do NOT suggest, recommend, or wait on the iOS Simulator. The owner intentionally does not use it (slow to load, and it can't exercise haptics, the camera/body-analysis flow, or true on-device feel). Device testing is the correct and preferred path — treat it as such, not as a fallback.
+- When an agent cannot compile, say exactly that ("I can't build here; this is correct-by-inspection — build & run on your iPhone to confirm") instead of pointing at the simulator.

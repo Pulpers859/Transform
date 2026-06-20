@@ -26,6 +26,30 @@ enum TFHaptics {
     static func error() { notify(.error) }
 }
 
+// MARK: - Pressable Button Style
+
+/// Adds a tactile spring press-scale to custom buttons so they feel responsive,
+/// matching the feedback the system's own button styles provide. Respects the
+/// Reduce Motion accessibility setting.
+struct TFPressableButtonStyle: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    var scale: CGFloat = 0.97
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed && !reduceMotion ? scale : 1)
+            .opacity(configuration.isPressed ? 0.92 : 1)
+            .animation(.spring(response: 0.3, dampingFraction: 0.65), value: configuration.isPressed)
+    }
+}
+
+extension View {
+    /// Applies the standard Transform press-scale interaction to a button.
+    func pressable(scale: CGFloat = 0.97) -> some View {
+        buttonStyle(TFPressableButtonStyle(scale: scale))
+    }
+}
+
 // MARK: - Type Scale
 
 enum TFTypography {
