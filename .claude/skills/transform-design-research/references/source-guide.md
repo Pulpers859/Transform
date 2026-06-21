@@ -49,10 +49,26 @@ Use for:
 
 Do not copy React, Tailwind, browser interaction, or marketing-page conventions into SwiftUI.
 
+## Taste-Skill
+
+Secondary, principles-only source. Confirm the exact GitHub URL before deeper use
+(see `docs/AGENT_RESOURCE_DECISIONS.md`).
+
+Use for:
+- general design-quality principles: hierarchy, spacing, typographic scale, restraint
+- a sanity check against generic AI-built layout
+
+Treat it as the weakest authority here. These taste packs are web-oriented
+(React/Tailwind/HTML/CSS), so extract principles only and reject any CSS, hover,
+breakpoint, font, or web-layout specifics. Apple conventions and the rules in this
+skill remain the final authority for native implementation. Never let it drive
+SwiftUI structure.
+
 ## Selection Heuristic
 
 - New or redesigned iOS flow: Refero plus Apple-native skills.
 - Visual-direction exploration: Refero plus UI UX Pro Max.
 - Component behavior or state question: UX Components plus Apple-native skills.
 - Web page or future marketing site: 21st.dev plus the web implementation skills.
+- General "does this feel premium / not generic" gut check: Taste-Skill principles only, never as an authority.
 - Small UI bug: skip external research unless the symptom reveals a larger design problem.

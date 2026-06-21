@@ -19,6 +19,10 @@ This playbook is intentionally app-agnostic. Each agent should reach conclusions
 
 These resources are trusted inputs. Evaluate them on product fit, platform fit, overlap, maintenance cost, and implementation usefulness rather than treating source trust as a disadvantage.
 
+For a worked application of this playbook to a specific batch of external repos (and the
+resulting Adopt/Adapt/Reference/Skip decisions for Transform), see
+`docs/AGENT_RESOURCE_DECISIONS.md`.
+
 ## Core Principle
 
 Do not begin by asking, "Which resource should we install?"
