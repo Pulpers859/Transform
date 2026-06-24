@@ -9,6 +9,7 @@ struct AddExerciseWeightSheet: View {
     let exercise: WorkoutExercise
     let weightSummary: ExerciseWeightEntry?
     var latestSetLogs: [SetLogEntry] = []
+    var todaysSetLogs: [SetLogEntry] = []
 
     @State private var setLogs: [SetLogDraft] = []
     @State private var notes = ""
@@ -404,6 +405,16 @@ struct AddExerciseWeightSheet: View {
 
     func initializeSets() {
         guard setLogs.isEmpty else { return }
+
+        // Resume today's in-progress session if it exists, so the sheet shows the sets
+        // already logged (e.g. via the inline logger) instead of overwriting them on save.
+        if !todaysSetLogs.isEmpty {
+            setLogs = todaysSetLogs
+                .sorted { $0.setNumber < $1.setNumber }
+                .map { SetLogDraft(setNumber: $0.setNumber, weightText: formatWeight($0.weightLbs), repsText: "\($0.repsCompleted)") }
+            return
+        }
+
         let count = max(exercise.sets, 1)
         // Seed from the representative working set, not the heaviest logged set, so a
         // prior anomaly or warm-up ramp does not pre-fill an unintended load.
@@ -472,16 +483,33 @@ struct AddExerciseWeightSheet: View {
         let topReps = qualified?.reps ?? ExercisePerformanceLog.topSetReps(from: validSets)
         let trimmedNotes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        let performanceLog = ExercisePerformanceLog(
-            loggedAt: loggedAt,
-            exerciseName: exercise.exerciseName,
-            weightLbs: topWeight,
-            repsCompleted: topReps,
-            notes: trimmedNotes,
-            muscleTarget: exercise.muscleTarget,
-            setLogs: validSets
-        )
-        modelContext.insert(performanceLog)
+        // Resume the same-day session if one already exists (e.g. started via the inline
+        // logger) instead of inserting a duplicate log for the same exercise and day.
+        let key = ExerciseWeightEntry.canonicalLookupKey(exercise.exerciseName)
+        let descriptor = FetchDescriptor<ExercisePerformanceLog>(predicate: #Predicate { $0.canonicalExerciseKey == key })
+        let sameDayLog = (try? modelContext.fetch(descriptor))?.first {
+            Calendar.current.isDate($0.loggedAt, inSameDayAs: loggedAt)
+        }
+
+        if let existing = sameDayLog {
+            existing.loggedAt = loggedAt
+            existing.weightLbs = topWeight
+            existing.repsCompleted = topReps
+            existing.notes = trimmedNotes
+            existing.muscleTarget = exercise.muscleTarget
+            existing.setLogsJSON = ExercisePerformanceLog.encodeSetLogs(validSets)
+        } else {
+            let performanceLog = ExercisePerformanceLog(
+                loggedAt: loggedAt,
+                exerciseName: exercise.exerciseName,
+                weightLbs: topWeight,
+                repsCompleted: topReps,
+                notes: trimmedNotes,
+                muscleTarget: exercise.muscleTarget,
+                setLogs: validSets
+            )
+            modelContext.insert(performanceLog)
+        }
 
         if let weightSummary {
             weightSummary.applyLog(

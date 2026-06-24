@@ -47,7 +47,8 @@ struct WorkoutDayDetailView: View {
             AddExerciseWeightSheet(
                 exercise: exercise,
                 weightSummary: weightSummary(for: exercise),
-                latestSetLogs: latestSetLogs(for: exercise)
+                latestSetLogs: latestSetLogs(for: exercise),
+                todaysSetLogs: todaysSetLogs(for: exercise)
             )
         }
         .sheet(item: $feedbackDay) { selectedDay in
@@ -187,6 +188,7 @@ struct WorkoutDayDetailView: View {
                     exercise: exercise,
                     weightSummary: weightSummary(for: exercise),
                     latestSetLogs: latestSetLogs(for: exercise),
+                    todaysSetLogs: todaysSetLogs(for: exercise),
                     onToggle: { toggleExercise(exercise) },
                     onLogWeight: { exerciseForWeightLogging = exercise }
                 )
@@ -222,12 +224,14 @@ struct WorkoutDayDetailView: View {
         ExerciseWeightStore.summary(for: exercise, within: allWeightLogs)
     }
 
+    /// The most recent completed session before today — the "last session" reference.
     func latestSetLogs(for exercise: WorkoutExercise) -> [SetLogEntry] {
-        let key = ExerciseWeightEntry.canonicalLookupKey(exercise.exerciseName)
-        guard let latest = allPerformanceLogs.first(where: {
-            $0.canonicalExerciseKey == key && !$0.setLogsJSON.isEmpty
-        }) else { return [] }
-        return latest.decodedSetLogs
+        SetLoggingService.previousSets(for: exercise, in: allPerformanceLogs)
+    }
+
+    /// Sets already logged for today's in-progress session.
+    func todaysSetLogs(for exercise: WorkoutExercise) -> [SetLogEntry] {
+        SetLoggingService.todaysSets(for: exercise, in: allPerformanceLogs)
     }
 }
 
@@ -237,7 +241,11 @@ struct ExerciseCard: View {
     @Environment(\.modelContext) private var modelContext
     let exercise: WorkoutExercise
     let weightSummary: ExerciseWeightEntry?
+    /// The most recent *completed* session before today — drives the "last session"
+    /// panel and the progression suggestion.
     let latestSetLogs: [SetLogEntry]
+    /// Sets already logged for today's in-progress session — drives the inline logger.
+    let todaysSetLogs: [SetLogEntry]
     let onToggle: () -> Void
     let onLogWeight: () -> Void
 
@@ -346,6 +354,19 @@ struct ExerciseCard: View {
                         ExerciseStat(icon: "metronome", label: "Tempo", value: tempo)
                     }
                 }
+
+                InlineSetLogger(
+                    exercise: exercise,
+                    loggedSets: todaysSetLogs,
+                    suggestedWeight: workingSetAnalysis.workingWeight,
+                    suggestedReps: workingSetAnalysis.topWorkingSet?.reps ?? RepRange.parse(exercise.reps)?.high,
+                    onLog: { setNumber, weight, reps in
+                        SetLoggingService.logSet(setNumber: setNumber, weightLbs: weight, reps: reps, for: exercise, modelContext: modelContext)
+                    },
+                    onClear: { setNumber in
+                        SetLoggingService.clearSet(setNumber: setNumber, for: exercise, modelContext: modelContext)
+                    }
+                )
 
                 if !latestSetLogs.isEmpty {
                     setLogBreakdown
@@ -1373,5 +1394,384 @@ struct SetAnomalyNotice: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(TFColor.warning.opacity(0.08))
         .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+}
+
+// MARK: - Set Logging Service
+
+/// Incremental, session-aware set logging. A "session" is a single
+/// `ExercisePerformanceLog` for one exercise on one calendar day. Inline set-by-set
+/// logging and the bulk sheet both funnel through here so they share one log per
+/// session instead of fragmenting it — which would skew the summary, the personal
+/// best, and the anomaly analysis.
+///
+/// Reads take a `@Query`-backed array (reactive UI). Writes fetch fresh from the
+/// context so two quick taps cannot create a duplicate session log before the query
+/// republishes.
+@MainActor
+enum SetLoggingService {
+
+    // MARK: Reads (from a query-backed array)
+
+    static func todaysSets(
+        for exercise: WorkoutExercise,
+        in logs: [ExercisePerformanceLog],
+        on date: Date = .now
+    ) -> [SetLogEntry] {
+        let key = ExerciseWeightEntry.canonicalLookupKey(exercise.exerciseName)
+        let cal = Calendar.current
+        let log = logs.first { $0.canonicalExerciseKey == key && cal.isDate($0.loggedAt, inSameDayAs: date) }
+        return (log?.decodedSetLogs ?? []).sorted { $0.setNumber < $1.setNumber }
+    }
+
+    /// Most recent completed session strictly before `date` — used for the "last
+    /// session" panel and the progression suggestion (which targets the next session).
+    static func previousSets(
+        for exercise: WorkoutExercise,
+        in logs: [ExercisePerformanceLog],
+        on date: Date = .now
+    ) -> [SetLogEntry] {
+        let key = ExerciseWeightEntry.canonicalLookupKey(exercise.exerciseName)
+        let cal = Calendar.current
+        let prior = logs
+            .filter { $0.canonicalExerciseKey == key && !$0.setLogsJSON.isEmpty && !cal.isDate($0.loggedAt, inSameDayAs: date) }
+            .max { $0.loggedAt < $1.loggedAt }
+        return (prior?.decodedSetLogs ?? []).sorted { $0.setNumber < $1.setNumber }
+    }
+
+    // MARK: Writes (fetch fresh, then persist)
+
+    @discardableResult
+    static func logSet(
+        setNumber: Int,
+        weightLbs: Double,
+        reps: Int,
+        for exercise: WorkoutExercise,
+        modelContext: ModelContext,
+        on date: Date = .now
+    ) -> Bool {
+        guard weightLbs > 0, reps > 0 else { return false }
+        let log = todaysLogOrCreate(for: exercise, modelContext: modelContext, date: date)
+        var sets = log.decodedSetLogs.filter { $0.setNumber != setNumber }
+        sets.append(SetLogEntry(setNumber: setNumber, weightLbs: weightLbs, repsCompleted: reps))
+        return apply(sets.sorted { $0.setNumber < $1.setNumber }, to: log, exercise: exercise, modelContext: modelContext, date: date)
+    }
+
+    @discardableResult
+    static func clearSet(
+        setNumber: Int,
+        for exercise: WorkoutExercise,
+        modelContext: ModelContext,
+        on date: Date = .now
+    ) -> Bool {
+        guard let log = todaysLog(for: exercise, modelContext: modelContext, date: date) else { return true }
+        let sets = log.decodedSetLogs.filter { $0.setNumber != setNumber }.sorted { $0.setNumber < $1.setNumber }
+        if sets.isEmpty {
+            modelContext.delete(log)
+            return persist(modelContext)
+        }
+        return apply(sets, to: log, exercise: exercise, modelContext: modelContext, date: date)
+    }
+
+    /// Replace today's session with a full set list (the bulk sheet's save path).
+    @discardableResult
+    static func replaceTodaysSets(
+        _ sets: [SetLogEntry],
+        for exercise: WorkoutExercise,
+        modelContext: ModelContext,
+        on date: Date = .now
+    ) -> Bool {
+        guard !sets.isEmpty else { return clearAllToday(for: exercise, modelContext: modelContext, date: date) }
+        let log = todaysLogOrCreate(for: exercise, modelContext: modelContext, date: date)
+        return apply(sets.sorted { $0.setNumber < $1.setNumber }, to: log, exercise: exercise, modelContext: modelContext, date: date)
+    }
+
+    // MARK: Internals
+
+    private static func clearAllToday(for exercise: WorkoutExercise, modelContext: ModelContext, date: Date) -> Bool {
+        if let log = todaysLog(for: exercise, modelContext: modelContext, date: date) {
+            modelContext.delete(log)
+        }
+        return persist(modelContext)
+    }
+
+    private static func todaysLog(for exercise: WorkoutExercise, modelContext: ModelContext, date: Date) -> ExercisePerformanceLog? {
+        let key = ExerciseWeightEntry.canonicalLookupKey(exercise.exerciseName)
+        let descriptor = FetchDescriptor<ExercisePerformanceLog>(predicate: #Predicate { $0.canonicalExerciseKey == key })
+        let logs = (try? modelContext.fetch(descriptor)) ?? []
+        let cal = Calendar.current
+        return logs.first { cal.isDate($0.loggedAt, inSameDayAs: date) }
+    }
+
+    private static func todaysLogOrCreate(for exercise: WorkoutExercise, modelContext: ModelContext, date: Date) -> ExercisePerformanceLog {
+        if let existing = todaysLog(for: exercise, modelContext: modelContext, date: date) { return existing }
+        let log = ExercisePerformanceLog(
+            loggedAt: date,
+            exerciseName: exercise.exerciseName,
+            weightLbs: 0,
+            repsCompleted: nil,
+            muscleTarget: exercise.muscleTarget
+        )
+        modelContext.insert(log)
+        return log
+    }
+
+    private static func summaryEntryOrCreate(for exercise: WorkoutExercise, weight: Double, reps: Int?, date: Date, modelContext: ModelContext) -> ExerciseWeightEntry {
+        let key = ExerciseWeightEntry.canonicalLookupKey(exercise.exerciseName)
+        let descriptor = FetchDescriptor<ExerciseWeightEntry>(predicate: #Predicate { $0.canonicalExerciseKey == key })
+        if let existing = (try? modelContext.fetch(descriptor))?.max(by: { $0.loggedAt < $1.loggedAt }) {
+            return existing
+        }
+        let entry = ExerciseWeightEntry(loggedAt: date, exerciseName: exercise.exerciseName, weightLbs: weight, repsCompleted: reps)
+        modelContext.insert(entry)
+        return entry
+    }
+
+    private static func apply(
+        _ sets: [SetLogEntry],
+        to log: ExercisePerformanceLog,
+        exercise: WorkoutExercise,
+        modelContext: ModelContext,
+        date: Date
+    ) -> Bool {
+        // Summary / best come from the qualified working set so an anomalous entry never
+        // becomes a false PR; raw per-set data is preserved on the log.
+        let qualified = WorkingSetAnalysis.qualifiedTop(from: sets)
+        let topWeight = qualified?.weightLbs ?? ExercisePerformanceLog.topSetWeight(from: sets) ?? sets.first?.weightLbs ?? 0
+        let topReps = qualified?.reps ?? ExercisePerformanceLog.topSetReps(from: sets)
+
+        log.loggedAt = date
+        log.weightLbs = topWeight
+        log.repsCompleted = topReps
+        log.setLogsJSON = ExercisePerformanceLog.encodeSetLogs(sets)
+
+        let summary = summaryEntryOrCreate(for: exercise, weight: topWeight, reps: topReps, date: date, modelContext: modelContext)
+        summary.applyLog(loggedAt: date, exerciseName: exercise.exerciseName, weightLbs: topWeight, repsCompleted: topReps, notes: summary.notes)
+
+        return persist(modelContext)
+    }
+
+    private static func persist(_ modelContext: ModelContext) -> Bool {
+        guard PersistenceReporter.save(modelContext, operation: "inline set logging") else {
+            modelContext.rollback()
+            TFHaptics.error()
+            return false
+        }
+        DataBackupManager.shared.writeAutomaticBackup(using: modelContext)
+        return true
+    }
+}
+
+// MARK: - Inline Set Logger
+
+/// Compact, collapsed-by-default set tracker shown on each exercise card. Expands to
+/// exactly the programmed number of set rows. Unlogged rows are pre-filled (working
+/// weight + target reps, chaining off the last set logged), so a set is usually one tap
+/// to confirm. Each confirm/clear persists immediately into today's session.
+struct InlineSetLogger: View {
+    let exercise: WorkoutExercise
+    let loggedSets: [SetLogEntry]
+    let suggestedWeight: Double?
+    let suggestedReps: Int?
+    let onLog: (Int, Double, Int) -> Void
+    let onClear: (Int) -> Void
+
+    @State private var expanded = false
+    @State private var editing: Set<Int> = []
+    @State private var draftWeight: [Int: String] = [:]
+    @State private var draftReps: [Int: String] = [:]
+    @FocusState private var focusedField: FieldKey?
+
+    enum FieldKey: Hashable {
+        case weight(Int)
+        case reps(Int)
+    }
+
+    private var programmedCount: Int {
+        max(exercise.sets, loggedSets.map(\.setNumber).max() ?? 0, 1)
+    }
+
+    private var loggedCount: Int { loggedSets.count }
+    private var allLogged: Bool { loggedCount >= programmedCount }
+
+    private func loggedSet(_ n: Int) -> SetLogEntry? {
+        loggedSets.first { $0.setNumber == n }
+    }
+
+    var body: some View {
+        VStack(spacing: 8) {
+            header
+            if expanded {
+                VStack(spacing: 6) {
+                    ForEach(1...programmedCount, id: \.self) { n in
+                        setRow(n)
+                    }
+                }
+            }
+        }
+        .padding(10)
+        .background(Color.primary.opacity(0.04))
+        .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
+    }
+
+    private var header: some View {
+        Button {
+            withAnimation(.easeOut(duration: 0.18)) { expanded.toggle() }
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "checklist")
+                    .font(.caption.bold())
+                    .foregroundStyle(TFColor.accent)
+                Text("Log sets")
+                    .font(.caption.bold())
+                    .foregroundStyle(.primary)
+                Text("\(loggedCount)/\(programmedCount)")
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 2)
+                    .background((allLogged ? TFColor.success : TFColor.accent).opacity(0.15))
+                    .foregroundStyle(allLogged ? TFColor.success : TFColor.accent)
+                    .clipShape(Capsule())
+                Spacer()
+                Image(systemName: expanded ? "chevron.up" : "chevron.down")
+                    .font(.caption2.bold())
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Log sets, \(loggedCount) of \(programmedCount) logged")
+    }
+
+    @ViewBuilder
+    private func setRow(_ n: Int) -> some View {
+        if let logged = loggedSet(n), !editing.contains(n) {
+            loggedRow(n, logged)
+        } else {
+            entryRow(n)
+        }
+    }
+
+    private func loggedRow(_ n: Int, _ set: SetLogEntry) -> some View {
+        HStack(spacing: 8) {
+            setLabel(n)
+            Text("\(formatWeight(set.weightLbs)) lb")
+                .font(.caption.bold())
+            Text("\u{00D7}").font(.caption2).foregroundStyle(.tertiary)
+            Text("\(set.repsCompleted) reps").font(.caption).foregroundStyle(.secondary)
+            Spacer()
+            Button {
+                draftWeight[n] = formatWeight(set.weightLbs)
+                draftReps[n] = "\(set.repsCompleted)"
+                editing.insert(n)
+            } label: {
+                Image(systemName: "pencil").font(.caption2).foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Edit set \(n)")
+            Button {
+                onClear(n)
+                resetDraft(n)
+            } label: {
+                Image(systemName: "xmark.circle.fill").font(.caption).foregroundStyle(.tertiary)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Clear set \(n)")
+            Image(systemName: "checkmark.circle.fill").font(.caption).foregroundStyle(TFColor.success)
+        }
+    }
+
+    private func entryRow(_ n: Int) -> some View {
+        HStack(spacing: 8) {
+            setLabel(n)
+            field(text: weightBinding(n), placeholder: "lb", key: .weight(n), isReps: false, width: 54)
+            Text("\u{00D7}").font(.caption2).foregroundStyle(.tertiary)
+            field(text: repsBinding(n), placeholder: "reps", key: .reps(n), isReps: true, width: 44)
+            Spacer()
+            Button {
+                logRow(n)
+            } label: {
+                Image(systemName: "checkmark.circle")
+                    .font(.title3)
+                    .foregroundStyle(canLog(n) ? TFColor.accent : .tertiary)
+            }
+            .buttonStyle(.plain)
+            .disabled(!canLog(n))
+            .accessibilityLabel("Log set \(n)")
+        }
+    }
+
+    private func setLabel(_ n: Int) -> some View {
+        Text("Set \(n)")
+            .font(.caption2.bold())
+            .foregroundStyle(TFColor.accent)
+            .frame(width: 38, alignment: .leading)
+    }
+
+    private func field(text: Binding<String>, placeholder: String, key: FieldKey, isReps: Bool, width: CGFloat) -> some View {
+        TextField(placeholder, text: text)
+            .keyboardType(isReps ? .numberPad : .decimalPad)
+            .focused($focusedField, equals: key)
+            .font(.system(size: 16, weight: .bold, design: .rounded))
+            .multilineTextAlignment(.center)
+            .frame(width: width)
+            .padding(.vertical, 6)
+            .background(Color(.systemBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    // MARK: Drafts & parsing
+
+    private func defaultWeightText() -> String {
+        if let w = loggedSets.last?.weightLbs ?? suggestedWeight, w > 0 { return formatWeight(w) }
+        return ""
+    }
+
+    private func defaultRepsText() -> String {
+        if let r = loggedSets.last?.repsCompleted ?? suggestedReps, r > 0 { return "\(r)" }
+        return ""
+    }
+
+    private func weightBinding(_ n: Int) -> Binding<String> {
+        Binding(get: { draftWeight[n] ?? defaultWeightText() }, set: { draftWeight[n] = $0 })
+    }
+
+    private func repsBinding(_ n: Int) -> Binding<String> {
+        Binding(get: { draftReps[n] ?? defaultRepsText() }, set: { draftReps[n] = $0 })
+    }
+
+    private func parsedWeight(_ n: Int) -> Double? {
+        let t = (draftWeight[n] ?? defaultWeightText())
+            .trimmingCharacters(in: .whitespaces)
+            .replacingOccurrences(of: ",", with: ".")
+        guard let v = Double(t), v > 0 else { return nil }
+        return v
+    }
+
+    private func parsedReps(_ n: Int) -> Int? {
+        let t = (draftReps[n] ?? defaultRepsText()).trimmingCharacters(in: .whitespaces)
+        guard let v = Int(t), v > 0 else { return nil }
+        return v
+    }
+
+    private func canLog(_ n: Int) -> Bool {
+        parsedWeight(n) != nil && parsedReps(n) != nil
+    }
+
+    private func logRow(_ n: Int) {
+        guard let w = parsedWeight(n), let r = parsedReps(n) else { return }
+        focusedField = nil
+        editing.remove(n)
+        TFHaptics.impact(.light)
+        onLog(n, w, r)
+    }
+
+    private func resetDraft(_ n: Int) {
+        draftWeight[n] = nil
+        draftReps[n] = nil
+        editing.remove(n)
+    }
+
+    private func formatWeight(_ weight: Double) -> String {
+        weight.rounded() == weight ? String(Int(weight)) : String(format: "%.1f", weight)
     }
 }
