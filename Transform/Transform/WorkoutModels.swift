@@ -432,6 +432,124 @@ class ExercisePerformanceLog {
     }
 }
 
+// MARK: - Working Set Analysis
+
+/// Robust, read-time interpretation of a single session's logged sets.
+///
+/// The old logic assumed the heaviest set *was* the working weight, then matched it
+/// exactly — so one outlier (a mis-log, or a lone heavy single) hijacked progression
+/// and every other set became invisible. This type instead treats a session as a set
+/// of (weight, reps) efforts and separates three roles:
+///
+/// - `warmup`   : a ramp set below the working load.
+/// - `working`  : the genuine working sets at the top sustained load.
+/// - `anomaly`  : a lone load far above the robust center (median), e.g. `180` among
+///                `90`s. Surfaced for confirmation rather than silently trusted.
+///
+/// Strength is compared with estimated 1RM (the same blend the progression chart uses)
+/// so back-off sets, rep changes, and ramps are handled coherently. This is a pure
+/// value type with no SwiftData/SwiftUI dependency so it can be smoke-checked off-device.
+struct WorkingSetAnalysis {
+    enum Role {
+        case warmup
+        case working
+        case anomaly
+    }
+
+    struct AnalyzedSet: Identifiable {
+        let id: UUID
+        let setNumber: Int
+        let weightLbs: Double
+        let reps: Int
+        let estimatedOneRepMax: Double
+        let role: Role
+    }
+
+    let sets: [AnalyzedSet]
+    let workingSets: [AnalyzedSet]
+    let anomalies: [AnalyzedSet]
+    /// Representative top working load (heaviest non-anomalous weight). `nil` when no
+    /// usable sets were logged.
+    let workingWeight: Double?
+    /// Highest estimated-1RM working set — the effort progression keys off.
+    let topWorkingSet: AnalyzedSet?
+
+    var hasAnomaly: Bool { !anomalies.isEmpty }
+
+    /// Blend of Epley and Brzycki, matching `ExerciseProgressionView`. Brzycki is
+    /// unstable as reps approach its 37-rep asymptote, so it is only blended in its
+    /// reliable range and Epley alone is used for high-rep sets.
+    static func estimatedOneRepMax(weight: Double, reps: Int) -> Double {
+        guard weight > 0, reps > 0 else { return 0 }
+        let r = Double(reps)
+        let epley = weight * (1.0 + r / 30.0)
+        if reps <= 12 {
+            let brzycki = weight * 36.0 / (37.0 - r)
+            return (epley + brzycki) / 2.0
+        }
+        return epley
+    }
+
+    static func analyze(_ logs: [SetLogEntry]) -> WorkingSetAnalysis {
+        let valid = logs.filter { $0.weightLbs > 0 && $0.repsCompleted > 0 }
+        guard !valid.isEmpty else {
+            return WorkingSetAnalysis(sets: [], workingSets: [], anomalies: [],
+                                      workingWeight: nil, topWorkingSet: nil)
+        }
+
+        let weights = valid.map(\.weightLbs).sorted()
+        let median = medianOfSorted(weights)
+        let deviations = weights.map { abs($0 - median) }.sorted()
+        let mad = medianOfSorted(deviations)
+
+        // A load is "corroborated" if more than one set used (about) the same weight.
+        func corroborated(_ w: Double) -> Bool {
+            valid.filter { abs($0.weightLbs - w) <= max(0.5, w * 0.02) }.count > 1
+        }
+
+        // Anomaly: a lone load far above the robust center. Requires >= 3 sets to
+        // establish a center. Use the MAD-based spread when it has signal, otherwise a
+        // relative gap so an even split like 90/90/180/90 (MAD = 0) still flags 180.
+        let anomalyGap = max(mad * 3.0, median * 0.4)
+        func isAnomaly(_ w: Double) -> Bool {
+            valid.count >= 3 && w > median && (w - median) > anomalyGap && !corroborated(w)
+        }
+
+        let workingWeight = valid.filter { !isAnomaly($0.weightLbs) }.map(\.weightLbs).max()
+        let band = (workingWeight ?? 0) * 0.025
+
+        let analyzed: [AnalyzedSet] = valid.map { s in
+            let e1rm = estimatedOneRepMax(weight: s.weightLbs, reps: s.repsCompleted)
+            let role: Role
+            if isAnomaly(s.weightLbs) {
+                role = .anomaly
+            } else if let ww = workingWeight, s.weightLbs >= ww - band - 0.001 {
+                role = .working
+            } else {
+                role = .warmup
+            }
+            return AnalyzedSet(id: s.id, setNumber: s.setNumber, weightLbs: s.weightLbs,
+                               reps: s.repsCompleted, estimatedOneRepMax: e1rm, role: role)
+        }
+
+        let working = analyzed.filter { $0.role == .working }
+        return WorkingSetAnalysis(
+            sets: analyzed,
+            workingSets: working,
+            anomalies: analyzed.filter { $0.role == .anomaly },
+            workingWeight: workingWeight,
+            topWorkingSet: working.max(by: { $0.estimatedOneRepMax < $1.estimatedOneRepMax })
+        )
+    }
+
+    private static func medianOfSorted(_ sorted: [Double]) -> Double {
+        guard !sorted.isEmpty else { return 0 }
+        let n = sorted.count
+        if n % 2 == 1 { return sorted[n / 2] }
+        return (sorted[n / 2 - 1] + sorted[n / 2]) / 2.0
+    }
+}
+
 @MainActor
 enum ExerciseWeightStore {
     @discardableResult

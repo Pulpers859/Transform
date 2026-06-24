@@ -46,7 +46,8 @@ struct WorkoutDayDetailView: View {
         .sheet(item: $exerciseForWeightLogging) { exercise in
             AddExerciseWeightSheet(
                 exercise: exercise,
-                weightSummary: weightSummary(for: exercise)
+                weightSummary: weightSummary(for: exercise),
+                latestSetLogs: latestSetLogs(for: exercise)
             )
         }
         .sheet(item: $feedbackDay) { selectedDay in
@@ -264,12 +265,15 @@ struct ExerciseCard: View {
         ExercisePrescription.parse(from: exercise.notes)
     }
 
+    var workingSetAnalysis: WorkingSetAnalysis {
+        WorkingSetAnalysis.analyze(latestSetLogs)
+    }
+
     var progressionSuggestion: ProgressionSuggestion? {
         guard let log = latestWeightLog else { return nil }
-        let repRange = RepRange.parse(exercise.reps)
-        guard let repRange else { return nil }
+        guard let repRange = RepRange.parse(exercise.reps) else { return nil }
         return ProgressionSuggestion.evaluate(
-            setLogs: latestSetLogs,
+            analysis: workingSetAnalysis,
             summaryRepsCompleted: log.repsCompleted,
             repRange: repRange,
             lastWeight: log.weightLbs,
@@ -357,6 +361,13 @@ struct ExerciseCard: View {
 
                 if let suggestion = progressionSuggestion {
                     ProgressionSuggestionBadge(suggestion: suggestion)
+                }
+
+                if let anomaly = workingSetAnalysis.anomalies.first {
+                    let reference = workingSetAnalysis.workingWeight ?? anomaly.weightLbs
+                    SetAnomalyNotice(
+                        text: "Check Set \(anomaly.setNumber): \(formatWeight(anomaly.weightLbs)) lb is well above your \(formatWeight(reference)) lb working sets. Confirm or fix the entry — it isn't used for progression."
+                    )
                 }
             }
             .padding(.horizontal, 14)
@@ -493,20 +504,25 @@ struct ExerciseCard: View {
     }
 
     var setLogBreakdown: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        let analysis = workingSetAnalysis
+        let roles = Dictionary(uniqueKeysWithValues: analysis.sets.map { ($0.id, $0.role) })
+
+        return VStack(alignment: .leading, spacing: 6) {
             Text("LAST SESSION")
                 .font(.system(size: 9, weight: .bold, design: .monospaced))
                 .foregroundStyle(.tertiary)
                 .tracking(1)
 
             ForEach(latestSetLogs) { set in
+                let role = roles[set.id] ?? .working
                 HStack(spacing: 8) {
                     Text("Set \(set.setNumber)")
                         .font(.caption2.bold())
-                        .foregroundStyle(TFColor.accent)
+                        .foregroundStyle(role == .anomaly ? TFColor.warning : TFColor.accent)
                         .frame(width: 38, alignment: .leading)
                     Text("\(formatWeight(set.weightLbs)) lb")
                         .font(.caption.bold())
+                        .foregroundStyle(role == .anomaly ? TFColor.warning : .primary)
                         .frame(width: 65, alignment: .trailing)
                     Text("\u{00D7}")
                         .font(.caption2)
@@ -514,6 +530,15 @@ struct ExerciseCard: View {
                     Text("\(set.repsCompleted) reps")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                    if role == .warmup {
+                        Text("warm-up")
+                            .font(.system(size: 9, weight: .bold, design: .monospaced))
+                            .foregroundStyle(.tertiary)
+                    } else if role == .anomaly {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.system(size: 9))
+                            .foregroundStyle(TFColor.warning)
+                    }
                     Spacer()
                 }
             }
@@ -1185,80 +1210,27 @@ struct ProgressionSuggestion {
     let color: Color
 
     static func evaluate(
-        setLogs: [SetLogEntry],
+        analysis: WorkingSetAnalysis,
         summaryRepsCompleted: Int?,
         repRange: RepRange,
         lastWeight: Double,
         exercise: WorkoutExercise
     ) -> ProgressionSuggestion? {
-        let isCompound = exercise.sets >= 3 && (
-            exercise.muscleTarget.lowercased().contains("back") ||
-            exercise.muscleTarget.lowercased().contains("chest") ||
-            exercise.muscleTarget.lowercased().contains("quad") ||
-            exercise.muscleTarget.lowercased().contains("glute") ||
-            exercise.muscleTarget.lowercased().contains("hamstring")
-        )
-        let increment = isCompound ? 5.0 : 2.5
+        let increment = loadIncrement(for: exercise)
 
-        if !setLogs.isEmpty {
-            let workingSets = setLogs.filter { abs($0.weightLbs - lastWeight) < 0.01 }
-            let setsAtOrAboveTop = workingSets.filter { $0.repsCompleted >= repRange.high }.count
-            let setsInRange = workingSets.filter { $0.repsCompleted >= repRange.low }.count
-            let setsBelowRange = workingSets.filter { $0.repsCompleted < repRange.low }.count
-            let totalWorking = workingSets.count
-            let majorityThreshold = max(1, Int(ceil(Double(totalWorking) * 0.67)))
-
-            if setsAtOrAboveTop >= majorityThreshold {
-                let suggestedWeight = lastWeight + increment
-                return ProgressionSuggestion(
-                    icon: "arrow.up.circle.fill",
-                    text: "Increase to \(formatWeight(suggestedWeight)) lb next session",
-                    color: TFColor.success
-                )
-            }
-
-            if setsAtOrAboveTop > 0 && setsAtOrAboveTop < majorityThreshold {
-                let needed = majorityThreshold - setsAtOrAboveTop
-                return ProgressionSuggestion(
-                    icon: "flame.fill",
-                    text: "Strong top set — hit \(repRange.high) on \(needed) more set\(needed == 1 ? "" : "s") before increasing",
-                    color: TFColor.accent
-                )
-            }
-
-            if setsBelowRange > 0 && setsBelowRange == totalWorking {
-                return ProgressionSuggestion(
-                    icon: "arrow.down.circle.fill",
-                    text: "Stay at \(formatWeight(lastWeight)) lb, focus on form and full ROM",
-                    color: TFColor.warning
-                )
-            }
-
-            if setsInRange == totalWorking && setsAtOrAboveTop == 0 {
-                let minReps = workingSets.map(\.repsCompleted).min() ?? repRange.low
-                return ProgressionSuggestion(
-                    icon: "arrow.right.circle.fill",
-                    text: "On track — build all sets to \(repRange.high) reps (lowest was \(minReps))",
-                    color: TFColor.info
-                )
-            }
-
-            let avgReps = workingSets.map(\.repsCompleted).reduce(0, +) / max(1, totalWorking)
-            if avgReps < repRange.low {
-                return ProgressionSuggestion(
-                    icon: "arrow.down.circle.fill",
-                    text: "Stay at \(formatWeight(lastWeight)) lb, focus on form and full ROM",
-                    color: TFColor.warning
-                )
-            }
-
-            return ProgressionSuggestion(
-                icon: "arrow.right.circle.fill",
-                text: "On track — aim for \(repRange.high) reps across all sets",
-                color: .blue
+        // Preferred path: reason over the genuine working sets, robust to warm-up ramps
+        // and to a lone anomalous spike (which is excluded here and surfaced separately).
+        if let workingWeight = analysis.workingWeight, !analysis.workingSets.isEmpty {
+            return fromWorkingSets(
+                workingSets: analysis.workingSets,
+                workingWeight: workingWeight,
+                repRange: repRange,
+                increment: increment
             )
         }
 
+        // Degraded path: older logs with no usable per-set data. Reason from the summary
+        // alone — outliers cannot be detected without the individual sets.
         guard let repsCompleted = summaryRepsCompleted else { return nil }
 
         if repsCompleted >= repRange.high {
@@ -1285,6 +1257,81 @@ struct ProgressionSuggestion {
         )
     }
 
+    private static func loadIncrement(for exercise: WorkoutExercise) -> Double {
+        let isCompound = exercise.sets >= 3 && (
+            exercise.muscleTarget.lowercased().contains("back") ||
+            exercise.muscleTarget.lowercased().contains("chest") ||
+            exercise.muscleTarget.lowercased().contains("quad") ||
+            exercise.muscleTarget.lowercased().contains("glute") ||
+            exercise.muscleTarget.lowercased().contains("hamstring")
+        )
+        return isCompound ? 5.0 : 2.5
+    }
+
+    /// Decide the next step from the genuine working sets only. Recommendations name the
+    /// working weight so the advice is self-explanatory, and a single failed set blocks a
+    /// load increase even when the top set looked strong.
+    private static func fromWorkingSets(
+        workingSets: [WorkingSetAnalysis.AnalyzedSet],
+        workingWeight: Double,
+        repRange: RepRange,
+        increment: Double
+    ) -> ProgressionSuggestion {
+        let reps = workingSets.map(\.reps)
+        let minReps = reps.min() ?? repRange.low
+        let atCeiling = reps.filter { $0 >= repRange.high }.count
+        let total = workingSets.count
+        let majority = max(1, Int(ceil(Double(total) * 0.67)))
+        let weightText = formatWeight(workingWeight)
+        let nextText = formatWeight(workingWeight + increment)
+
+        // Every working set reached the rep ceiling — unambiguous green light to add load.
+        if minReps >= repRange.high {
+            return ProgressionSuggestion(
+                icon: "arrow.up.circle.fill",
+                text: "Add load — \(weightText) lb felt complete. Try \(nextText) lb next session",
+                color: TFColor.success
+            )
+        }
+
+        // A working set fell below the target floor. Hold and even the sets out before
+        // adding weight, even if another set hit the top (this is the Romanian Deadlift
+        // case: 90 lb sets of 10 / 5 / 10 should not read as "stay at 180").
+        if minReps < repRange.low {
+            return ProgressionSuggestion(
+                icon: "arrow.down.circle.fill",
+                text: "Hold \(weightText) lb — a working set dropped to \(minReps) (target \(repRange.low)-\(repRange.high)); even your sets out before adding",
+                color: TFColor.warning
+            )
+        }
+
+        // All working sets in range, and the majority maxed the ceiling — ready to add.
+        if atCeiling >= majority {
+            return ProgressionSuggestion(
+                icon: "arrow.up.circle.fill",
+                text: "Add load — \(atCeiling) of \(total) sets hit \(repRange.high) at \(weightText) lb. Try \(nextText) lb next session",
+                color: TFColor.success
+            )
+        }
+
+        // In range with a strong top set, but not yet consistent — build the rest up first.
+        if atCeiling > 0 {
+            let needed = majority - atCeiling
+            return ProgressionSuggestion(
+                icon: "flame.fill",
+                text: "Strong top set at \(weightText) lb — hit \(repRange.high) on \(needed) more set\(needed == 1 ? "" : "s") before adding",
+                color: TFColor.accent
+            )
+        }
+
+        // All sets in range, none at the ceiling — keep the load and chase the top rep.
+        return ProgressionSuggestion(
+            icon: "arrow.right.circle.fill",
+            text: "On track at \(weightText) lb — build all sets to \(repRange.high) reps (lowest was \(minReps))",
+            color: TFColor.info
+        )
+    }
+
     private static func formatWeight(_ weight: Double) -> String {
         weight.rounded() == weight ? String(Int(weight)) : String(format: "%.1f", weight)
     }
@@ -1306,6 +1353,27 @@ struct ProgressionSuggestionBadge: View {
         .padding(.vertical, 6)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(suggestion.color.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+}
+
+struct SetAnomalyNotice: View {
+    let text: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 6) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.caption2)
+                .foregroundStyle(TFColor.warning)
+            Text(text)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(TFColor.warning.opacity(0.08))
         .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 }

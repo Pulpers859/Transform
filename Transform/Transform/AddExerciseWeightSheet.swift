@@ -8,6 +8,7 @@ struct AddExerciseWeightSheet: View {
 
     let exercise: WorkoutExercise
     let weightSummary: ExerciseWeightEntry?
+    var latestSetLogs: [SetLogEntry] = []
 
     @State private var setLogs: [SetLogDraft] = []
     @State private var notes = ""
@@ -404,8 +405,11 @@ struct AddExerciseWeightSheet: View {
     func initializeSets() {
         guard setLogs.isEmpty else { return }
         let count = max(exercise.sets, 1)
-        let prefillWeight = weightSummary?.weightLbs
-        let prefillReps = weightSummary?.repsCompleted
+        // Seed from the representative working set, not the heaviest logged set, so a
+        // prior anomaly or warm-up ramp does not pre-fill an unintended load.
+        let analysis = WorkingSetAnalysis.analyze(latestSetLogs)
+        let prefillWeight = analysis.workingWeight ?? weightSummary?.weightLbs
+        let prefillReps = analysis.topWorkingSet?.reps ?? weightSummary?.repsCompleted
 
         setLogs = (1...count).map { num in
             SetLogDraft(
