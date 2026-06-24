@@ -276,8 +276,7 @@ struct ExerciseCard: View {
             analysis: workingSetAnalysis,
             summaryRepsCompleted: log.repsCompleted,
             repRange: repRange,
-            lastWeight: log.weightLbs,
-            exercise: exercise
+            lastWeight: log.weightLbs
         )
     }
 
@@ -1213,25 +1212,22 @@ struct ProgressionSuggestion {
         analysis: WorkingSetAnalysis,
         summaryRepsCompleted: Int?,
         repRange: RepRange,
-        lastWeight: Double,
-        exercise: WorkoutExercise
+        lastWeight: Double
     ) -> ProgressionSuggestion? {
-        let increment = loadIncrement(for: exercise)
-
         // Preferred path: reason over the genuine working sets, robust to warm-up ramps
         // and to a lone anomalous spike (which is excluded here and surfaced separately).
         if let workingWeight = analysis.workingWeight, !analysis.workingSets.isEmpty {
             return fromWorkingSets(
                 workingSets: analysis.workingSets,
                 workingWeight: workingWeight,
-                repRange: repRange,
-                increment: increment
+                repRange: repRange
             )
         }
 
         // Degraded path: older logs with no usable per-set data. Reason from the summary
         // alone — outliers cannot be detected without the individual sets.
         guard let repsCompleted = summaryRepsCompleted else { return nil }
+        let increment = loadIncrement(forWorkingWeight: lastWeight)
 
         if repsCompleted >= repRange.high {
             let suggestedWeight = lastWeight + increment
@@ -1257,15 +1253,17 @@ struct ProgressionSuggestion {
         )
     }
 
-    private static func loadIncrement(for exercise: WorkoutExercise) -> Double {
-        let isCompound = exercise.sets >= 3 && (
-            exercise.muscleTarget.lowercased().contains("back") ||
-            exercise.muscleTarget.lowercased().contains("chest") ||
-            exercise.muscleTarget.lowercased().contains("quad") ||
-            exercise.muscleTarget.lowercased().contains("glute") ||
-            exercise.muscleTarget.lowercased().contains("hamstring")
-        )
-        return isCompound ? 5.0 : 2.5
+    /// Next-session load step, derived from the working weight rather than the muscle
+    /// group: heavier loads tolerate larger absolute jumps and lighter loads need smaller
+    /// ones. Roughly 2.5% of the load, snapped to a 2.5 lb plate step and clamped to a
+    /// sane range. This is a practical heuristic, not an evidence-derived constant, and it
+    /// cannot distinguish barbell / dumbbell / machine increments — the logged model
+    /// carries no equipment metadata, so muscle-group guessing (the old approach) was
+    /// strictly worse.
+    private static func loadIncrement(forWorkingWeight weight: Double) -> Double {
+        guard weight > 0 else { return 2.5 }
+        let snapped = (weight * 0.025 / 2.5).rounded() * 2.5
+        return min(max(snapped, 2.5), 10.0)
     }
 
     /// Decide the next step from the genuine working sets only. Recommendations name the
@@ -1274,9 +1272,9 @@ struct ProgressionSuggestion {
     private static func fromWorkingSets(
         workingSets: [WorkingSetAnalysis.AnalyzedSet],
         workingWeight: Double,
-        repRange: RepRange,
-        increment: Double
+        repRange: RepRange
     ) -> ProgressionSuggestion {
+        let increment = loadIncrement(forWorkingWeight: workingWeight)
         let reps = workingSets.map(\.reps)
         let minReps = reps.min() ?? repRange.low
         let atCeiling = reps.filter { $0 >= repRange.high }.count

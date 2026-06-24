@@ -465,8 +465,11 @@ struct AddExerciseWeightSheet: View {
         guard !didSave else { return }
         didSave = true
 
-        let topWeight = ExercisePerformanceLog.topSetWeight(from: validSets) ?? validSets[0].weightLbs
-        let topReps = ExercisePerformanceLog.topSetReps(from: validSets)
+        // Best/summary load comes from the qualified working set so a lone anomalous set
+        // cannot become a false PR. Raw per-set data is still preserved in setLogs below.
+        let qualified = WorkingSetAnalysis.qualifiedTop(from: validSets)
+        let topWeight = qualified?.weightLbs ?? ExercisePerformanceLog.topSetWeight(from: validSets) ?? validSets[0].weightLbs
+        let topReps = qualified?.reps ?? ExercisePerformanceLog.topSetReps(from: validSets)
         let trimmedNotes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
 
         let performanceLog = ExercisePerformanceLog(

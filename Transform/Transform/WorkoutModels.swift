@@ -550,6 +550,22 @@ struct WorkingSetAnalysis {
     }
 }
 
+extension WorkingSetAnalysis {
+    /// The session's progression-worthy top set: the highest estimated-1RM *working*
+    /// set, after warm-ups and anomalies are excluded. Returns `nil` when there is no
+    /// usable per-set data so callers can fall back to the raw top set for legacy logs.
+    ///
+    /// Use this — not `ExercisePerformanceLog.topSetWeight` — anywhere a personal best,
+    /// summary load, or stored session weight is derived, so a lone mis-log (e.g. 180 lb
+    /// among 90 lb sets) can never become a false PR. It must be applied in every
+    /// derivation path (save, edit, and summary recompute); guarding only one lets the
+    /// recompute re-promote the anomaly.
+    static func qualifiedTop(from logs: [SetLogEntry]) -> (weightLbs: Double, reps: Int)? {
+        guard let top = analyze(logs).topWorkingSet else { return nil }
+        return (top.weightLbs, top.reps)
+    }
+}
+
 @MainActor
 enum ExerciseWeightStore {
     @discardableResult
