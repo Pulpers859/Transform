@@ -16,7 +16,8 @@ extension ClaudeService {
             diagnostic: diagnostic
         )
         let issues = validateProgramResponse(fallback, blueprint: blueprint)
-        guard issues.isEmpty || shouldAcceptAIOutput(despite: issues) else {
+        let hasHardFailure = issues.contains { validationDisposition(for: $0) == .hardFailure }
+        guard issues.isEmpty || !hasHardFailure else {
             throw ClaudeError.parseError(
                 "Procedural fallback generated an invalid Week 1 program: \(issues.joined(separator: " | "))"
             )
@@ -58,7 +59,8 @@ extension ClaudeService {
             previousWeekDays: previousWeekDays,
             blueprint: blueprint
         )
-        guard issues.isEmpty || shouldAcceptAIOutput(despite: issues) else {
+        let hasHardFailure = issues.contains { validationDisposition(for: $0) == .hardFailure }
+        guard issues.isEmpty || !hasHardFailure else {
             throw ClaudeError.parseError(
                 "Procedural fallback generated an invalid week \(weekNumber): \(issues.joined(separator: " | "))"
             )

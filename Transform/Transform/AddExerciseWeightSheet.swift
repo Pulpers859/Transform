@@ -586,10 +586,4 @@ struct AddExerciseWeightSheet: View {
         .clipShape(Capsule())
     }
 
-    func formatWeight(_ weight: Double) -> String {
-        if weight.rounded() == weight {
-            return String(Int(weight))
-        }
-        return String(format: "%.1f", weight)
-    }
 }

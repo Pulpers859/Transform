@@ -108,7 +108,8 @@ struct DashboardView: View {
 
     var caloriesByDay: [Date: Double] {
         let calendar = Calendar.current
-        return allNutrition.reduce(into: [Date: Double]()) { totals, entry in
+        let cutoff = calendar.date(byAdding: .day, value: -8, to: Date()) ?? Date()
+        return allNutrition.lazy.filter { $0.date >= cutoff }.reduce(into: [Date: Double]()) { totals, entry in
             let day = calendar.startOfDay(for: entry.date)
             totals[day, default: 0] += Double(entry.calories)
         }

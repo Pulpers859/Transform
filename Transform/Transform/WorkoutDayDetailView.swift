@@ -581,12 +581,6 @@ struct ExerciseCard: View {
     }
 
 
-    func formatWeight(_ weight: Double) -> String {
-        if weight.rounded() == weight {
-            return String(Int(weight))
-        }
-        return String(format: "%.1f", weight)
-    }
 }
 
 // MARK: - Exercise Stat
@@ -1351,9 +1345,6 @@ struct ProgressionSuggestion {
         )
     }
 
-    private static func formatWeight(_ weight: Double) -> String {
-        weight.rounded() == weight ? String(Int(weight)) : String(format: "%.1f", weight)
-    }
 }
 
 struct ProgressionSuggestionBadge: View {
@@ -1771,7 +1762,4 @@ struct InlineSetLogger: View {
         editing.remove(n)
     }
 
-    private func formatWeight(_ weight: Double) -> String {
-        weight.rounded() == weight ? String(Int(weight)) : String(format: "%.1f", weight)
-    }
 }
