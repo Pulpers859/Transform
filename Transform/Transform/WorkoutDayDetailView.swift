@@ -288,19 +288,57 @@ struct ExerciseCard: View {
         return sources.contains { $0.range(of: "deload", options: .caseInsensitive) != nil }
     }
 
+    /// The set count the coaching note explicitly prescribes for THIS exercise, if any
+    /// (e.g. "complete 4 clean sets" → 4). Weekly-volume phrasing ("the 10 direct sets the
+    /// blueprint prescribes") is deliberately excluded. Used to detect note-vs-structured
+    /// drift left behind when the generator trimmed the set count without rewriting prose.
+    var noteClaimedSetCount: Int? {
+        let note = exercise.notes
+        let patterns = [
+            #"(?i)\ball\s+(\d+)\s+(?:clean\s+|quality\s+|working\s+|hard\s+)?sets\b"#,
+            #"(?i)\bcomplete\s+(\d+)\s+(?:clean\s+|quality\s+|working\s+|hard\s+)?sets\b"#,
+            #"(?i)\b(\d+)\s+(?:clean|quality|working|hard)\s+sets\b"#,
+        ]
+        var best: Int?
+        for pattern in patterns {
+            if let value = firstIntCapture(note, pattern) {
+                best = max(best ?? value, value)
+            }
+        }
+        return best
+    }
+
+    private func firstIntCapture(_ text: String, _ pattern: String) -> Int? {
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
+        let range = NSRange(text.startIndex..., in: text)
+        guard let match = regex.firstMatch(in: text, options: [], range: range),
+              match.numberOfRanges > 1,
+              let captureRange = Range(match.range(at: 1), in: text) else { return nil }
+        return Int(text[captureRange])
+    }
+
     var progressionSuggestion: ProgressionSuggestion? {
         // On a deload day, never tell the lifter to add weight — that contradicts the
         // prescription. Coach to hold the lighter load regardless of last session's reps.
         if isDeloadContext { return .deloadGuidance }
         guard let log = latestWeightLog else { return nil }
         guard let repRange = RepRange.parse(exercise.reps) else { return nil }
-        return ProgressionSuggestion.evaluate(
+        let suggestion = ProgressionSuggestion.evaluate(
             analysis: workingSetAnalysis,
             summaryRepsCompleted: log.repsCompleted,
             repRange: repRange,
             lastWeight: log.weightLbs,
             exerciseName: exercise.exerciseName
         )
+        // Safety net for already-generated workouts where the note still prescribes more
+        // sets than the (trimmed) structured count: don't let the generic heuristic
+        // greenlight a load increase the written prescription says to hold. Self-correcting
+        // — once prose and structured sets agree, this veto goes quiet.
+        if let suggestion, suggestion.increasesLoad,
+           let claimed = noteClaimedSetCount, claimed > exercise.sets {
+            return .completePrescribedSets(claimed)
+        }
+        return suggestion
     }
 
     var cleanedCoachingNote: String {
@@ -1237,6 +1275,20 @@ struct ProgressionSuggestion {
     let icon: String
     let text: String
     let color: Color
+
+    /// True for cues that tell the lifter to add weight. Used so a written prescription can
+    /// veto a generic "add load" cue that would contradict it.
+    var increasesLoad: Bool { icon == "arrow.up.circle.fill" }
+
+    /// Shown when the coaching note prescribes more working sets than have been completed
+    /// (note-vs-structured drift): finish the prescription before adding weight.
+    static func completePrescribedSets(_ count: Int) -> ProgressionSuggestion {
+        ProgressionSuggestion(
+            icon: "hand.raised.fill",
+            text: "Your note prescribes \(count) sets — complete all of them at this load before adding weight",
+            color: TFColor.warning
+        )
+    }
 
     /// Shown on deload days in place of a load-progression cue: the block is deliberately
     /// lighter, so the correct coaching is to hold back, not to add weight.

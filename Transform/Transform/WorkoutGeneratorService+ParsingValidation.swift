@@ -224,6 +224,9 @@ extension ClaudeService {
             focus: cleanedTarget
         )
         let cleanedNotes = normalizedExerciseCoachingText(exercise.notes, fallback: fallbackNotes)
+        // Keep any set-count the note cites in step with the (possibly polished) structured
+        // count so prose and the SETS tile / log rows can't disagree.
+        let reconciledNotes = reconciledSetCountNotes(cleanedNotes, toSetCount: cleanedSets)
 
         return WorkoutExerciseResponse(
             exerciseName: cleanedName,
@@ -231,7 +234,7 @@ extension ClaudeService {
             reps: cleanedReps,
             tempo: cleanedTempo,
             restSeconds: cleanedRestSeconds,
-            notes: cleanedNotes,
+            notes: reconciledNotes,
             muscleTarget: cleanedTarget
         )
     }
@@ -899,13 +902,14 @@ extension ClaudeService {
                 let setsToTrim = min(exercise.sets - 2, Int(ceil(excess / target.creditPerSet)))
                 guard setsToTrim > 0 else { continue }
 
+                let newSets = exercise.sets - setsToTrim
                 let newExercise = WorkoutExerciseResponse(
                     exerciseName: exercise.exerciseName,
-                    sets: exercise.sets - setsToTrim,
+                    sets: newSets,
                     reps: exercise.reps,
                     tempo: exercise.tempo,
                     restSeconds: exercise.restSeconds,
-                    notes: exercise.notes,
+                    notes: reconciledSetCountNotes(exercise.notes, toSetCount: newSets),
                     muscleTarget: exercise.muscleTarget
                 )
                 var newExercises = day.exercises
@@ -957,13 +961,14 @@ extension ClaudeService {
                 guard let target = sessionTargets.first else { break }
                 let exercise = day.exercises[target.exerciseIndex]
 
+                let trimmedSets = exercise.sets - 1
                 let trimmedExercise = WorkoutExerciseResponse(
                     exerciseName: exercise.exerciseName,
-                    sets: exercise.sets - 1,
+                    sets: trimmedSets,
                     reps: exercise.reps,
                     tempo: exercise.tempo,
                     restSeconds: exercise.restSeconds,
-                    notes: exercise.notes,
+                    notes: reconciledSetCountNotes(exercise.notes, toSetCount: trimmedSets),
                     muscleTarget: exercise.muscleTarget
                 )
                 var updatedExercises = day.exercises
@@ -981,6 +986,33 @@ extension ClaudeService {
         }
 
         return (mutableDays, didTrim)
+    }
+
+    /// Align any explicit per-exercise set-count claim in a coaching note with the
+    /// structured `sets` value. The over-volume trimmer (and set polishing) can lower an
+    /// exercise's set count after the note was written, leaving prose like "all 4 sets" /
+    /// "complete 4 clean sets" contradicting a now-smaller structured count — which both
+    /// shows the wrong number of log rows and makes the in-app progression cue greenlight a
+    /// load increase the note says to hold. This rewrite is deliberately narrow: it only
+    /// touches numbers that quantify THIS exercise's sets ("all N sets", "N clean sets",
+    /// "complete N sets", "do/across/over N sets", "N sets of …"). Weekly-volume references
+    /// such as "the 10 direct sets the blueprint prescribes", rep counts, and loads are
+    /// never rewritten.
+    func reconciledSetCountNotes(_ notes: String, toSetCount sets: Int) -> String {
+        guard sets > 0, !notes.isEmpty else { return notes }
+        let n = String(sets)
+        let rules: [(pattern: String, template: String)] = [
+            (#"(?i)\b(all\s+)\d+(\s+(?:clean\s+|quality\s+|working\s+|hard\s+)?sets)\b"#, "$1\(n)$2"),
+            (#"(?i)\b(complete\s+)\d+(\s+(?:clean\s+|quality\s+|working\s+|hard\s+)?sets)\b"#, "$1\(n)$2"),
+            (#"(?i)\b\d+(\s+(?:clean|quality|working|hard)\s+sets)\b"#, "\(n)$1"),
+            (#"(?i)\b(across|over|do|perform)\s+\d+(\s+sets)\b"#, "$1 \(n)$2"),
+            (#"(?i)\b\d+(\s+sets\s+of)\b"#, "\(n)$1"),
+        ]
+        var result = notes
+        for rule in rules {
+            result = result.replacingOccurrences(of: rule.pattern, with: rule.template, options: .regularExpression)
+        }
+        return result
     }
 
     func allocatedDayNumbers(
