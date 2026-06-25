@@ -1099,7 +1099,7 @@ final class DataBackupManager {
     /// the target store already holds data. Returns true if a backup was applied.
     @discardableResult
     func restoreFromAutomaticBackupIfAvailable(into modelContext: ModelContext) -> Bool {
-        let url = automaticBackupURL()
+        let url = automaticBackupURL(slot: 0)
         guard FileManager.default.fileExists(atPath: url.path),
               let data = try? Data(contentsOf: url) else {
             return false
@@ -1530,11 +1530,6 @@ final class DataBackupManager {
             exerciseWeights: [],
             exercisePerformanceLogs: []
         )
-    }
-
-    @available(*, deprecated, message: "Use automaticBackupURL(slot:) instead")
-    private func automaticBackupURL() -> URL {
-        automaticBackupURL(slot: 0)
     }
 }
 

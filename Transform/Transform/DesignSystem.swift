@@ -163,10 +163,15 @@ extension View {
 
 extension UIImage {
     static func downsampledImage(from data: Data, maxDimension: CGFloat) -> UIImage? {
+        // UIScreen.main is deprecated in iOS 26. Use the current trait collection's
+        // display scale; fall back to 2x when read off the main thread (where the
+        // current traits are unavailable), which is fine for thumbnail sizing.
+        let displayScale = UITraitCollection.current.displayScale
+        let scale = displayScale > 0 ? displayScale : 2.0
         let options: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
             kCGImageSourceCreateThumbnailWithTransform: true,
-            kCGImageSourceThumbnailMaxPixelSize: maxDimension * UIScreen.main.scale
+            kCGImageSourceThumbnailMaxPixelSize: maxDimension * scale
         ]
         guard let source = CGImageSourceCreateWithData(data as CFData, nil),
               let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else {
