@@ -316,6 +316,7 @@ nonisolated struct ExercisePerformanceLogSnapshot: Codable {
     let muscleTarget: String
     let canonicalExerciseKey: String?
     let setLogsJSON: String?
+    let workoutDayNumber: Int?
 }
 
 nonisolated struct ProfileSettingsSnapshot: Codable {
@@ -974,7 +975,8 @@ nonisolated struct ProfileSettingsSnapshot: Codable {
             notes: entry.notes,
             muscleTarget: entry.muscleTarget,
             canonicalExerciseKey: entry.canonicalExerciseKey,
-            setLogsJSON: entry.setLogsJSON.isEmpty ? nil : entry.setLogsJSON
+            setLogsJSON: entry.setLogsJSON.isEmpty ? nil : entry.setLogsJSON,
+            workoutDayNumber: entry.workoutDayNumber
         )
     }
 
@@ -990,7 +992,8 @@ nonisolated struct ProfileSettingsSnapshot: Codable {
             weightLbs: weightLbs,
             repsCompleted: repsCompleted,
             notes: notes,
-            muscleTarget: muscleTarget
+            muscleTarget: muscleTarget,
+            workoutDayNumber: workoutDayNumber ?? 0
         )
         entry.canonicalExerciseKey = resolvedCanonicalKey
         entry.setLogsJSON = setLogsJSON ?? ""

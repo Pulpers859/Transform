@@ -486,7 +486,10 @@ struct AddExerciseWeightSheet: View {
         // Resume the same-day session if one already exists (e.g. started via the inline
         // logger) instead of inserting a duplicate log for the same exercise and day.
         let key = ExerciseWeightEntry.canonicalLookupKey(exercise.exerciseName)
-        let descriptor = FetchDescriptor<ExercisePerformanceLog>(predicate: #Predicate { $0.canonicalExerciseKey == key })
+        let dayNumber = exercise.day?.dayNumber ?? 0
+        let descriptor = FetchDescriptor<ExercisePerformanceLog>(
+            predicate: #Predicate { $0.canonicalExerciseKey == key && $0.workoutDayNumber == dayNumber }
+        )
         let sameDayLog = (try? modelContext.fetch(descriptor))?.first {
             Calendar.current.isDate($0.loggedAt, inSameDayAs: loggedAt)
         }
@@ -506,6 +509,7 @@ struct AddExerciseWeightSheet: View {
                 repsCompleted: topReps,
                 notes: trimmedNotes,
                 muscleTarget: exercise.muscleTarget,
+                workoutDayNumber: dayNumber,
                 setLogs: validSets
             )
             modelContext.insert(performanceLog)

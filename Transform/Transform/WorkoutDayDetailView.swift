@@ -278,7 +278,20 @@ struct ExerciseCard: View {
         WorkingSetAnalysis.analyze(latestSetLogs)
     }
 
+    /// True when this exercise sits inside a deload block. Deload weeks intentionally pull
+    /// load back (the program notes call for roughly 10% under the prior block and stopping
+    /// shy of failure), so the "add load / go heavier" cue is wrong here and is replaced by
+    /// hold-back coaching. Detected from the day or exercise notes, where the generator
+    /// states the deload intent.
+    var isDeloadContext: Bool {
+        let sources = [exercise.day?.notes ?? "", exercise.day?.dayName ?? "", exercise.notes]
+        return sources.contains { $0.range(of: "deload", options: .caseInsensitive) != nil }
+    }
+
     var progressionSuggestion: ProgressionSuggestion? {
+        // On a deload day, never tell the lifter to add weight — that contradicts the
+        // prescription. Coach to hold the lighter load regardless of last session's reps.
+        if isDeloadContext { return .deloadGuidance }
         guard let log = latestWeightLog else { return nil }
         guard let repRange = RepRange.parse(exercise.reps) else { return nil }
         return ProgressionSuggestion.evaluate(
@@ -1225,6 +1238,16 @@ struct ProgressionSuggestion {
     let text: String
     let color: Color
 
+    /// Shown on deload days in place of a load-progression cue: the block is deliberately
+    /// lighter, so the correct coaching is to hold back, not to add weight.
+    static var deloadGuidance: ProgressionSuggestion {
+        ProgressionSuggestion(
+            icon: "arrow.down.right.circle.fill",
+            text: "Deload week — keep load light (~10% under your last block) and leave 2–3 reps in reserve; don't chase PRs",
+            color: TFColor.info
+        )
+    }
+
     static func evaluate(
         analysis: WorkingSetAnalysis,
         summaryRepsCompleted: Int?,
@@ -1411,10 +1434,13 @@ struct SetAnomalyNotice: View {
 // MARK: - Set Logging Service
 
 /// Incremental, session-aware set logging. A "session" is a single
-/// `ExercisePerformanceLog` for one exercise on one calendar day. Inline set-by-set
-/// logging and the bulk sheet both funnel through here so they share one log per
-/// session instead of fragmenting it — which would skew the summary, the personal
-/// best, and the anomaly analysis.
+/// `ExercisePerformanceLog` for one exercise, scoped to one calendar day *and* one
+/// program day (`WorkoutDay.dayNumber`) so a same-named exercise on a different day —
+/// or stray same-day data — never shows up as the current card's progress. Inline
+/// set-by-set logging and the bulk sheet both funnel through here so they share one log
+/// per session instead of fragmenting it — which would skew the summary, the personal
+/// best, and the anomaly analysis. The "previous session" lookup deliberately stays
+/// cross-day so progression continuity tracks the exercise across the whole program.
 ///
 /// Reads take a `@Query`-backed array (reactive UI). Writes fetch fresh from the
 /// context so two quick taps cannot create a duplicate session log before the query
@@ -1430,8 +1456,13 @@ enum SetLoggingService {
         on date: Date = .now
     ) -> [SetLogEntry] {
         let key = ExerciseWeightEntry.canonicalLookupKey(exercise.exerciseName)
+        let dayNumber = exercise.day?.dayNumber ?? 0
         let cal = Calendar.current
-        let log = logs.first { $0.canonicalExerciseKey == key && cal.isDate($0.loggedAt, inSameDayAs: date) }
+        let log = logs.first {
+            $0.canonicalExerciseKey == key
+                && $0.workoutDayNumber == dayNumber
+                && cal.isDate($0.loggedAt, inSameDayAs: date)
+        }
         return (log?.decodedSetLogs ?? []).sorted { $0.setNumber < $1.setNumber }
     }
 
@@ -1508,7 +1539,10 @@ enum SetLoggingService {
 
     private static func todaysLog(for exercise: WorkoutExercise, modelContext: ModelContext, date: Date) -> ExercisePerformanceLog? {
         let key = ExerciseWeightEntry.canonicalLookupKey(exercise.exerciseName)
-        let descriptor = FetchDescriptor<ExercisePerformanceLog>(predicate: #Predicate { $0.canonicalExerciseKey == key })
+        let dayNumber = exercise.day?.dayNumber ?? 0
+        let descriptor = FetchDescriptor<ExercisePerformanceLog>(
+            predicate: #Predicate { $0.canonicalExerciseKey == key && $0.workoutDayNumber == dayNumber }
+        )
         let logs = (try? modelContext.fetch(descriptor)) ?? []
         let cal = Calendar.current
         return logs.first { cal.isDate($0.loggedAt, inSameDayAs: date) }
@@ -1521,7 +1555,8 @@ enum SetLoggingService {
             exerciseName: exercise.exerciseName,
             weightLbs: 0,
             repsCompleted: nil,
-            muscleTarget: exercise.muscleTarget
+            muscleTarget: exercise.muscleTarget,
+            workoutDayNumber: exercise.day?.dayNumber ?? 0
         )
         modelContext.insert(log)
         return log

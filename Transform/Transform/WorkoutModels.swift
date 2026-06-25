@@ -383,6 +383,13 @@ class ExercisePerformanceLog {
     var notes: String = ""
     var muscleTarget: String = ""
     var setLogsJSON: String = ""
+    /// The program day this session belongs to (`WorkoutDay.dayNumber`). Scopes the live
+    /// "today's session" to the day actually being trained so a same-named exercise on a
+    /// different day — or stray same-day data — can't show up as this card's progress.
+    /// Defaults to 0 (lightweight migration); 0 means "unscoped / legacy", which never
+    /// matches a real day (day numbers start at 1). Cross-session history keys off the
+    /// exercise name, not this field, so progression continuity is unaffected.
+    var workoutDayNumber: Int = 0
 
     init(
         loggedAt: Date = .now,
@@ -391,6 +398,7 @@ class ExercisePerformanceLog {
         repsCompleted: Int? = nil,
         notes: String = "",
         muscleTarget: String = "",
+        workoutDayNumber: Int = 0,
         setLogs: [SetLogEntry] = []
     ) {
         self.loggedAt = loggedAt
@@ -401,6 +409,7 @@ class ExercisePerformanceLog {
         self.repsCompleted = repsCompleted
         self.notes = notes
         self.muscleTarget = muscleTarget
+        self.workoutDayNumber = workoutDayNumber
         self.setLogsJSON = Self.encodeSetLogs(setLogs)
     }
 
