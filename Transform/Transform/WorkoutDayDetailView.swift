@@ -285,7 +285,8 @@ struct ExerciseCard: View {
             analysis: workingSetAnalysis,
             summaryRepsCompleted: log.repsCompleted,
             repRange: repRange,
-            lastWeight: log.weightLbs
+            lastWeight: log.weightLbs,
+            exerciseName: exercise.exerciseName
         )
     }
 
@@ -1228,7 +1229,8 @@ struct ProgressionSuggestion {
         analysis: WorkingSetAnalysis,
         summaryRepsCompleted: Int?,
         repRange: RepRange,
-        lastWeight: Double
+        lastWeight: Double,
+        exerciseName: String
     ) -> ProgressionSuggestion? {
         // Preferred path: reason over the genuine working sets, robust to warm-up ramps
         // and to a lone anomalous spike (which is excluded here and surfaced separately).
@@ -1236,17 +1238,17 @@ struct ProgressionSuggestion {
             return fromWorkingSets(
                 workingSets: analysis.workingSets,
                 workingWeight: workingWeight,
-                repRange: repRange
+                repRange: repRange,
+                exerciseName: exerciseName
             )
         }
 
         // Degraded path: older logs with no usable per-set data. Reason from the summary
         // alone — outliers cannot be detected without the individual sets.
         guard let repsCompleted = summaryRepsCompleted else { return nil }
-        let increment = loadIncrement(forWorkingWeight: lastWeight)
 
         if repsCompleted >= repRange.high {
-            let suggestedWeight = lastWeight + increment
+            let suggestedWeight = nextLoad(from: lastWeight, exerciseName: exerciseName)
             return ProgressionSuggestion(
                 icon: "arrow.up.circle.fill",
                 text: "Increase to \(formatWeight(suggestedWeight)) lb next session",
@@ -1269,17 +1271,34 @@ struct ProgressionSuggestion {
         )
     }
 
-    /// Next-session load step, derived from the working weight rather than the muscle
+    /// Next-session target weight, derived from the working weight rather than the muscle
     /// group: heavier loads tolerate larger absolute jumps and lighter loads need smaller
-    /// ones. Roughly 2.5% of the load, snapped to a 2.5 lb plate step and clamped to a
-    /// sane range. This is a practical heuristic, not an evidence-derived constant, and it
-    /// cannot distinguish barbell / dumbbell / machine increments — the logged model
-    /// carries no equipment metadata, so muscle-group guessing (the old approach) was
-    /// strictly worse.
-    private static func loadIncrement(forWorkingWeight weight: Double) -> Double {
+    /// ones. Roughly 2.5% of the load, but the result is snapped to the smallest *real*
+    /// load step for the equipment so the suggestion is always achievable. Dumbbells come
+    /// in 5 lb pairs, so a 2.5 lb plate step would name an unloadable weight (e.g. 77.5 lb);
+    /// dumbbell lifts therefore step — and land — on 5 lb. Everything else uses a 2.5 lb
+    /// plate step. Equipment is inferred from the exercise name because the logged model
+    /// carries no equipment metadata; muscle-group guessing (the old approach) was strictly
+    /// worse. Returns the next weight to put on the bar/rack, not a bare increment.
+    static func nextLoad(from weight: Double, exerciseName: String) -> Double {
         guard weight > 0 else { return 2.5 }
-        let snapped = (weight * 0.025 / 2.5).rounded() * 2.5
-        return min(max(snapped, 2.5), 10.0)
+        let isDumbbell = isDumbbellLift(exerciseName)
+        let step: Double = isDumbbell ? 5.0 : 2.5
+        let rawJump = max(weight * 0.025, step)
+        let cappedJump = min(rawJump, isDumbbell ? 15.0 : 10.0)
+        let target = weight + cappedJump
+        // Snap to the nearest real step so the named weight actually exists on the rack.
+        return (target / step).rounded() * step
+    }
+
+    /// True when the exercise is performed with dumbbells, inferred from its name.
+    /// Matches the canonical "dumbbell" token and the "DB" abbreviation as a whole word
+    /// so substrings (e.g. "abductor") never trigger a false positive.
+    static func isDumbbellLift(_ name: String) -> Bool {
+        let lowered = name.lowercased()
+        if lowered.contains("dumbbell") { return true }
+        let tokens = lowered.split { !$0.isLetter }
+        return tokens.contains("db")
     }
 
     /// Decide the next step from the genuine working sets only. Recommendations name the
@@ -1288,16 +1307,16 @@ struct ProgressionSuggestion {
     private static func fromWorkingSets(
         workingSets: [WorkingSetAnalysis.AnalyzedSet],
         workingWeight: Double,
-        repRange: RepRange
+        repRange: RepRange,
+        exerciseName: String
     ) -> ProgressionSuggestion {
-        let increment = loadIncrement(forWorkingWeight: workingWeight)
         let reps = workingSets.map(\.reps)
         let minReps = reps.min() ?? repRange.low
         let atCeiling = reps.filter { $0 >= repRange.high }.count
         let total = workingSets.count
         let majority = max(1, Int(ceil(Double(total) * 0.67)))
         let weightText = formatWeight(workingWeight)
-        let nextText = formatWeight(workingWeight + increment)
+        let nextText = formatWeight(nextLoad(from: workingWeight, exerciseName: exerciseName))
 
         // Every working set reached the rep ceiling — unambiguous green light to add load.
         if minReps >= repRange.high {
