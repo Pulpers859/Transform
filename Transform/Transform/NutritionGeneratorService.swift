@@ -81,6 +81,28 @@ nonisolated struct MealSlotResponse: Codable, Identifiable {
 
     let id: UUID
 
+    init(
+        mealName: String,
+        primaryOption: String,
+        substitutions: [String],
+        approxCalories: Int,
+        approxProteinG: Int,
+        approxCarbsG: Int,
+        approxFatG: Int,
+        timingNote: String,
+        id: UUID = UUID()
+    ) {
+        self.mealName = mealName
+        self.primaryOption = primaryOption
+        self.substitutions = substitutions
+        self.approxCalories = approxCalories
+        self.approxProteinG = approxProteinG
+        self.approxCarbsG = approxCarbsG
+        self.approxFatG = approxFatG
+        self.timingNote = timingNote
+        self.id = id
+    }
+
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         mealName = try container.decode(String.self, forKey: .mealName)
@@ -118,6 +140,12 @@ nonisolated struct NutritionGroceryCategory: Codable, Identifiable {
 
     let id: UUID
 
+    init(category: String, items: [NutritionGroceryItem], id: UUID = UUID()) {
+        self.category = category
+        self.items = items
+        self.id = id
+    }
+
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         category = try container.decode(String.self, forKey: .category)
@@ -143,6 +171,14 @@ nonisolated struct NutritionGroceryItem: Codable, Identifiable {
     let rationale: String
 
     let id: UUID
+
+    init(name: String, quantity: String, substitutions: [String], rationale: String, id: UUID = UUID()) {
+        self.name = name
+        self.quantity = quantity
+        self.substitutions = substitutions
+        self.rationale = rationale
+        self.id = id
+    }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
