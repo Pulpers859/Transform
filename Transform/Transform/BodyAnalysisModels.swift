@@ -1016,15 +1016,8 @@ enum AnalysisProgressSnapshotBuilder {
         return notes.joined(separator: " ")
     }
 
-    private static func formatWeight(_ value: Double) -> String {
-        if abs(value.rounded() - value) < 0.05 {
-            return String(Int(value.rounded()))
-        }
-        return String(format: "%.1f", value)
-    }
-
     private static func signedWeight(_ value: Double) -> String {
-        let formatted = formatWeight(abs(value))
+        let formatted = Transform.formatWeight(abs(value))
         if value > 0.05 {
             return "+\(formatted)"
         }
@@ -1697,39 +1690,6 @@ enum NutritionAdherenceMetricsBuilder {
     }
 
     // MARK: - Weight Trend
-
-    private static func weightTrendMetrics(
-        from points: [AnalysisLoggedWeightPoint]
-    ) -> (count: Int, weeklyAvg: Double?, weeklyChangeLbs: Double?, weeklyChangePct: Double?, direction: WeightTrendDirection) {
-        let sorted = points.sorted { $0.date < $1.date }
-        guard sorted.count >= 2 else {
-            let avg = sorted.first.map(\.weightLbs)
-            return (sorted.count, avg, nil, nil, .unknown)
-        }
-
-        let recentSevenDays = sorted.suffix(7)
-        let weeklyAvg = recentSevenDays.reduce(0.0) { $0 + $1.weightLbs } / Double(recentSevenDays.count)
-
-        guard let first = sorted.first, let last = sorted.last else {
-            return (sorted.count, weeklyAvg, nil, nil, .unknown)
-        }
-
-        let elapsedDays = max(Calendar.current.dateComponents([.day], from: first.date, to: last.date).day ?? 1, 1)
-        let delta = last.weightLbs - first.weightLbs
-        let weeklyChange = delta / Double(elapsedDays) * 7.0
-        let weeklyPct = weeklyAvg > 0 ? (weeklyChange / weeklyAvg) * 100.0 : nil
-
-        let direction: WeightTrendDirection
-        if delta < -0.3 {
-            direction = .losing
-        } else if delta > 0.3 {
-            direction = .gaining
-        } else {
-            direction = .stable
-        }
-
-        return (sorted.count, weeklyAvg, weeklyChange, weeklyPct, direction)
-    }
 
     private static func classifyWeightTrend(
         weeklyChangeLbs: Double?,

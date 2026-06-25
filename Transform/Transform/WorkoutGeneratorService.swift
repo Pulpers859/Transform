@@ -107,11 +107,8 @@ extension ClaudeService {
             "Title: \(displayTitle)",
             "Split: \(splitType)",
             "",
-            "Warnings:",
-            warnings.isEmpty ? "No warnings." : warnings.enumerated().map { "\($0.offset + 1). \($0.element)" }.joined(separator: "\n"),
-            "",
             "Validator Issues:",
-            warnings.isEmpty ? "No validator issues." : warnings.enumerated().map { "\($0.offset + 1). \($0.element)" }.joined(separator: "\n"),
+            warnings.isEmpty ? "None." : warnings.enumerated().map { "\($0.offset + 1). \($0.element)" }.joined(separator: "\n"),
             "",
             "Analysis Summary:",
             analysisSummary,
@@ -730,16 +727,6 @@ extension ClaudeService {
                 let correctedScore = scoreValidationIssues(correctedIssues)
                 if shouldAcceptAIOutput(despite: correctedIssues, attempt: generationAttempts, generationAttempts: generationAttempts) {
                     attemptTrace.append("Correction pass: Accepted with warnings (score \(correctedScore))")
-                    let labeled = labeledWeekResponse(correctedCleaned, sourceLabel: aiSourceLabel)
-                    return WorkoutWeekGenerationResult(
-                        response: labeled,
-                        validatorWarnings: correctedIssues,
-                        bundleText: buildWeekBundle(weekSummary: labeled.weekSummary, days: labeled.days, warnings: correctedIssues, usedFallback: false)
-                    )
-                }
-
-                // Correction didn't help enough — pick the better of correction vs original best
-                if correctedScore < best.score && shouldAcceptAIOutput(despite: correctedIssues, attempt: generationAttempts, generationAttempts: generationAttempts) {
                     let labeled = labeledWeekResponse(correctedCleaned, sourceLabel: aiSourceLabel)
                     return WorkoutWeekGenerationResult(
                         response: labeled,

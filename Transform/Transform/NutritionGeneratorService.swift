@@ -79,14 +79,61 @@ nonisolated struct MealSlotResponse: Codable, Identifiable {
     let approxFatG: Int
     let timingNote: String
 
-    var id: String { mealName }
+    let id: UUID
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        mealName = try container.decode(String.self, forKey: .mealName)
+        primaryOption = (try? container.decode(String.self, forKey: .primaryOption)) ?? ""
+        substitutions = (try? container.decode([String].self, forKey: .substitutions)) ?? []
+        approxCalories = (try? container.decode(Int.self, forKey: .approxCalories)) ?? 0
+        approxProteinG = (try? container.decode(Int.self, forKey: .approxProteinG)) ?? 0
+        approxCarbsG = (try? container.decode(Int.self, forKey: .approxCarbsG)) ?? 0
+        approxFatG = (try? container.decode(Int.self, forKey: .approxFatG)) ?? 0
+        timingNote = (try? container.decode(String.self, forKey: .timingNote)) ?? ""
+        id = UUID()
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(mealName, forKey: .mealName)
+        try container.encode(primaryOption, forKey: .primaryOption)
+        try container.encode(substitutions, forKey: .substitutions)
+        try container.encode(approxCalories, forKey: .approxCalories)
+        try container.encode(approxProteinG, forKey: .approxProteinG)
+        try container.encode(approxCarbsG, forKey: .approxCarbsG)
+        try container.encode(approxFatG, forKey: .approxFatG)
+        try container.encode(timingNote, forKey: .timingNote)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case mealName, primaryOption, substitutions
+        case approxCalories, approxProteinG, approxCarbsG, approxFatG, timingNote
+    }
 }
 
 nonisolated struct NutritionGroceryCategory: Codable, Identifiable {
     let category: String
     let items: [NutritionGroceryItem]
 
-    var id: String { category }
+    let id: UUID
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        category = try container.decode(String.self, forKey: .category)
+        items = (try? container.decode([NutritionGroceryItem].self, forKey: .items)) ?? []
+        id = UUID()
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(category, forKey: .category)
+        try container.encode(items, forKey: .items)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case category, items
+    }
 }
 
 nonisolated struct NutritionGroceryItem: Codable, Identifiable {
@@ -95,7 +142,28 @@ nonisolated struct NutritionGroceryItem: Codable, Identifiable {
     let substitutions: [String]
     let rationale: String
 
-    var id: String { name }
+    let id: UUID
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        name = try container.decode(String.self, forKey: .name)
+        quantity = (try? container.decode(String.self, forKey: .quantity)) ?? ""
+        substitutions = (try? container.decode([String].self, forKey: .substitutions)) ?? []
+        rationale = (try? container.decode(String.self, forKey: .rationale)) ?? ""
+        id = UUID()
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(name, forKey: .name)
+        try container.encode(quantity, forKey: .quantity)
+        try container.encode(substitutions, forKey: .substitutions)
+        try container.encode(rationale, forKey: .rationale)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case name, quantity, substitutions, rationale
+    }
 }
 
 // MARK: - Nutrition Generator Service
@@ -117,7 +185,7 @@ extension ClaudeService {
     ) async throws -> NutritionProgramResponse {
         let context = nutritionAnalysisContext(from: analysisResult)
         let macroLine = macroTargetLine(from: analysisResult.macroTargets)
-        let config = nutritionWeekOneConfig
+        let config = nutritionGenerationConfig
         let toolSchema = nutritionProgramToolSchema()
 
         let useAdherenceFirst = adherenceMetrics?.isAdherenceFirst == true
@@ -141,6 +209,7 @@ extension ClaudeService {
         var lastIssues: [String] = []
 
         for attempt in 1...nutritionGenerationAttempts {
+            try Task.checkCancellation()
             do {
                 let jsonString = try await AnthropicClient.shared.sendStructuredRequest(
                     body: requestBody,
@@ -155,6 +224,7 @@ extension ClaudeService {
                 }
                 lastIssues = issues
                 if attempt < nutritionGenerationAttempts {
+                    try await Task.sleep(nanoseconds: UInt64(attempt) * 2_000_000_000)
                     requestBody = nutritionCorrectionRequestBody(
                         config: config,
                         toolName: nutritionProgramToolName,
@@ -165,9 +235,12 @@ extension ClaudeService {
                     )
                     continue
                 }
+            } catch is CancellationError {
+                throw CancellationError()
             } catch {
                 lastIssues = ["API error (attempt \(attempt)): \(error.localizedDescription)"]
                 if attempt < nutritionGenerationAttempts {
+                    try await Task.sleep(nanoseconds: UInt64(attempt) * 2_000_000_000)
                     requestBody = nutritionCorrectionRequestBody(
                         config: config,
                         toolName: nutritionProgramToolName,
@@ -202,7 +275,7 @@ extension ClaudeService {
     ) async throws -> NutritionWeekResponse {
         let context = nutritionAnalysisContext(from: analysisResult)
         let macroLine = macroTargetLine(from: analysisResult.macroTargets)
-        let config = nutritionNextWeekConfig
+        let config = nutritionGenerationConfig
         let toolSchema = nutritionWeekToolSchema(weekNumber: weekNumber)
         let systemPrompt = nutritionNextWeekSystemPrompt(weekNumber: weekNumber)
         let adherenceBlock = adherenceContextBlock(from: adherenceMetrics)
@@ -227,6 +300,7 @@ extension ClaudeService {
         var lastIssues: [String] = []
 
         for attempt in 1...nutritionGenerationAttempts {
+            try Task.checkCancellation()
             do {
                 let jsonString = try await AnthropicClient.shared.sendStructuredRequest(
                     body: requestBody,
@@ -241,6 +315,7 @@ extension ClaudeService {
                 }
                 lastIssues = issues
                 if attempt < nutritionGenerationAttempts {
+                    try await Task.sleep(nanoseconds: UInt64(attempt) * 2_000_000_000)
                     requestBody = nutritionCorrectionRequestBody(
                         config: config,
                         toolName: nutritionWeekToolName,
@@ -251,9 +326,12 @@ extension ClaudeService {
                     )
                     continue
                 }
+            } catch is CancellationError {
+                throw CancellationError()
             } catch {
                 lastIssues = ["API error (attempt \(attempt)): \(error.localizedDescription)"]
                 if attempt < nutritionGenerationAttempts {
+                    try await Task.sleep(nanoseconds: UInt64(attempt) * 2_000_000_000)
                     requestBody = nutritionCorrectionRequestBody(
                         config: config,
                         toolName: nutritionWeekToolName,
@@ -286,11 +364,7 @@ extension ClaudeService {
         let timeout: TimeInterval
     }
 
-    private var nutritionWeekOneConfig: NutritionGenerationConfig {
-        NutritionGenerationConfig(model: Config.claudeModelLite, maxTokens: 8192, timeout: 180)
-    }
-
-    private var nutritionNextWeekConfig: NutritionGenerationConfig {
+    private var nutritionGenerationConfig: NutritionGenerationConfig {
         NutritionGenerationConfig(model: Config.claudeModelLite, maxTokens: 8192, timeout: 180)
     }
 

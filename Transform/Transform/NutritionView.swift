@@ -26,6 +26,7 @@ struct NutritionView: View {
     @State private var generationProgress: String = ""
     @State private var nutritionGenerationTask: Task<Void, Never>?
     @State private var isGeneratingMacroReview = false
+    @State private var macroReviewTask: Task<Void, Never>?
     @State private var macroReviewError = ""
     @AppStorage("nutrition_shift_work_mode") private var shiftWorkModeRaw = ShiftWorkNutritionMode.normal.rawValue
 
@@ -814,9 +815,10 @@ struct NutritionView: View {
     @MainActor
     func startMacroReview() {
         guard macroReviewGate.isEligible, let measurementTrend else { return }
+        macroReviewTask?.cancel()
         isGeneratingMacroReview = true
         macroReviewError = ""
-        Task {
+        macroReviewTask = Task {
             defer { isGeneratingMacroReview = false }
             do {
                 let review = try await ClaudeService.shared.generateAdaptiveMacroReview(
@@ -825,8 +827,11 @@ struct NutritionView: View {
                     adherence: adherenceMetrics,
                     measurementTrend: measurementTrend
                 )
+                try Task.checkCancellation()
                 try saveMacroReview(review)
                 TFHaptics.success()
+            } catch is CancellationError {
+                return
             } catch {
                 macroReviewError = error.localizedDescription
                 TFHaptics.error()

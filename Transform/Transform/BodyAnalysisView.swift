@@ -1059,7 +1059,7 @@ struct SavedAnalysisView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                if let image = UIImage(data: session.photoData) {
+                if let image = UIImage.downsampledImage(from: session.photoData, maxDimension: 400) {
                     Image(uiImage: image)
                         .resizable()
                         .scaledToFit()
@@ -1103,7 +1103,7 @@ struct SavedFullAnalysisView: View {
                 }
 
                 // Photo
-                if let image = UIImage(data: session.photoData) {
+                if let image = UIImage.downsampledImage(from: session.photoData, maxDimension: 400) {
                     ZStack(alignment: .bottomTrailing) {
                         Image(uiImage: image)
                             .resizable()

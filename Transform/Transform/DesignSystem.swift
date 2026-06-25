@@ -79,13 +79,13 @@ enum TFColor {
     static let heroGradientTop = Color.black.opacity(0.92)
     static let heroGradientBottom = Color(.systemBackground)
     static let success = Color.green
-    static let warning = Color.orange
+    static let warning = Color(red: 0.95, green: 0.75, blue: 0.15)
     static let danger = Color.red
     static let info = Color.blue
     static let protein = Color.red
     static let carbs = Color.blue
     static let fat = Color.yellow
-    static let sleep = Color.blue
+    static let sleep = Color(red: 0.38, green: 0.35, blue: 0.82)
     static let measurement = Color.purple
 }
 
@@ -174,6 +174,12 @@ extension UIImage {
         }
         return UIImage(cgImage: cgImage)
     }
+}
+
+// MARK: - Weight Formatting
+
+func formatWeight(_ weight: Double) -> String {
+    abs(weight.rounded() - weight) < 0.05 ? String(Int(weight.rounded())) : String(format: "%.1f", weight)
 }
 
 // MARK: - Empty State Template

@@ -378,9 +378,6 @@ struct ExerciseProgressionView: View {
         .dashCard()
     }
 
-    func formatWeight(_ weight: Double) -> String {
-        weight.rounded() == weight ? String(Int(weight)) : String(format: "%.1f", weight)
-    }
 }
 
 struct ProgressionPoint: Identifiable {
@@ -608,7 +605,4 @@ struct EditPerformanceLogSheet: View {
         }
     }
 
-    func formatWeight(_ weight: Double) -> String {
-        weight.rounded() == weight ? String(Int(weight)) : String(format: "%.1f", weight)
-    }
 }
