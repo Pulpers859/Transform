@@ -1692,7 +1692,7 @@ struct InlineSetLogger: View {
             } label: {
                 Image(systemName: "checkmark.circle")
                     .font(.title3)
-                    .foregroundStyle(canLog(n) ? TFColor.accent : .tertiary)
+                    .foregroundStyle(canLog(n) ? AnyShapeStyle(TFColor.accent) : AnyShapeStyle(.tertiary))
             }
             .buttonStyle(.plain)
             .disabled(!canLog(n))
