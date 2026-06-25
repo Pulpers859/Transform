@@ -102,21 +102,21 @@ struct ExerciseProgressionView: View {
 
         // Re-derive summary and best from the qualified working set so a recompute can
         // never re-promote an anomaly that the save path already excluded.
-        let latestQualified = WorkingSetAnalysis.qualifiedTop(from: latestLog.decodedSetLogs)
-        let topWeight = latestQualified?.weightLbs ?? latestLog.weightLbs
-        let topReps = latestQualified?.reps ?? latestLog.repsCompleted
+        let latestTop = WorkingSetAnalysis.summaryTop(from: latestLog.decodedSetLogs)
+        let topWeight = latestTop?.weightLbs ?? latestLog.weightLbs
+        let topReps = latestTop?.reps ?? latestLog.repsCompleted
 
         var bestWeight = 0.0
         var bestLogDate: Date?
         var bestReps: Int?
         var bestNotes = ""
         for log in logs {
-            let qualified = WorkingSetAnalysis.qualifiedTop(from: log.decodedSetLogs)
-            let w = qualified?.weightLbs ?? log.weightLbs
+            let top = WorkingSetAnalysis.summaryTop(from: log.decodedSetLogs)
+            let w = top?.weightLbs ?? log.weightLbs
             if w > bestWeight + 0.001 || (abs(w - bestWeight) <= 0.001 && log.loggedAt > (bestLogDate ?? .distantPast)) {
                 bestWeight = w
                 bestLogDate = log.loggedAt
-                bestReps = qualified?.reps ?? log.repsCompleted
+                bestReps = top?.reps ?? log.repsCompleted
                 bestNotes = log.notes
             }
         }
@@ -572,9 +572,9 @@ struct EditPerformanceLogSheet: View {
         }
         guard !validSets.isEmpty else { return }
 
-        let qualified = WorkingSetAnalysis.qualifiedTop(from: validSets)
-        let topWeight = qualified?.weightLbs ?? ExercisePerformanceLog.topSetWeight(from: validSets) ?? validSets[0].weightLbs
-        let topReps = qualified?.reps ?? ExercisePerformanceLog.topSetReps(from: validSets)
+        let top = WorkingSetAnalysis.summaryTop(from: validSets)
+        let topWeight = top?.weightLbs ?? validSets[0].weightLbs
+        let topReps = top?.reps
 
         log.weightLbs = topWeight
         log.repsCompleted = topReps

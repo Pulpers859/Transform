@@ -564,6 +564,18 @@ extension WorkingSetAnalysis {
         guard let top = analyze(logs).topWorkingSet else { return nil }
         return (top.weightLbs, top.reps)
     }
+
+    /// Anomaly-aware summary stats for a session: the qualified working top when it
+    /// exists, otherwise the raw heaviest set. `nil` only when `logs` is empty, so
+    /// callers supply their own final fallback. This is the single place the
+    /// qualified-vs-raw decision lives, so save, edit, and recompute stay in sync.
+    static func summaryTop(from logs: [SetLogEntry]) -> (weightLbs: Double, reps: Int?)? {
+        if let qualified = qualifiedTop(from: logs) {
+            return (qualified.weightLbs, qualified.reps)
+        }
+        guard let weight = ExercisePerformanceLog.topSetWeight(from: logs) else { return nil }
+        return (weight, ExercisePerformanceLog.topSetReps(from: logs))
+    }
 }
 
 @MainActor

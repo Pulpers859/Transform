@@ -40,6 +40,7 @@ struct WorkoutDayDetailView: View {
             }
             .padding()
         }
+        .scrollDismissesKeyboard(.interactively)
         .workoutTabBarClearance()
         .navigationTitle("Day \(day.dayNumber)")
         .navigationBarTitleDisplayMode(.inline)
@@ -443,9 +444,9 @@ struct ExerciseCard: View {
                 Button {
                     onLogWeight()
                 } label: {
-                    Label("Log Sets", systemImage: "plus.circle.fill")
+                    Label("Edit / Notes", systemImage: "square.and.pencil")
                         .font(.caption.bold())
-                        .foregroundStyle(TFColor.accent)
+                        .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
 
@@ -1527,9 +1528,9 @@ enum SetLoggingService {
     ) -> Bool {
         // Summary / best come from the qualified working set so an anomalous entry never
         // becomes a false PR; raw per-set data is preserved on the log.
-        let qualified = WorkingSetAnalysis.qualifiedTop(from: sets)
-        let topWeight = qualified?.weightLbs ?? ExercisePerformanceLog.topSetWeight(from: sets) ?? sets.first?.weightLbs ?? 0
-        let topReps = qualified?.reps ?? ExercisePerformanceLog.topSetReps(from: sets)
+        let top = WorkingSetAnalysis.summaryTop(from: sets)
+        let topWeight = top?.weightLbs ?? sets.first?.weightLbs ?? 0
+        let topReps = top?.reps
 
         log.loggedAt = date
         log.weightLbs = topWeight
@@ -1548,9 +1549,19 @@ enum SetLoggingService {
             TFHaptics.error()
             return false
         }
-        DataBackupManager.shared.writeAutomaticBackup(using: modelContext)
+        // The SwiftData save above is durable. The automatic backup is a full export
+        // (photos + all data), so coalesce it: logging set-by-set during a workout must
+        // not trigger one heavy export per tap. The recovery snapshot tolerates a short lag.
+        let now = Date()
+        if lastBackupAt == nil || now.timeIntervalSince(lastBackupAt!) >= backupMinInterval {
+            lastBackupAt = now
+            DataBackupManager.shared.writeAutomaticBackup(using: modelContext)
+        }
         return true
     }
+
+    private static var lastBackupAt: Date?
+    private static let backupMinInterval: TimeInterval = 45
 }
 
 // MARK: - Inline Set Logger
@@ -1628,9 +1639,11 @@ struct InlineSetLogger: View {
                     .font(.caption2.bold())
                     .foregroundStyle(.secondary)
             }
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Log sets, \(loggedCount) of \(programmedCount) logged")
+        .accessibilityHint(expanded ? "Collapses the set logger" : "Expands the set logger")
     }
 
     @ViewBuilder

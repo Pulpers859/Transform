@@ -59,7 +59,7 @@ struct AddExerciseWeightSheet: View {
                     .padding(.bottom, isKeyboardActive ? 24 : 120)
                 }
             }
-            .navigationTitle("Log Sets")
+            .navigationTitle("Edit Sets")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -478,9 +478,9 @@ struct AddExerciseWeightSheet: View {
 
         // Best/summary load comes from the qualified working set so a lone anomalous set
         // cannot become a false PR. Raw per-set data is still preserved in setLogs below.
-        let qualified = WorkingSetAnalysis.qualifiedTop(from: validSets)
-        let topWeight = qualified?.weightLbs ?? ExercisePerformanceLog.topSetWeight(from: validSets) ?? validSets[0].weightLbs
-        let topReps = qualified?.reps ?? ExercisePerformanceLog.topSetReps(from: validSets)
+        let top = WorkingSetAnalysis.summaryTop(from: validSets)
+        let topWeight = top?.weightLbs ?? validSets[0].weightLbs
+        let topReps = top?.reps
         let trimmedNotes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
 
         // Resume the same-day session if one already exists (e.g. started via the inline
