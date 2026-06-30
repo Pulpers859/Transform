@@ -232,6 +232,12 @@ extension ClaudeService {
                         "Blueprint day \(plan.dayIndex) spends too many \(focusArea) slots on support/corrective work instead of prime hypertrophy work."
                     )
                 }
+
+                issues.append(contentsOf: validateRedundantFocusPrimePatterns(
+                    on: actualDay,
+                    focusArea: focusArea,
+                    targetPrioritySlots: plan.targetPrioritySlots
+                ))
             }
 
             issues.append(contentsOf: validateSessionFocusDiscipline(
@@ -502,6 +508,53 @@ extension ClaudeService {
         }
 
         return issues
+    }
+
+    func validateRedundantFocusPrimePatterns(
+        on day: WorkoutDayResponse,
+        focusArea: String,
+        targetPrioritySlots: Int
+    ) -> [String] {
+        guard !day.isRestDay else { return [] }
+
+        let primeExercises = day.exercises.filter { exercise in
+            focusStimulusKind(
+                exerciseName: exercise.exerciseName,
+                muscleTarget: exercise.muscleTarget,
+                focusArea: focusArea
+            ) == .prime
+        }
+
+        guard primeExercises.count >= 3 else { return [] }
+
+        let patternGroups = Dictionary(grouping: primeExercises) { exercise in
+            exerciseMetadata(for: exercise).movementPattern
+        }
+
+        for (pattern, exercises) in patternGroups where exercises.count >= 3 {
+            let normalizedPattern = normalizedPriorityText(pattern)
+            let shouldFlagPattern = containsAny(
+                normalizedPattern,
+                keywords: ["lateral raise", "rear delt", "curl", "extension", "fly"]
+            )
+
+            guard shouldFlagPattern else { continue }
+
+            let names = exercises.prefix(3).map(\.exerciseName).joined(separator: ", ")
+            return [
+                "Day \(day.dayNumber) stacks too many \(focusArea) prime variations with the same \(pattern) pattern (\(names)). Keep the best 1-2 repeatable choices and replace the extra slot with an unmet target or recovery-friendly support."
+            ]
+        }
+
+        let usefulPrimeLimit = max(3, targetPrioritySlots + 1)
+        if primeExercises.count > usefulPrimeLimit {
+            let names = primeExercises.prefix(4).map(\.exerciseName).joined(separator: ", ")
+            return [
+                "Day \(day.dayNumber) uses \(primeExercises.count) prime \(focusArea) exercises for \(targetPrioritySlots) planned priority slots (\(names)). Trim redundant focus work so the session is easier to execute and progress."
+            ]
+        }
+
+        return []
     }
 
     func validateArmsDayShoulderStress(

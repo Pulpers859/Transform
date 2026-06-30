@@ -595,22 +595,7 @@ extension ClaudeService {
         generationAttempts: Int
     ) -> Bool {
         guard !issues.isEmpty else { return false }
-        if issues.allSatisfy({ validationDisposition(for: $0) == .acceptableWarning }) {
-            return true
-        }
-        if attempt >= generationAttempts {
-            if issues.contains(where: { validationDisposition(for: $0) == .hardFailure }) {
-                return false
-            }
-            if hasCompoundPriorityViolation(in: issues) {
-                return false
-            }
-            if issues.contains(where: { $0.contains("substitution changes the primary muscle target") }) {
-                return false
-            }
-            return true
-        }
-        return false
+        return issues.allSatisfy { validationDisposition(for: $0) == .acceptableWarning }
     }
 
     func hasCompoundPriorityViolation(in issues: [String]) -> Bool {

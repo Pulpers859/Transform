@@ -9,6 +9,7 @@ struct WorkoutDayDetailView: View {
     let day: WorkoutDay
     @State private var exerciseForWeightLogging: WorkoutExercise?
     @State private var feedbackDay: WorkoutDay?
+    @State private var completionPromptExercise: WorkoutExercise?
 
     var completedExerciseCount: Int {
         day.sortedExercises.filter { $0.isCompleted }.count
@@ -54,6 +55,32 @@ struct WorkoutDayDetailView: View {
         }
         .sheet(item: $feedbackDay) { selectedDay in
             WorkoutSessionFeedbackSheet(day: selectedDay)
+        }
+        .alert(
+            "Complete without logged sets?",
+            isPresented: Binding(
+                get: { completionPromptExercise != nil },
+                set: { isPresented in
+                    if !isPresented {
+                        completionPromptExercise = nil
+                    }
+                }
+            )
+        ) {
+            Button("Log Sets", role: .cancel) {
+                if let exercise = completionPromptExercise {
+                    exerciseForWeightLogging = exercise
+                }
+                completionPromptExercise = nil
+            }
+            Button("Complete Anyway") {
+                if let exercise = completionPromptExercise {
+                    toggleExercise(exercise, allowIncompleteLogs: true)
+                }
+                completionPromptExercise = nil
+            }
+        } message: {
+            Text(completionPromptMessage)
         }
     }
 
@@ -197,7 +224,24 @@ struct WorkoutDayDetailView: View {
         }
     }
 
-    func toggleExercise(_ exercise: WorkoutExercise) {
+    var completionPromptMessage: String {
+        guard let exercise = completionPromptExercise else {
+            return "Logging sets improves future progression cues."
+        }
+        let logged = todaysSetLogs(for: exercise).count
+        return "\(logged)/\(exercise.sets) sets are logged. Logging sets improves future progression cues."
+    }
+
+    func toggleExercise(_ exercise: WorkoutExercise, allowIncompleteLogs: Bool = false) {
+        if !allowIncompleteLogs, !exercise.isCompleted, exercise.sets > 0 {
+            let logged = todaysSetLogs(for: exercise).count
+            if logged < exercise.sets {
+                completionPromptExercise = exercise
+                TFHaptics.impact(.soft)
+                return
+            }
+        }
+
         let previousExerciseState = exercise.isCompleted
         let previousDayState = day.isCompleted
         exercise.isCompleted.toggle()
@@ -317,6 +361,75 @@ struct ExerciseCard: View {
         return Int(text[captureRange])
     }
 
+    private func conciseWorkoutInsight(
+        from note: String,
+        hideProgressionCue: Bool,
+        hideDeloadCue: Bool
+    ) -> String {
+        let sentences = splitSentences(note)
+        guard !sentences.isEmpty else { return "" }
+
+        var seen = Set<String>()
+        var kept: [String] = []
+
+        for sentence in sentences {
+            let normalized = sentence
+                .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+                .lowercased()
+
+            if hideDeloadCue,
+               containsAny(normalized, [
+                "deload", "10%", "under your last", "leave 2", "leave 3", "reserve",
+                "chase pr", "prs", "personal record"
+               ]) {
+                continue
+            }
+
+            if hideProgressionCue,
+               containsAny(normalized, [
+                "next session", "add load", "add weight", "add reps", "before adding",
+                "progression", "progress load", "hold load", "increase to"
+               ]) {
+                continue
+            }
+
+            let key = normalized
+                .replacingOccurrences(of: #"[^a-z0-9]+"#, with: " ", options: .regularExpression)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard seen.insert(key).inserted else { continue }
+
+            kept.append(sentence)
+            if kept.count == 2 { break }
+        }
+
+        let compact = kept.joined(separator: " ")
+        guard compact.count > 220 else { return compact }
+
+        let prefix = compact.prefix(217).trimmingCharacters(in: .whitespacesAndNewlines)
+        return "\(prefix)..."
+    }
+
+    private func splitSentences(_ text: String) -> [String] {
+        let collapsed = text
+            .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !collapsed.isEmpty else { return [] }
+
+        let pattern = #"[^.!?]+[.!?]?"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return [collapsed] }
+        let range = NSRange(collapsed.startIndex..<collapsed.endIndex, in: collapsed)
+
+        return regex.matches(in: collapsed, range: range).compactMap { match in
+            guard let matchRange = Range(match.range, in: collapsed) else { return nil }
+            let sentence = collapsed[matchRange].trimmingCharacters(in: .whitespacesAndNewlines)
+            return sentence.isEmpty ? nil : sentence
+        }
+    }
+
+    private func containsAny(_ text: String, _ fragments: [String]) -> Bool {
+        fragments.contains { text.contains($0) }
+    }
+
     var progressionSuggestion: ProgressionSuggestion? {
         // On a deload day, never tell the lifter to add weight — that contradicts the
         // prescription. Coach to hold the lighter load regardless of last session's reps.
@@ -346,6 +459,14 @@ struct ExerciseCard: View {
             return parsedPrescription.cleanedNotes
         }
         return exercise.notes.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    var conciseCoachingNote: String {
+        conciseWorkoutInsight(
+            from: cleanedCoachingNote,
+            hideProgressionCue: progressionSuggestion != nil,
+            hideDeloadCue: isDeloadContext
+        )
     }
 
     var displayTempo: String? {
@@ -554,13 +675,13 @@ struct ExerciseCard: View {
                 .padding(.vertical, 10)
             }
 
-            if !cleanedCoachingNote.isEmpty {
+            if !conciseCoachingNote.isEmpty {
                 Divider().padding(.horizontal, 14)
                 HStack(alignment: .top, spacing: 6) {
                     Image(systemName: "lightbulb.fill")
                         .font(.caption2)
                         .foregroundStyle(TFColor.warning)
-                    Text(cleanedCoachingNote)
+                    Text(conciseCoachingNote)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

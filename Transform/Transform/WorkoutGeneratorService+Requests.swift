@@ -290,9 +290,12 @@ extension ClaudeService {
         - Each training day's `notes` must read like a real coach's briefing for that day — tie
           the intent back to the analysis and give warm-up / mobility guidance specific to the
           day's lifts and the user's posture/injury notes. Keep each day note compact.
-        - Each exercise's `notes` must include a form cue, a Week 1 progression cue, and a
-          personalization sentence referencing the analysis (priority muscle, leverage change,
-          postural issue, etc.). Keep each exercise note to two short sentences.
+        - Each exercise's `notes` must be concise: include one form cue and one concrete Week 1
+          progression cue. Add analysis personalization only when it gives new information that
+          is not already stated in the day notes.
+        - Avoid repeating phase labels, week labels, or generic goal language in every exercise
+          note. The workout screen already shows sets, reps, tempo, RIR/intensity, and deload
+          guidance separately, so do not restate those unless needed for safety.
         - Progression cues must be concrete: mention RPE/RIR, adding reps before load, holding
           load, or another specific load/rep progression rule.
 
@@ -321,8 +324,8 @@ extension ClaudeService {
         Session Notes still must be personal, specific, analysis-anchored, and include a "Warm-up:"
         line (on its own line) with specific warm-up and mobility items separated by commas, tied
         to this day's lifts AND the user's posture/injury notes. Exercise
-        notes still must include form cue + phase-appropriate progression cue + a "why this is
-        here for you" sentence tied to the analysis.
+        notes still must include a form cue + phase-appropriate progression cue. Add a "why this
+        is here for you" phrase only when it is specific and not already repeated in the day notes.
         Use double progression as the default progression model: add reps before load, keep
         compounds inside the phase RPE cap, and hold load or trim the lowest-priority isolation
         set when sleep, joint pain, or stress is poor.
@@ -409,10 +412,13 @@ extension ClaudeService {
         - Every training day's `notes` must re-anchor to the analysis (don't drop the
           personalization just because it's week \(weekNumber)) and must include warm-up /
           mobility guidance tied to this day's lifts and the user's posture/injury notes.
-        - Every exercise's `notes` must include a form cue, a Week \(weekNumber)-appropriate
-          progression cue, and a personalization sentence referencing the analysis.
+        - Every exercise's `notes` must be concise: include one form cue and one Week \(weekNumber)-appropriate
+          progression cue. Add analysis personalization only when it gives new information that is
+          not already stated in the day notes.
         - Progression cues must be concrete: mention RPE/RIR, adding reps before load, holding
           load, or another specific load/rep progression rule.
+        - Do not repeat phase labels or deload/recovery language in every exercise note. The app
+          already shows intensity, RIR, tempo, and deload guidance as separate UI.
         - weekSummary: one sentence describing what THIS phase accomplishes for THIS person,
           referencing the analysis.
 

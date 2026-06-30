@@ -66,6 +66,14 @@ struct WorkoutGeneratorLabView: View {
         "Live AI mode uses API credits and can retry up to 3 times before procedural fallback."
     }
 
+    var runButtonStageLabel: String {
+        if selectedMode == .lastGeneration,
+           let currentProgram {
+            return "Week \(currentProgram.currentWeek)"
+        }
+        return selectedStage.rawValue
+    }
+
     var canUseAI: Bool {
         Config.hasAnthropicKey
     }
@@ -388,7 +396,7 @@ struct WorkoutGeneratorLabView: View {
                     Text("Running…")
                 } else {
                     Image(systemName: selectedMode == .liveAI ? "bolt.fill" : "waveform.path.ecg")
-                    Text("\(selectedMode.actionTitle) • \(selectedStage.rawValue)")
+                    Text("\(selectedMode.actionTitle) • \(runButtonStageLabel)")
                 }
             }
             .frame(maxWidth: .infinity)
@@ -609,15 +617,24 @@ struct WorkoutGeneratorLabView: View {
             .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
         let previewDays = ClaudeService.shared.decodePreviousWeekDays(from: program.programJSON)
+        let previewSummary = ClaudeService.shared.decodePreviousWeekSummary(from: program.programJSON)?
+            .trimmedOr(default: "")
+        let displaySummary: String
+        if let previewSummary, !previewSummary.isEmpty {
+            displaySummary = previewSummary
+        } else {
+            displaySummary = program.programSummary
+        }
+        let sourceLabel = ClaudeService.shared.sourceLabel(from: displaySummary, fallback: "[AI Coach]")
 
         var lastReport = WorkoutGeneratorDebugReport(
             stage: program.currentWeek == 1 ? .weekOne : .nextWeek,
             mode: .lastGeneration,
             weekNumber: program.currentWeek,
-            usedAPI: true,
-            sourceLabel: ClaudeService.shared.sourceLabel(from: program.programSummary, fallback: "[AI Coach]"),
+            usedAPI: false,
+            sourceLabel: sourceLabel,
             acceptedWithWarnings: !warnings.isEmpty,
-            usedFallback: program.programSummary.contains("[Recovery Engine]"),
+            usedFallback: displaySummary.contains("[Recovery Engine]"),
             displayTitle: program.programName,
             splitType: program.splitType,
             analysisSummary: "(stored in bundle)",
@@ -632,7 +649,7 @@ struct WorkoutGeneratorLabView: View {
             replayInputJSON: nil,
             terminalError: nil,
             finalJSON: program.programJSON,
-            previewSummary: program.programSummary,
+            previewSummary: displaySummary,
             previewDays: previewDays
         )
         lastReport.storedBundleText = bundle

@@ -29,6 +29,7 @@ struct WorkoutView: View {
                 VStack(spacing: 20) {
                     if let program = currentProgram {
                         programHeader(program)
+                        validatorWarningsBanner(program)
                         weekSelector(program)
                         weekDaysList(program)
                         if program.canGenerateNextWeek {
@@ -253,6 +254,15 @@ struct WorkoutView: View {
                     }
                 }
                 .padding(.vertical, 2)
+            }
+            if !program.validatorWarnings.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                HStack(spacing: 6) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.caption2)
+                    Text("Generated with review warnings")
+                        .font(.caption.bold())
+                }
+                .foregroundStyle(TFColor.warning)
             }
 
             Text(summaryWithoutSourcePrefix(program.programSummary))
@@ -821,9 +831,6 @@ struct WorkoutView: View {
 
             program.currentWeek = nextWeek
             program.totalDays = program.days.count
-            if !response.weekSummary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                program.programSummary = response.weekSummary
-            }
             program.programJSON = weekJSON
             program.validatorWarnings = generationResult.validatorWarnings.joined(separator: "\n")
             program.lastGenerationBundle = generationResult.bundleText
