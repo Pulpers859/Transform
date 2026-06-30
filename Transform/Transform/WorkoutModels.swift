@@ -180,9 +180,9 @@ enum ExerciseCompletionStatus: String, CaseIterable, Identifiable {
         switch self {
         case .completed: return "Done"
         case .completedModified: return "Modified"
-        case .skippedTime: return "Skipped (time)"
-        case .skippedEquipment: return "Skipped (equip)"
-        case .skippedPain: return "Skipped (pain)"
+        case .skippedTime: return "Skipped — No Time"
+        case .skippedEquipment: return "Skipped — No Equip"
+        case .skippedPain: return "Skipped — Pain"
         case .substituted: return "Substituted"
         }
     }

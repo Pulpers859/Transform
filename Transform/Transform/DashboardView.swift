@@ -643,7 +643,7 @@ struct DashboardView: View {
                 Image(systemName: "flame.fill")
                     .font(.system(size: 9))
                     .foregroundStyle(TFColor.danger)
-                Text("Protein: \(proteinHitDays)/\(max(loggedDaysCount, 1))")
+                Text(loggedDaysCount > 0 ? "Protein: \(proteinHitDays)/\(loggedDaysCount)" : "Protein: —")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }

@@ -278,7 +278,9 @@ struct WorkoutView: View {
                                 .clipShape(Capsule())
                         }
                     }
+                    .padding(.trailing, 4)
                 }
+                .scrollClipDisabled()
             }
 
         }

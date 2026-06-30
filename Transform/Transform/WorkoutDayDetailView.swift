@@ -393,6 +393,10 @@ struct ExerciseCard: View {
                 continue
             }
 
+            if containsAny(normalized, ["you logged", "you used", "your last session", "last time you"]) {
+                continue
+            }
+
             let key = normalized
                 .replacingOccurrences(of: #"[^a-z0-9]+"#, with: " ", options: .regularExpression)
                 .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -727,7 +731,11 @@ struct ExerciseCard: View {
                     if role == .warmup {
                         Text("warm-up")
                             .font(.system(size: 9, weight: .bold, design: .monospaced))
-                            .foregroundStyle(.tertiary)
+                            .foregroundStyle(TFColor.accent.opacity(0.7))
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background(TFColor.accent.opacity(0.1))
+                            .clipShape(Capsule())
                     } else if role == .anomaly {
                         Image(systemName: "exclamationmark.triangle.fill")
                             .font(.system(size: 9))
