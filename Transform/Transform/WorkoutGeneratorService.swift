@@ -360,7 +360,7 @@ extension ClaudeService {
                         days: corrTrimDays
                     )
                     let corrTrimIssues = validateProgramResponse(corrTrimmed, blueprint: blueprint)
-                    if corrTrimIssues.isEmpty || shouldAcceptAIOutput(despite: corrTrimIssues, attempt: generationAttempts, generationAttempts: generationAttempts) {
+                    if corrTrimIssues.isEmpty || shouldAcceptAIOutput(despite: corrTrimIssues) {
                         let finalIssues = corrTrimIssues.isEmpty ? [] : corrTrimIssues
                         attemptTrace.append("Correction pass: Accepted after trim\(finalIssues.isEmpty ? "" : " with warnings")")
                         let labeled = labeledProgramResponse(corrTrimmed, sourceLabel: aiSourceLabel)
@@ -373,7 +373,7 @@ extension ClaudeService {
                 }
 
                 // Accept correction if permissible on final attempt
-                if shouldAcceptAIOutput(despite: correctedIssues, attempt: generationAttempts, generationAttempts: generationAttempts) {
+                if shouldAcceptAIOutput(despite: correctedIssues) {
                     attemptTrace.append("Correction pass: Accepted with warnings (score \(scoreValidationIssues(correctedIssues)))")
                     let labeled = labeledProgramResponse(correctedCleaned, sourceLabel: aiSourceLabel)
                     return WorkoutProgramGenerationResult(
@@ -711,7 +711,7 @@ extension ClaudeService {
                         previousWeekDays: hasValidPreviousWeek ? previousWeekDays : nil,
                         blueprint: blueprint
                     )
-                    if corrTrimIssues.isEmpty || shouldAcceptAIOutput(despite: corrTrimIssues, attempt: generationAttempts, generationAttempts: generationAttempts) {
+                    if corrTrimIssues.isEmpty || shouldAcceptAIOutput(despite: corrTrimIssues) {
                         let finalIssues = corrTrimIssues.isEmpty ? [] : corrTrimIssues
                         attemptTrace.append("Correction pass: Accepted after trim\(finalIssues.isEmpty ? "" : " with warnings")")
                         let labeled = labeledWeekResponse(corrTrimmed, sourceLabel: aiSourceLabel)
@@ -725,7 +725,7 @@ extension ClaudeService {
 
                 // Accept correction result if it's better than the parallel best
                 let correctedScore = scoreValidationIssues(correctedIssues)
-                if shouldAcceptAIOutput(despite: correctedIssues, attempt: generationAttempts, generationAttempts: generationAttempts) {
+                if shouldAcceptAIOutput(despite: correctedIssues) {
                     attemptTrace.append("Correction pass: Accepted with warnings (score \(correctedScore))")
                     let labeled = labeledWeekResponse(correctedCleaned, sourceLabel: aiSourceLabel)
                     return WorkoutWeekGenerationResult(
@@ -951,11 +951,7 @@ extension ClaudeService {
                                 )
                                 let trimmedIssues = validateProgramResponse(trimmedProgram, blueprint: blueprint)
                                 let trimmedPayload = try? encodeDebugJSONString(trimmedProgram)
-                                if trimmedIssues.isEmpty || shouldAcceptAIOutput(
-                                    despite: trimmedIssues,
-                                    attempt: attempt,
-                                    generationAttempts: generationAttempts
-                                ) {
+                                if trimmedIssues.isEmpty || shouldAcceptAIOutput(despite: trimmedIssues) {
                                     attempts.append(
                                         WorkoutGeneratorDebugAttempt(
                                             attemptNumber: attempt,
@@ -993,11 +989,7 @@ extension ClaudeService {
                             }
                         }
 
-                        if shouldAcceptAIOutput(
-                            despite: issues,
-                            attempt: attempt,
-                            generationAttempts: generationAttempts
-                        ) {
+                        if shouldAcceptAIOutput(despite: issues) {
                             attempts.append(
                                 WorkoutGeneratorDebugAttempt(
                                     attemptNumber: attempt,
@@ -1402,11 +1394,7 @@ extension ClaudeService {
                                     blueprint: blueprint
                                 )
                                 let trimmedPayload = try? encodeDebugJSONString(trimmedWeek)
-                                if trimmedIssues.isEmpty || shouldAcceptAIOutput(
-                                    despite: trimmedIssues,
-                                    attempt: attempt,
-                                    generationAttempts: generationAttempts
-                                ) {
+                                if trimmedIssues.isEmpty || shouldAcceptAIOutput(despite: trimmedIssues) {
                                     attempts.append(
                                         WorkoutGeneratorDebugAttempt(
                                             attemptNumber: attempt,
@@ -1443,11 +1431,7 @@ extension ClaudeService {
                             }
                         }
 
-                        if shouldAcceptAIOutput(
-                            despite: issues,
-                            attempt: attempt,
-                            generationAttempts: generationAttempts
-                        ) {
+                        if shouldAcceptAIOutput(despite: issues) {
                             attempts.append(
                                 WorkoutGeneratorDebugAttempt(
                                     attemptNumber: attempt,

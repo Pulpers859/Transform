@@ -589,33 +589,6 @@ extension ClaudeService {
         return issues.allSatisfy { validationDisposition(for: $0) == .acceptableWarning }
     }
 
-    func shouldAcceptAIOutput(
-        despite issues: [String],
-        attempt: Int,
-        generationAttempts: Int
-    ) -> Bool {
-        guard !issues.isEmpty else { return false }
-        return issues.allSatisfy { validationDisposition(for: $0) == .acceptableWarning }
-    }
-
-    func hasCompoundPriorityViolation(in issues: [String]) -> Bool {
-        let overshootLabels = Set(issues.compactMap {
-            extractPriorityLabel(from: $0, keyword: "overshot its direct-set target")
-        })
-        let variationLabels = Set(issues.compactMap {
-            extractPriorityLabel(from: $0, keyword: "uses too many weekly exercise variations")
-        })
-        return !overshootLabels.isDisjoint(with: variationLabels)
-    }
-
-    func extractPriorityLabel(from issue: String, keyword: String) -> String? {
-        guard issue.contains(keyword) else { return nil }
-        guard let openQuote = issue.firstIndex(of: "'") else { return nil }
-        let afterOpen = issue.index(after: openQuote)
-        guard let closeQuote = issue[afterOpen...].firstIndex(of: "'") else { return nil }
-        return String(issue[afterOpen..<closeQuote])
-    }
-
     func validationDisposition(for issue: String) -> ValidationIssueDisposition {
         if matchesValidationIssue(issue, patterns: acceptableWarningIssuePatterns) {
             return .acceptableWarning

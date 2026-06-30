@@ -254,18 +254,10 @@ struct WorkoutView: View {
                     }
                 }
                 .padding(.vertical, 2)
+                .padding(.trailing, 4)
             }
-            if !program.validatorWarnings.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                HStack(spacing: 6) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.caption2)
-                    Text("Generated with review warnings")
-                        .font(.caption.bold())
-                }
-                .foregroundStyle(TFColor.warning)
-            }
-
-            Text(summaryWithoutSourcePrefix(program.programSummary))
+            .scrollClipDisabled()
+            Text(summaryForSelectedWeek(program))
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -748,6 +740,7 @@ struct WorkoutView: View {
                 lastGenerationBundle: generationResult.bundleText
             )
             modelContext.insert(program)
+            program.setWeekSummary(response.programSummary, for: 1)
 
             insertDays(from: response.days, into: program)
             WorkoutGenerationDiagnostics.markStage("saving generated week 1 program to storage")
@@ -825,6 +818,7 @@ struct WorkoutView: View {
             let priorSummary = program.programSummary
             let priorProgramJSON = program.programJSON
             let priorWarnings = program.validatorWarnings
+            let priorWeekSummaries = program.weekSummariesJSON
 
             WorkoutGenerationDiagnostics.markStage("inserting generated week \(nextWeek) program")
             insertDays(from: response.days, into: program)
@@ -834,6 +828,10 @@ struct WorkoutView: View {
             program.programJSON = weekJSON
             program.validatorWarnings = generationResult.validatorWarnings.joined(separator: "\n")
             program.lastGenerationBundle = generationResult.bundleText
+            let weekSummaryText = response.weekSummary.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !weekSummaryText.isEmpty {
+                program.setWeekSummary(weekSummaryText, for: nextWeek)
+            }
 
             WorkoutGenerationDiagnostics.markStage("saving generated week \(nextWeek) program to storage")
             guard PersistenceReporter.save(modelContext, operation: "generated next workout week") else {
@@ -843,6 +841,7 @@ struct WorkoutView: View {
                 program.programSummary = priorSummary
                 program.programJSON = priorProgramJSON
                 program.validatorWarnings = priorWarnings
+                program.weekSummariesJSON = priorWeekSummaries
                 errorMessage = "Could not save the generated week. Please try again."
                 showError = true
                 TFHaptics.error()
@@ -1094,6 +1093,13 @@ struct WorkoutView: View {
             .font(.caption)
             .foregroundStyle(.secondary)
             .lineLimit(1)
+    }
+
+    func summaryForSelectedWeek(_ program: WorkoutProgram) -> String {
+        if let perWeek = program.weekSummary(for: selectedWeek), !perWeek.isEmpty {
+            return summaryWithoutSourcePrefix(perWeek)
+        }
+        return summaryWithoutSourcePrefix(program.programSummary)
     }
 
     func syncSelectedWeekWithCurrentProgram() {

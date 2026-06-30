@@ -21,6 +21,7 @@ class WorkoutProgram {
     var analysisJSON: String = ""
     var validatorWarnings: String = ""
     var lastGenerationBundle: String = ""
+    var weekSummariesJSON: String = ""
 
     @Relationship(deleteRule: .cascade, inverse: \WorkoutDay.program)
     var days: [WorkoutDay] = []
@@ -38,7 +39,8 @@ class WorkoutProgram {
         maxWeeks: Int = 4,
         analysisJSON: String = "",
         validatorWarnings: String = "",
-        lastGenerationBundle: String = ""
+        lastGenerationBundle: String = "",
+        weekSummariesJSON: String = ""
     ) {
         self.id = UUID()
         self.createdDate = .now
@@ -55,6 +57,28 @@ class WorkoutProgram {
         self.analysisJSON = analysisJSON
         self.validatorWarnings = validatorWarnings
         self.lastGenerationBundle = lastGenerationBundle
+        self.weekSummariesJSON = weekSummariesJSON
+    }
+
+    func weekSummary(for week: Int) -> String? {
+        guard let data = weekSummariesJSON.data(using: .utf8),
+              let map = try? JSONDecoder().decode([String: String].self, from: data) else {
+            return nil
+        }
+        return map[String(week)]
+    }
+
+    func setWeekSummary(_ summary: String, for week: Int) {
+        var map: [String: String] = [:]
+        if let data = weekSummariesJSON.data(using: .utf8),
+           let existing = try? JSONDecoder().decode([String: String].self, from: data) {
+            map = existing
+        }
+        map[String(week)] = summary
+        if let encoded = try? JSONEncoder().encode(map),
+           let json = String(data: encoded, encoding: .utf8) {
+            weekSummariesJSON = json
+        }
     }
 
     var sortedDays: [WorkoutDay] {

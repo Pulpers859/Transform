@@ -486,11 +486,11 @@ extension ClaudeService {
                     from: day.notes,
                     fallback: "\(day.muscleGroups) focus."
                 )
-                let anchorWork = day.exercises.prefix(4).map { exercise in
+                let anchorWork = day.exercises.prefix(6).map { exercise in
                     let target = exercise.muscleTarget.trimmedOr(default: "primary work")
                     return "\(exercise.exerciseName) \(exercise.sets)x\(exercise.reps) (\(target))"
                 }.joined(separator: "; ")
-                let accessoryCount = max(day.exercises.count - 4, 0)
+                let accessoryCount = max(day.exercises.count - 6, 0)
                 let accessoryNote = accessoryCount > 0 ? " +\(accessoryCount) accessory movements" : ""
 
                 return "Day \(day.dayNumber) - \(day.dayName) [\(day.muscleGroups)]: Focus \(sessionFocus) Anchors: \(anchorWork)\(accessoryNote)."
