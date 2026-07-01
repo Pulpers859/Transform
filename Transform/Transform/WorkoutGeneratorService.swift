@@ -271,7 +271,7 @@ extension ClaudeService {
                 )
             }
 
-            if best.issues.allSatisfy({ validationDisposition(for: $0) == .acceptableWarning }) {
+            if best.issues.allSatisfy({ validationDisposition(for: $0, menuLocked: true) == .acceptableWarning }) {
                 print("[WorkoutGeneratorService] Week 1 best candidate accepted with acceptable warnings: \(best.issues.joined(separator: " | "))")
                 attemptTrace.append("Best candidate accepted with acceptable warnings")
                 let labeled = labeledProgramResponse(best.response, sourceLabel: aiSourceLabel)
@@ -306,7 +306,7 @@ extension ClaudeService {
                         bundleText: buildBundle(response: labeled, warnings: [], usedFallback: false)
                     )
                 }
-                if trimmedIssues.allSatisfy({ validationDisposition(for: $0) == .acceptableWarning }) {
+                if trimmedIssues.allSatisfy({ validationDisposition(for: $0, menuLocked: true) == .acceptableWarning }) {
                     print("[WorkoutGeneratorService] Week 1 best candidate accepted after trim with warnings: \(trimmedIssues.joined(separator: " | "))")
                     attemptTrace.append("Best candidate accepted after trim with acceptable warnings")
                     let labeled = labeledProgramResponse(trimmed, sourceLabel: aiSourceLabel)
@@ -368,7 +368,7 @@ extension ClaudeService {
                         days: corrTrimDays
                     )
                     let corrTrimIssues = validateProgramResponse(corrTrimmed, blueprint: blueprint, expectedExerciseMenus: exerciseMenus)
-                    if corrTrimIssues.isEmpty || shouldAcceptAIOutput(despite: corrTrimIssues) {
+                    if corrTrimIssues.isEmpty || shouldAcceptAIOutput(despite: corrTrimIssues, menuLocked: true) {
                         let finalIssues = corrTrimIssues.isEmpty ? [] : corrTrimIssues
                         attemptTrace.append("Correction pass: Accepted after trim\(finalIssues.isEmpty ? "" : " with warnings")")
                         let labeled = labeledProgramResponse(corrTrimmed, sourceLabel: aiSourceLabel)
@@ -381,7 +381,7 @@ extension ClaudeService {
                 }
 
                 // Accept correction if permissible on final attempt
-                if shouldAcceptAIOutput(despite: correctedIssues) {
+                if shouldAcceptAIOutput(despite: correctedIssues, menuLocked: true) {
                     attemptTrace.append("Correction pass: Accepted with warnings (score \(scoreValidationIssues(correctedIssues)))")
                     let labeled = labeledProgramResponse(correctedCleaned, sourceLabel: aiSourceLabel)
                     return WorkoutProgramGenerationResult(
@@ -624,7 +624,7 @@ extension ClaudeService {
                 )
             }
 
-            if best.issues.allSatisfy({ validationDisposition(for: $0) == .acceptableWarning }) {
+            if best.issues.allSatisfy({ validationDisposition(for: $0, menuLocked: true) == .acceptableWarning }) {
                 print("[WorkoutGeneratorService] Week \(weekNumber) best candidate accepted with acceptable warnings: \(best.issues.joined(separator: " | "))")
                 attemptTrace.append("Best candidate accepted with acceptable warnings")
                 let labeled = labeledWeekResponse(best.response, sourceLabel: aiSourceLabel)
@@ -661,7 +661,7 @@ extension ClaudeService {
                         bundleText: buildWeekBundle(weekSummary: labeled.weekSummary, days: labeled.days, warnings: [], usedFallback: false)
                     )
                 }
-                if trimmedIssues.allSatisfy({ validationDisposition(for: $0) == .acceptableWarning }) {
+                if trimmedIssues.allSatisfy({ validationDisposition(for: $0, menuLocked: true) == .acceptableWarning }) {
                     print("[WorkoutGeneratorService] Week \(weekNumber) best candidate accepted after trim with warnings: \(trimmedIssues.joined(separator: " | "))")
                     attemptTrace.append("Best candidate accepted after trim with acceptable warnings")
                     let labeled = labeledWeekResponse(trimmed, sourceLabel: aiSourceLabel)
@@ -732,7 +732,7 @@ extension ClaudeService {
                         blueprint: blueprint,
                         expectedExerciseMenus: exerciseMenus
                     )
-                    if corrTrimIssues.isEmpty || shouldAcceptAIOutput(despite: corrTrimIssues) {
+                    if corrTrimIssues.isEmpty || shouldAcceptAIOutput(despite: corrTrimIssues, menuLocked: true) {
                         let finalIssues = corrTrimIssues.isEmpty ? [] : corrTrimIssues
                         attemptTrace.append("Correction pass: Accepted after trim\(finalIssues.isEmpty ? "" : " with warnings")")
                         let labeled = labeledWeekResponse(corrTrimmed, sourceLabel: aiSourceLabel)
@@ -746,7 +746,7 @@ extension ClaudeService {
 
                 // Accept correction result if it's better than the parallel best
                 let correctedScore = scoreValidationIssues(correctedIssues)
-                if shouldAcceptAIOutput(despite: correctedIssues) {
+                if shouldAcceptAIOutput(despite: correctedIssues, menuLocked: true) {
                     attemptTrace.append("Correction pass: Accepted with warnings (score \(correctedScore))")
                     let labeled = labeledWeekResponse(correctedCleaned, sourceLabel: aiSourceLabel)
                     return WorkoutWeekGenerationResult(
@@ -979,7 +979,7 @@ extension ClaudeService {
                                 )
                                 let trimmedIssues = validateProgramResponse(trimmedProgram, blueprint: blueprint, expectedExerciseMenus: exerciseMenus)
                                 let trimmedPayload = try? encodeDebugJSONString(trimmedProgram)
-                                if trimmedIssues.isEmpty || shouldAcceptAIOutput(despite: trimmedIssues) {
+                                if trimmedIssues.isEmpty || shouldAcceptAIOutput(despite: trimmedIssues, menuLocked: true) {
                                     attempts.append(
                                         WorkoutGeneratorDebugAttempt(
                                             attemptNumber: attempt,
@@ -1017,7 +1017,7 @@ extension ClaudeService {
                             }
                         }
 
-                        if shouldAcceptAIOutput(despite: issues) {
+                        if shouldAcceptAIOutput(despite: issues, menuLocked: true) {
                             attempts.append(
                                 WorkoutGeneratorDebugAttempt(
                                     attemptNumber: attempt,
@@ -1433,7 +1433,7 @@ extension ClaudeService {
                                     expectedExerciseMenus: exerciseMenus
                                 )
                                 let trimmedPayload = try? encodeDebugJSONString(trimmedWeek)
-                                if trimmedIssues.isEmpty || shouldAcceptAIOutput(despite: trimmedIssues) {
+                                if trimmedIssues.isEmpty || shouldAcceptAIOutput(despite: trimmedIssues, menuLocked: true) {
                                     attempts.append(
                                         WorkoutGeneratorDebugAttempt(
                                             attemptNumber: attempt,
@@ -1470,7 +1470,7 @@ extension ClaudeService {
                             }
                         }
 
-                        if shouldAcceptAIOutput(despite: issues) {
+                        if shouldAcceptAIOutput(despite: issues, menuLocked: true) {
                             attempts.append(
                                 WorkoutGeneratorDebugAttempt(
                                     attemptNumber: attempt,

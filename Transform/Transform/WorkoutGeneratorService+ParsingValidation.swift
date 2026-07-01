@@ -642,13 +642,16 @@ extension ClaudeService {
         return issues.filter { seen.insert($0).inserted }
     }
 
-    func shouldAcceptAIOutput(despite issues: [String]) -> Bool {
+    func shouldAcceptAIOutput(despite issues: [String], menuLocked: Bool = false) -> Bool {
         guard !issues.isEmpty else { return false }
-        return issues.allSatisfy { validationDisposition(for: $0) == .acceptableWarning }
+        return issues.allSatisfy { validationDisposition(for: $0, menuLocked: menuLocked) == .acceptableWarning }
     }
 
-    func validationDisposition(for issue: String) -> ValidationIssueDisposition {
+    func validationDisposition(for issue: String, menuLocked: Bool = false) -> ValidationIssueDisposition {
         if matchesValidationIssue(issue, patterns: acceptableWarningIssuePatterns) {
+            return .acceptableWarning
+        }
+        if menuLocked && matchesValidationIssue(issue, patterns: menuLockedDemotionPatterns) {
             return .acceptableWarning
         }
         if matchesValidationIssue(issue, patterns: correctionWorthyIssuePatterns)
@@ -717,6 +720,15 @@ extension ClaudeService {
             "substitution changes the primary muscle target",
             "substitution significantly increases fatigue",
             "did not follow the Pre-Selected Exercise Menu"
+        ]
+    }
+
+    var menuLockedDemotionPatterns: [String] {
+        [
+            "missed its frequency target",
+            "minimum viable stimulus threshold",
+            "uses too many weekly exercise variations",
+            "was supposed to emphasize"
         ]
     }
 

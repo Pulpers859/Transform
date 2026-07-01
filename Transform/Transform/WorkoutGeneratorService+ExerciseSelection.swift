@@ -89,7 +89,8 @@ extension ClaudeService {
         _ selected: [(name: String, target: String)],
         targetCount: Int,
         focusIntent: MusclePriorityIntent,
-        selectionLimit: Int
+        selectionLimit: Int,
+        protectedPrefixCount: Int = 0
     ) -> [(name: String, target: String)] {
         var result = selected
 
@@ -104,6 +105,7 @@ extension ClaudeService {
 
             if result.count >= selectionLimit {
                 guard let removalIndex = result.indices.reversed().first(where: { index in
+                    index >= protectedPrefixCount &&
                     !exerciseMatchesTrainingIntent(name: result[index].name, target: result[index].target, intent: focusIntent)
                 }) else {
                     break
@@ -121,7 +123,8 @@ extension ClaudeService {
         _ selected: [(name: String, target: String)],
         focusIntent: MusclePriorityIntent?,
         supportIntents: [MusclePriorityIntent],
-        selectionLimit: Int
+        selectionLimit: Int,
+        protectedPrefixCount: Int = 0
     ) -> [(name: String, target: String)] {
         var result = selected
 
@@ -137,6 +140,7 @@ extension ClaudeService {
 
                 if result.count >= selectionLimit {
                     guard let removalIndex = result.indices.reversed().first(where: { index in
+                        guard index >= protectedPrefixCount else { return false }
                         if let focusIntent,
                            exerciseMatchesTrainingIntent(
                                name: result[index].name,
@@ -1022,9 +1026,14 @@ extension ClaudeService {
     ) -> [[PreSelectedExercise]] {
         let previousExercisesByStyle = proceduralPreviousExercisesByStyle(from: previousWeekDays)
         var previousUsageByStyle: [String: Int] = [:]
+        var usedAcrossDays = Set<String>()
+        var allMenus: [[PreSelectedExercise]] = []
 
-        return blueprint.dayPlans.map { plan in
-            guard !plan.isRestDay else { return [] }
+        for plan in blueprint.dayPlans {
+            guard !plan.isRestDay else {
+                allMenus.append([])
+                continue
+            }
 
             let style = plan.style
             let focusIntent = focusIntentForArea(plan.focusArea, within: trainingIntent)
@@ -1047,7 +1056,7 @@ extension ClaudeService {
 
             let targetCount = weekNumber == 4 ? 5 : 6
             var selected: [(name: String, target: String)] = []
-            var used = Set<String>()
+            var used = usedAcrossDays
 
             let retained = retainedAnchorExercises(from: previousExercises, style: style)
                 .filter { exercise in
@@ -1065,7 +1074,8 @@ extension ClaudeService {
                 used.insert(key)
                 selected.append((exercise.exerciseName, exercise.muscleTarget))
             }
-            let lockedPrefixCount = focusIntent == nil ? selected.count : 0
+            let retainedCount = selected.count
+            let lockedPrefixCount = focusIntent == nil ? retainedCount : 0
 
             let catalog = orderedExerciseCatalog(
                 for: style,
@@ -1096,7 +1106,8 @@ extension ClaudeService {
                     selected,
                     targetCount: focusExerciseTargetCount(for: focusIntent),
                     focusIntent: focusIntent,
-                    selectionLimit: targetCount
+                    selectionLimit: targetCount,
+                    protectedPrefixCount: retainedCount
                 )
             }
 
@@ -1105,17 +1116,22 @@ extension ClaudeService {
                     selected,
                     focusIntent: focusIntent,
                     supportIntents: supportIntents,
-                    selectionLimit: targetCount
+                    selectionLimit: targetCount,
+                    protectedPrefixCount: retainedCount
                 )
             }
 
             let arranged = arrangeProceduralSelection(
-                Array(selected.prefix(8)),
+                Array(selected.prefix(targetCount)),
                 lockedPrefixCount: lockedPrefixCount,
                 focusIntent: focusIntent
             )
 
-            return arranged.map { item in
+            for item in arranged {
+                usedAcrossDays.insert(normalizeExerciseName(item.name))
+            }
+
+            allMenus.append(arranged.map { item in
                 let metadata = exerciseMetadata(forExerciseName: item.name, muscleTarget: item.target)
                 let role = proceduralExerciseRole(for: item.name, muscleTarget: item.target)
                 return PreSelectedExercise(
@@ -1124,8 +1140,10 @@ extension ClaudeService {
                     movementPattern: metadata.movementPattern,
                     role: role
                 )
-            }
+            })
         }
+
+        return allMenus
     }
 
 }

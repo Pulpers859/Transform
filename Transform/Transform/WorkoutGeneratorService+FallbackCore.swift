@@ -1062,7 +1062,8 @@ extension ClaudeService {
             used.insert(key)
             selected.append((exercise.exerciseName, exercise.muscleTarget))
         }
-        let lockedPrefixCount = focusIntent == nil ? selected.count : 0
+        let retainedCount = selected.count
+        let lockedPrefixCount = focusIntent == nil ? retainedCount : 0
 
         let catalog = orderedExerciseCatalog(
             for: style,
@@ -1093,7 +1094,8 @@ extension ClaudeService {
                 selected,
                 targetCount: focusExerciseTargetCount(for: focusIntent),
                 focusIntent: focusIntent,
-                selectionLimit: targetCount
+                selectionLimit: targetCount,
+                protectedPrefixCount: retainedCount
             )
         }
 
@@ -1102,7 +1104,8 @@ extension ClaudeService {
                 selected,
                 focusIntent: focusIntent,
                 supportIntents: supportIntents,
-                selectionLimit: targetCount
+                selectionLimit: targetCount,
+                protectedPrefixCount: retainedCount
             )
         }
 
