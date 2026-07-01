@@ -90,7 +90,8 @@ extension ClaudeService {
         targetCount: Int,
         focusIntent: MusclePriorityIntent,
         selectionLimit: Int,
-        protectedPrefixCount: Int = 0
+        protectedPrefixCount: Int = 0,
+        usedAcrossDays: Set<String> = []
     ) -> [(name: String, target: String)] {
         var result = selected
 
@@ -101,6 +102,7 @@ extension ClaudeService {
         for candidate in priorityAccessoryCatalog(for: focusIntent) {
             guard focusMatchCount(in: result) < targetCount else { break }
             let candidateKey = normalizeExerciseName(candidate.name)
+            guard !usedAcrossDays.contains(candidateKey) else { continue }
             guard !result.contains(where: { normalizeExerciseName($0.name) == candidateKey }) else { continue }
 
             if result.count >= selectionLimit {
@@ -124,7 +126,8 @@ extension ClaudeService {
         focusIntent: MusclePriorityIntent?,
         supportIntents: [MusclePriorityIntent],
         selectionLimit: Int,
-        protectedPrefixCount: Int = 0
+        protectedPrefixCount: Int = 0,
+        usedAcrossDays: Set<String> = []
     ) -> [(name: String, target: String)] {
         var result = selected
 
@@ -136,6 +139,7 @@ extension ClaudeService {
 
             for candidate in priorityAccessoryCatalog(for: supportIntent) {
                 let candidateKey = normalizeExerciseName(candidate.name)
+                guard !usedAcrossDays.contains(candidateKey) else { continue }
                 guard !result.contains(where: { normalizeExerciseName($0.name) == candidateKey }) else { continue }
 
                 if result.count >= selectionLimit {
@@ -1107,7 +1111,8 @@ extension ClaudeService {
                     targetCount: focusExerciseTargetCount(for: focusIntent),
                     focusIntent: focusIntent,
                     selectionLimit: targetCount,
-                    protectedPrefixCount: retainedCount
+                    protectedPrefixCount: retainedCount,
+                    usedAcrossDays: usedAcrossDays
                 )
             }
 
@@ -1117,7 +1122,8 @@ extension ClaudeService {
                     focusIntent: focusIntent,
                     supportIntents: supportIntents,
                     selectionLimit: targetCount,
-                    protectedPrefixCount: retainedCount
+                    protectedPrefixCount: retainedCount,
+                    usedAcrossDays: usedAcrossDays
                 )
             }
 

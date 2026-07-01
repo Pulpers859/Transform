@@ -1110,7 +1110,7 @@ extension ClaudeService {
         }
 
         let arranged = arrangeProceduralSelection(
-            Array(selected.prefix(8)),
+            Array(selected.prefix(targetCount)),
             lockedPrefixCount: lockedPrefixCount,
             focusIntent: focusIntent
         )

@@ -654,8 +654,12 @@ extension ClaudeService {
         if menuLocked && matchesValidationIssue(issue, patterns: menuLockedDemotionPatterns) {
             return .acceptableWarning
         }
+        let isPrimeHypertrophyMiss = issue.contains("targets") && issue.contains("but never includes a prime")
+        if menuLocked && isPrimeHypertrophyMiss {
+            return .acceptableWarning
+        }
         if matchesValidationIssue(issue, patterns: correctionWorthyIssuePatterns)
-            || (issue.contains("targets") && issue.contains("but never includes a prime")) {
+            || isPrimeHypertrophyMiss {
             return .correctionPass
         }
         return .hardFailure
@@ -728,7 +732,12 @@ extension ClaudeService {
             "missed its frequency target",
             "minimum viable stimulus threshold",
             "uses too many weekly exercise variations",
-            "was supposed to emphasize"
+            "was supposed to emphasize",
+            "but never includes a prime",
+            "opens its",
+            "is supposed to emphasize quads",
+            "stacks too many",
+            "the generated day reads as"
         ]
     }
 
