@@ -85,6 +85,15 @@ extension ClaudeService {
         return max(1, min(3, perSessionTarget))
     }
 
+    func metadataFocusExerciseCatalog(for focusArea: String) -> [(name: String, target: String)] {
+        let aliases = Set(stimulusAreaAliases(for: focusArea))
+        guard !aliases.isEmpty else { return [] }
+        return exerciseMetadataEntries
+            .filter { !aliases.isDisjoint(with: Set($0.primaryAreas)) }
+            .sorted { $0.fatigueCost < $1.fatigueCost }
+            .map { ($0.canonicalName, $0.primaryAreas.first ?? focusArea) }
+    }
+
     func enforceFocusExerciseCoverage(
         _ selected: [(name: String, target: String)],
         targetCount: Int,
@@ -100,24 +109,33 @@ extension ClaudeService {
             exercises.filter { exerciseMatchesTrainingIntent(name: $0.name, target: $0.target, intent: focusIntent) }.count
         }
 
-        for candidate in priorityAccessoryCatalog(for: focusIntent) {
-            guard focusMatchCount(in: result) < targetCount else { break }
-            let candidateKey = normalizeExerciseName(candidate.name)
-            guard !usedAcrossDays.contains(candidateKey) else { continue }
-            guard !avoidedExercises.contains(ExerciseWeightEntry.canonicalLookupKey(candidate.name)) else { continue }
-            guard !result.contains(where: { normalizeExerciseName($0.name) == candidateKey }) else { continue }
+        func injectFocusCandidates(from catalog: [(name: String, target: String)]) {
+            for candidate in catalog {
+                guard focusMatchCount(in: result) < targetCount else { return }
+                guard exerciseMatchesTrainingIntent(name: candidate.name, target: candidate.target, intent: focusIntent) else { continue }
+                let candidateKey = normalizeExerciseName(candidate.name)
+                guard !usedAcrossDays.contains(candidateKey) else { continue }
+                guard !avoidedExercises.contains(ExerciseWeightEntry.canonicalLookupKey(candidate.name)) else { continue }
+                guard !result.contains(where: { normalizeExerciseName($0.name) == candidateKey }) else { continue }
 
-            if result.count >= selectionLimit {
-                guard let removalIndex = result.indices.reversed().first(where: { index in
-                    index >= protectedPrefixCount &&
-                    !exerciseMatchesTrainingIntent(name: result[index].name, target: result[index].target, intent: focusIntent)
-                }) else {
-                    break
+                if result.count >= selectionLimit {
+                    guard let removalIndex = result.indices.reversed().first(where: { index in
+                        index >= protectedPrefixCount &&
+                        !exerciseMatchesTrainingIntent(name: result[index].name, target: result[index].target, intent: focusIntent)
+                    }) else {
+                        return
+                    }
+                    result.remove(at: removalIndex)
                 }
-                result.remove(at: removalIndex)
-            }
 
-            result.append(candidate)
+                result.append(candidate)
+            }
+        }
+
+        injectFocusCandidates(from: priorityAccessoryCatalog(for: focusIntent))
+
+        if focusMatchCount(in: result) < targetCount {
+            injectFocusCandidates(from: metadataFocusExerciseCatalog(for: focusIntent.area))
         }
 
         return result
@@ -140,38 +158,48 @@ extension ClaudeService {
             }
             if alreadyCovered { continue }
 
-            for candidate in priorityAccessoryCatalog(for: supportIntent) {
-                let candidateKey = normalizeExerciseName(candidate.name)
-                guard !usedAcrossDays.contains(candidateKey) else { continue }
-                guard !avoidedExercises.contains(ExerciseWeightEntry.canonicalLookupKey(candidate.name)) else { continue }
-                guard !result.contains(where: { normalizeExerciseName($0.name) == candidateKey }) else { continue }
+            let catalogs: [[(name: String, target: String)]] = [
+                priorityAccessoryCatalog(for: supportIntent),
+                metadataFocusExerciseCatalog(for: supportIntent.area)
+            ]
 
-                if result.count >= selectionLimit {
-                    guard let removalIndex = result.indices.reversed().first(where: { index in
-                        guard index >= protectedPrefixCount else { return false }
-                        if let focusIntent,
-                           exerciseMatchesTrainingIntent(
-                               name: result[index].name,
-                               target: result[index].target,
-                               intent: focusIntent
-                           ) {
-                            return false
+            var added = false
+            for catalog in catalogs where !added {
+                for candidate in catalog {
+                    guard exerciseMatchesTrainingIntent(name: candidate.name, target: candidate.target, intent: supportIntent) else { continue }
+                    let candidateKey = normalizeExerciseName(candidate.name)
+                    guard !usedAcrossDays.contains(candidateKey) else { continue }
+                    guard !avoidedExercises.contains(ExerciseWeightEntry.canonicalLookupKey(candidate.name)) else { continue }
+                    guard !result.contains(where: { normalizeExerciseName($0.name) == candidateKey }) else { continue }
+
+                    if result.count >= selectionLimit {
+                        guard let removalIndex = result.indices.reversed().first(where: { index in
+                            guard index >= protectedPrefixCount else { return false }
+                            if let focusIntent,
+                               exerciseMatchesTrainingIntent(
+                                   name: result[index].name,
+                                   target: result[index].target,
+                                   intent: focusIntent
+                               ) {
+                                return false
+                            }
+                            return !supportIntents.contains { intent in
+                                exerciseMatchesTrainingIntent(
+                                    name: result[index].name,
+                                    target: result[index].target,
+                                    intent: intent
+                                )
+                            }
+                        }) else {
+                            break
                         }
-                        return !supportIntents.contains { intent in
-                            exerciseMatchesTrainingIntent(
-                                name: result[index].name,
-                                target: result[index].target,
-                                intent: intent
-                            )
-                        }
-                    }) else {
-                        break
+                        result.remove(at: removalIndex)
                     }
-                    result.remove(at: removalIndex)
-                }
 
-                result.append(candidate)
-                break
+                    result.append(candidate)
+                    added = true
+                    break
+                }
             }
         }
 

@@ -1762,7 +1762,7 @@ extension ClaudeService {
             ),
             PriorityFocusProfile(
                 label: "Core/Abs",
-                triggerKeywords: ["core", "abs", "abdominal", "oblique", "serratus", "midsection"],
+                triggerKeywords: ["core", "abs", "abdominal", "oblique", "serratus", "midsection", "rectus"],
                 coverageKeywords: ["core", "abs", "abdominal", "oblique", "serratus", "crunch", "plank", "pallof", "rollout", "leg raise", "knee raise"],
                 preferredStyles: ["Legs", "Lower", "Upper"],
                 accessoryCatalog: coreExerciseCatalog()
@@ -1867,7 +1867,12 @@ extension ClaudeService {
 
     func exerciseMatchesTrainingIntent(name: String, target: String, intent: MusclePriorityIntent) -> Bool {
         let combined = normalizedPriorityText("\(name) \(target)")
-        return containsPriorityPhrase(in: combined, keywords: intent.coverageKeywords)
+        if containsPriorityPhrase(in: combined, keywords: intent.coverageKeywords) {
+            return true
+        }
+        let aliases = Set(stimulusAreaAliases(for: intent.area))
+        let metadata = exerciseMetadata(forExerciseName: name, muscleTarget: target)
+        return !aliases.isDisjoint(with: Set(metadata.primaryAreas))
     }
 
     func exerciseMatchesDayStyle(_ exercise: WorkoutExerciseResponse, style: String) -> Bool {
