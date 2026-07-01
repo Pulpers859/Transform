@@ -136,7 +136,7 @@ extension ClaudeService {
 
     // MARK: - Generate Week 1 (Initial)
 
-    func generateWeekOne(from analysisResult: BodyAnalysisResult, performanceHistory: String? = nil, skipHistory: String? = nil) async throws -> WorkoutProgramGenerationResult {
+    func generateWeekOne(from analysisResult: BodyAnalysisResult, performanceHistory: String? = nil, skipHistory: String? = nil, exerciseHistory: ExerciseHistoryContext? = nil) async throws -> WorkoutProgramGenerationResult {
         WorkoutGenerationDiagnostics.markStage("building week 1 analysis context")
         let analysisSummary = analysisContext(from: analysisResult)
         let trainingIntent = trainingIntentPlan(from: analysisResult)
@@ -152,7 +152,8 @@ extension ClaudeService {
             for: blueprint,
             trainingIntent: trainingIntent,
             weekNumber: 1,
-            previousWeekDays: nil
+            previousWeekDays: nil,
+            exerciseHistory: exerciseHistory
         )
         let menuContext = exerciseMenuContext(from: exerciseMenus, blueprint: blueprint)
 
@@ -448,7 +449,8 @@ extension ClaudeService {
         programName: String,
         performanceHistory: String? = nil,
         sessionFeedbackSummary: String? = nil,
-        skipHistory: String? = nil
+        skipHistory: String? = nil,
+        exerciseHistory: ExerciseHistoryContext? = nil
     ) async throws -> WorkoutWeekGenerationResult {
         let dayStart = ((weekNumber - 1) * 7) + 1
         let dayEnd = weekNumber * 7
@@ -482,7 +484,8 @@ extension ClaudeService {
             for: blueprint,
             trainingIntent: trainingIntent,
             weekNumber: weekNumber,
-            previousWeekDays: previousWeekDays.isEmpty ? nil : previousWeekDays
+            previousWeekDays: previousWeekDays.isEmpty ? nil : previousWeekDays,
+            exerciseHistory: exerciseHistory
         )
         let menuContext = exerciseMenuContext(from: exerciseMenus, blueprint: blueprint, dayStart: dayStart)
 

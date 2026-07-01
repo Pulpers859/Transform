@@ -694,12 +694,14 @@ struct WorkoutView: View {
 
         do {
             let performanceHistory = compactPerformanceHistory(from: exerciseWeightEntries)
+            let history = exerciseHistoryContext(from: programs)
             // `programs` includes archived mesocycles, so skip/pain patterns persist
             // across program boundaries.
             let generationResult = try await ClaudeService.shared.generateWeekOne(
                 from: result,
                 performanceHistory: performanceHistory,
-                skipHistory: recurringSkipHistory(across: programs)
+                skipHistory: recurringSkipHistory(across: programs),
+                exerciseHistory: history
             )
             let response = generationResult.response
             try Task.checkCancellation()
@@ -789,6 +791,7 @@ struct WorkoutView: View {
         do {
             WorkoutGenerationDiagnostics.markStage("requesting week \(nextWeek) program from AI")
             let performanceHistory = compactPerformanceHistory(from: exerciseWeightEntries)
+            let history = exerciseHistoryContext(from: programs)
             let generationResult = try await ClaudeService.shared.generateNextWeek(
                 weekNumber: nextWeek,
                 previousWeekJSON: program.programJSON,
@@ -800,7 +803,8 @@ struct WorkoutView: View {
                     for: program,
                     weekNumber: program.currentWeek
                 ),
-                skipHistory: recurringSkipHistory(across: programs)
+                skipHistory: recurringSkipHistory(across: programs),
+                exerciseHistory: history
             )
             let response = generationResult.response
             try Task.checkCancellation()
@@ -1038,6 +1042,57 @@ struct WorkoutView: View {
             return "\(entry.name): \(reasonParts.joined(separator: ", "))"
         }
         return lines.joined(separator: "\n")
+    }
+
+    func exerciseHistoryContext(from programs: [WorkoutProgram]) -> ClaudeService.ExerciseHistoryContext {
+        var painExercises = Set<String>()
+        var equipmentSkipExercises = Set<String>()
+        var priorMesocycleExercises = Set<String>()
+
+        var painCounts: [String: Int] = [:]
+        var equipmentCounts: [String: Int] = [:]
+
+        for program in programs {
+            let isArchived = program.isArchived
+            for day in program.sortedDays where !day.isRestDay {
+                for exercise in day.sortedExercises {
+                    let key = ExerciseWeightEntry.canonicalLookupKey(exercise.exerciseName)
+                    guard !key.isEmpty else { continue }
+
+                    if isArchived {
+                        priorMesocycleExercises.insert(key)
+                    }
+
+                    guard let status = exercise.completionStatus, status != .completed else { continue }
+                    switch status {
+                    case .skippedPain:
+                        painCounts[key, default: 0] += 1
+                    case .skippedEquipment:
+                        equipmentCounts[key, default: 0] += 1
+                    default:
+                        break
+                    }
+                }
+            }
+        }
+
+        for (key, count) in painCounts where count >= 1 {
+            painExercises.insert(key)
+        }
+        for (key, count) in equipmentCounts where count >= 2 {
+            equipmentSkipExercises.insert(key)
+        }
+
+        let activeCount = programs.filter { !$0.isArchived }.count
+        let archivedCount = programs.filter { $0.isArchived }.count
+        let mesocycleIndex = activeCount > 0 ? archivedCount : max(0, archivedCount - 1)
+
+        return ClaudeService.ExerciseHistoryContext(
+            painExercises: painExercises,
+            equipmentSkipExercises: equipmentSkipExercises,
+            priorMesocycleExercises: priorMesocycleExercises,
+            mesocycleIndex: mesocycleIndex
+        )
     }
 
     func deleteProgram(_ program: WorkoutProgram) {

@@ -233,6 +233,13 @@ extension ClaudeService {
         let role: ProceduralExerciseRole
     }
 
+    struct ExerciseHistoryContext {
+        let painExercises: Set<String>
+        let equipmentSkipExercises: Set<String>
+        let priorMesocycleExercises: Set<String>
+        let mesocycleIndex: Int
+    }
+
     struct WeekDiffEntry: Identifiable {
         let id = UUID()
         let dayNumber: Int

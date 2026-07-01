@@ -91,7 +91,8 @@ extension ClaudeService {
         focusIntent: MusclePriorityIntent,
         selectionLimit: Int,
         protectedPrefixCount: Int = 0,
-        usedAcrossDays: Set<String> = []
+        usedAcrossDays: Set<String> = [],
+        avoidedExercises: Set<String> = []
     ) -> [(name: String, target: String)] {
         var result = selected
 
@@ -103,6 +104,7 @@ extension ClaudeService {
             guard focusMatchCount(in: result) < targetCount else { break }
             let candidateKey = normalizeExerciseName(candidate.name)
             guard !usedAcrossDays.contains(candidateKey) else { continue }
+            guard !avoidedExercises.contains(ExerciseWeightEntry.canonicalLookupKey(candidate.name)) else { continue }
             guard !result.contains(where: { normalizeExerciseName($0.name) == candidateKey }) else { continue }
 
             if result.count >= selectionLimit {
@@ -127,7 +129,8 @@ extension ClaudeService {
         supportIntents: [MusclePriorityIntent],
         selectionLimit: Int,
         protectedPrefixCount: Int = 0,
-        usedAcrossDays: Set<String> = []
+        usedAcrossDays: Set<String> = [],
+        avoidedExercises: Set<String> = []
     ) -> [(name: String, target: String)] {
         var result = selected
 
@@ -140,6 +143,7 @@ extension ClaudeService {
             for candidate in priorityAccessoryCatalog(for: supportIntent) {
                 let candidateKey = normalizeExerciseName(candidate.name)
                 guard !usedAcrossDays.contains(candidateKey) else { continue }
+                guard !avoidedExercises.contains(ExerciseWeightEntry.canonicalLookupKey(candidate.name)) else { continue }
                 guard !result.contains(where: { normalizeExerciseName($0.name) == candidateKey }) else { continue }
 
                 if result.count >= selectionLimit {
@@ -1026,12 +1030,17 @@ extension ClaudeService {
         for blueprint: ProgramBlueprint,
         trainingIntent: TrainingIntentPlan,
         weekNumber: Int,
-        previousWeekDays: [WorkoutDayResponse]?
+        previousWeekDays: [WorkoutDayResponse]?,
+        exerciseHistory: ExerciseHistoryContext? = nil
     ) -> [[PreSelectedExercise]] {
         let previousExercisesByStyle = proceduralPreviousExercisesByStyle(from: previousWeekDays)
         var previousUsageByStyle: [String: Int] = [:]
         var usedAcrossDays = Set<String>()
         var allMenus: [[PreSelectedExercise]] = []
+
+        let avoidedExercises = exerciseHistory?.painExercises ?? []
+        let deprioritizedExercises = exerciseHistory?.equipmentSkipExercises ?? []
+        let catalogOffset = exerciseHistory.map { variationCatalogOffset(for: $0) } ?? 0
 
         for plan in blueprint.dayPlans {
             guard !plan.isRestDay else {
@@ -1064,6 +1073,8 @@ extension ClaudeService {
 
             let retained = retainedAnchorExercises(from: previousExercises, style: style)
                 .filter { exercise in
+                    let canonKey = ExerciseWeightEntry.canonicalLookupKey(exercise.exerciseName)
+                    if avoidedExercises.contains(canonKey) { return false }
                     guard let focusIntent else { return true }
                     return focusStimulusKind(
                         exerciseName: exercise.exerciseName,
@@ -1081,10 +1092,18 @@ extension ClaudeService {
             let retainedCount = selected.count
             let lockedPrefixCount = focusIntent == nil ? retainedCount : 0
 
-            let catalog = orderedExerciseCatalog(
+            let rawCatalog = orderedExerciseCatalog(
                 for: style,
                 focusIntent: focusIntent,
                 selectionContext: selectionContext
+            )
+            let catalog = applyHistoryFilters(
+                rawCatalog,
+                avoidedExercises: avoidedExercises,
+                deprioritizedExercises: deprioritizedExercises,
+                catalogOffset: catalogOffset,
+                weekNumber: weekNumber,
+                priorMesocycleExercises: exerciseHistory?.priorMesocycleExercises ?? []
             )
             for candidate in catalog where selected.count < targetCount {
                 let key = normalizeExerciseName(candidate.name)
@@ -1094,10 +1113,19 @@ extension ClaudeService {
             }
 
             if selected.count < 5 {
-                for candidate in orderedGenericExerciseCatalog(
+                let rawGeneric = orderedGenericExerciseCatalog(
                     focusIntent: focusIntent,
                     selectionContext: selectionContext
-                ) where selected.count < 5 {
+                )
+                let generic = applyHistoryFilters(
+                    rawGeneric,
+                    avoidedExercises: avoidedExercises,
+                    deprioritizedExercises: deprioritizedExercises,
+                    catalogOffset: catalogOffset,
+                    weekNumber: weekNumber,
+                    priorMesocycleExercises: exerciseHistory?.priorMesocycleExercises ?? []
+                )
+                for candidate in generic where selected.count < 5 {
                     let key = normalizeExerciseName(candidate.name)
                     guard !used.contains(key) else { continue }
                     used.insert(key)
@@ -1112,7 +1140,8 @@ extension ClaudeService {
                     focusIntent: focusIntent,
                     selectionLimit: targetCount,
                     protectedPrefixCount: retainedCount,
-                    usedAcrossDays: usedAcrossDays
+                    usedAcrossDays: usedAcrossDays,
+                    avoidedExercises: avoidedExercises
                 )
             }
 
@@ -1123,7 +1152,8 @@ extension ClaudeService {
                     supportIntents: supportIntents,
                     selectionLimit: targetCount,
                     protectedPrefixCount: retainedCount,
-                    usedAcrossDays: usedAcrossDays
+                    usedAcrossDays: usedAcrossDays,
+                    avoidedExercises: avoidedExercises
                 )
             }
 
@@ -1150,6 +1180,56 @@ extension ClaudeService {
         }
 
         return allMenus
+    }
+
+    // MARK: - Phase 2: Exercise History Filtering
+
+    func applyHistoryFilters(
+        _ catalog: [(name: String, target: String)],
+        avoidedExercises: Set<String>,
+        deprioritizedExercises: Set<String>,
+        catalogOffset: Int,
+        weekNumber: Int,
+        priorMesocycleExercises: Set<String>
+    ) -> [(name: String, target: String)] {
+        let filtered = catalog.filter { item in
+            !avoidedExercises.contains(ExerciseWeightEntry.canonicalLookupKey(item.name))
+        }
+
+        guard filtered.count > 1 else { return filtered }
+
+        let accessoryStartIndex = filtered.firstIndex { item in
+            let role = proceduralExerciseRole(for: item.name, muscleTarget: item.target)
+            return role == .accessory || role == .core
+        } ?? filtered.count
+
+        let anchors = Array(filtered.prefix(accessoryStartIndex))
+        var accessories = Array(filtered.dropFirst(accessoryStartIndex))
+
+        if catalogOffset > 0 && accessories.count > 1 {
+            let shift = catalogOffset % accessories.count
+            if shift > 0 {
+                accessories = Array(accessories[shift...]) + Array(accessories[..<shift])
+            }
+        }
+
+        var result = anchors + accessories
+
+        let anchorCount = anchors.count
+        for i in result.indices.reversed() where i >= anchorCount {
+            let canonKey = ExerciseWeightEntry.canonicalLookupKey(result[i].name)
+            if deprioritizedExercises.contains(canonKey) {
+                let item = result.remove(at: i)
+                result.append(item)
+            }
+        }
+
+        return result
+    }
+
+    func variationCatalogOffset(for history: ExerciseHistoryContext) -> Int {
+        guard history.mesocycleIndex > 0 else { return 0 }
+        return history.mesocycleIndex
     }
 
 }
