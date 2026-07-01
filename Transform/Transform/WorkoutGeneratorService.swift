@@ -416,10 +416,11 @@ extension ClaudeService {
             blueprint: blueprint,
             diagnostic: lastIssues.joined(separator: " | ")
         )
+        let fallbackIssues = validateProgramResponse(fallbackResponse, blueprint: blueprint, expectedExerciseMenus: exerciseMenus)
         return WorkoutProgramGenerationResult(
             response: fallbackResponse,
-            validatorWarnings: lastIssues,
-            bundleText: buildBundle(response: fallbackResponse, warnings: lastIssues, usedFallback: true)
+            validatorWarnings: fallbackIssues,
+            bundleText: buildBundle(response: fallbackResponse, warnings: fallbackIssues, usedFallback: true)
         )
     }
 
@@ -787,10 +788,18 @@ extension ClaudeService {
             previousWeekDays: hasValidPreviousWeek ? previousWeekDays : nil,
             diagnostic: lastIssues.joined(separator: " | ")
         )
+        let fallbackIssues = validateWeekResponse(
+            fallbackResponse,
+            dayStart: dayStart,
+            dayEnd: dayEnd,
+            previousWeekDays: hasValidPreviousWeek ? previousWeekDays : nil,
+            blueprint: blueprint,
+            expectedExerciseMenus: exerciseMenus
+        )
         return WorkoutWeekGenerationResult(
             response: fallbackResponse,
-            validatorWarnings: lastIssues,
-            bundleText: buildWeekBundle(weekSummary: fallbackResponse.weekSummary, days: fallbackResponse.days, warnings: lastIssues, usedFallback: true)
+            validatorWarnings: fallbackIssues,
+            bundleText: buildWeekBundle(weekSummary: fallbackResponse.weekSummary, days: fallbackResponse.days, warnings: fallbackIssues, usedFallback: true)
         )
     }
 

@@ -96,24 +96,17 @@ extension ClaudeService {
         let trainingDays = generatedWeek.days.filter { !$0.isRestDay }.count
         let focusLabel = trainingIntent.priorities.map(\.area).prefix(3).joined(separator: ", ")
         let summaryFocus = focusLabel.isEmpty ? "" : " Focus areas: \(focusLabel)."
-        let diagnosticLine = diagnostic.isEmpty ? "" : "\n\nWhy fallback fired: \(truncatedDiagnostic(diagnostic))"
 
         return WorkoutProgramResponse(
             programName: programName,
             programSummary: withSourceLabel(
-                "Week 1 used analysis-driven progression logic to build complete programming.\(summaryFocus)\(diagnosticLine)",
+                "Week 1 used analysis-driven progression logic to build complete programming.\(summaryFocus)",
                 sourceLabel: fallbackSourceLabel
             ),
             splitType: splitRecommendation,
             daysPerWeek: trainingDays,
             days: generatedWeek.days
         )
-    }
-
-    func truncatedDiagnostic(_ raw: String) -> String {
-        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.count <= 400 { return trimmed }
-        return String(trimmed.prefix(400)) + "…"
     }
 
     func buildProceduralWeek(
@@ -180,7 +173,14 @@ extension ClaudeService {
 
             let dayName = focus.isEmpty ? "\(style) Session" : "\(style) - \(focus) Focus"
             let groups = proceduralMuscleGroups(for: style)
-            let notes = proceduralDayNotes(style: style, weekNumber: weekNumber, exercises: exercises, focus: focus)
+            let notes = proceduralDayNotes(
+                style: style,
+                weekNumber: weekNumber,
+                exercises: exercises,
+                focus: focus,
+                focusIntent: focusIntent,
+                blueprint: blueprint
+            )
 
             days.append(
                 WorkoutDayResponse(
@@ -201,8 +201,7 @@ extension ClaudeService {
             dayStart: dayStart
         )
 
-        let diagnosticLine = diagnostic.isEmpty ? "" : "\n\nWhy fallback fired: \(truncatedDiagnostic(diagnostic))"
-        let summary = "Week \(weekNumber) for \(programName) (\(splitType)) applies phase-aware progression and shift-work-friendly session design.\(diagnosticLine)"
+        let summary = "Week \(weekNumber) for \(programName) (\(splitType)) applies phase-aware progression and shift-work-friendly session design."
         return WorkoutWeekResponse(
             weekSummary: withSourceLabel(summary, sourceLabel: fallbackSourceLabel),
             days: days
@@ -1485,21 +1484,107 @@ extension ClaudeService {
         style: String,
         weekNumber: Int,
         exercises: [WorkoutExerciseResponse],
-        focus: String
+        focus: String,
+        focusIntent: MusclePriorityIntent? = nil,
+        blueprint: ProgramBlueprint? = nil
     ) -> String {
-        let phase: String
-        switch weekNumber {
-        case 2: phase = "Volume build (RPE 7-8)."
-        case 3: phase = "Peak week (RPE 8-9)."
-        case 4: phase = "Deload week with reduced volume."
-        default: phase = "Baseline week (RPE 6-7)."
+        let phase = phaseSentence(for: weekNumber)
+
+        var purposeLine: String
+        if let intent = focusIntent, !intent.rationale.isEmpty {
+            purposeLine = "\(style) session with \(focus.lowercased()) emphasis — \(intent.rationale.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: ".")))."
+        } else if !focus.isEmpty {
+            purposeLine = "\(style) session with \(focus.lowercased()) emphasis."
+        } else {
+            purposeLine = "\(style) session."
         }
 
-        let primaryLift = exercises.first?.exerciseName ?? "your first compound movement"
-        let warmup = warmupCue(for: style, primaryLift: primaryLift)
-        let mobility = mobilityCue(for: style)
-        let focusLine = focus.isEmpty ? "" : " Emphasis today: \(focus.lowercased())."
-        return "\(style) session. \(phase) Warm-up: \(warmup) Mobility/activation: \(mobility)\(focusLine)"
+        let warmup = enrichedWarmupCue(style: style, exercises: exercises, blueprint: blueprint)
+        let posturalLine = posturalPrepCue(style: style, blueprint: blueprint, exercises: exercises)
+
+        var parts = [purposeLine, phase, "Warm-up: \(warmup)"]
+        if !posturalLine.isEmpty {
+            parts.append("Prep: \(posturalLine)")
+        }
+        return parts.joined(separator: " ")
+    }
+
+    func enrichedWarmupCue(
+        style: String,
+        exercises: [WorkoutExerciseResponse],
+        blueprint: ProgramBlueprint?
+    ) -> String {
+        let anchorNames = exercises.prefix(2).map(\.exerciseName)
+        let anchorTargets = Set(exercises.prefix(3).map { normalizedPriorityText($0.muscleTarget) })
+
+        var items: [String] = []
+
+        if anchorTargets.contains(where: { containsPriorityPhrase(in: $0, keywords: ["quad", "glute", "hamstring", "legs", "posterior chain"]) }) {
+            items.append("5-7 min bike or incline walk")
+        } else {
+            items.append("3-5 min light cardio")
+        }
+
+        if anchorTargets.contains(where: { containsPriorityPhrase(in: $0, keywords: ["chest", "upper chest", "pec", "anterior deltoid"]) }) {
+            items.append("band pull-aparts and pec stretch")
+        }
+        if anchorTargets.contains(where: { containsPriorityPhrase(in: $0, keywords: ["delt", "deltoid", "shoulder", "lateral deltoid"]) }) {
+            items.append("shoulder external rotation and scapular activation")
+        }
+        if anchorTargets.contains(where: { containsPriorityPhrase(in: $0, keywords: ["lat", "back", "upper back", "mid back"]) }) {
+            items.append("lat stretch and scapular setting drills")
+        }
+        if anchorTargets.contains(where: { containsPriorityPhrase(in: $0, keywords: ["quad", "glute", "hamstring"]) }) {
+            items.append("hip flexor stretch and ankle dorsiflexion drills")
+        }
+
+        if items.count <= 1 {
+            items.append("joint prep for primary movers")
+        }
+
+        let rampTarget = anchorNames.first ?? "your first compound"
+        items.append("then 2-3 progressive ramp sets into \(rampTarget)")
+
+        return items.joined(separator: ", ") + "."
+    }
+
+    func posturalPrepCue(
+        style: String,
+        blueprint: ProgramBlueprint?,
+        exercises: [WorkoutExerciseResponse]
+    ) -> String {
+        guard let blueprint else { return "" }
+        var cues: [String] = []
+
+        let posturalText = normalizedPriorityText(blueprint.posturalFocus)
+        let injuryText = normalizedPriorityText(blueprint.injuryRiskFocus)
+
+        if containsPriorityPhrase(in: posturalText, keywords: ["thoracic", "kyphosis", "upper back"]) {
+            let lowStyle = style.lowercased()
+            if lowStyle == "push" || lowStyle == "upper" {
+                cues.append("thoracic extension work before pressing")
+            }
+        }
+        if containsPriorityPhrase(in: posturalText, keywords: ["anterior pelvic tilt", "hip flexor"]) {
+            let lowStyle = style.lowercased()
+            if lowStyle == "lower" || lowStyle == "legs" {
+                cues.append("hip flexor stretch and glute activation")
+            }
+        }
+        if containsPriorityPhrase(in: injuryText, keywords: ["shoulder", "rotator cuff", "impingement"]) {
+            let lowStyle = style.lowercased()
+            if lowStyle == "push" || lowStyle == "upper" || lowStyle == "pull" {
+                cues.append("rotator cuff activation between warm-up sets")
+            }
+        }
+        if containsPriorityPhrase(in: injuryText, keywords: ["lower back", "lumbar", "disc"]) {
+            let lowStyle = style.lowercased()
+            if lowStyle == "lower" || lowStyle == "legs" || lowStyle == "pull" {
+                cues.append("brace practice with bodyweight hip hinges")
+            }
+        }
+
+        return cues.joined(separator: ", ")
     }
 
     func inferredDayStyle(dayName: String, muscleGroups: String) -> String? {
