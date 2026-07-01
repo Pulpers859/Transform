@@ -38,7 +38,7 @@ struct WorkoutGeneratorLabView: View {
     }
 
     var currentProgram: WorkoutProgram? {
-        programs.first
+        programs.first { !$0.isArchived }
     }
 
     private var analysisSourceOptions: [WorkoutGeneratorAnalysisSourceOption] {

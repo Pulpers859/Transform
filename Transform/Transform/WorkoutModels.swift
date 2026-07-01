@@ -22,6 +22,7 @@ class WorkoutProgram {
     var validatorWarnings: String = ""
     var lastGenerationBundle: String = ""
     var weekSummariesJSON: String = ""
+    var isArchived: Bool = false
 
     @Relationship(deleteRule: .cascade, inverse: \WorkoutDay.program)
     var days: [WorkoutDay] = []

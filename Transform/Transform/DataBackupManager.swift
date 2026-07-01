@@ -261,6 +261,7 @@ nonisolated struct WorkoutProgramSnapshot: Codable {
     let maxWeeks: Int
     let analysisJSON: String
     let days: [WorkoutDaySnapshot]
+    let isArchived: Bool?
 }
 
 nonisolated struct WorkoutDaySnapshot: Codable {
@@ -845,7 +846,8 @@ nonisolated struct ProfileSettingsSnapshot: Codable {
             currentWeek: program.currentWeek,
             maxWeeks: program.maxWeeks,
             analysisJSON: program.analysisJSON,
-            days: mainActorMap(program.sortedDays, WorkoutDaySnapshot.init)
+            days: mainActorMap(program.sortedDays, WorkoutDaySnapshot.init),
+            isArchived: program.isArchived
         )
     }
 
@@ -865,6 +867,7 @@ nonisolated struct ProfileSettingsSnapshot: Codable {
         )
         program.id = id
         program.createdDate = createdDate
+        program.isArchived = isArchived ?? false
 
         for daySnapshot in days {
             let day = daySnapshot.makeModel()

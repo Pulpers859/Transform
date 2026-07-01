@@ -19,7 +19,7 @@ struct WorkoutView: View {
     @State private var feedbackDay: WorkoutDay?
     @State private var analysisThumbnail: UIImage?
 
-    var currentProgram: WorkoutProgram? { programs.first }
+    var currentProgram: WorkoutProgram? { programs.first { !$0.isArchived } }
     var latestAnalysis: BodyAnalysisSession? { analysisSessions.first }
     var canUseAI: Bool { Config.hasAnthropicKey }
 
@@ -75,7 +75,7 @@ struct WorkoutView: View {
                 }
                 Button("Cancel", role: .cancel) {}
             } message: {
-                Text("This replaces your current program with a brand-new Week 1 and clears existing weeks and progress. This also uses AI generation credits.")
+                Text("This archives your current program and generates a brand-new Week 1. Your training history (weights, sets, skip patterns) is preserved. This uses AI generation credits.")
             }
             .sheet(isPresented: $showGeneratorLab) {
                 WorkoutGeneratorLabView()
@@ -694,8 +694,8 @@ struct WorkoutView: View {
 
         do {
             let performanceHistory = compactPerformanceHistory(from: exerciseWeightEntries)
-            // `programs` still holds the prior mesocycle here (it isn't deleted until below),
-            // so recurring skip/substitution patterns carry across the mesocycle boundary.
+            // `programs` includes archived mesocycles, so skip/pain patterns persist
+            // across program boundaries.
             let generationResult = try await ClaudeService.shared.generateWeekOne(
                 from: result,
                 performanceHistory: performanceHistory,
@@ -719,10 +719,10 @@ struct WorkoutView: View {
             }
 
             guard !Task.isCancelled else { return }
-            WorkoutGenerationDiagnostics.markStage("replacing stored week 1 program")
+            WorkoutGenerationDiagnostics.markStage("archiving prior programs")
 
-            for program in programs {
-                modelContext.delete(program)
+            for program in programs where !program.isArchived {
+                program.isArchived = true
             }
 
             let warningsText = generationResult.validatorWarnings.joined(separator: "\n")
@@ -800,7 +800,7 @@ struct WorkoutView: View {
                     for: program,
                     weekNumber: program.currentWeek
                 ),
-                skipHistory: recurringSkipHistory(for: program)
+                skipHistory: recurringSkipHistory(across: programs)
             )
             let response = generationResult.response
             try Task.checkCancellation()
@@ -1038,11 +1038,6 @@ struct WorkoutView: View {
             return "\(entry.name): \(reasonParts.joined(separator: ", "))"
         }
         return lines.joined(separator: "\n")
-    }
-
-    /// In-mesocycle convenience: recurrence across the weeks of a single program so far.
-    func recurringSkipHistory(for program: WorkoutProgram) -> String? {
-        recurringSkipHistory(across: [program])
     }
 
     func deleteProgram(_ program: WorkoutProgram) {
