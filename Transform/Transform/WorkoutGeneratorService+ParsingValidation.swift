@@ -598,6 +598,9 @@ extension ClaudeService {
             }
             if isEmptyOrTooShortSessionNote(day.notes) {
                 issues.append("Day \(day.dayNumber) session notes are empty or too short — rewrite with real coaching content tied to the analysis.")
+            } else if !day.isRestDay && isGenericSessionNote(day.notes, exercises: day.exercises) {
+                let sampleExercise = day.exercises.first?.exerciseName ?? "the primary compound"
+                issues.append("Day \(day.dayNumber) session notes are generic — rewrite with an analysis-anchored intent line and a 'Warm-up:' section with specific prep items tied to this day's lifts (e.g. ramp sets into \(sampleExercise), relevant mobility).")
             }
 
             totalTrainingExercises += day.exercises.count
@@ -707,6 +710,7 @@ extension ClaudeService {
             "uses too many weekly exercise variations",
             "session budget",
             "session notes are empty or too short",
+            "session notes are generic",
             "notes are empty or too short",
             "notes do not include a concrete progression cue",
             "the generated day reads as",

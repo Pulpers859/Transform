@@ -407,6 +407,70 @@ extension ClaudeService {
         )
     }
 
+    func polishGenericDayNotes(
+        _ days: [WorkoutDayResponse],
+        weekNumber: Int,
+        trainingIntent: TrainingIntentPlan,
+        blueprint: ProgramBlueprint
+    ) -> [WorkoutDayResponse] {
+        days.enumerated().map { offset, day in
+            guard !day.isRestDay else { return day }
+            guard isGenericSessionNote(day.notes, exercises: day.exercises) else { return day }
+
+            let plan = offset < blueprint.dayPlans.count ? blueprint.dayPlans[offset] : nil
+            let style = plan?.style ?? inferredDayStyle(dayName: day.dayName, muscleGroups: day.muscleGroups) ?? "Training"
+            let focus = plan?.focusArea ?? ""
+            let focusIntent = plan.flatMap { focusIntentForArea($0.focusArea, within: trainingIntent) }
+
+            let enrichedNotes = proceduralDayNotes(
+                style: style,
+                weekNumber: weekNumber,
+                exercises: day.exercises,
+                focus: focus,
+                focusIntent: focusIntent,
+                blueprint: blueprint
+            )
+
+            return WorkoutDayResponse(
+                dayNumber: day.dayNumber,
+                dayName: day.dayName,
+                muscleGroups: day.muscleGroups,
+                isRestDay: day.isRestDay,
+                notes: enrichedNotes,
+                exercises: day.exercises
+            )
+        }
+    }
+
+    func polishGenericProgramNotes(
+        _ program: WorkoutProgramResponse,
+        weekNumber: Int,
+        trainingIntent: TrainingIntentPlan,
+        blueprint: ProgramBlueprint
+    ) -> WorkoutProgramResponse {
+        let polished = polishGenericDayNotes(program.days, weekNumber: weekNumber, trainingIntent: trainingIntent, blueprint: blueprint)
+        return WorkoutProgramResponse(
+            programName: program.programName,
+            programSummary: program.programSummary,
+            splitType: program.splitType,
+            daysPerWeek: program.daysPerWeek,
+            days: polished
+        )
+    }
+
+    func polishGenericWeekNotes(
+        _ week: WorkoutWeekResponse,
+        weekNumber: Int,
+        trainingIntent: TrainingIntentPlan,
+        blueprint: ProgramBlueprint
+    ) -> WorkoutWeekResponse {
+        let polished = polishGenericDayNotes(week.days, weekNumber: weekNumber, trainingIntent: trainingIntent, blueprint: blueprint)
+        return WorkoutWeekResponse(
+            weekSummary: week.weekSummary,
+            days: polished
+        )
+    }
+
     func debugProgramReport(
         stage: WorkoutGeneratorDebugStage,
         mode: WorkoutGeneratorDebugMode,

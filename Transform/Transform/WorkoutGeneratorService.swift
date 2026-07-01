@@ -201,6 +201,15 @@ extension ClaudeService {
             )
         }
 
+        func labelAndPolish(_ response: WorkoutProgramResponse) -> WorkoutProgramResponse {
+            polishGenericProgramNotes(
+                labeledProgramResponse(response, sourceLabel: aiSourceLabel),
+                weekNumber: 1,
+                trainingIntent: trainingIntent,
+                blueprint: blueprint
+            )
+        }
+
         // Phase 1: Fire parallel candidates and pick the best
         try Task.checkCancellation()
         WorkoutGenerationDiagnostics.markStage("requesting week 1 parallel candidates from AI")
@@ -264,7 +273,7 @@ extension ClaudeService {
         // Accept the best candidate if it's clean or has only acceptable warnings
         if let best = scoredCandidates.first {
             if best.issues.isEmpty {
-                let labeled = labeledProgramResponse(best.response, sourceLabel: aiSourceLabel)
+                let labeled = labelAndPolish(best.response)
                 return WorkoutProgramGenerationResult(
                     response: labeled,
                     validatorWarnings: [],
@@ -275,7 +284,7 @@ extension ClaudeService {
             if best.issues.allSatisfy({ validationDisposition(for: $0, menuLocked: true) == .acceptableWarning }) {
                 print("[WorkoutGeneratorService] Week 1 best candidate accepted with acceptable warnings: \(best.issues.joined(separator: " | "))")
                 attemptTrace.append("Best candidate accepted with acceptable warnings")
-                let labeled = labeledProgramResponse(best.response, sourceLabel: aiSourceLabel)
+                let labeled = labelAndPolish(best.response)
                 return WorkoutProgramGenerationResult(
                     response: labeled,
                     validatorWarnings: best.issues,
@@ -300,7 +309,7 @@ extension ClaudeService {
                 if trimmedIssues.isEmpty {
                     print("[WorkoutGeneratorService] Week 1 best candidate accepted after trim — all issues resolved")
                     attemptTrace.append("Best candidate accepted after overshoot trim — all issues resolved")
-                    let labeled = labeledProgramResponse(trimmed, sourceLabel: aiSourceLabel)
+                    let labeled = labelAndPolish(trimmed)
                     return WorkoutProgramGenerationResult(
                         response: labeled,
                         validatorWarnings: [],
@@ -310,7 +319,7 @@ extension ClaudeService {
                 if trimmedIssues.allSatisfy({ validationDisposition(for: $0, menuLocked: true) == .acceptableWarning }) {
                     print("[WorkoutGeneratorService] Week 1 best candidate accepted after trim with warnings: \(trimmedIssues.joined(separator: " | "))")
                     attemptTrace.append("Best candidate accepted after trim with acceptable warnings")
-                    let labeled = labeledProgramResponse(trimmed, sourceLabel: aiSourceLabel)
+                    let labeled = labelAndPolish(trimmed)
                     return WorkoutProgramGenerationResult(
                         response: labeled,
                         validatorWarnings: trimmedIssues,
@@ -347,7 +356,7 @@ extension ClaudeService {
 
                 if correctedIssues.isEmpty {
                     attemptTrace.append("Correction pass: Accepted — no issues")
-                    let labeled = labeledProgramResponse(correctedCleaned, sourceLabel: aiSourceLabel)
+                    let labeled = labelAndPolish(correctedCleaned)
                     return WorkoutProgramGenerationResult(
                         response: labeled,
                         validatorWarnings: [],
@@ -372,7 +381,7 @@ extension ClaudeService {
                     if corrTrimIssues.isEmpty || shouldAcceptAIOutput(despite: corrTrimIssues, menuLocked: true) {
                         let finalIssues = corrTrimIssues.isEmpty ? [] : corrTrimIssues
                         attemptTrace.append("Correction pass: Accepted after trim\(finalIssues.isEmpty ? "" : " with warnings")")
-                        let labeled = labeledProgramResponse(corrTrimmed, sourceLabel: aiSourceLabel)
+                        let labeled = labelAndPolish(corrTrimmed)
                         return WorkoutProgramGenerationResult(
                             response: labeled,
                             validatorWarnings: finalIssues,
@@ -384,7 +393,7 @@ extension ClaudeService {
                 // Accept correction if permissible on final attempt
                 if shouldAcceptAIOutput(despite: correctedIssues, menuLocked: true) {
                     attemptTrace.append("Correction pass: Accepted with warnings (score \(scoreValidationIssues(correctedIssues)))")
-                    let labeled = labeledProgramResponse(correctedCleaned, sourceLabel: aiSourceLabel)
+                    let labeled = labelAndPolish(correctedCleaned)
                     return WorkoutProgramGenerationResult(
                         response: labeled,
                         validatorWarnings: correctedIssues,
@@ -550,6 +559,15 @@ extension ClaudeService {
             )
         }
 
+        func labelAndPolishWeek(_ response: WorkoutWeekResponse) -> WorkoutWeekResponse {
+            polishGenericWeekNotes(
+                labeledWeekResponse(response, sourceLabel: aiSourceLabel),
+                weekNumber: weekNumber,
+                trainingIntent: trainingIntent,
+                blueprint: blueprint
+            )
+        }
+
         // Phase 1: Fire parallel candidates and pick the best
         try Task.checkCancellation()
         WorkoutGenerationDiagnostics.markStage("requesting week \(weekNumber) parallel candidates from AI")
@@ -620,7 +638,7 @@ extension ClaudeService {
         // Accept the best candidate if it's clean or has only acceptable warnings
         if let best = scoredCandidates.first {
             if best.issues.isEmpty {
-                let labeled = labeledWeekResponse(best.response, sourceLabel: aiSourceLabel)
+                let labeled = labelAndPolishWeek(best.response)
                 return WorkoutWeekGenerationResult(
                     response: labeled,
                     validatorWarnings: [],
@@ -631,7 +649,7 @@ extension ClaudeService {
             if best.issues.allSatisfy({ validationDisposition(for: $0, menuLocked: true) == .acceptableWarning }) {
                 print("[WorkoutGeneratorService] Week \(weekNumber) best candidate accepted with acceptable warnings: \(best.issues.joined(separator: " | "))")
                 attemptTrace.append("Best candidate accepted with acceptable warnings")
-                let labeled = labeledWeekResponse(best.response, sourceLabel: aiSourceLabel)
+                let labeled = labelAndPolishWeek(best.response)
                 return WorkoutWeekGenerationResult(
                     response: labeled,
                     validatorWarnings: best.issues,
@@ -658,7 +676,7 @@ extension ClaudeService {
                 if trimmedIssues.isEmpty {
                     print("[WorkoutGeneratorService] Week \(weekNumber) best candidate accepted after trim — all issues resolved")
                     attemptTrace.append("Best candidate accepted after overshoot trim — all issues resolved")
-                    let labeled = labeledWeekResponse(trimmed, sourceLabel: aiSourceLabel)
+                    let labeled = labelAndPolishWeek(trimmed)
                     return WorkoutWeekGenerationResult(
                         response: labeled,
                         validatorWarnings: [],
@@ -668,7 +686,7 @@ extension ClaudeService {
                 if trimmedIssues.allSatisfy({ validationDisposition(for: $0, menuLocked: true) == .acceptableWarning }) {
                     print("[WorkoutGeneratorService] Week \(weekNumber) best candidate accepted after trim with warnings: \(trimmedIssues.joined(separator: " | "))")
                     attemptTrace.append("Best candidate accepted after trim with acceptable warnings")
-                    let labeled = labeledWeekResponse(trimmed, sourceLabel: aiSourceLabel)
+                    let labeled = labelAndPolishWeek(trimmed)
                     return WorkoutWeekGenerationResult(
                         response: labeled,
                         validatorWarnings: trimmedIssues,
@@ -712,7 +730,7 @@ extension ClaudeService {
 
                 if correctedIssues.isEmpty {
                     attemptTrace.append("Correction pass: Accepted — no issues")
-                    let labeled = labeledWeekResponse(correctedCleaned, sourceLabel: aiSourceLabel)
+                    let labeled = labelAndPolishWeek(correctedCleaned)
                     return WorkoutWeekGenerationResult(
                         response: labeled,
                         validatorWarnings: [],
@@ -739,7 +757,7 @@ extension ClaudeService {
                     if corrTrimIssues.isEmpty || shouldAcceptAIOutput(despite: corrTrimIssues, menuLocked: true) {
                         let finalIssues = corrTrimIssues.isEmpty ? [] : corrTrimIssues
                         attemptTrace.append("Correction pass: Accepted after trim\(finalIssues.isEmpty ? "" : " with warnings")")
-                        let labeled = labeledWeekResponse(corrTrimmed, sourceLabel: aiSourceLabel)
+                        let labeled = labelAndPolishWeek(corrTrimmed)
                         return WorkoutWeekGenerationResult(
                             response: labeled,
                             validatorWarnings: finalIssues,
@@ -752,7 +770,7 @@ extension ClaudeService {
                 let correctedScore = scoreValidationIssues(correctedIssues)
                 if shouldAcceptAIOutput(despite: correctedIssues, menuLocked: true) {
                     attemptTrace.append("Correction pass: Accepted with warnings (score \(correctedScore))")
-                    let labeled = labeledWeekResponse(correctedCleaned, sourceLabel: aiSourceLabel)
+                    let labeled = labelAndPolishWeek(correctedCleaned)
                     return WorkoutWeekGenerationResult(
                         response: labeled,
                         validatorWarnings: correctedIssues,

@@ -1957,6 +1957,46 @@ extension ClaudeService {
         return wordCount < 6
     }
 
+    func isGenericSessionNote(_ notes: String, exercises: [WorkoutExerciseResponse]) -> Bool {
+        let lowered = notes.lowercased()
+        let trimmed = notes.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if isEmptyOrTooShortSessionNote(trimmed) { return false }
+
+        if !lowered.contains("warm-up:") && !lowered.contains("warm up:") {
+            return true
+        }
+
+        let genericPhrases = [
+            "progressive overload session",
+            "training session. warm-up:",
+            "standard hypertrophy",
+            "follow the plan",
+            "stick to the program"
+        ]
+        if genericPhrases.contains(where: { lowered.contains($0) }) {
+            return true
+        }
+
+        if let warmupStart = lowered.range(of: "warm-up:")?.upperBound ?? lowered.range(of: "warm up:")?.upperBound {
+            let warmupText = String(lowered[warmupStart...]).trimmingCharacters(in: .whitespacesAndNewlines)
+            let warmupLine = warmupText.components(separatedBy: "\n").first ?? warmupText
+
+            let specificIndicators = [
+                "band", "stretch", "rotation", "activation", "pull-apart", "ramp set",
+                "hip", "shoulder", "thoracic", "ankle", "glute", "scap", "bridge",
+                "face pull", "lat stretch", "pec stretch", "external rotation"
+            ]
+            let hasSpecific = specificIndicators.contains { warmupLine.contains($0) }
+
+            if !hasSpecific && warmupLine.count < 80 {
+                return true
+            }
+        }
+
+        return false
+    }
+
     func warmupCue(for style: String, primaryLift: String) -> String {
         switch style.lowercased() {
         case "legs", "lower":
