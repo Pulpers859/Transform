@@ -132,29 +132,20 @@ extension ClaudeService {
         ]
 
         if issues.contains(where: { $0.contains("overshot its direct-set target enough to create avoidable fatigue") || $0.contains("exceeds its focus-day direct-set cap") || $0.contains("exceeds its per-session direct-set cap") }) {
-            rules.append("- When a priority muscle overshoots its weekly direct-set target or a session cap, reduce or remove redundant same-muscle accessories until the weekly and per-session blueprint caps are satisfied.")
-            rules.append("- Preserve the prime hypertrophy slot first; trim later duplicate isolation work before cutting the main focus lift.")
-            rules.append("- Do not count a second or third near-identical lateral-delt or rear-delt isolation as automatically helpful. If the blueprint says 10 weekly direct sets, 18 is wrong.")
-        }
-
-        if issues.contains(where: { $0.contains("low-value filler") || $0.contains("does not clearly support") }) {
-            rules.append("- Remove off-theme filler before touching the day's prime movement or the blueprint's intended support work.")
+            rules.append("- When a priority muscle overshoots its weekly direct-set target or a session cap, reduce set counts on the exercises targeting that muscle until the caps are satisfied.")
+            rules.append("- Reduce sets on accessory/isolation work first; preserve sets on the prime compound.")
         }
 
         if issues.contains(where: { $0.contains("already reached its weekly target") }) {
-            rules.append("- When a priority muscle has already reached its weekly direct-set target from its designated focus/support days, do not add more volume for that muscle on other days. Replace the redundant exercise with work that serves an unmet need.")
+            rules.append("- When a priority muscle has already reached its weekly direct-set target, reduce set counts on excess exercises targeting that muscle rather than adding more volume.")
         }
 
         if issues.contains(where: { $0.contains("minimum viable stimulus threshold") || $0.contains("missed its frequency target") || $0.contains("missed its direct-set target") }) {
-            rules.append("- If frequency or direct-set targets are short, add stimulus with the smallest coherent change possible instead of bloating the whole session.")
+            rules.append("- If frequency or direct-set targets are short, increase set counts on existing exercises targeting the underserved muscle.")
         }
 
         if issues.contains(where: { $0.contains("session budget") || $0.contains("too crowded") || $0.contains("fatigue load") }) {
-            rules.append("- Keep shift-work recovery in mind: prefer a tighter 5-6 movement session over extra accessories that create fatigue without new value.")
-        }
-
-        if issues.contains(where: { $0.contains("substitution changes the primary muscle target") || $0.contains("replaced with a poor substitute") }) {
-            rules.append("- When substituting an exercise from the previous week, the replacement MUST target the same primary muscle group. A back exercise must be replaced with another back exercise, not a chest exercise. Revert the bad substitution or pick a same-muscle-group alternative.")
+            rules.append("- Keep shift-work recovery in mind: reduce set counts on lower-priority exercises to bring session fatigue within budget.")
         }
 
         if issues.contains(where: { $0.contains("Pre-Selected Exercise Menu") }) {
@@ -241,34 +232,11 @@ extension ClaudeService {
           exercises for each training day. Use these exercises in the order given. Do not add,
           remove, or substitute exercises. Your job is to program sets, reps, tempo, rest, and
           coaching notes for each one. Use the exercise names exactly as given.
-        - On a specific focus day, lead with a prime hypertrophy movement for that focus. Do not
-          open the session with a corrective/primer movement if a true growth-focused option for
-          that muscle appears later.
-        - Do not treat support or scapular-control work (for example Y-raises, external-rotation
-          drills, or similar corrective patterns) as the main hypertrophy slot for rear delts or
-          shoulders.
-        - Avoid stacking multiple near-duplicate accessories for the same small muscle unless they
-          create a clearly different stimulus profile.
-        - Avoid filler late-session add-ons that do not clearly serve the day's style, the
-          blueprint priorities, or the injury-management goal.
-        - In a shift-work recomposition block, especially on Lower days, prefer 5-6 high-value
-          movements over bloated 7-8 exercise sessions unless every slot clearly earns its place.
-        - Avoid back-to-back shoulder-intensive days when a lower-body or less-overlapping session
-          can separate them.
-        - If the analysis flags shoulder impingement risk, internal rotation, or upper-crossed
-          posture, bias pressing choices toward landmine press, high-incline dumbbell press,
-          cable/machine press options, or neutral-grip setups instead of defaulting to generic
-          vertical pressing.
         - Rest and tempo must match exercise role. Do not lazily assign one identical rest period
           or one identical tempo to every movement in a mixed session.
         - Tempo is only for rep-based lifts where eccentric/concentric cadence matters. For
           carries, distance- or time-based work, and similar bracing/isometric drills, leave
           tempo empty instead of inventing a fake 4-part prescription.
-        - Loaded carries can support trunk stiffness and grip, but they do not replace a true
-          direct-core slot when the blueprint is asking for dedicated core work.
-        - On broad Lower or Legs sessions that are not explicitly glute- or hamstring-focused,
-          keep real quad stimulus in the plan and avoid piling up multiple glute/posterior-chain
-          patterns that all solve the same problem.
         - Do not write posture language with fake certainty. Frame pelvic-tilt and posture work
           as improving setup, bracing, hip control, and tolerance rather than claiming you are
           "fixing" a diagnosis.
@@ -349,9 +317,9 @@ extension ClaudeService {
         only a PROGRESSION REFERENCE — use it to know what load/volume was achieved last week so
         you can apply appropriate overload or deload for THIS phase.
 
-        Keep reasonable exercise continuity (1-3 anchor lifts per day should carry over for
-        progression tracking), but feel free to rotate accessories based on what the analysis
-        calls for.
+        Exercise selection is locked by the Pre-Selected Exercise Menu — do not add, remove, or
+        substitute exercises. Focus your coaching judgment on programming: sets, reps, tempo,
+        rest, progression cues, and notes.
 
         Session Notes still must be personal, specific, analysis-anchored, and include a "Warm-up:"
         line (on its own line) with specific warm-up and mobility items separated by commas, tied
@@ -374,34 +342,11 @@ extension ClaudeService {
           exercises for each training day. Use these exercises in the order given. Do not add,
           remove, or substitute exercises. Your job is to program sets, reps, tempo, rest, and
           coaching notes for each one. Use the exercise names exactly as given.
-        - On a specific focus day, lead with a prime hypertrophy movement for that focus. Do not
-          open the session with a corrective/primer movement if a true growth-focused option for
-          that muscle appears later.
-        - Do not treat support or scapular-control work (for example Y-raises, external-rotation
-          drills, or similar corrective patterns) as the main hypertrophy slot for rear delts or
-          shoulders.
-        - Avoid stacking multiple near-duplicate accessories for the same small muscle unless they
-          create a clearly different stimulus profile.
-        - Avoid filler late-session add-ons that do not clearly serve the day's style, the
-          blueprint priorities, or the injury-management goal.
-        - In a shift-work recomposition block, especially on Lower days, prefer 5-6 high-value
-          movements over bloated 7-8 exercise sessions unless every slot clearly earns its place.
-        - Avoid back-to-back shoulder-intensive days when a lower-body or less-overlapping session
-          can separate them.
-        - If the analysis flags shoulder impingement risk, internal rotation, or upper-crossed
-          posture, bias pressing choices toward landmine press, high-incline dumbbell press,
-          cable/machine press options, or neutral-grip setups instead of defaulting to generic
-          vertical pressing.
         - Rest and tempo must match exercise role. Do not lazily assign one identical rest period
           or one identical tempo to every movement in a mixed session.
         - Tempo is only for rep-based lifts where eccentric/concentric cadence matters. For
           carries, distance- or time-based work, and similar bracing/isometric drills, leave
           tempo empty instead of inventing a fake 4-part prescription.
-        - Loaded carries can support trunk stiffness and grip, but they do not replace a true
-          direct-core slot when the blueprint is asking for dedicated core work.
-        - On broad Lower or Legs sessions that are not explicitly glute- or hamstring-focused,
-          keep real quad stimulus in the plan and avoid piling up multiple glute/posterior-chain
-          patterns that all solve the same problem.
         - Do not write posture language with fake certainty. Frame pelvic-tilt and posture work
           as improving setup, bracing, hip control, and tolerance rather than claiming you are
           "fixing" a diagnosis.
@@ -487,20 +432,17 @@ extension ClaudeService {
 
         --- Recurring skip / substitution history (persistent across weeks and mesocycles) ---
         \(summary)
-        These are movements the user has repeatedly skipped, substituted, or modified. Treat this
-        as a persistent adherence signal and respond by REASON, not by dropping prime volume:
-        - pain/discomfort: regress or replace the movement with a joint-friendlier variant that
-          keeps the same training target, and add specific warm-up/mobility for the involved area.
-          Do not keep prescribing a movement that repeatedly causes pain.
-        - equipment unavailable: choose an equipment-flexible alternative that hits the same
-          muscle/pattern with the gear the user actually has.
-        - ran out of time: sequence this work earlier or trim the LOWEST-priority volume instead
-          of cutting a prime movement; consider a slightly more time-efficient variant.
-        - substituted: if a substitution recurs, adopt it (or an equivalent) as the prescribed
-          movement so it stops being an ad hoc swap.
-        - modified: keep the intended stimulus but reflect the modification the user keeps making.
-        Use canonical exercise names so weight-history continuity is preserved. Do not overhaul the
-        whole split — make targeted, evidence-informed swaps for the flagged movements only.
+        These are movements the user has repeatedly skipped, substituted, or modified. Exercise
+        selection is locked by the Pre-Selected Exercise Menu, so do not swap exercises here.
+        Instead, use this history to adjust PROGRAMMING for flagged movements:
+        - pain/discomfort: add specific warm-up/mobility cues in the day and exercise notes,
+          reduce load or intensity prescription, and note the regression in the coaching cue.
+        - equipment unavailable: note the constraint in the exercise coaching cue so the user
+          knows to use the closest available setup.
+        - ran out of time: prioritize the flagged movement earlier in the session notes and keep
+          its set/rep prescription efficient.
+        - substituted/modified: acknowledge the user's preferred variation in the exercise note
+          and write the coaching cue for that variation.
         --- end recurring skip / substitution history ---
         """
     }
