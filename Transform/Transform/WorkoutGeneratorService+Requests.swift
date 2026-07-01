@@ -157,7 +157,37 @@ extension ClaudeService {
             rules.append("- When substituting an exercise from the previous week, the replacement MUST target the same primary muscle group. A back exercise must be replaced with another back exercise, not a chest exercise. Revert the bad substitution or pick a same-muscle-group alternative.")
         }
 
+        if issues.contains(where: { $0.contains("Pre-Selected Exercise Menu") }) {
+            rules.append("- The Pre-Selected Exercise Menu is locked. Use the exact exercise names in the exact order for each listed day; only adjust sets, reps, tempo, rest, and notes.")
+        }
+
         return rules.joined(separator: "\n")
+    }
+
+    // MARK: - Exercise Menu Context
+
+    func exerciseMenuContext(from menus: [[PreSelectedExercise]], blueprint: ProgramBlueprint, dayStart: Int = 1) -> String {
+        var lines: [String] = []
+        for (offset, dayPlan) in blueprint.dayPlans.enumerated() {
+            guard !dayPlan.isRestDay, offset < menus.count else { continue }
+            let exercises = menus[offset]
+            guard !exercises.isEmpty else { continue }
+
+            let dayNumber = dayStart + offset
+            let focus = dayPlan.focusArea.map { ", focus: \($0)" } ?? ""
+            lines.append("Day \(dayNumber) (\(dayPlan.style)\(focus)):")
+            for (i, exercise) in exercises.enumerated() {
+                lines.append("  \(i + 1). \(exercise.exerciseName) [\(exercise.muscleTarget)] — \(exercise.role.rawValue)")
+            }
+        }
+
+        guard !lines.isEmpty else { return "" }
+
+        return """
+        --- Pre-Selected Exercise Menu (use these exact exercises; do not add, remove, or substitute) ---
+        \(lines.joined(separator: "\n"))
+        --- end Pre-Selected Exercise Menu ---
+        """
     }
 
     // MARK: - Prompts
@@ -200,16 +230,17 @@ extension ClaudeService {
         - Exactly 7 days, dayNumber 1..7.
         - 4-6 training days, 1-3 rest days. Choose the split based on the priority muscles and
           region breakdown in the analysis — don't default.
-        - Training days: 5-8 exercises. Rest days: empty exercises array.
+        - Training days: exercises as listed in the Pre-Selected Exercise Menu. Rest days: empty
+          exercises array.
         - 60-75 minute sessions.
         - Day theme and exercises must align (an Arms day cannot include squats; a Legs day cannot
           include bench press).
         - Follow the Weekly Blueprint exactly when deciding split structure, session emphasis,
-          exercise families, and weekly priority allocation.
-        - Use standardized exercise naming. Prefer canonical names such as Face Pull, Rope
-          Triceps Pressdown, Cable Triceps Pressdown, Hammer Curl, Barbell Curl, Lying Leg Curl,
-          Band Pull-Apart, Farmer's Walk, and Incline Smith Machine Press instead of casual
-          variants or pluralized duplicates.
+          and weekly priority allocation.
+        - A Pre-Selected Exercise Menu is provided in the coaching inputs. It lists the exact
+          exercises for each training day. Use these exercises in the order given. Do not add,
+          remove, or substitute exercises. Your job is to program sets, reps, tempo, rest, and
+          coaching notes for each one. Use the exercise names exactly as given.
         - On a specific focus day, lead with a prime hypertrophy movement for that focus. Do not
           open the session with a corrective/primer movement if a true growth-focused option for
           that muscle appears later.
@@ -272,7 +303,7 @@ extension ClaudeService {
         """
     }
 
-    func weekOneUserPrompt(context: String, performanceHistory: String? = nil, skipHistory: String? = nil) -> String {
+    func weekOneUserPrompt(context: String, exerciseMenuContext: String, performanceHistory: String? = nil, skipHistory: String? = nil) -> String {
         """
         Build Week 1 of this individual's 4-week mesocycle. Treat the coaching inputs below as
         the source of truth — every day, every exercise, and every note should be traceable back
@@ -281,6 +312,7 @@ extension ClaudeService {
         --- Coaching Inputs ---
         \(context)
         --- end Coaching Inputs ---
+        \(exerciseMenuContext)
         \(performanceHistorySection(from: performanceHistory))
         \(skipHistorySection(from: skipHistory))
         Requirements:
@@ -333,14 +365,15 @@ extension ClaudeService {
         Programming constraints:
         - Exactly 7 days for the requested dayNumber range.
         - 4-6 training days, 1-3 rest days.
-        - Training days: 5-8 exercises. Rest days: empty exercises array.
+        - Training days: exercises as listed in the Pre-Selected Exercise Menu. Rest days: empty
+          exercises array.
         - Day theme and exercises must align.
         - Follow the Weekly Blueprint exactly when deciding split structure, session emphasis,
-          exercise families, and weekly priority allocation.
-        - Use standardized exercise naming. Prefer canonical names such as Face Pull, Rope
-          Triceps Pressdown, Cable Triceps Pressdown, Hammer Curl, Barbell Curl, Lying Leg Curl,
-          Band Pull-Apart, Farmer's Walk, and Incline Smith Machine Press instead of casual
-          variants or pluralized duplicates.
+          and weekly priority allocation.
+        - A Pre-Selected Exercise Menu is provided in the coaching inputs. It lists the exact
+          exercises for each training day. Use these exercises in the order given. Do not add,
+          remove, or substitute exercises. Your job is to program sets, reps, tempo, rest, and
+          coaching notes for each one. Use the exercise names exactly as given.
         - On a specific focus day, lead with a prime hypertrophy movement for that focus. Do not
           open the session with a corrective/primer movement if a true growth-focused option for
           that muscle appears later.
@@ -386,6 +419,7 @@ extension ClaudeService {
         dayEnd: Int,
         previousWeekReference: String,
         analysisContext: String,
+        exerciseMenuContext: String,
         performanceHistory: String? = nil,
         sessionFeedbackSummary: String? = nil,
         skipHistory: String? = nil
@@ -396,6 +430,7 @@ extension ClaudeService {
         --- Coaching Inputs (analysis + structured training intent) ---
         \(analysisContext)
         --- end Coaching Inputs ---
+        \(exerciseMenuContext)
 
         --- Previous week (progression reference ONLY — don't copy) ---
         \(previousWeekReference)

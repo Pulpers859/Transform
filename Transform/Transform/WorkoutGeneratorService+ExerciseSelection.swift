@@ -1012,4 +1012,120 @@ extension ClaudeService {
         return entries.sorted { $0.dayNumber < $1.dayNumber }
     }
 
+    // MARK: - Pre-Selected Exercise Menu (deterministic selection layer)
+
+    func preSelectedExerciseMenu(
+        for blueprint: ProgramBlueprint,
+        trainingIntent: TrainingIntentPlan,
+        weekNumber: Int,
+        previousWeekDays: [WorkoutDayResponse]?
+    ) -> [[PreSelectedExercise]] {
+        let previousExercisesByStyle = proceduralPreviousExercisesByStyle(from: previousWeekDays)
+        var previousUsageByStyle: [String: Int] = [:]
+
+        return blueprint.dayPlans.map { plan in
+            guard !plan.isRestDay else { return [] }
+
+            let style = plan.style
+            let focusIntent = focusIntentForArea(plan.focusArea, within: trainingIntent)
+            let supportIntents = plan.supportAreas.compactMap { focusIntentForArea($0, within: trainingIntent) }
+            let styleKey = canonicalTrainingStyle(style)
+            let styleUsage = previousUsageByStyle[styleKey, default: 0]
+
+            let previousExercises: [WorkoutExerciseResponse] = previousExercisesByStyle[styleKey].flatMap { grouped in
+                guard styleUsage < grouped.count else { return nil }
+                return grouped[styleUsage]
+            } ?? []
+            previousUsageByStyle[styleKey] = styleUsage + 1
+
+            let selectionContext = ExerciseSelectionContext(
+                calibration: blueprint.calibration,
+                injuryRiskFocus: blueprint.injuryRiskFocus,
+                targetSessionMinutes: plan.targetSessionMinutes,
+                style: style
+            )
+
+            let targetCount = weekNumber == 4 ? 5 : 6
+            var selected: [(name: String, target: String)] = []
+            var used = Set<String>()
+
+            let retained = retainedAnchorExercises(from: previousExercises, style: style)
+                .filter { exercise in
+                    guard let focusIntent else { return true }
+                    return focusStimulusKind(
+                        exerciseName: exercise.exerciseName,
+                        muscleTarget: exercise.muscleTarget,
+                        focusArea: focusIntent.area
+                    ) != .support
+                }
+                .prefix(2)
+            for exercise in retained {
+                let key = normalizeExerciseName(exercise.exerciseName)
+                guard !used.contains(key) else { continue }
+                used.insert(key)
+                selected.append((exercise.exerciseName, exercise.muscleTarget))
+            }
+            let lockedPrefixCount = focusIntent == nil ? selected.count : 0
+
+            let catalog = orderedExerciseCatalog(
+                for: style,
+                focusIntent: focusIntent,
+                selectionContext: selectionContext
+            )
+            for candidate in catalog where selected.count < targetCount {
+                let key = normalizeExerciseName(candidate.name)
+                guard !used.contains(key) else { continue }
+                used.insert(key)
+                selected.append((candidate.name, candidate.target))
+            }
+
+            if selected.count < 5 {
+                for candidate in orderedGenericExerciseCatalog(
+                    focusIntent: focusIntent,
+                    selectionContext: selectionContext
+                ) where selected.count < 5 {
+                    let key = normalizeExerciseName(candidate.name)
+                    guard !used.contains(key) else { continue }
+                    used.insert(key)
+                    selected.append((candidate.name, candidate.target))
+                }
+            }
+
+            if let focusIntent {
+                selected = enforceFocusExerciseCoverage(
+                    selected,
+                    targetCount: focusExerciseTargetCount(for: focusIntent),
+                    focusIntent: focusIntent,
+                    selectionLimit: targetCount
+                )
+            }
+
+            if !supportIntents.isEmpty {
+                selected = enforceSupportExerciseCoverage(
+                    selected,
+                    focusIntent: focusIntent,
+                    supportIntents: supportIntents,
+                    selectionLimit: targetCount
+                )
+            }
+
+            let arranged = arrangeProceduralSelection(
+                Array(selected.prefix(8)),
+                lockedPrefixCount: lockedPrefixCount,
+                focusIntent: focusIntent
+            )
+
+            return arranged.map { item in
+                let metadata = exerciseMetadata(forExerciseName: item.name, muscleTarget: item.target)
+                let role = proceduralExerciseRole(for: item.name, muscleTarget: item.target)
+                return PreSelectedExercise(
+                    exerciseName: item.name,
+                    muscleTarget: item.target,
+                    movementPattern: metadata.movementPattern,
+                    role: role
+                )
+            }
+        }
+    }
+
 }

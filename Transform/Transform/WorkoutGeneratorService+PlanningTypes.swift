@@ -226,6 +226,13 @@ extension ClaudeService {
         case core
     }
 
+    struct PreSelectedExercise {
+        let exerciseName: String
+        let muscleTarget: String
+        let movementPattern: String
+        let role: ProceduralExerciseRole
+    }
+
     struct WeekDiffEntry: Identifiable {
         let id = UUID()
         let dayNumber: Int

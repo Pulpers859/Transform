@@ -148,10 +148,18 @@ extension ClaudeService {
             trainingIntentSummary: intentSummary,
             blueprintSummary: blueprintSummary
         )
+        let exerciseMenus = preSelectedExerciseMenu(
+            for: blueprint,
+            trainingIntent: trainingIntent,
+            weekNumber: 1,
+            previousWeekDays: nil
+        )
+        let menuContext = exerciseMenuContext(from: exerciseMenus, blueprint: blueprint)
+
         let config = weekOneConfig
         let toolSchema = programToolSchema()
         let systemPrompt = weekOneSystemPrompt()
-        let userPrompt = weekOneUserPrompt(context: context, performanceHistory: performanceHistory, skipHistory: skipHistory)
+        let userPrompt = weekOneUserPrompt(context: context, exerciseMenuContext: menuContext, performanceHistory: performanceHistory, skipHistory: skipHistory)
         let requestContext = workoutRequestContext(
             phase: "week_one",
             weekNumber: 1,
@@ -230,7 +238,7 @@ extension ClaudeService {
         for (i, result) in candidateResults {
             switch result {
             case .success(let cleaned):
-                let issues = validateProgramResponse(cleaned, blueprint: blueprint)
+                let issues = validateProgramResponse(cleaned, blueprint: blueprint, expectedExerciseMenus: exerciseMenus)
                 let score = issues.isEmpty ? 0 : scoreValidationIssues(issues)
                 scoredCandidates.append((response: cleaned, issues: issues, score: score))
                 if issues.isEmpty {
@@ -287,7 +295,7 @@ extension ClaudeService {
                     daysPerWeek: best.response.daysPerWeek,
                     days: trimmedDays
                 )
-                let trimmedIssues = validateProgramResponse(trimmed, blueprint: blueprint)
+                let trimmedIssues = validateProgramResponse(trimmed, blueprint: blueprint, expectedExerciseMenus: exerciseMenus)
                 if trimmedIssues.isEmpty {
                     print("[WorkoutGeneratorService] Week 1 best candidate accepted after trim — all issues resolved")
                     attemptTrace.append("Best candidate accepted after overshoot trim — all issues resolved")
@@ -334,7 +342,7 @@ extension ClaudeService {
                 )
                 let correctedDecoded = try decodeJSONPayload(WorkoutProgramResponse.self, from: correctedJSON)
                 let correctedCleaned = try await sanitizeProgramResponse(correctedDecoded)
-                let correctedIssues = validateProgramResponse(correctedCleaned, blueprint: blueprint)
+                let correctedIssues = validateProgramResponse(correctedCleaned, blueprint: blueprint, expectedExerciseMenus: exerciseMenus)
 
                 if correctedIssues.isEmpty {
                     attemptTrace.append("Correction pass: Accepted — no issues")
@@ -359,7 +367,7 @@ extension ClaudeService {
                         daysPerWeek: correctedCleaned.daysPerWeek,
                         days: corrTrimDays
                     )
-                    let corrTrimIssues = validateProgramResponse(corrTrimmed, blueprint: blueprint)
+                    let corrTrimIssues = validateProgramResponse(corrTrimmed, blueprint: blueprint, expectedExerciseMenus: exerciseMenus)
                     if corrTrimIssues.isEmpty || shouldAcceptAIOutput(despite: corrTrimIssues) {
                         let finalIssues = corrTrimIssues.isEmpty ? [] : corrTrimIssues
                         attemptTrace.append("Correction pass: Accepted after trim\(finalIssues.isEmpty ? "" : " with warnings")")
@@ -470,6 +478,14 @@ extension ClaudeService {
             trainingIntentSummary: intentSummary,
             blueprintSummary: blueprintSummary
         )
+        let exerciseMenus = preSelectedExerciseMenu(
+            for: blueprint,
+            trainingIntent: trainingIntent,
+            weekNumber: weekNumber,
+            previousWeekDays: previousWeekDays.isEmpty ? nil : previousWeekDays
+        )
+        let menuContext = exerciseMenuContext(from: exerciseMenus, blueprint: blueprint, dayStart: dayStart)
+
         let config = nextWeekConfig
         let toolSchema = weekToolSchema(dayStart: dayStart, dayEnd: dayEnd)
         let systemPrompt = nextWeekSystemPrompt(weekNumber: weekNumber, splitType: splitType, programName: programName)
@@ -479,6 +495,7 @@ extension ClaudeService {
             dayEnd: dayEnd,
             previousWeekReference: previousWeekReference,
             analysisContext: context,
+            exerciseMenuContext: menuContext,
             performanceHistory: performanceHistory,
             sessionFeedbackSummary: sessionFeedbackSummary,
             skipHistory: skipHistory
@@ -572,7 +589,8 @@ extension ClaudeService {
                     dayStart: dayStart,
                     dayEnd: dayEnd,
                     previousWeekDays: hasValidPreviousWeek ? previousWeekDays : nil,
-                    blueprint: blueprint
+                    blueprint: blueprint,
+                    expectedExerciseMenus: exerciseMenus
                 )
                 let score = issues.isEmpty ? 0 : scoreValidationIssues(issues)
                 scoredCandidates.append((response: cleaned, issues: issues, score: score))
@@ -630,7 +648,8 @@ extension ClaudeService {
                     dayStart: dayStart,
                     dayEnd: dayEnd,
                     previousWeekDays: hasValidPreviousWeek ? previousWeekDays : nil,
-                    blueprint: blueprint
+                    blueprint: blueprint,
+                    expectedExerciseMenus: exerciseMenus
                 )
                 if trimmedIssues.isEmpty {
                     print("[WorkoutGeneratorService] Week \(weekNumber) best candidate accepted after trim — all issues resolved")
@@ -683,7 +702,8 @@ extension ClaudeService {
                     dayStart: dayStart,
                     dayEnd: dayEnd,
                     previousWeekDays: hasValidPreviousWeek ? previousWeekDays : nil,
-                    blueprint: blueprint
+                    blueprint: blueprint,
+                    expectedExerciseMenus: exerciseMenus
                 )
 
                 if correctedIssues.isEmpty {
@@ -709,7 +729,8 @@ extension ClaudeService {
                         dayStart: dayStart,
                         dayEnd: dayEnd,
                         previousWeekDays: hasValidPreviousWeek ? previousWeekDays : nil,
-                        blueprint: blueprint
+                        blueprint: blueprint,
+                        expectedExerciseMenus: exerciseMenus
                     )
                     if corrTrimIssues.isEmpty || shouldAcceptAIOutput(despite: corrTrimIssues) {
                         let finalIssues = corrTrimIssues.isEmpty ? [] : corrTrimIssues
@@ -788,10 +809,17 @@ extension ClaudeService {
             trainingIntentSummary: intentSummary,
             blueprintSummary: blueprintSummary
         )
+        let exerciseMenus = preSelectedExerciseMenu(
+            for: blueprint,
+            trainingIntent: trainingIntent,
+            weekNumber: 1,
+            previousWeekDays: nil
+        )
+        let menuContext = exerciseMenuContext(from: exerciseMenus, blueprint: blueprint)
         let config = weekOneConfig
         let toolSchema = programToolSchema()
         let systemPrompt = weekOneSystemPrompt()
-        let userPrompt = weekOneUserPrompt(context: context)
+        let userPrompt = weekOneUserPrompt(context: context, exerciseMenuContext: menuContext)
         let requestContext = workoutRequestContext(
             phase: "week_one_debug",
             weekNumber: 1,
@@ -842,7 +870,7 @@ extension ClaudeService {
 
             let decoded = try decodeJSONPayload(WorkoutProgramResponse.self, from: candidate)
             let cleaned = try await sanitizeProgramResponse(decoded)
-            let issues = validateProgramResponse(cleaned, blueprint: blueprint)
+            let issues = validateProgramResponse(cleaned, blueprint: blueprint, expectedExerciseMenus: exerciseMenus)
             let attempt = WorkoutGeneratorDebugAttempt(
                 attemptNumber: 1,
                 rawPayload: candidate,
@@ -899,7 +927,7 @@ extension ClaudeService {
                         try Task.checkCancellation()
                         let decoded = try decodeJSONPayload(WorkoutProgramResponse.self, from: jsonString)
                         let cleaned = try await sanitizeProgramResponse(decoded)
-                        let issues = validateProgramResponse(cleaned, blueprint: blueprint)
+                        let issues = validateProgramResponse(cleaned, blueprint: blueprint, expectedExerciseMenus: exerciseMenus)
                         let sanitizedPayload = try? encodeDebugJSONString(cleaned)
 
                         if issues.isEmpty {
@@ -949,7 +977,7 @@ extension ClaudeService {
                                     daysPerWeek: cleaned.daysPerWeek,
                                     days: trimmedDays
                                 )
-                                let trimmedIssues = validateProgramResponse(trimmedProgram, blueprint: blueprint)
+                                let trimmedIssues = validateProgramResponse(trimmedProgram, blueprint: blueprint, expectedExerciseMenus: exerciseMenus)
                                 let trimmedPayload = try? encodeDebugJSONString(trimmedProgram)
                                 if trimmedIssues.isEmpty || shouldAcceptAIOutput(despite: trimmedIssues) {
                                     attempts.append(
@@ -1192,6 +1220,13 @@ extension ClaudeService {
             trainingIntentSummary: intentSummary,
             blueprintSummary: blueprintSummary
         )
+        let exerciseMenus = preSelectedExerciseMenu(
+            for: blueprint,
+            trainingIntent: trainingIntent,
+            weekNumber: weekNumber,
+            previousWeekDays: previousWeekDays.isEmpty ? nil : previousWeekDays
+        )
+        let menuContext = exerciseMenuContext(from: exerciseMenus, blueprint: blueprint, dayStart: dayStart)
         let config = nextWeekConfig
         let toolSchema = weekToolSchema(dayStart: dayStart, dayEnd: dayEnd)
         let systemPrompt = nextWeekSystemPrompt(weekNumber: weekNumber, splitType: splitType, programName: programName)
@@ -1200,7 +1235,8 @@ extension ClaudeService {
             dayStart: dayStart,
             dayEnd: dayEnd,
             previousWeekReference: previousWeekReference,
-            analysisContext: context
+            analysisContext: context,
+            exerciseMenuContext: menuContext
         )
         let requestContext = workoutRequestContext(
             phase: "next_week_debug",
@@ -1276,7 +1312,8 @@ extension ClaudeService {
                 dayStart: dayStart,
                 dayEnd: dayEnd,
                 previousWeekDays: hasValidPreviousWeek ? previousWeekDays : nil,
-                blueprint: blueprint
+                blueprint: blueprint,
+                expectedExerciseMenus: exerciseMenus
             )
             let attempt = WorkoutGeneratorDebugAttempt(
                 attemptNumber: 1,
@@ -1338,7 +1375,8 @@ extension ClaudeService {
                             dayStart: dayStart,
                             dayEnd: dayEnd,
                             previousWeekDays: hasValidPreviousWeek ? previousWeekDays : nil,
-                            blueprint: blueprint
+                            blueprint: blueprint,
+                            expectedExerciseMenus: exerciseMenus
                         )
                         let sanitizedPayload = try? encodeDebugJSONString(cleaned)
 
@@ -1391,7 +1429,8 @@ extension ClaudeService {
                                     dayStart: dayStart,
                                     dayEnd: dayEnd,
                                     previousWeekDays: hasValidPreviousWeek ? previousWeekDays : nil,
-                                    blueprint: blueprint
+                                    blueprint: blueprint,
+                                    expectedExerciseMenus: exerciseMenus
                                 )
                                 let trimmedPayload = try? encodeDebugJSONString(trimmedWeek)
                                 if trimmedIssues.isEmpty || shouldAcceptAIOutput(despite: trimmedIssues) {

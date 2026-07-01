@@ -335,12 +335,23 @@ extension ClaudeService {
 
     // MARK: - Validation
 
-    func validateProgramResponse(_ program: WorkoutProgramResponse, blueprint: ProgramBlueprint) -> [String] {
+    func validateProgramResponse(
+        _ program: WorkoutProgramResponse,
+        blueprint: ProgramBlueprint,
+        expectedExerciseMenus: [[PreSelectedExercise]]? = nil
+    ) -> [String] {
         var issues: [String] = []
         let days = program.days
 
         issues.append(contentsOf: validateDaySet(days, dayStart: 1, dayEnd: 7))
         issues.append(contentsOf: validateBlueprint(days: days, blueprint: blueprint, dayStart: 1))
+        if let expectedExerciseMenus {
+            issues.append(contentsOf: validateExerciseMenuAdherence(
+                days: days,
+                expectedExerciseMenus: expectedExerciseMenus,
+                dayStart: 1
+            ))
+        }
 
         if program.daysPerWeek < 4 || program.daysPerWeek > 6 {
             issues.append("daysPerWeek should be between 4 and 6.")
@@ -362,13 +373,21 @@ extension ClaudeService {
         dayStart: Int,
         dayEnd: Int,
         previousWeekDays: [WorkoutDayResponse]?,
-        blueprint: ProgramBlueprint
+        blueprint: ProgramBlueprint,
+        expectedExerciseMenus: [[PreSelectedExercise]]? = nil
     ) -> [String] {
         var issues: [String] = []
         let days = week.days
 
         issues.append(contentsOf: validateDaySet(days, dayStart: dayStart, dayEnd: dayEnd))
         issues.append(contentsOf: validateBlueprint(days: days, blueprint: blueprint, dayStart: dayStart))
+        if let expectedExerciseMenus {
+            issues.append(contentsOf: validateExerciseMenuAdherence(
+                days: days,
+                expectedExerciseMenus: expectedExerciseMenus,
+                dayStart: dayStart
+            ))
+        }
 
         if week.weekSummary.trimmedOr(default: "").isEmpty {
             issues.append("weekSummary is empty.")
@@ -380,6 +399,45 @@ extension ClaudeService {
         }
 
         return issues
+    }
+
+    func validateExerciseMenuAdherence(
+        days: [WorkoutDayResponse],
+        expectedExerciseMenus: [[PreSelectedExercise]],
+        dayStart: Int
+    ) -> [String] {
+        guard !expectedExerciseMenus.isEmpty else { return [] }
+
+        var issues: [String] = []
+        let daysByNumber = Dictionary(grouping: days, by: \.dayNumber)
+            .compactMapValues { $0.first }
+
+        for (offset, menu) in expectedExerciseMenus.enumerated() {
+            guard !menu.isEmpty else { continue }
+            let dayNumber = dayStart + offset
+            guard let day = daysByNumber[dayNumber], !day.isRestDay else {
+                issues.append("Day \(dayNumber) did not follow the Pre-Selected Exercise Menu: expected \(menu.count) locked exercises, but the generated day is missing or marked as rest.")
+                continue
+            }
+
+            if day.exercises.count != menu.count {
+                issues.append("Day \(dayNumber) did not follow the Pre-Selected Exercise Menu: expected \(menu.count) exercises but generated \(day.exercises.count).")
+            }
+
+            let maxComparable = min(day.exercises.count, menu.count)
+            for index in 0..<maxComparable {
+                let expected = menu[index]
+                let actual = day.exercises[index]
+                let expectedName = canonicalExerciseName(expected.exerciseName, muscleTarget: expected.muscleTarget)
+                let actualName = canonicalExerciseName(actual.exerciseName, muscleTarget: actual.muscleTarget)
+                guard normalizeExerciseName(expectedName) != normalizeExerciseName(actualName) else { continue }
+
+                issues.append("Day \(dayNumber) did not follow the Pre-Selected Exercise Menu at slot \(index + 1): expected \(expected.exerciseName), but generated \(actual.exerciseName).")
+            }
+        }
+
+        var seen = Set<String>()
+        return issues.filter { seen.insert($0).inserted }
     }
 
     func validateBlueprint(
@@ -657,7 +715,8 @@ extension ClaudeService {
             "notes contradict the actual programming",
             "was replaced with a poor substitute",
             "substitution changes the primary muscle target",
-            "substitution significantly increases fatigue"
+            "substitution significantly increases fatigue",
+            "did not follow the Pre-Selected Exercise Menu"
         ]
     }
 
