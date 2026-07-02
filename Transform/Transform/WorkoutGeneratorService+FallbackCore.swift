@@ -219,14 +219,13 @@ extension ClaudeService {
             )
         }
 
-        if exerciseMenus == nil {
-            days = repairedProceduralDays(
-                days,
-                weekNumber: weekNumber,
-                blueprint: blueprint,
-                dayStart: dayStart
-            )
-        }
+        days = repairedProceduralDays(
+            days,
+            weekNumber: weekNumber,
+            blueprint: blueprint,
+            dayStart: dayStart,
+            menuLocked: exerciseMenus != nil
+        )
 
         let summary = "Week \(weekNumber) for \(programName) (\(splitType)) applies phase-aware progression and shift-work-friendly session design."
         return WorkoutWeekResponse(
@@ -239,28 +238,30 @@ extension ClaudeService {
         _ days: [WorkoutDayResponse],
         weekNumber: Int,
         blueprint: ProgramBlueprint,
-        dayStart: Int
+        dayStart: Int,
+        menuLocked: Bool = false
     ) -> [WorkoutDayResponse] {
         let repaired = repairProceduralPriorityCoverage(
             in: days,
             weekNumber: weekNumber,
             blueprint: blueprint,
-            dayStart: dayStart
+            dayStart: dayStart,
+            menuLocked: menuLocked
         )
         let budgeted = enforceProceduralSessionBudgets(
             repaired,
             weekNumber: weekNumber,
             blueprint: blueprint,
-            dayStart: dayStart
+            dayStart: dayStart,
+            menuLocked: menuLocked
         )
 
-        // Run one final blueprint-aware repair after session trimming so the
-        // last time-budget pass cannot quietly undo required priority coverage.
         return repairProceduralPriorityCoverage(
             in: budgeted,
             weekNumber: weekNumber,
             blueprint: blueprint,
-            dayStart: dayStart
+            dayStart: dayStart,
+            menuLocked: menuLocked
         )
     }
 
@@ -268,7 +269,8 @@ extension ClaudeService {
         in days: [WorkoutDayResponse],
         weekNumber: Int,
         blueprint: ProgramBlueprint,
-        dayStart: Int
+        dayStart: Int,
+        menuLocked: Bool = false
     ) -> [WorkoutDayResponse] {
         var repaired = days
         var passCount = 0
@@ -290,7 +292,8 @@ extension ClaudeService {
                     continue
                 }
 
-                if remainingFrequencyShortfall > 0,
+                if !menuLocked,
+                   remainingFrequencyShortfall > 0,
                    coverage.directSets + 0.01 >= allocation.directSetTarget,
                    let redistributed = redistributePriorityVolumeForFrequency(
                         in: repaired,
@@ -378,9 +381,10 @@ extension ClaudeService {
                         || remainingDirectShortfall > existingPotentialGain + 0.01
                         || remainingWeightedShortfall > existingPotentialGain + 0.01
 
-                    if needsSupplementalExercise
-                        && (remainingDirectShortfall > 0.01
-                            || remainingWeightedShortfall > 0.01) {
+                    if !menuLocked,
+                       needsSupplementalExercise,
+                       remainingDirectShortfall > 0.01
+                            || remainingWeightedShortfall > 0.01 {
                         let minimumDirectGainNeeded = startedWithoutExposure && remainingFrequencyShortfall > 0
                             ? minimumMeaningfulPriorityExposureSets(for: allocation.area)
                             : 0
@@ -462,7 +466,8 @@ extension ClaudeService {
                         }
                     }
 
-                    if (remainingDirectShortfall > 0.01 || remainingWeightedShortfall > 0.01),
+                    if !menuLocked,
+                       (remainingDirectShortfall > 0.01 || remainingWeightedShortfall > 0.01),
                        remainingSessionDirectCapacity > 0.01 {
                         let updatedWeeklyVariationKeys = priorityVariationNames(
                             for: allocation,
@@ -520,7 +525,8 @@ extension ClaudeService {
         _ days: [WorkoutDayResponse],
         weekNumber: Int,
         blueprint: ProgramBlueprint,
-        dayStart: Int
+        dayStart: Int,
+        menuLocked: Bool = false
     ) -> [WorkoutDayResponse] {
         var updatedDays = days
 
@@ -542,13 +548,25 @@ extension ClaudeService {
                     normalizedPriorityText($0.area) == normalizedPriorityText(area)
                 }).map(priorityIntent(for:))
             }
-            let trimmedExercises = rebalanceSessionTime(
-                in: day.exercises,
-                weekNumber: weekNumber,
-                focusIntent: focusIntent,
-                supportIntents: supportIntents,
-                targetSessionMinutes: plan.targetSessionMinutes
-            )
+            let trimmedExercises: [WorkoutExerciseResponse]
+            if menuLocked {
+                trimmedExercises = setOnlyFatigueRebalance(
+                    day.exercises,
+                    weekNumber: weekNumber,
+                    focusIntent: focusIntent,
+                    supportIntents: supportIntents,
+                    targetFatigueCap: plan.targetFatigueCap,
+                    targetSessionMinutes: plan.targetSessionMinutes
+                )
+            } else {
+                trimmedExercises = rebalanceSessionTime(
+                    in: day.exercises,
+                    weekNumber: weekNumber,
+                    focusIntent: focusIntent,
+                    supportIntents: supportIntents,
+                    targetSessionMinutes: plan.targetSessionMinutes
+                )
+            }
             updatedDays[index] = WorkoutDayResponse(
                 dayNumber: day.dayNumber,
                 dayName: day.dayName,
