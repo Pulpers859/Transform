@@ -212,7 +212,8 @@ extension ClaudeService {
         focusIntent: MusclePriorityIntent?,
         supportIntents: [MusclePriorityIntent],
         targetFatigueCap: Int,
-        targetSessionMinutes: Int? = nil
+        targetSessionMinutes: Int? = nil,
+        menuLocked: Bool = false
     ) -> [WorkoutExerciseResponse] {
         var balanced = exercises
 
@@ -223,48 +224,94 @@ extension ClaudeService {
                 for: focusIntent,
                 allowedCap: focusCap
             )
-            balanced = trimExcessPriorityExerciseMatches(
-                in: balanced,
-                for: focusIntent,
-                maxMatches: focusExerciseTargetCount(for: focusIntent)
-            )
-        }
-
-        for supportIntent in supportIntents {
-            balanced = trimExcessPriorityExerciseMatches(
-                in: balanced,
-                for: supportIntent,
-                maxMatches: 1
-            )
-        }
-
-        balanced = rebalanceDayFatigue(
-            in: balanced,
-            weekNumber: weekNumber,
-            focusIntent: focusIntent,
-            supportIntents: supportIntents,
-            targetFatigueCap: targetFatigueCap
-        )
-
-        while balanced.count > 5 && estimatedDayFatigue(for: balanced) > targetFatigueCap {
-            guard let removalIndex = fatigueTrimCandidateIndex(
-                in: balanced,
-                focusIntent: focusIntent,
-                supportIntents: supportIntents
-            ) else {
-                break
+            if !menuLocked {
+                balanced = trimExcessPriorityExerciseMatches(
+                    in: balanced,
+                    for: focusIntent,
+                    maxMatches: focusExerciseTargetCount(for: focusIntent)
+                )
             }
-            balanced.remove(at: removalIndex)
         }
 
-        if let targetSessionMinutes {
-            balanced = rebalanceSessionTime(
+        if !menuLocked {
+            for supportIntent in supportIntents {
+                balanced = trimExcessPriorityExerciseMatches(
+                    in: balanced,
+                    for: supportIntent,
+                    maxMatches: 1
+                )
+            }
+
+            balanced = rebalanceDayFatigue(
                 in: balanced,
                 weekNumber: weekNumber,
                 focusIntent: focusIntent,
                 supportIntents: supportIntents,
+                targetFatigueCap: targetFatigueCap
+            )
+
+            while balanced.count > 5 && estimatedDayFatigue(for: balanced) > targetFatigueCap {
+                guard let removalIndex = fatigueTrimCandidateIndex(
+                    in: balanced,
+                    focusIntent: focusIntent,
+                    supportIntents: supportIntents
+                ) else {
+                    break
+                }
+                balanced.remove(at: removalIndex)
+            }
+
+            if let targetSessionMinutes {
+                balanced = rebalanceSessionTime(
+                    in: balanced,
+                    weekNumber: weekNumber,
+                    focusIntent: focusIntent,
+                    supportIntents: supportIntents,
+                    targetSessionMinutes: targetSessionMinutes
+                )
+            }
+        } else {
+            balanced = setOnlyFatigueRebalance(
+                balanced,
+                weekNumber: weekNumber,
+                focusIntent: focusIntent,
+                supportIntents: supportIntents,
+                targetFatigueCap: targetFatigueCap,
                 targetSessionMinutes: targetSessionMinutes
             )
+        }
+
+        return balanced
+    }
+
+    func setOnlyFatigueRebalance(
+        _ exercises: [WorkoutExerciseResponse],
+        weekNumber: Int,
+        focusIntent: MusclePriorityIntent?,
+        supportIntents: [MusclePriorityIntent],
+        targetFatigueCap: Int,
+        targetSessionMinutes: Int?
+    ) -> [WorkoutExerciseResponse] {
+        var balanced = exercises
+
+        while estimatedDayFatigue(for: balanced) > targetFatigueCap {
+            guard let idx = volumeReductionCandidateIndex(
+                in: balanced, weekNumber: weekNumber,
+                focusIntent: focusIntent, supportIntents: supportIntents
+            ) else { break }
+            guard balanced[idx].sets > minimumSetFloor(for: balanced[idx]) else { break }
+            balanced[idx] = exerciseResponse(balanced[idx], withSets: balanced[idx].sets - 1)
+        }
+
+        if let targetSessionMinutes {
+            while estimatedSessionMinutes(for: proceduralTrainingDay(from: balanced)) > targetSessionMinutes + 3 {
+                guard let idx = volumeReductionCandidateIndex(
+                    in: balanced, weekNumber: weekNumber,
+                    focusIntent: focusIntent, supportIntents: supportIntents
+                ) else { break }
+                guard balanced[idx].sets > minimumSetFloor(for: balanced[idx]) else { break }
+                balanced[idx] = exerciseResponse(balanced[idx], withSets: balanced[idx].sets - 1)
+            }
         }
 
         return balanced

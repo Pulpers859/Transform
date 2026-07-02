@@ -423,6 +423,7 @@ extension ClaudeService {
             from: analysisResult,
             trainingIntent: trainingIntent,
             blueprint: blueprint,
+            exerciseMenus: exerciseMenus,
             diagnostic: lastIssues.joined(separator: " | ")
         )
         let fallbackIssues = validateProgramResponse(fallbackResponse, blueprint: blueprint, expectedExerciseMenus: exerciseMenus)
@@ -804,6 +805,7 @@ extension ClaudeService {
             trainingIntent: trainingIntent,
             blueprint: blueprint,
             previousWeekDays: hasValidPreviousWeek ? previousWeekDays : nil,
+            exerciseMenus: exerciseMenus,
             diagnostic: lastIssues.joined(separator: " | ")
         )
         let fallbackIssues = validateWeekResponse(

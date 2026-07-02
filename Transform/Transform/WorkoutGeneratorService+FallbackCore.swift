@@ -7,12 +7,14 @@ extension ClaudeService {
         from analysisResult: BodyAnalysisResult,
         trainingIntent: TrainingIntentPlan,
         blueprint: ProgramBlueprint,
+        exerciseMenus: [[PreSelectedExercise]]? = nil,
         diagnostic: String = ""
     ) throws -> WorkoutProgramResponse {
         let fallback = buildProceduralWeekOneProgram(
             from: analysisResult,
             trainingIntent: trainingIntent,
             blueprint: blueprint,
+            exerciseMenus: exerciseMenus,
             diagnostic: diagnostic
         )
         let issues = validateProgramResponse(fallback, blueprint: blueprint)
@@ -39,6 +41,7 @@ extension ClaudeService {
         trainingIntent: TrainingIntentPlan,
         blueprint: ProgramBlueprint,
         previousWeekDays: [WorkoutDayResponse]?,
+        exerciseMenus: [[PreSelectedExercise]]? = nil,
         diagnostic: String = ""
     ) throws -> WorkoutWeekResponse {
         let fallback = buildProceduralWeek(
@@ -50,6 +53,7 @@ extension ClaudeService {
             trainingIntent: trainingIntent,
             blueprint: blueprint,
             previousWeekDays: previousWeekDays,
+            exerciseMenus: exerciseMenus,
             diagnostic: diagnostic
         )
         let issues = validateWeekResponse(
@@ -77,6 +81,7 @@ extension ClaudeService {
         from analysisResult: BodyAnalysisResult,
         trainingIntent: TrainingIntentPlan,
         blueprint: ProgramBlueprint,
+        exerciseMenus: [[PreSelectedExercise]]? = nil,
         diagnostic: String = ""
     ) -> WorkoutProgramResponse {
         let splitRecommendation = trainingIntent.splitRecommendation.trimmedOr(default: "Adaptive Hypertrophy Split")
@@ -90,6 +95,7 @@ extension ClaudeService {
             trainingIntent: trainingIntent,
             blueprint: blueprint,
             previousWeekDays: nil,
+            exerciseMenus: exerciseMenus,
             diagnostic: diagnostic
         )
 
@@ -118,6 +124,7 @@ extension ClaudeService {
         trainingIntent: TrainingIntentPlan,
         blueprint: ProgramBlueprint,
         previousWeekDays: [WorkoutDayResponse]?,
+        exerciseMenus: [[PreSelectedExercise]]? = nil,
         diagnostic: String = ""
     ) -> WorkoutWeekResponse {
         let previousExercisesByStyle = proceduralPreviousExercisesByStyle(from: previousWeekDays)
@@ -147,29 +154,47 @@ extension ClaudeService {
             let focusIntent = focusIntentForArea(plan.focusArea, within: trainingIntent)
             let supportIntents = plan.supportAreas.compactMap { focusIntentForArea($0, within: trainingIntent) }
             let focus = plan.focusArea ?? ""
-            let styleKey = canonicalTrainingStyle(style)
-            let styleUsage = previousUsageByStyle[styleKey, default: 0]
-            let previousExercises: [WorkoutExerciseResponse] = previousExercisesByStyle[styleKey].flatMap { groupedExercises in
-                guard styleUsage < groupedExercises.count else { return nil }
-                return groupedExercises[styleUsage]
-            } ?? [WorkoutExerciseResponse]()
-            previousUsageByStyle[styleKey] = styleUsage + 1
 
-            let exercises = buildProceduralExercises(
-                style: style,
-                weekNumber: weekNumber,
-                focusIntent: focusIntent,
-                supportIntents: supportIntents,
-                targetFatigueCap: plan.targetFatigueCap,
-                targetSessionMinutes: plan.targetSessionMinutes,
-                selectionContext: ExerciseSelectionContext(
-                    calibration: blueprint.calibration,
-                    injuryRiskFocus: blueprint.injuryRiskFocus,
+            let menu = exerciseMenus.flatMap { offset < $0.count ? $0[offset] : nil }
+            let hasMenu = menu != nil && !(menu!.isEmpty)
+
+            let exercises: [WorkoutExerciseResponse]
+            if hasMenu {
+                exercises = programMenuExercises(
+                    menu: menu!,
+                    weekNumber: weekNumber,
+                    style: style,
+                    focus: focus,
+                    focusIntent: focusIntent,
+                    supportIntents: supportIntents,
+                    targetFatigueCap: plan.targetFatigueCap,
+                    targetSessionMinutes: plan.targetSessionMinutes
+                )
+            } else {
+                let styleKey = canonicalTrainingStyle(style)
+                let styleUsage = previousUsageByStyle[styleKey, default: 0]
+                let previousExercises: [WorkoutExerciseResponse] = previousExercisesByStyle[styleKey].flatMap { groupedExercises in
+                    guard styleUsage < groupedExercises.count else { return nil }
+                    return groupedExercises[styleUsage]
+                } ?? [WorkoutExerciseResponse]()
+                previousUsageByStyle[styleKey] = styleUsage + 1
+
+                exercises = buildProceduralExercises(
+                    style: style,
+                    weekNumber: weekNumber,
+                    focusIntent: focusIntent,
+                    supportIntents: supportIntents,
+                    targetFatigueCap: plan.targetFatigueCap,
                     targetSessionMinutes: plan.targetSessionMinutes,
-                    style: style
-                ),
-                previousExercises: previousExercises
-            )
+                    selectionContext: ExerciseSelectionContext(
+                        calibration: blueprint.calibration,
+                        injuryRiskFocus: blueprint.injuryRiskFocus,
+                        targetSessionMinutes: plan.targetSessionMinutes,
+                        style: style
+                    ),
+                    previousExercises: previousExercises
+                )
+            }
 
             let dayName = focus.isEmpty ? "\(style) Session" : "\(style) - \(focus) Focus"
             let groups = proceduralMuscleGroups(for: style)
@@ -194,12 +219,14 @@ extension ClaudeService {
             )
         }
 
-        days = repairedProceduralDays(
-            days,
-            weekNumber: weekNumber,
-            blueprint: blueprint,
-            dayStart: dayStart
-        )
+        if exerciseMenus == nil {
+            days = repairedProceduralDays(
+                days,
+                weekNumber: weekNumber,
+                blueprint: blueprint,
+                dayStart: dayStart
+            )
+        }
 
         let summary = "Week \(weekNumber) for \(programName) (\(splitType)) applies phase-aware progression and shift-work-friendly session design."
         return WorkoutWeekResponse(
@@ -1150,6 +1177,55 @@ extension ClaudeService {
             supportIntents: supportIntents,
             targetFatigueCap: targetFatigueCap,
             targetSessionMinutes: targetSessionMinutes
+        )
+    }
+
+    func programMenuExercises(
+        menu: [PreSelectedExercise],
+        weekNumber: Int,
+        style: String,
+        focus: String,
+        focusIntent: MusclePriorityIntent?,
+        supportIntents: [MusclePriorityIntent],
+        targetFatigueCap: Int,
+        targetSessionMinutes: Int
+    ) -> [WorkoutExerciseResponse] {
+        let mapped = menu.enumerated().map { index, item in
+            let reps = proceduralRepRange(
+                for: weekNumber,
+                exerciseName: item.exerciseName,
+                muscleTarget: item.muscleTarget
+            )
+            return WorkoutExerciseResponse(
+                exerciseName: item.exerciseName,
+                sets: proceduralSets(for: weekNumber, exerciseName: item.exerciseName, muscleTarget: item.muscleTarget),
+                reps: reps,
+                tempo: proceduralTempo(
+                    for: weekNumber,
+                    exerciseName: item.exerciseName,
+                    muscleTarget: item.muscleTarget,
+                    reps: reps
+                ),
+                restSeconds: proceduralRestSeconds(for: item.exerciseName, muscleTarget: item.muscleTarget),
+                notes: proceduralExerciseNotes(
+                    weekNumber: weekNumber,
+                    exerciseName: item.exerciseName,
+                    muscleTarget: item.muscleTarget,
+                    index: index,
+                    focus: focus
+                ),
+                muscleTarget: item.muscleTarget
+            )
+        }
+
+        return balancedProceduralExercises(
+            mapped,
+            weekNumber: weekNumber,
+            focusIntent: focusIntent,
+            supportIntents: supportIntents,
+            targetFatigueCap: targetFatigueCap,
+            targetSessionMinutes: targetSessionMinutes,
+            menuLocked: true
         )
     }
 
