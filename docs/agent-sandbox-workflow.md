@@ -15,7 +15,7 @@ For risky experiments, create a detached worktree:
 Review the sandbox diff, then integrate only selected changes back into the main checkout:
 
 ```powershell
-git -C C:\Dev\Transform_clean-agent-sandboxes\generator-audit diff
+git -C C:\Dev\.agent-sandboxes\Transform_clean\generator-audit diff
 ```
 
 Remove the sandbox when finished:
