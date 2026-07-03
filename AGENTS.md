@@ -15,6 +15,7 @@
 - Do not create, switch to, suggest, or use side branches, feature branches, PR branches, or a `dev` branch.
 - Do not open or suggest pull requests for routine work in this repository.
 - Only use a non-`main` branch or a PR workflow if the user explicitly asks for it in that specific task.
+- For risky, creative, or parallel agent work, use a detached sandbox worktree via `tools/New-AgentSandbox.ps1`; do not create side branches or commit/push from the sandbox. See `docs/agent-sandbox-workflow.md`.
 
 ## origin/main Is Source Of Truth — Stale-Local-`main` Trap (READ BEFORE ANY COMMIT)
 - `origin/main` is the canonical, authoritative tree. The remote always wins over a local snapshot.
@@ -45,6 +46,7 @@
 - Prefer targeted searches and small file reads over broad repo sweeps.
 - Use `.claude/skills/transform-context-compact` when reviving old work or preparing a handoff.
 - Use `repomix` only for external full-repo handoffs, not normal local work.
+- Use `docs/agent-sandbox-workflow.md` before isolated AI-agent experiments.
 
 ## External Agent Reconciliation
 - If the user mentions prior work by another agent today, another machine, another terminal, or another conversation, do not assume the current diff or latest local commit tells the full story.
