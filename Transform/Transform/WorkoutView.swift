@@ -724,7 +724,11 @@ struct WorkoutView: View {
             WorkoutGenerationDiagnostics.markStage("archiving prior programs")
 
             for program in programs where !program.isArchived {
-                program.isArchived = true
+                if program.hasCompletedExercises {
+                    program.isArchived = true
+                } else {
+                    modelContext.delete(program)
+                }
             }
 
             let warningsText = generationResult.validatorWarnings.joined(separator: "\n")

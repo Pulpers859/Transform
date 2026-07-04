@@ -93,6 +93,12 @@ class WorkoutProgram {
     var latestWeekDays: [WorkoutDay] {
         sortedDays.filter { $0.weekNumber == currentWeek }
     }
+
+    var hasCompletedExercises: Bool {
+        days.contains { day in
+            day.exercises.contains { $0.isCompleted }
+        }
+    }
 }
 
 // MARK: - Workout Day
