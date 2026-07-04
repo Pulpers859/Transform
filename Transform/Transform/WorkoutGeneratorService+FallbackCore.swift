@@ -291,6 +291,7 @@ extension ClaudeService {
                         || remainingFrequencyShortfall > 0 else {
                     continue
                 }
+                var directOvershootBudget = max(0, allocation.directSetTarget + 1.0 - coverage.directSets)
 
                 if !menuLocked,
                    remainingFrequencyShortfall > 0,
@@ -332,7 +333,9 @@ extension ClaudeService {
                         blueprint: blueprint,
                         dayStart: dayStart
                     )
-                    let currentDirectSets = directSets(on: day, forFocusArea: allocation.area)
+                    let currentDirectSets = menuLocked
+                        ? primeDirectSets(on: day, forFocusArea: allocation.area)
+                        : directSets(on: day, forFocusArea: allocation.area)
                     var remainingSessionDirectCapacity = max(0, allowedCap - currentDirectSets)
                     guard remainingSessionDirectCapacity > 0.01 else { continue }
 
@@ -405,6 +408,7 @@ extension ClaudeService {
                             remainingDirectShortfall = max(0, remainingDirectShortfall - injected.directGain)
                             remainingWeightedShortfall = max(0, remainingWeightedShortfall - injected.directGain)
                             remainingSessionDirectCapacity = max(0, remainingSessionDirectCapacity - injected.directGain)
+                            directOvershootBudget = max(0, directOvershootBudget - injected.directGain)
                             if startedWithoutExposure, injected.directGain > 0 {
                                 remainingFrequencyShortfall = max(0, remainingFrequencyShortfall - 1)
                                 startedWithoutExposure = false
@@ -437,6 +441,7 @@ extension ClaudeService {
 
                         while (remainingDirectShortfall > 0.01 || remainingWeightedShortfall > 0.01),
                               remainingSessionDirectCapacity + 0.01 >= perSetGain,
+                              directOvershootBudget + 0.01 >= perSetGain,
                               exercises[exerciseIndex].sets < repairSetCeiling(for: exercises[exerciseIndex], weekNumber: weekNumber) {
                             let updatedExercise = exerciseResponse(
                                 exercises[exerciseIndex],
@@ -450,6 +455,35 @@ extension ClaudeService {
                                 targetFatigueCap: targetFatigueCap,
                                 targetSessionMinutes: targetSessionMinutes
                             ) {
+                                if menuLocked,
+                                   let trimIndex = focusBudgetTrimCandidate(
+                                       in: updatedExercises,
+                                       boostingIndex: exerciseIndex,
+                                       focusArea: allocation.area
+                                   ) {
+                                    updatedExercises[trimIndex] = exerciseResponse(
+                                        updatedExercises[trimIndex],
+                                        withSets: updatedExercises[trimIndex].sets - 1
+                                    )
+                                    if canAccommodatePriorityRepair(
+                                        updatedExercises,
+                                        targetFatigueCap: targetFatigueCap,
+                                        targetSessionMinutes: targetSessionMinutes
+                                    ) {
+                                        exercises = updatedExercises
+                                        remainingDirectShortfall = max(0, remainingDirectShortfall - perSetGain)
+                                        remainingWeightedShortfall = max(0, remainingWeightedShortfall - perSetGain)
+                                        remainingSessionDirectCapacity = max(0, remainingSessionDirectCapacity - perSetGain)
+                                        directOvershootBudget = max(0, directOvershootBudget - perSetGain)
+                                        if startedWithoutExposure {
+                                            remainingFrequencyShortfall = max(0, remainingFrequencyShortfall - 1)
+                                            startedWithoutExposure = false
+                                        }
+                                        dayChanged = true
+                                        changed = true
+                                        continue
+                                    }
+                                }
                                 break
                             }
 
@@ -457,6 +491,7 @@ extension ClaudeService {
                             remainingDirectShortfall = max(0, remainingDirectShortfall - perSetGain)
                             remainingWeightedShortfall = max(0, remainingWeightedShortfall - perSetGain)
                             remainingSessionDirectCapacity = max(0, remainingSessionDirectCapacity - perSetGain)
+                            directOvershootBudget = max(0, directOvershootBudget - perSetGain)
                             if startedWithoutExposure {
                                 remainingFrequencyShortfall = max(0, remainingFrequencyShortfall - 1)
                                 startedWithoutExposure = false
@@ -495,6 +530,7 @@ extension ClaudeService {
                             remainingDirectShortfall = max(0, remainingDirectShortfall - injected.directGain)
                             remainingWeightedShortfall = max(0, remainingWeightedShortfall - injected.directGain)
                             remainingSessionDirectCapacity = max(0, remainingSessionDirectCapacity - injected.directGain)
+                            directOvershootBudget = max(0, directOvershootBudget - injected.directGain)
                             if startedWithoutExposure, injected.directGain > 0 {
                                 remainingFrequencyShortfall = max(0, remainingFrequencyShortfall - 1)
                                 startedWithoutExposure = false
@@ -1005,6 +1041,53 @@ extension ClaudeService {
         }
 
         return estimatedSessionMinutes(for: proceduralTrainingDay(from: exercises)) <= targetSessionMinutes + 3
+    }
+
+    func focusBudgetTrimCandidate(
+        in exercises: [WorkoutExerciseResponse],
+        boostingIndex: Int,
+        focusArea: String
+    ) -> Int? {
+        let candidates = exercises.indices.filter { index in
+            index != boostingIndex
+            && exercises[index].sets > minimumSetFloor(for: exercises[index])
+            && focusStimulusKind(
+                exerciseName: exercises[index].exerciseName,
+                muscleTarget: exercises[index].muscleTarget,
+                focusArea: focusArea
+            ) != .prime
+        }
+        return candidates.max { lhs, rhs in
+            focusBudgetTrimScore(for: exercises[lhs], index: lhs, focusArea: focusArea)
+                < focusBudgetTrimScore(for: exercises[rhs], index: rhs, focusArea: focusArea)
+        }
+    }
+
+    func focusBudgetTrimScore(
+        for exercise: WorkoutExerciseResponse,
+        index: Int,
+        focusArea: String
+    ) -> Int {
+        let kind = focusStimulusKind(
+            exerciseName: exercise.exerciseName,
+            muscleTarget: exercise.muscleTarget,
+            focusArea: focusArea
+        )
+        var score = index
+        switch kind {
+        case .none: score += 20
+        case .support: score += 10
+        case .secondary: score += 0
+        case .prime: return -1000
+        }
+        let role = proceduralExerciseRole(for: exercise.exerciseName, muscleTarget: exercise.muscleTarget)
+        switch role {
+        case .accessory: score += 4
+        case .core: score += 3
+        case .secondary: score += 2
+        case .anchor: score += 0
+        }
+        return score
     }
 
     func repairCandidateDayNumbers(

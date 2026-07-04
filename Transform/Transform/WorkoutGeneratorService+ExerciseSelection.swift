@@ -218,13 +218,13 @@ extension ClaudeService {
         var balanced = exercises
 
         if let focusIntent {
-            let focusCap = blueprintAllocation(for: focusIntent).maxFocusSessionDirectSets
-            balanced = rebalanceDirectSets(
-                in: balanced,
-                for: focusIntent,
-                allowedCap: focusCap
-            )
             if !menuLocked {
+                let focusCap = blueprintAllocation(for: focusIntent).maxFocusSessionDirectSets
+                balanced = rebalanceDirectSets(
+                    in: balanced,
+                    for: focusIntent,
+                    allowedCap: focusCap
+                )
                 balanced = trimExcessPriorityExerciseMatches(
                     in: balanced,
                     for: focusIntent,

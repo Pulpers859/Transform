@@ -379,6 +379,18 @@ extension ClaudeService {
         }
     }
 
+    func primeDirectSets(on day: WorkoutDayResponse, forFocusArea focusArea: String) -> Double {
+        return day.exercises.reduce(0) { partialResult, exercise in
+            let kind = focusStimulusKind(
+                exerciseName: exercise.exerciseName,
+                muscleTarget: exercise.muscleTarget,
+                focusArea: focusArea
+            )
+            guard kind == .prime else { return partialResult }
+            return partialResult + Double(exercise.sets)
+        }
+    }
+
     func validatePrescriptionUniformity(on day: WorkoutDayResponse) -> [String] {
         guard day.exercises.count >= 4 else { return [] }
 
