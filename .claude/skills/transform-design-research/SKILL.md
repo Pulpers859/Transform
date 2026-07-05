@@ -24,7 +24,7 @@ Use this skill to turn external design inspiration into a coherent, accessible, 
    - patterns rejected and why
    - proposed hierarchy, interaction model, and visual direction
    - accessibility and Dynamic Type considerations
-6. Implement through the smallest matching Apple-native skills IF they are available in the session (`swiftui-ui-patterns`, `swiftui-liquid-glass`, `swiftui-view-refactor`, `swiftui-performance-audit`). These are not repo-local and are often absent — when absent, implement directly with existing Transform patterns (`DesignSystem.swift` tokens: `TFColor`, `TFTypography`, `TFHaptics`) and do not claim the skills were applied.
+6. Implement directly with existing Transform patterns: `DesignSystem.swift` tokens (`TFColor`, `TFTypography`, `TFHaptics`), native SwiftUI controls and navigation, and the app's established component conventions. (Older docs referenced external `swiftui-*` helper skills; those were Builder.io-sourced and are retired — do not look for them.)
 7. Validate what the environment allows: reread the diff against the design brief, smoke-check syntax (`swiftc -parse <file>` on Windows), and confirm token usage. Then hand off to the owner for the real validation — build in Xcode, run on the physical iPhone. Never suggest or wait on the iOS Simulator; the owner intentionally does not use it. List the states worth checking on device: normal, loading, empty, error, selected, disabled, reduced motion, Dynamic Type.
 8. Compare the result against the design brief and the existing app. Refine obvious hierarchy, legibility, interaction, or consistency problems before handoff.
 
@@ -58,5 +58,5 @@ For a substantial design task, leave behind:
 
 ## Provenance
 
-- Last verified: 2026-07-05 against commit `0a68ce9`. Design tokens confirmed in `Transform/Transform/DesignSystem.swift`; the four `swiftui-*` skills and external sources (Refero, UI UX Pro Max, UX Components, 21st.dev) were NOT present in the verifying session — treat as conditionally available.
-- Re-verify source availability at use time; see `docs/AGENT_RESOURCE_DECISIONS.md` for the resource decisions of record.
+- Last verified: 2026-07-05 against commit `0a68ce9`. Design tokens confirmed in `Transform/Transform/DesignSystem.swift`. The formerly referenced `swiftui-*` skills are retired (owner-confirmed 2026-07-05; they came from the Builder.io skills evaluation, see `docs/AI_UI_UX_RESOURCE_EVALUATION_PLAYBOOK.md`). External design sources (Refero, UI UX Pro Max, UX Components, 21st.dev) remain session-dependent — verify availability at use time.
+- See `docs/AGENT_RESOURCE_DECISIONS.md` for the resource decisions of record.

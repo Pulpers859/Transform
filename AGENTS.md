@@ -74,7 +74,7 @@
 - Trigger it for screen redesigns, new flows, onboarding, dashboards, progress or analytics experiences, navigation changes, design-system decisions, accessibility reviews, or requests for a clearer, more polished, premium, cohesive, or native feel.
 - Do not invoke the full research workflow for tiny copy, spacing, or isolated visual bug fixes unless they expose a broader design problem.
 - Use external references to extract principles, not to copy screens or import web conventions into SwiftUI.
-- Implement the resulting direction through the smallest matching SwiftUI, Liquid Glass, refactor, and performance skills when they are available in the session; validation is the owner's device build, never the simulator.
+- Implement the resulting direction directly with native SwiftUI and the app's `DesignSystem.swift` tokens; validation is the owner's device build, never the simulator.
 
 ## Skill-First Workflow
 - In this repo, treat the repo-local skills as the default operating path, not an optional extra.
