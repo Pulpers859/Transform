@@ -43,6 +43,16 @@ Use this skill to debug Transform CI with the assumption that the repo is an Xco
 - "Make the workflow match the real Transform project."
 - "Check whether this build failure is from workflow drift or app code."
 
+## When NOT to use
+
+- The failure reproduces as an app-code compile error unrelated to CI config — fix the Swift file; use `transform-generator-audit` or `transform-data-safety` if it touches those areas.
+- Local-environment validation questions (what can be checked on Windows) — that is covered by `transform-handoff`'s validation-reality section.
+
 ## References
 
 - Read `references/ci-map.md` for workflow paths, project layout, and triage checklists.
+
+## Provenance
+
+- Last verified: 2026-07-05 against commit `0a68ce9`; `swift.yml` matches the map's description.
+- Re-verify: read `.github/workflows/` contents before trusting the map after CI changes.

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Transform Failure Archaeology"
+  short_description: "Recall past Transform incidents and do-not-refight doctrine before changing scarred code."
+  default_prompt: "Use this skill before reverting, redesigning, or simplifying odd-looking Transform behavior; check the incident log so past data-loss and generator failures are not re-fought."

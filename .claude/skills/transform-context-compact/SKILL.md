@@ -15,6 +15,8 @@ Use this skill to reduce token waste without losing critical Transform context.
    - `transform-handoff` for orientation
    - `transform-generator-audit` for generator/validator work
    - `transform-ci-triage` for GitHub Actions or Xcode CI
+   - `transform-data-safety` for naming/persistence/backup edits
+   - `transform-failure-archaeology` before reverting or simplifying odd-looking behavior
 4. Open only the files directly needed for the current task.
 5. Summarize state in 5-8 bullets before switching from discovery to editing or before ending the task.
 
@@ -33,6 +35,15 @@ Use this skill to reduce token waste without losing critical Transform context.
 - "Summarize this session so the next agent does not have to reread everything."
 - "Keep this review light on tokens."
 
+## When NOT to use
+
+- A short, fresh session already scoped to one file — just do the task.
+- Deep incident or generator investigation where the detail IS the work — compact the output, not the evidence gathering.
+
 ## References
 
 - Read `references/compact-map.md`.
+
+## Provenance
+
+- Last verified: 2026-07-05 against commit `0a68ce9` (skill list and doc paths checked).

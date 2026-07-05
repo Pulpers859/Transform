@@ -53,8 +53,19 @@ Use this skill to review the Transform workout-generation stack with the app's r
 - "Check whether this retry loop is wasting Anthropic calls."
 - "Review this generator PR for blueprint drift or fallback regressions."
 
+## When NOT to use
+
+- Persistence, naming-key, backup, or archiving edits — lead with `transform-data-safety` (the generator side of naming drift stays here).
+- "Why is generation designed this way" history questions — use `transform-failure-archaeology`.
+- UI-only changes to generator screens with no policy impact.
+
 ## References
 
-- Read `references/audit-map.md` for file hotspots, failure patterns, and current audit questions.
-- When a task depends on the programming contract, read `Transform/Transform/EvidenceProfile.md`.
+- Read `references/audit-map.md` for file hotspots, the menu-locked contract, failure patterns, and current audit questions.
+- When a task depends on the programming contract, read `Transform/Transform/EvidenceProfile.md` (rule IDs like `VOL-001` with confidence tiers).
 - When a task depends on current repo operating rules, read `docs/2_PROJECT_HANDOFF.md` and `docs/3_TRANSFORM_CLEAN_HANDOFF.md`.
+
+## Provenance
+
+- Last verified: 2026-07-05 against commit `0a68ce9`.
+- Re-verify: file list via `git ls-files "Transform/Transform/WorkoutGenerator*"`; doctrine via `references/audit-map.md` provenance commands.

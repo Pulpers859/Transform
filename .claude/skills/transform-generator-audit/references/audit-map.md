@@ -24,11 +24,26 @@
 - `WorkoutGeneratorService+ExerciseSelection.swift`
 - `WorkoutGeneratorService+FallbackCore.swift`
 - `WorkoutGeneratorService+FocusCoachingContext.swift`
+- `WorkoutGeneratorService+PlanningTypes.swift`
+- `WorkoutGenerationDiagnostics.swift`
 - `WorkoutGeneratorLabView.swift`
 - `WorkoutGeneratorDebugModels.swift`
 - `WorkoutModels.swift`
 - `AnthropicClient.swift`
 - `ClaudeService.swift`
+
+## Menu-locked generation contract (as of commit `0a68ce9`)
+
+- Exercise selection is deterministic: the app builds a locked exercise menu BEFORE the AI call
+  (`9071ef5`); the AI fills sets/reps/coaching around it. Do not reintroduce free-form AI
+  exercise selection or prompt text implying the AI chooses exercises (`2544e70` removed it).
+- Fallback consumes the same pre-selected menu instead of building its own (`cd22591`).
+- Menu-locked repair boosts set counts on existing menu exercises only — it must not inject or
+  remove exercises (`55836f8`); watch `rebalanceDirectSets` overcounting/overshoot (`edb99f1`).
+- Empty programs are deleted on re-generation; programs with logged data are archived to preserve
+  skip/pain history for future programming (`5a24463`, `0a68ce9`).
+- Retries are for structural failures only; heuristic quality issues are warnings handled by
+  sanitization/validator policy, not re-billed API calls (`ec09e64`, `4ab06f3`).
 
 ## Audit questions
 
@@ -50,8 +65,15 @@
 
 ## Recent areas of change worth double-checking
 
+- Menu-locked fallback repair (set boosting without injection) and direct-set rebalancing
+- Pain-driven exercise avoidance, equipment deprioritization, accessory variation cycling (`a9564e6`)
 - Heuristic issue tiering and correction-loop acceptance behavior
 - Over-volume detection and validator warning policy
 - Uniform prescription cleanup in sanitization
 - Prompt caching and model-ID changes in Anthropic request paths
-- Canonical exercise key handling for progression continuity
+- Canonical exercise key handling for progression continuity (see `transform-data-safety`)
+
+## Provenance
+
+- Last verified: 2026-07-05 against commit `0a68ce9`. All hotspot files confirmed present.
+- Re-verify hotspots: `git ls-files "Transform/Transform/WorkoutGenerator*"`; recent arcs: `git log --oneline -20`.

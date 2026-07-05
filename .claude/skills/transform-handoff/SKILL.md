@@ -47,7 +47,18 @@ When preparing a handoff or orientation note, include:
 - Preserve the personal-use baseline context without smuggling it into generic hardcoded prompt defaults.
 - Be explicit about evidence-backed logic versus heuristic choices.
 
+## When NOT to use
+
+- Deep in a single known file with fresh context already established — do not re-orient mid-task.
+- Incident history questions ("why is the code like this") — use `transform-failure-archaeology`.
+- Token-budget pressure on a resumed thread — use `transform-context-compact` first.
+
 ## References
 
 - Read `references/handoff-map.md` first.
 - Use `repomix` only when an external full-repo handoff is actually needed.
+
+## Provenance
+
+- Last verified: 2026-07-05 against commit `0a68ce9` (paths, remote, Swift file count, workflow files all checked).
+- Re-verify: `git ls-files "*.swift" | wc -l`, `git remote -v`, and existence of `Transform/Transform/WorkoutGeneratorService.swift`.

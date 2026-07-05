@@ -11,6 +11,9 @@ Use the smallest context that still lets Claude act correctly.
    - orientation -> `transform-handoff`
    - generator -> `transform-generator-audit`
    - CI -> `transform-ci-triage`
+   - naming/persistence/backup edits -> `transform-data-safety`
+   - "why is it like this" / revert-or-simplify urges -> `transform-failure-archaeology`
+   - substantial UI/UX -> `transform-design-research`
 3. Only then open task-specific files.
 4. Read heavier docs only if the task truly depends on them:
    - `docs/2_PROJECT_HANDOFF.md`

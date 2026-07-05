@@ -47,9 +47,18 @@ Use this skill when the work is too broad for a single linear sweep but still ne
   5. API waste
   6. maintainability
 
+## When NOT to use
+
+- Single-subsystem tasks with an obvious owning file — one careful pass beats fake lanes.
+- Tasks already covered end-to-end by one sibling skill (generator-only -> `transform-generator-audit`; CI-only -> `transform-ci-triage`).
+
 ## Common Uses
 
 - "Audit a broad set of recent main-branch changes without rereading the whole repo."
 - "Compare local behavior, GitHub state, and CI signals, then recommend the next move."
 - "Review a mixed generator and UI change set without letting logs or handoff docs take over the context."
 - "Prepare a compact handoff after a wide investigation."
+
+## Provenance
+
+- Last verified: 2026-07-05 against commit `0a68ce9`. Availability of parallel subagent tools varies by session; the sequential-lane fallback is always valid.

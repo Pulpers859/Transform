@@ -15,7 +15,7 @@ Use this skill to turn external design inspiration into a coherent, accessible, 
    - screen or flow boundary
    - information that must remain prominent
    - existing Transform patterns worth preserving
-2. Inspect the current implementation and, when available, the running screen before proposing a replacement.
+2. Inspect the current implementation (and screenshots from the owner's device, when available) before proposing a replacement.
 3. Choose only the sources that answer the current question. Read `references/source-guide.md`.
 4. Gather 3-5 relevant references total. Prefer real iOS screens and complete flows over disconnected visual fragments.
 5. Write a compact design brief before coding:
@@ -24,12 +24,8 @@ Use this skill to turn external design inspiration into a coherent, accessible, 
    - patterns rejected and why
    - proposed hierarchy, interaction model, and visual direction
    - accessibility and Dynamic Type considerations
-6. Implement through the smallest matching Apple-native skills:
-   - `swiftui-ui-patterns` for composition, state, and navigation
-   - `swiftui-liquid-glass` when iOS 26 glass is genuinely appropriate
-   - `swiftui-view-refactor` when restructuring a large view
-   - `swiftui-performance-audit` when rendering cost or scrolling may regress
-7. Build and inspect the result in an iOS simulator when Xcode tooling is available. Check the normal state plus relevant loading, empty, error, selected, disabled, and reduced-motion states.
+6. Implement through the smallest matching Apple-native skills IF they are available in the session (`swiftui-ui-patterns`, `swiftui-liquid-glass`, `swiftui-view-refactor`, `swiftui-performance-audit`). These are not repo-local and are often absent — when absent, implement directly with existing Transform patterns (`DesignSystem.swift` tokens: `TFColor`, `TFTypography`, `TFHaptics`) and do not claim the skills were applied.
+7. Validate what the environment allows: reread the diff against the design brief, smoke-check syntax (`swiftc -parse <file>` on Windows), and confirm token usage. Then hand off to the owner for the real validation — build in Xcode, run on the physical iPhone. Never suggest or wait on the iOS Simulator; the owner intentionally does not use it. List the states worth checking on device: normal, loading, empty, error, selected, disabled, reduced motion, Dynamic Type.
 8. Compare the result against the design brief and the existing app. Refine obvious hierarchy, legibility, interaction, or consistency problems before handoff.
 
 ## Source Roles
@@ -57,5 +53,10 @@ For a substantial design task, leave behind:
 
 1. a short design brief
 2. the implemented native UI
-3. simulator or build validation when available
-4. a concise note describing what changed, what was validated, and any remaining design risk
+3. whatever validation the environment allowed (diff review, syntax smoke check) stated honestly
+4. a concise note describing what changed, what was validated versus what needs the owner's on-device check, and any remaining design risk
+
+## Provenance
+
+- Last verified: 2026-07-05 against commit `0a68ce9`. Design tokens confirmed in `Transform/Transform/DesignSystem.swift`; the four `swiftui-*` skills and external sources (Refero, UI UX Pro Max, UX Components, 21st.dev) were NOT present in the verifying session — treat as conditionally available.
+- Re-verify source availability at use time; see `docs/AGENT_RESOURCE_DECISIONS.md` for the resource decisions of record.

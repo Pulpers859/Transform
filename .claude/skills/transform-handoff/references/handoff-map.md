@@ -35,7 +35,7 @@
   - `git rev-list --left-right --count origin/main...main` (expect `0   0`)
   - `git merge-base main origin/main` (EMPTY = unrelated histories = stale junk local `main`)
 - If stale/diverged/unrelated: `git checkout -B main origin/main`, confirm app source exists
-  (`Transform/Transform/Transform/WorkoutGeneratorService.swift`, ~49 Swift files), THEN edit.
+  (`Transform/Transform/WorkoutGeneratorService.swift`; `git ls-files "*.swift" | wc -l` currently 49), THEN edit.
 - NEVER force-push `origin/main`. Fast-forward pushes only; if rejected, stop and reconcile.
 
 ## Product priorities
@@ -54,6 +54,16 @@
 - async SwiftUI state and persistence drift
 - backup / rollback consistency
 - GitHub Actions workflow drift from the real Xcode project
+
+## Validation reality per environment
+
+- Windows / Linux / cloud containers: git, file inspection, and `swiftc -parse <file>` syntax
+  smoke checks only (verified working on this machine, Swift 6.3.1). They CANNOT build the iOS
+  app — no Xcode. Changes from these environments are correct-by-inspection; say so explicitly.
+- CI (`.github/workflows/swift.yml`): build-only smoke via `xcodebuild` on macos-latest. Proves
+  it compiles, not that it works.
+- Owner: builds in Xcode and runs on a physical iPhone. This is the source of truth. Never
+  suggest or wait on the iOS Simulator — the owner intentionally does not use it.
 
 ## Good orientation summary
 

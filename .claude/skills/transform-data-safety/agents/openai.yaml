@@ -1,0 +1,4 @@
+interface:
+  display_name: "Transform Data Safety"
+  short_description: "Guard rails for exercise naming, progression history, persistence, and backup code."
+  default_prompt: "Use this skill whenever a change touches Transform's exercise naming, canonical keys, weight history, persistence, migration, archiving, or backup paths."

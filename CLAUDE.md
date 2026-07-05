@@ -24,7 +24,7 @@
   - `git fetch --prune`
   - `git rev-list --left-right --count origin/main...main` — expect `0   0`; any large "behind" count or divergence is a red flag.
   - `git merge-base main origin/main` — EMPTY output means UNRELATED histories = the local `main` is a stale/junk snapshot, NOT your real tree.
-  - Sanity-check the tree: the app source must exist (e.g. `Transform/Transform/Transform/WorkoutGeneratorService.swift`) and the Swift file count should look right (~49), not a smaller different layout.
+  - Sanity-check the tree: the app source must exist (e.g. `Transform/Transform/WorkoutGeneratorService.swift`) and the tracked Swift file count should look right (`git ls-files "*.swift" | wc -l` — currently 49), not a smaller different layout.
 - If local `main` is behind, diverged, or unrelated: do NOT commit on it. Re-point onto the real tree first with `git checkout -B main origin/main`, re-verify the source is present, THEN make changes.
 - NEVER `git push --force` / `--force-with-lease` to `origin/main`. Push clean fast-forwards only. If a push is non-fast-forward, STOP and reconcile — never overwrite the remote.
 - After pushing, confirm it was a fast-forward (`old..new`), not a forced replacement, and that the prior `origin/main` commits are still ancestors.
@@ -74,7 +74,7 @@
 - Trigger it for screen redesigns, new flows, onboarding, dashboards, progress or analytics experiences, navigation changes, design-system decisions, accessibility reviews, or requests for a clearer, more polished, premium, cohesive, or native feel.
 - Do not invoke the full research workflow for tiny copy, spacing, or isolated visual bug fixes unless they expose a broader design problem.
 - Use external references to extract principles, not to copy screens or import web conventions into SwiftUI.
-- Implement the resulting direction through the smallest matching SwiftUI, Liquid Glass, refactor, performance, and simulator skills.
+- Implement the resulting direction through the smallest matching SwiftUI, Liquid Glass, refactor, and performance skills when they are available in the session; validation is the owner's device build, never the simulator.
 
 ## Skill-First Workflow
 - In this repo, treat the repo-local skills as the default operating path, not an optional extra.
@@ -85,6 +85,8 @@
 - For substantial UI/UX design, redesign, new-flow, or visual-system work, automatically apply `transform-design-research`.
 - For generator, validator, blueprint, fallback, retry, or API-cost work, automatically apply `transform-generator-audit`.
 - For GitHub Actions, Xcode build, scheme, workflow, or local-vs-CI mismatch work, automatically apply `transform-ci-triage`.
+- Before re-designing, reverting, or "simplifying" behavior that looks odd (archiving rules, canonical keys, menu-locked generation, backup logic), automatically apply `transform-failure-archaeology` — the odd behavior may be a scar from a past incident.
+- For any change touching exercise naming, canonical keys, progression/weight history, persistence, migration, or backup code, automatically apply `transform-data-safety`.
 - If more than one repo skill could apply, prefer the smallest combination that fits the task instead of loading everything.
 - Do not wait for the user to explicitly name these skills when the task clearly matches them.
 - If the user explicitly names a repo skill, follow that request unless it conflicts with a higher-priority instruction.
@@ -92,17 +94,20 @@
 ## Repo Skills
 - `transform-handoff`: repo orientation, stale-copy warnings, branch workflow, hotspots.
 - `transform-parallel-audit`: bounded parallel or sequential evidence gathering with compact recaps and final synthesis.
-- `transform-design-research`: focused product-reference research, native iOS design synthesis, implementation, and simulator review.
+- `transform-design-research`: focused product-reference research, native iOS design synthesis, implementation, and owner device-validation handoff.
 - `transform-generator-audit`: workout generator, validator, fallback, prompt drift, retry waste.
 - `transform-ci-triage`: GitHub Actions, Xcode build mismatch, workflow drift.
 - `transform-context-compact`: compact summaries, selective context loading, low-token handoffs.
+- `transform-failure-archaeology`: past incidents, root causes, and do-not-refight doctrine with commit references.
+- `transform-data-safety`: guard rails for exercise naming, progression continuity, persistence, and backup code paths.
+- Full index, trigger matrix, and maintenance protocol: `.claude/skills/README.md`.
 
 ## Read Deeper Only When Needed
 - `docs/2_PROJECT_HANDOFF.md`
 - `docs/3_TRANSFORM_CLEAN_HANDOFF.md`
 - `docs/EXTERNAL_AGENT_RECONCILIATION.md`
-- `CLAUDE.md`
-- `EvidenceProfile.md`
+- `Transform/Transform/CLAUDE.md`
+- `Transform/Transform/EvidenceProfile.md`
 
 ## Validation Reality
 - Windows / Linux / cloud containers are fine for git, file inspection, and framework-light Swift smoke checks. They CANNOT build this iOS app (no Xcode), so agents in those environments must make changes that are correct-by-inspection and compile-safe, then hand off to the owner for the real build.
