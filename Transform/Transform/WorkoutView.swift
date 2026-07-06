@@ -30,6 +30,7 @@ struct WorkoutView: View {
                 VStack(spacing: 20) {
                     if let program = currentProgram {
                         programHeader(program)
+                        generationStatusCard
                         validatorWarningsBanner(program)
                         weekSelector(program)
                         weekDaysList(program)
@@ -149,6 +150,7 @@ struct WorkoutView: View {
                     .compactCard()
 
                     generateWeekOneButton(analysis: analysis, result: result)
+                    generationStatusCard
                     if !canUseAI {
                         Text(Config.anthropicKeyInlineHelpText)
                             .font(.caption2)
@@ -199,6 +201,48 @@ struct WorkoutView: View {
         }
         .pressable()
         .disabled(isGenerating || !canUseAI)
+    }
+
+    // MARK: - Generation Status
+
+    /// Live progress + cancel while an AI generation is in flight. Generation can run
+    /// for minutes (parallel candidates, correction pass, fallback); a silent disabled
+    /// button reads as a hang. The stage text comes from the same diagnostics the
+    /// crash-recovery message uses.
+    @ViewBuilder
+    var generationStatusCard: some View {
+        if isGenerating {
+            HStack(spacing: 10) {
+                TimelineView(.periodic(from: .now, by: 1.0)) { _ in
+                    Text(WorkoutGenerationDiagnostics.currentStageDescription ?? "Contacting your AI coach…")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+
+                Button {
+                    cancelGeneration()
+                } label: {
+                    Text("Cancel")
+                        .font(.caption.bold())
+                        .foregroundStyle(TFColor.danger)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(TFColor.danger.opacity(0.1))
+                        .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(12)
+            .background(TFColor.surface)
+            .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
+        }
+    }
+
+    func cancelGeneration() {
+        generationTask?.cancel()
+        TFHaptics.impact(.medium)
     }
 
     // MARK: - Program Header

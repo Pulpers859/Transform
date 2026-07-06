@@ -13,6 +13,12 @@ enum WorkoutGenerationDiagnostics {
         defaults.bool(forKey: activeKey)
     }
 
+    /// The stage the in-flight generation last reported, for live progress UI.
+    static var currentStageDescription: String? {
+        guard defaults.bool(forKey: activeKey) else { return nil }
+        return defaults.string(forKey: stageKey)
+    }
+
     static func start(feature: String) {
         defaults.set(true, forKey: activeKey)
         defaults.set(feature, forKey: featureKey)

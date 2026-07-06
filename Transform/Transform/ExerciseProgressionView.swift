@@ -243,7 +243,7 @@ struct ExerciseProgressionView: View {
                     .foregroundStyle(TFColor.measurement)
                     .tracking(1.5)
                 Spacer()
-                Text("Epley formula")
+                Text("Epley/Brzycki blend")
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
             }
@@ -410,7 +410,16 @@ struct EditPerformanceLogSheet: View {
     }
 
     var canSave: Bool {
-        editableSets.contains { Double($0.weightText) != nil }
+        editableSets.contains { parsedWeight(from: $0.weightText) != nil }
+    }
+
+    /// Same tolerant parsing as the logging sheet: trims and accepts comma decimals.
+    private func parsedWeight(from text: String) -> Double? {
+        let cleaned = text
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: ",", with: ".")
+        guard let value = Double(cleaned), value > 0 else { return nil }
+        return value
     }
 
     var body: some View {
@@ -566,8 +575,8 @@ struct EditPerformanceLogSheet: View {
 
     func saveEdits() {
         let validSets: [SetLogEntry] = editableSets.compactMap { draft in
-            guard let w = Double(draft.weightText) else { return nil }
-            let r = Int(draft.repsText) ?? 0
+            guard let w = parsedWeight(from: draft.weightText) else { return nil }
+            let r = Int(draft.repsText.trimmingCharacters(in: .whitespaces)) ?? 0
             return SetLogEntry(setNumber: draft.setNumber, weightLbs: w, repsCompleted: r)
         }
         guard !validSets.isEmpty else { return }
