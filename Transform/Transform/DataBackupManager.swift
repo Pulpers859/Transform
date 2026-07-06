@@ -1072,6 +1072,24 @@ final class DataBackupManager {
         }
     }
 
+    /// Coalesced variant for high-frequency in-workout writes (set logging, completion
+    /// toggles). The SwiftData save is already durable; the automatic backup is a full
+    /// export (photos + all data) and must not run once per tap. The scene-phase hook in
+    /// ContentView still writes a fresh backup whenever the app backgrounds, so the
+    /// recovery snapshot never lags a finished session.
+    private var lastCoalescedBackupAt: Date?
+    private static let coalescedBackupMinInterval: TimeInterval = 45
+
+    func writeAutomaticBackupCoalesced(using modelContext: ModelContext) {
+        let now = Date()
+        if let last = lastCoalescedBackupAt,
+           now.timeIntervalSince(last) < Self.coalescedBackupMinInterval {
+            return
+        }
+        lastCoalescedBackupAt = now
+        writeAutomaticBackup(using: modelContext)
+    }
+
     func writeAutomaticBackup(using modelContext: ModelContext) {
         guard !suppressAutomaticBackups else { return }
         do {

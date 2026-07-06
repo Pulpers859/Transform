@@ -376,6 +376,19 @@ class ExerciseWeightEntry {
     }
 
     private static func stemForCanonicalKey(_ token: String) -> String {
+        let stemmed = pluralStemForCanonicalKey(token)
+        // Words whose singular ends in 'e' (raise, lunge, bridge, squeeze) only converge
+        // with their plural if the trailing 'e' is dropped too: the -es rule turns
+        // "raises" into "rais" while the untouched singular stays "raise", silently
+        // splitting the weight history for that movement. Applied identically on every
+        // write and read; the startup normalizers re-derive stored keys from names.
+        if stemmed.count > 3 && stemmed.hasSuffix("e") {
+            return String(stemmed.dropLast())
+        }
+        return stemmed
+    }
+
+    private static func pluralStemForCanonicalKey(_ token: String) -> String {
         guard token.count > 3 else { return token }
         if token.hasSuffix("sses") { return String(token.dropLast(2)) }
         if token.hasSuffix("ches") || token.hasSuffix("shes") || token.hasSuffix("xes") || token.hasSuffix("zes") {

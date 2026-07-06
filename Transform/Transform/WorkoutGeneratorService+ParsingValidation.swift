@@ -757,9 +757,9 @@ extension ClaudeService {
         validationDisposition(for: issue) != .hardFailure
     }
 
-    func scoreValidationIssues(_ issues: [String]) -> Int {
+    func scoreValidationIssues(_ issues: [String], menuLocked: Bool = false) -> Int {
         issues.reduce(0) { total, issue in
-            switch validationDisposition(for: issue) {
+            switch validationDisposition(for: issue, menuLocked: menuLocked) {
             case .acceptableWarning: return total + 1
             case .correctionPass: return total + 5
             case .hardFailure: return total + 20

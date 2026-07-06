@@ -1203,7 +1203,33 @@ extension ClaudeService {
                 for candidate in generic where selected.count < 5 {
                     let key = normalizeExerciseName(candidate.name)
                     guard !used.contains(key) else { continue }
+                    // The generic catalog spans all styles; without this check a depleted
+                    // Push day can be topped up with a hinge or squat, which the locked
+                    // menu then forces into the session.
+                    let probe = WorkoutExerciseResponse(
+                        exerciseName: candidate.name,
+                        sets: 3,
+                        reps: "10-12",
+                        tempo: "",
+                        restSeconds: 60,
+                        notes: "",
+                        muscleTarget: candidate.target
+                    )
+                    guard exerciseMatchesDayStyle(probe, style: styleKey) else { continue }
                     used.insert(key)
+                    selected.append((candidate.name, candidate.target))
+                }
+            }
+
+            // Last resort: relax cross-day uniqueness (a movement may repeat on a second
+            // same-style day) rather than emit a menu with fewer than 5 exercises. A short
+            // menu is a validator HARD failure, and because the procedural fallback consumes
+            // this same menu, it becomes a deterministic, retry-proof generation dead-end.
+            // Pain-avoided movements stay excluded (`catalog` is already history-filtered).
+            if selected.count < 5 {
+                for candidate in catalog where selected.count < 5 {
+                    let key = normalizeExerciseName(candidate.name)
+                    guard !selected.contains(where: { normalizeExerciseName($0.name) == key }) else { continue }
                     selected.append((candidate.name, candidate.target))
                 }
             }

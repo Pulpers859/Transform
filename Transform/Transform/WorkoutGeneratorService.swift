@@ -249,7 +249,7 @@ extension ClaudeService {
             switch result {
             case .success(let cleaned):
                 let issues = validateProgramResponse(cleaned, blueprint: blueprint, expectedExerciseMenus: exerciseMenus)
-                let score = issues.isEmpty ? 0 : scoreValidationIssues(issues)
+                let score = issues.isEmpty ? 0 : scoreValidationIssues(issues, menuLocked: true)
                 scoredCandidates.append((response: cleaned, issues: issues, score: score))
                 if issues.isEmpty {
                     attemptTrace.append("Candidate \(i): Accepted — no issues")
@@ -259,13 +259,18 @@ extension ClaudeService {
             case .failure(let error):
                 candidateErrors.append(error)
                 attemptTrace.append("Candidate \(i): API error — \(error.localizedDescription)")
-                if shouldAbortFallback(for: error) {
-                    throw terminalGenerationError(
-                        while: "generating your initial workout program",
-                        underlying: error
-                    )
-                }
             }
+        }
+
+        // Abort (so the user can retry instead of silently degrading) only when NO
+        // candidate produced a usable payload. A transient failure on one parallel
+        // candidate must not throw away its successful sibling.
+        if scoredCandidates.isEmpty,
+           let abortError = candidateErrors.first(where: { shouldAbortFallback(for: $0) }) {
+            throw terminalGenerationError(
+                while: "generating your initial workout program",
+                underlying: abortError
+            )
         }
 
         scoredCandidates.sort { $0.score < $1.score }
@@ -340,7 +345,8 @@ extension ClaudeService {
                 toolSchema: toolSchema,
                 issues: best.issues,
                 context: context,
-                originalUserPrompt: userPrompt
+                originalUserPrompt: userPrompt,
+                previousPayloadJSON: try? encodeDebugJSONString(best.response)
             )
 
             do {
@@ -392,7 +398,7 @@ extension ClaudeService {
 
                 // Accept correction if permissible on final attempt
                 if shouldAcceptAIOutput(despite: correctedIssues, menuLocked: true) {
-                    attemptTrace.append("Correction pass: Accepted with warnings (score \(scoreValidationIssues(correctedIssues)))")
+                    attemptTrace.append("Correction pass: Accepted with warnings (score \(scoreValidationIssues(correctedIssues, menuLocked: true)))")
                     let labeled = labelAndPolish(correctedCleaned)
                     return WorkoutProgramGenerationResult(
                         response: labeled,
@@ -402,7 +408,7 @@ extension ClaudeService {
                 }
 
                 lastIssues = correctedIssues
-                attemptTrace.append("Correction pass: Rejected (score \(scoreValidationIssues(correctedIssues)))\nIssues:\n\(correctedIssues.map { "- \($0)" }.joined(separator: "\n"))")
+                attemptTrace.append("Correction pass: Rejected (score \(scoreValidationIssues(correctedIssues, menuLocked: true)))\nIssues:\n\(correctedIssues.map { "- \($0)" }.joined(separator: "\n"))")
             } catch {
                 attemptTrace.append("Correction pass: API error — \(error.localizedDescription)")
                 if shouldAbortFallback(for: error) {
@@ -615,7 +621,7 @@ extension ClaudeService {
                     blueprint: blueprint,
                     expectedExerciseMenus: exerciseMenus
                 )
-                let score = issues.isEmpty ? 0 : scoreValidationIssues(issues)
+                let score = issues.isEmpty ? 0 : scoreValidationIssues(issues, menuLocked: true)
                 scoredCandidates.append((response: cleaned, issues: issues, score: score))
                 if issues.isEmpty {
                     attemptTrace.append("Candidate \(i): Accepted — no issues")
@@ -625,13 +631,18 @@ extension ClaudeService {
             case .failure(let error):
                 candidateErrors.append(error)
                 attemptTrace.append("Candidate \(i): API error — \(error.localizedDescription)")
-                if shouldAbortFallback(for: error) {
-                    throw terminalGenerationError(
-                        while: "generating week \(weekNumber)",
-                        underlying: error
-                    )
-                }
             }
+        }
+
+        // Abort (so the user can retry instead of silently degrading) only when NO
+        // candidate produced a usable payload. A transient failure on one parallel
+        // candidate must not throw away its successful sibling.
+        if scoredCandidates.isEmpty,
+           let abortError = candidateErrors.first(where: { shouldAbortFallback(for: $0) }) {
+            throw terminalGenerationError(
+                while: "generating week \(weekNumber)",
+                underlying: abortError
+            )
         }
 
         scoredCandidates.sort { $0.score < $1.score }
@@ -708,7 +719,8 @@ extension ClaudeService {
                 toolSchema: toolSchema,
                 issues: best.issues,
                 context: context,
-                originalUserPrompt: userPrompt
+                originalUserPrompt: userPrompt,
+                previousPayloadJSON: try? encodeDebugJSONString(best.response)
             )
 
             do {
@@ -768,7 +780,7 @@ extension ClaudeService {
                 }
 
                 // Accept correction result if it's better than the parallel best
-                let correctedScore = scoreValidationIssues(correctedIssues)
+                let correctedScore = scoreValidationIssues(correctedIssues, menuLocked: true)
                 if shouldAcceptAIOutput(despite: correctedIssues, menuLocked: true) {
                     attemptTrace.append("Correction pass: Accepted with warnings (score \(correctedScore))")
                     let labeled = labelAndPolishWeek(correctedCleaned)
@@ -1101,7 +1113,8 @@ extension ClaudeService {
                                 toolSchema: toolSchema,
                                 issues: issues,
                                 context: context,
-                                originalUserPrompt: userPrompt
+                                originalUserPrompt: userPrompt,
+                                previousPayloadJSON: sanitizedPayload ?? jsonString
                             )
                         }
                     } catch {
@@ -1553,7 +1566,8 @@ extension ClaudeService {
                                 toolSchema: toolSchema,
                                 issues: issues,
                                 context: context,
-                                originalUserPrompt: userPrompt
+                                originalUserPrompt: userPrompt,
+                                previousPayloadJSON: sanitizedPayload ?? jsonString
                             )
                         }
                     } catch {

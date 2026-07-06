@@ -258,7 +258,7 @@ struct WorkoutDayDetailView: View {
             TFHaptics.error()
             return
         }
-        DataBackupManager.shared.writeAutomaticBackup(using: modelContext)
+        DataBackupManager.shared.writeAutomaticBackupCoalesced(using: modelContext)
         TFHaptics.impact(.light)
         if day.isCompleted && !previousDayState {
             feedbackDay = day
@@ -1787,16 +1787,9 @@ enum SetLoggingService {
         // The SwiftData save above is durable. The automatic backup is a full export
         // (photos + all data), so coalesce it: logging set-by-set during a workout must
         // not trigger one heavy export per tap. The recovery snapshot tolerates a short lag.
-        let now = Date()
-        if lastBackupAt == nil || now.timeIntervalSince(lastBackupAt!) >= backupMinInterval {
-            lastBackupAt = now
-            DataBackupManager.shared.writeAutomaticBackup(using: modelContext)
-        }
+        DataBackupManager.shared.writeAutomaticBackupCoalesced(using: modelContext)
         return true
     }
-
-    private static var lastBackupAt: Date?
-    private static let backupMinInterval: TimeInterval = 45
 }
 
 // MARK: - Inline Set Logger

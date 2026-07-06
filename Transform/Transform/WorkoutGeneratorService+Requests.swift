@@ -91,7 +91,8 @@ extension ClaudeService {
         toolSchema: [String: Any],
         issues: [String],
         context: String,
-        originalUserPrompt: String
+        originalUserPrompt: String,
+        previousPayloadJSON: String? = nil
     ) -> [String: Any] {
         let issueBlock = issues.enumerated().map { "\($0.offset + 1). \($0.element)" }.joined(separator: "\n")
         let tacticBlock = correctionTactics(for: issues)
@@ -103,12 +104,24 @@ extension ClaudeService {
         or the ties to the user's body analysis.
         """
 
+        // Without the previous payload the model regenerates blind and "preserve everything
+        // that was already good" is unenforceable — corrections drift instead of converging.
+        let previousPayloadBlock = previousPayloadJSON
+            .map { payload in
+                """
+
+                Your previous tool output (repair THIS payload — fix only the listed issues, keep everything else identical):
+                \(payload)
+                """
+            } ?? ""
+
         let userPrompt = """
         Issues to correct (preserve everything else):
         \(issueBlock)
 
         Repair rules for this correction pass:
         \(tacticBlock)
+        \(previousPayloadBlock)
 
         Original assignment (for reference):
         \(originalUserPrompt)
@@ -208,11 +221,11 @@ extension ClaudeService {
           The warm-up must be tied to THIS day's lifts and THIS person's posture/injury notes.
           Keep session notes concise: 2-3 short sentences, ideally under 70 words total.
           No template language. No phrases like "progressive overload session."
-        - Exercise notes must be 2-4 sentences of real coaching. Include (a) a form/technique cue
-          for THIS movement, (b) a progression cue appropriate for Week 1 (RIR/RPE or load/rep
-          intent), and (c) a "why this is here for you" sentence that references the analysis
-          (e.g., the priority muscle, the postural imbalance, the leverage change). Keep exercise
-          notes concise: exactly 2 short sentences, ideally under 45 words total.
+        - Exercise notes must be exactly 2 short sentences of real coaching, ideally under 45
+          words total: (a) a form/technique cue for THIS movement and (b) a progression cue
+          appropriate for Week 1 (RIR/RPE or load/rep intent). Fold in a brief "why this is
+          here for you" phrase tied to the analysis only when it adds information that the day
+          notes do not already state.
         - Use double progression as the default progression model: choose a load that lands in
           the rep range at the prescribed RPE/RIR, add reps before load, and hold load or trim
           the lowest-priority isolation set when sleep, joint pain, or stress is poor.
@@ -602,7 +615,7 @@ extension ClaudeService {
             // EvidenceProfile.md TEMPO-001 [confidence: low]
             "tempo": stringProp("Optional. Use an explicit 4-part tempo for rep-based lifts when cadence matters, e.g., '3-1-1-0' or '2-0-X-1'. Omit or leave empty for carries, distance-based work, and similar drills where a 4-part tempo is not meaningful."),
             "restSeconds": integerProp(minimum: 30, maximum: 240),
-            "notes": stringProp("2-4 sentences: form cue + phase-appropriate progression cue + 'why this is here for you' sentence tied to the body analysis."),
+            "notes": stringProp("Exactly 2 short sentences: form cue + phase-appropriate progression cue. Add a brief analysis-tied 'why this is here for you' phrase only when it adds new information."),
             "muscleTarget": stringProp("Primary muscle target.")
         ]
         let required: [String] = ["exerciseName", "sets", "reps", "restSeconds", "notes", "muscleTarget"]
@@ -619,7 +632,7 @@ extension ClaudeService {
         let exercisesProp: [String: Any] = [
             "type": "array",
             "items": exerciseSchema(),
-            "description": "5-8 entries on training days; empty array on rest days."
+            "description": "Training days: exactly the exercises listed in the Pre-Selected Exercise Menu for that day, in order. Rest days: empty array."
         ]
         let properties: [String: Any] = [
             "dayNumber": integerProp(allowedValues: dayNumbers),

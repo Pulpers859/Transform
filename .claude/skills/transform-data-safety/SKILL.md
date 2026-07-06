@@ -34,7 +34,7 @@ Use this skill when a change touches the paths that store, match, migrate, back 
 1. Read the current implementation of every symbol above that the change touches — do not rely on this file's descriptions alone.
 2. Classify the change: read-only, additive write, re-keying/migration, or destructive (delete/overwrite/restore). Destructive and re-keying changes get maximum scrutiny.
 3. For any naming/keying change, trace the full round trip: generation output name → canonical key → stored record → lookup at display/logging time → survival across a program regeneration.
-4. Test stemming edge cases mentally and in code: press/presses, raise/raises, crunch/crunches, fly/flies, cross (words ending "ss").
+4. Test stemming edge cases by EXECUTING the algorithm (e.g. a `swift` script replicating `stemForCanonicalKey`), not by mental tracing alone: press/presses, raise/raises, lunge/lunges, bridge/bridges, squeeze/squeezes, crunch/crunches, fly/flies, cross (words ending "ss"). E-ending singulars were a second silent split that mental tracing missed for weeks and one script run caught (2026-07-06; see INC-2 addendum).
 5. For model or key changes, confirm a migration path exists (`normalizePerformanceLogs` or equivalent) so existing on-device records are not orphaned.
 6. Check the change against `DataIntegrityMonitor` and the backup data-drop guard: would the failure mode be detected, or would it slip through silently?
 7. Respect the archiving contract: programs with logged data are archived (skip/pain history feeds future programming); only empty programs are deleted.

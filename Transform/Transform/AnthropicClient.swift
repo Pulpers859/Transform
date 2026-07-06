@@ -323,6 +323,12 @@ final class AnthropicClient {
         }
         if let systemPrompt = body["system"] as? String {
             details["system_chars"] = "\(systemPrompt.count)"
+        } else if let systemBlocks = body["system"] as? [[String: Any]] {
+            // Prompt-cached requests send system as an array of text blocks.
+            let totalChars = systemBlocks
+                .compactMap { $0["text"] as? String }
+                .reduce(0) { $0 + $1.count }
+            details["system_chars"] = "\(totalChars)"
         }
         if let messages = body["messages"] as? [[String: Any]],
            let firstContent = messages.first?["content"] as? String {

@@ -221,6 +221,12 @@ class ClaudeService {
             ])
         }
 
+        // Every photo failed JPEG conversion — without this guard the request would go
+        // out with no images and the model would "analyze" nothing.
+        guard contentArray.contains(where: { ($0["type"] as? String) == "image" }) else {
+            throw ClaudeError.invalidImage
+        }
+
         contentArray.append([
             "type": "text",
             "text": "Analyze \(photos.count > 1 ? "all \(photos.count) photos together" : "this photo"). Respond with ONLY the JSON object specified in your instructions. Do not include any text before or after the JSON. Start your response with {"
@@ -229,7 +235,6 @@ class ClaudeService {
         let requestBody: [String: Any] = [
             "model": Config.claudeModel,
             "max_tokens": 8192,
-            "cache_control": ["type": "ephemeral"],
             "system": systemPrompt,
             "messages": [
                 [
