@@ -5,6 +5,7 @@ struct AddMeasurementSheet: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     @Query(sort: \WeightEntry.date, order: .reverse) private var weightEntries: [WeightEntry]
+    @Query(sort: \MeasurementEntry.date, order: .reverse) private var measurementEntries: [MeasurementEntry]
 
     @State private var weightText = ""
     @State private var chestText = ""
@@ -296,22 +297,22 @@ struct AddMeasurementSheet: View {
         }
 
         if !allMeasurementsEmpty {
-            let m = MeasurementEntry(date: normalizedDate)
-            m.chestIn = Double(chestText)
-            m.waistIn = Double(waistText)
-            m.hipsIn = Double(hipsText)
-            m.neckIn = Double(neckText)
-            m.rightArmIn = Double(rightArmText)
-            m.leftArmIn = Double(leftArmText)
-            m.rightThighIn = Double(rightThighText)
-            m.leftThighIn = Double(leftThighText)
-            m.rightCalfIn = Double(rightCalfText)
-            m.leftCalfIn = Double(leftCalfText)
-            m.bodyFatPct = Double(bodyFatText)
-            m.notes = trimmedNotes
-            m.measurementTiming = selectedTiming
-            m.isStandardMeasurement = isStandardMeasurement
-            modelContext.insert(m)
+            if let existing = measurementEntries.first(where: { Calendar.current.isDate($0.date, inSameDayAs: normalizedDate) }) {
+                applyMeasurementFields(to: existing, preservingExistingValues: true)
+                existing.date = normalizedDate
+                existing.measurementTiming = selectedTiming
+                existing.isStandardMeasurement = isStandardMeasurement
+                if !trimmedNotes.isEmpty {
+                    existing.notes = trimmedNotes
+                }
+            } else {
+                let measurement = MeasurementEntry(date: normalizedDate)
+                applyMeasurementFields(to: measurement, preservingExistingValues: false)
+                measurement.notes = trimmedNotes
+                measurement.measurementTiming = selectedTiming
+                measurement.isStandardMeasurement = isStandardMeasurement
+                modelContext.insert(measurement)
+            }
         }
 
         guard PersistenceReporter.saveWithBackup(modelContext, operation: "body measurements") else { return }
@@ -348,6 +349,36 @@ struct AddMeasurementSheet: View {
         }
 
         return nil
+    }
+
+    func applyMeasurementFields(to measurement: MeasurementEntry, preservingExistingValues: Bool) {
+        assign(chestText, to: \.chestIn, on: measurement, preservingExistingValues: preservingExistingValues)
+        assign(waistText, to: \.waistIn, on: measurement, preservingExistingValues: preservingExistingValues)
+        assign(hipsText, to: \.hipsIn, on: measurement, preservingExistingValues: preservingExistingValues)
+        assign(neckText, to: \.neckIn, on: measurement, preservingExistingValues: preservingExistingValues)
+        assign(rightArmText, to: \.rightArmIn, on: measurement, preservingExistingValues: preservingExistingValues)
+        assign(leftArmText, to: \.leftArmIn, on: measurement, preservingExistingValues: preservingExistingValues)
+        assign(rightThighText, to: \.rightThighIn, on: measurement, preservingExistingValues: preservingExistingValues)
+        assign(leftThighText, to: \.leftThighIn, on: measurement, preservingExistingValues: preservingExistingValues)
+        assign(rightCalfText, to: \.rightCalfIn, on: measurement, preservingExistingValues: preservingExistingValues)
+        assign(leftCalfText, to: \.leftCalfIn, on: measurement, preservingExistingValues: preservingExistingValues)
+        assign(bodyFatText, to: \.bodyFatPct, on: measurement, preservingExistingValues: preservingExistingValues)
+    }
+
+    func assign(
+        _ text: String,
+        to keyPath: ReferenceWritableKeyPath<MeasurementEntry, Double?>,
+        on measurement: MeasurementEntry,
+        preservingExistingValues: Bool
+    ) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            if !preservingExistingValues {
+                measurement[keyPath: keyPath] = nil
+            }
+            return
+        }
+        measurement[keyPath: keyPath] = Double(trimmed)
     }
 }
 

@@ -15,8 +15,8 @@
 
 ## Repo State
 - Stable branch: `main`
-- Working branch: `dev`
-- Expected default branch for normal work: `dev`
+- Working branch: `main`
+- Expected default branch for normal work: `main`
 - Sync-first rule: `Before normal work, fetch from the remote first. If the working tree is clean and the active branch tracks the expected upstream, pull with --ff-only before editing. If local changes exist, fetch and reconcile instead of blindly pulling.`
 
 ## PowerShell / Terminal Standard
@@ -41,7 +41,7 @@
 - If validation or review logic is too rigid and rejects good programming/coaching output, improve the rule when appropriate instead of dumbing down the product.
 - Do not silently tolerate poor architecture if it is now a maintenance risk.
 - Handle Git operations when appropriate.
-- Keep normal work on `dev`, not `main`.
+- Keep normal work on `main`; do not create or switch to a `dev` branch unless the user explicitly asks.
 - Before editing on an existing repo, run a fetch and check ahead/behind state; if clean, pull the tracked branch with `--ff-only`.
 - Audit adjacent risks after making fixes.
 - Run the checks that are realistically available in the current environment.
@@ -121,8 +121,8 @@ Order matters:
 - `Transform/Transform/Models.swift`
 
 ## Runtime Environments That Matter
-- iOS Simulator
-- iPhone device testing when needed
+- GitHub Actions may use an iOS Simulator SDK destination as a compile target only
+- Owner physical-iPhone testing for runtime/device validation
 - Windows Swift smoke validation for framework-light code paths
 - Git/GitHub-backed local development on Windows
 
@@ -174,12 +174,7 @@ The agent should confirm:
   - `git add .`
   - `git commit -m "..."`
   - `git push`
-- Preferred promotion flow from `dev` to `main`:
-  - `git checkout main`
-  - `git pull --ff-only`
-  - `git merge --ff-only dev`
-  - `git push`
-  - `git checkout dev`
+- No promotion flow is used for routine work. Commit directly to `main` and push fast-forward changes to `origin/main`.
 
 ## Project-Specific Instructions For The Next Agent
 ```text
@@ -189,7 +184,7 @@ Actual app source root: C:\Dev\Transform_clean\Transform\Transform
 Xcode project: C:\Dev\Transform_clean\Transform\Transform.xcodeproj
 GitHub remote: https://github.com/Pulpers859/Transform.git
 Stable branch: main
-Working branch: dev
+Working branch: main
 
 Important:
 - Treat `C:\Dev\Transform_clean` as the source-of-truth repo root.

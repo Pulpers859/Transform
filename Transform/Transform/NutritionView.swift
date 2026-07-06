@@ -914,7 +914,7 @@ struct NutritionView: View {
         guard !Task.isCancelled else { return }
         isGeneratingNutrition = true
         nutritionErrorMessage = ""
-        generationProgress = "Generating Week 1 (Opus)…"
+        generationProgress = "Generating Week 1 (Sonnet)…"
         defer {
             if !Task.isCancelled {
                 isGeneratingNutrition = false
@@ -927,6 +927,14 @@ struct NutritionView: View {
             let generated = try await buildNutritionProtocol(from: analysis)
             try Task.checkCancellation()
             guard !Task.isCancelled else { return }
+
+            if priorProgram != nil && generated.usesRecoveryEngineFallback {
+                nutritionProgram = priorProgram
+                followupWeeks = priorFollowups
+                nutritionErrorMessage = "Regeneration produced Recovery Engine fallback output, so your saved AI nutrition protocol was preserved. Check the API key/network and run generation again."
+                TFHaptics.warning()
+                return
+            }
 
             nutritionProgram = generated.program
             followupWeeks = generated.followupWeeks
@@ -1112,4 +1120,10 @@ struct NutritionProtocolBuildResult {
     let program: NutritionProgramResponse
     let followupWeeks: [NutritionWeekResponse]
     let partialGenerationWarning: String?
+
+    var usesRecoveryEngineFallback: Bool {
+        GeneratedContentSource.detect(in: program.programSummary) == .recoveryEngine
+            || GeneratedContentSource.detect(in: program.weekOne.weekSummary) == .recoveryEngine
+            || followupWeeks.contains { GeneratedContentSource.detect(in: $0.weekSummary) == .recoveryEngine }
+    }
 }

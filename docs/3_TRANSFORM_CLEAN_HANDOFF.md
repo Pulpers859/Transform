@@ -9,7 +9,7 @@ This file is the Transform-specific workflow reference for the repo at `C:\Dev\T
 - Xcode project: `C:\Dev\Transform_clean\Transform\Transform.xcodeproj`
 - GitHub remote: `https://github.com/Pulpers859/Transform.git`
 - Stable branch: `main`
-- Default working branch: `dev`
+- Default working branch: `main`
 
 ## Why This Structure Matters
 This repo is not a flat app root.
@@ -24,8 +24,8 @@ This repo is not a flat app root.
   - `C:\Dev\Transform`
   - `C:\Users\Patrick's Computer\OneDrive - WV School of Osteopathic Medicine\Desktop\Transform`
 - Sync from GitHub first when the repo is clean.
-- Keep routine work on `dev`.
-- Do not commit directly to `main`.
+- Keep routine work on `main`.
+- Commit directly to `main` and push to `origin/main` after completed changes.
 
 ## Product Constitution
 Transform is not a generic fitness toy. It should behave like a careful hybrid of:
@@ -58,7 +58,7 @@ Transform is not a generic fitness toy. It should behave like a careful hybrid o
 ### Before normal work
 1. `git fetch --prune`
 2. if the working tree is clean, `git pull --ff-only`
-3. confirm current branch is `dev`
+3. confirm current branch is `main`
 4. inspect `git st` and `git diff` before editing
 
 ### Everyday flow
@@ -72,14 +72,8 @@ git commit -m "Describe the change"
 git push
 ```
 
-### Promote finished work to main
-```powershell
-git checkout main
-git pull --ff-only
-git merge --ff-only dev
-git push
-git checkout dev
-```
+### Promotion flow
+Routine work does not use a promotion branch. Commit directly to `main` and push fast-forward changes to `origin/main`.
 
 ## PowerShell / Local Environment
 - Do not globally pin every PowerShell session to the repo.
@@ -140,7 +134,7 @@ git checkout dev
 - After each fix, do another harsh adjacent-risk pass.
 - If something cannot be fully validated in the current environment, say exactly what was and was not validated.
 - On Windows, use the Swift sanity check for smoke validation when possible.
-- On macOS, prefer real Xcode or simulator validation.
+- On macOS, prefer real Xcode builds. Runtime validation belongs on the owner's physical iPhone; do not suggest or wait on the iOS Simulator.
 
 ## Recommended Repo-Local Companion Files
 - `docs/2_PROJECT_HANDOFF.md` (handoff docs live in the `docs/` folder)
