@@ -212,6 +212,12 @@ extension ClaudeService {
     private var nutritionProgramToolName: String { "emit_nutrition_program" }
     private var nutritionWeekToolName: String { "emit_nutrition_week" }
 
+    private enum NutritionRetryDecision: Equatable {
+        case retrySameRequest
+        case retryWithCorrection
+        case stop
+    }
+
     // MARK: - Generate Nutrition Week 1
 
     func generateNutritionWeekOne(
@@ -276,16 +282,19 @@ extension ClaudeService {
                 throw CancellationError()
             } catch {
                 lastIssues = ["API error (attempt \(attempt)): \(error.localizedDescription)"]
-                if attempt < nutritionGenerationAttempts {
+                let retryDecision = nutritionRetryDecision(for: error)
+                if attempt < nutritionGenerationAttempts, retryDecision != .stop {
                     try await Task.sleep(nanoseconds: UInt64(attempt) * 2_000_000_000)
-                    requestBody = nutritionCorrectionRequestBody(
-                        config: config,
-                        toolName: nutritionProgramToolName,
-                        toolSchema: toolSchema,
-                        issues: ["Previous call did not return a valid tool_use response: \(error.localizedDescription). Call the tool again with complete, valid fields."],
-                        context: context,
-                        originalUserPrompt: userPrompt
-                    )
+                    if retryDecision == .retryWithCorrection {
+                        requestBody = nutritionCorrectionRequestBody(
+                            config: config,
+                            toolName: nutritionProgramToolName,
+                            toolSchema: toolSchema,
+                            issues: ["Previous call did not return a valid tool_use response: \(error.localizedDescription). Call the tool again with complete, valid fields."],
+                            context: context,
+                            originalUserPrompt: userPrompt
+                        )
+                    }
                     continue
                 }
             }
@@ -373,16 +382,19 @@ extension ClaudeService {
                 throw CancellationError()
             } catch {
                 lastIssues = ["API error (attempt \(attempt)): \(error.localizedDescription)"]
-                if attempt < nutritionGenerationAttempts {
+                let retryDecision = nutritionRetryDecision(for: error)
+                if attempt < nutritionGenerationAttempts, retryDecision != .stop {
                     try await Task.sleep(nanoseconds: UInt64(attempt) * 2_000_000_000)
-                    requestBody = nutritionCorrectionRequestBody(
-                        config: config,
-                        toolName: nutritionWeekToolName,
-                        toolSchema: toolSchema,
-                        issues: ["Previous call did not return a valid tool_use response: \(error.localizedDescription). Call the tool again with complete, valid fields."],
-                        context: context,
-                        originalUserPrompt: userPrompt
-                    )
+                    if retryDecision == .retryWithCorrection {
+                        requestBody = nutritionCorrectionRequestBody(
+                            config: config,
+                            toolName: nutritionWeekToolName,
+                            toolSchema: toolSchema,
+                            issues: ["Previous call did not return a valid tool_use response: \(error.localizedDescription). Call the tool again with complete, valid fields."],
+                            context: context,
+                            originalUserPrompt: userPrompt
+                        )
+                    }
                     continue
                 }
             }
@@ -414,6 +426,16 @@ extension ClaudeService {
 
     private var nutritionGenerationConfig: NutritionGenerationConfig {
         NutritionGenerationConfig(model: Config.claudeModelLite, maxTokens: 8192, timeout: 180)
+    }
+
+    private func nutritionRetryDecision(for error: Error) -> NutritionRetryDecision {
+        if error.isRecoverableStructuredOutputFailure || error.isNutritionPayloadDecodeFailure {
+            return .retryWithCorrection
+        }
+        if error.isTransientNetworkFailure || error.isStructuredResponseEnvelopeFailure {
+            return .retrySameRequest
+        }
+        return .stop
     }
 
     // MARK: - Request Builders

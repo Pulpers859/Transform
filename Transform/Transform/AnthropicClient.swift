@@ -599,4 +599,16 @@ extension Error {
             return false
         }
     }
+
+    var isNutritionPayloadDecodeFailure: Bool {
+        guard let claudeError = self as? ClaudeError else { return false }
+
+        switch claudeError {
+        case .parseError(let detail):
+            return detail.hasPrefix("Could not decode nutrition response.")
+                || detail.hasPrefix("Could not encode nutrition response as data.")
+        default:
+            return false
+        }
+    }
 }

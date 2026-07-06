@@ -375,7 +375,7 @@ extension ClaudeService {
                 muscleTarget: exercise.muscleTarget,
                 focusArea: focusArea
             )
-            return partialResult + (Double(exercise.sets) * focusStimulusCredit(for: kind))
+            return partialResult + (Double(exercise.sets) * focusDirectSetCredit(for: kind))
         }
     }
 

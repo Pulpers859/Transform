@@ -1101,6 +1101,8 @@ final class DataBackupManager {
     /// recovery snapshot never lags a finished session.
     private var lastCoalescedBackupAt: Date?
     private static let coalescedBackupMinInterval: TimeInterval = 45
+    private var pendingAutomaticBackupTask: Task<Void, Never>?
+    private static let scheduledBackupDebounceNanoseconds: UInt64 = 1_500_000_000
 
     func writeAutomaticBackupCoalesced(using modelContext: ModelContext) {
         let now = Date()
@@ -1113,6 +1115,8 @@ final class DataBackupManager {
     }
 
     func writeAutomaticBackup(using modelContext: ModelContext) {
+        pendingAutomaticBackupTask?.cancel()
+        pendingAutomaticBackupTask = nil
         guard !suppressAutomaticBackups else { return }
         do {
             let document = try exportDocument(using: modelContext)
@@ -1373,8 +1377,15 @@ final class DataBackupManager {
     @MainActor
     func scheduleAutomaticBackup(using modelContext: ModelContext) {
         guard !suppressAutomaticBackups else { return }
-        Task { @MainActor in
-            await Task.yield()
+        pendingAutomaticBackupTask?.cancel()
+        pendingAutomaticBackupTask = Task { @MainActor in
+            do {
+                try await Task.sleep(nanoseconds: Self.scheduledBackupDebounceNanoseconds)
+            } catch {
+                return
+            }
+            guard !Task.isCancelled else { return }
+            pendingAutomaticBackupTask = nil
             writeAutomaticBackup(using: modelContext)
         }
     }

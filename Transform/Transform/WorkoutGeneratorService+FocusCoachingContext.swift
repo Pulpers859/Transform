@@ -141,6 +141,17 @@ extension ClaudeService {
         }
     }
 
+    func focusDirectSetCredit(for kind: FocusStimulusKind) -> Double {
+        switch kind {
+        case .prime:
+            return 1.0
+        case .secondary:
+            return 0.7
+        case .support, .none:
+            return 0
+        }
+    }
+
     func focusStimulusSummary(for day: WorkoutDayResponse, focusArea: String) -> FocusStimulusSummary {
         var matchedExercises = 0
         var primeExercises = 0
@@ -158,7 +169,7 @@ extension ClaudeService {
             guard kind != .none else { continue }
 
             matchedExercises += 1
-            qualityDirectSets += Double(exercise.sets) * focusStimulusCredit(for: kind)
+            qualityDirectSets += Double(exercise.sets) * focusDirectSetCredit(for: kind)
 
             if firstMatchedKind == .none {
                 firstMatchedKind = kind

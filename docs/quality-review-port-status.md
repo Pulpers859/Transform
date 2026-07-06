@@ -58,6 +58,12 @@ the findings.
   - Large SwiftUI save paths were reduced with helper value types for nutrition
     generation context and measurement drafts; workout set-role lookup no longer
     uses crash-prone unique-key dictionary construction.
+  - Generator focus-day and fallback repair direct-set calculations now use
+    direct-credit policy where support/corrective work earns zero direct sets.
+  - Nutrition retry behavior now distinguishes structured-output correction
+    attempts, same-request transient retries, and terminal stop conditions.
+  - Scheduled automatic backups are debounced so repeated UI saves do not queue
+    redundant full-export backup tasks.
 
 ## Already present in the live app (no action)
 
@@ -78,10 +84,10 @@ Ordered roughly by value:
 
 1. **Nutrition generation error control-flow, remaining hardening.** The view now
    refuses to replace a saved AI protocol with Recovery Engine fallback or
-   partial output, and service calls now make fallback eligibility explicit.
-   Remaining follow-up: add a recoverability predicate so terminal API errors
-   stop earlier while structured-output failures can still use correction
-   attempts. Incremental per-week persistence also remains build-worthy follow-up.
+   partial output, service calls make fallback eligibility explicit, and retry
+   behavior separates correction-worthy structured-output failures from terminal
+   API failures. Remaining follow-up: incremental per-week persistence remains
+   build-worthy follow-up.
 2. **Debounced automatic backup** + `prettyPrinted` flag + `writeAutomaticBackupNow`
    + Restore Auto-Backup UI (`DataBackupManager`, `DashboardView`, `ContentView`).
    Removes per-checkbox main-thread JSON serialization of photo blobs.
