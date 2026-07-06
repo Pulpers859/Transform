@@ -36,6 +36,20 @@ nonisolated private func backupDateDedupeKey(_ date: Date) -> Int64 {
     Int64(floor(date.timeIntervalSince1970))
 }
 
+nonisolated private enum BackupDedupeKey {
+    private static let separator = "\u{1F}"
+
+    static func date(_ date: Date) -> String {
+        String(backupDateDedupeKey(date))
+    }
+
+    static func make(_ parts: CustomStringConvertible?...) -> String {
+        parts
+            .map { $0?.description ?? "nil" }
+            .joined(separator: separator)
+    }
+}
+
 struct BackupDocument: FileDocument {
     static var readableContentTypes: [UTType] { [.json] }
 
@@ -487,7 +501,7 @@ nonisolated struct ProfileSettingsSnapshot: Codable {
     }
 
     var dedupeKey: String {
-        "\(backupDateDedupeKey(date))-\(weightLbs)-\(notes)"
+        BackupDedupeKey.make(BackupDedupeKey.date(date), weightLbs, notes)
     }
 
     func makeModel() -> WeightEntry {
@@ -514,7 +528,11 @@ nonisolated struct ProfileSettingsSnapshot: Codable {
             Calendar.current.date(bySettingHour: 8, minute: 0, second: 0, of: date) ?? date
         )
         let resolvedStart = startDate ?? resolvedEnd.addingTimeInterval(-durationHours * 3600)
-        return "\(backupDateDedupeKey(resolvedStart))-\(backupDateDedupeKey(resolvedEnd))-\(episodeTypeRaw ?? SleepEpisodeType.mainSleep.rawValue)"
+        return BackupDedupeKey.make(
+            BackupDedupeKey.date(resolvedStart),
+            BackupDedupeKey.date(resolvedEnd),
+            episodeTypeRaw ?? SleepEpisodeType.mainSleep.rawValue
+        )
     }
 
     func makeModel() -> SleepEntry {
@@ -555,7 +573,7 @@ nonisolated struct ProfileSettingsSnapshot: Codable {
     }
 
     var dedupeKey: String {
-        "\(backupDateDedupeKey(date))-\(waistIn ?? -1)-\(chestIn ?? -1)-\(notes)"
+        BackupDedupeKey.make(BackupDedupeKey.date(date), waistIn ?? -1, chestIn ?? -1, notes)
     }
 
     func makeModel() -> MeasurementEntry {
@@ -594,7 +612,7 @@ nonisolated struct ProfileSettingsSnapshot: Codable {
     }
 
     var dedupeKey: String {
-        "\(backupDateDedupeKey(date))-\(mealName)-\(notes)-\(calories)-\(carbsG)-\(proteinG)-\(fatG)"
+        BackupDedupeKey.make(BackupDedupeKey.date(date), mealName, notes, calories, carbsG, proteinG, fatG)
     }
 
     func makeModel() -> NutritionEntry {
@@ -628,7 +646,7 @@ nonisolated struct ProfileSettingsSnapshot: Codable {
     }
 
     var dedupeKey: String {
-        "\(mealName)-\(name.lowercased())"
+        BackupDedupeKey.make(mealName, name.lowercased())
     }
 
     func apply(to favorite: FavoriteFood) {
@@ -673,7 +691,7 @@ nonisolated struct ProfileSettingsSnapshot: Codable {
     }
 
     var dedupeKey: String {
-        "\(backupDateDedupeKey(createdAt))-\(programJSON)-\(followupWeeksJSON)-\(macroReviewJSON ?? "")"
+        BackupDedupeKey.make(BackupDedupeKey.date(createdAt), programJSON, followupWeeksJSON, macroReviewJSON ?? "")
     }
 
     func makeModel() -> SavedNutritionProtocol {
@@ -705,7 +723,7 @@ nonisolated struct ProfileSettingsSnapshot: Codable {
     }
 
     var dedupeKey: String {
-        "\(backupDateDedupeKey(date))-\(pose)-\(imageData.count)-\(notes)-\(aiAnalysis ?? "")"
+        BackupDedupeKey.make(BackupDedupeKey.date(date), pose, imageData.count, notes, aiAnalysis ?? "")
     }
 
     func makeModel() -> ProgressPhoto {
@@ -735,7 +753,7 @@ nonisolated struct ProfileSettingsSnapshot: Codable {
     }
 
     var dedupeKey: String {
-        "\(backupDateDedupeKey(date))-\(pose)-\(photoCount)-\(analysisResult)"
+        BackupDedupeKey.make(BackupDedupeKey.date(date), pose, photoCount, analysisResult)
     }
 
     func makeModel() -> BodyAnalysisSession {
@@ -989,7 +1007,7 @@ nonisolated struct ProfileSettingsSnapshot: Codable {
 
     var dedupeKey: String {
         let repText = repsCompleted.map(String.init) ?? "nil"
-        return "\(resolvedCanonicalKey)-\(backupDateDedupeKey(loggedAt))-\(weightLbs)-\(repText)-\(notes)"
+        return BackupDedupeKey.make(resolvedCanonicalKey, BackupDedupeKey.date(loggedAt), weightLbs, repText, notes)
     }
 
     func makeModel() -> ExercisePerformanceLog {

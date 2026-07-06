@@ -446,17 +446,16 @@ extension ClaudeService {
                 let exerciseKey = "\(day.dayNumber):\(normalizeExerciseName(exercise.exerciseName))"
 
                 for area in metadata.primaryAreas {
-                    let directCredit = directSetCredit(for: exercise, area: area)
-                    let weightedCredit = weightedStimulusCredit(for: exercise, area: area)
-                    guard directCredit > 0 || weightedCredit > 0 else { continue }
+                    let credit = stimulusCredit(for: exercise, area: area)
+                    guard credit.directSets > 0 || credit.weightedStimulus > 0 else { continue }
 
-                    if directCredit > 0 {
-                        report.directSets[area, default: 0] += directCredit
+                    if credit.directSets > 0 {
+                        report.directSets[area, default: 0] += credit.directSets
                         var dayDirectSets = report.directSetsByDay[area, default: [:]]
-                        dayDirectSets[day.dayNumber, default: 0] += directCredit
+                        dayDirectSets[day.dayNumber, default: 0] += credit.directSets
                         report.directSetsByDay[area] = dayDirectSets
                     }
-                    report.weightedStimulus[area, default: 0] += weightedCredit
+                    report.weightedStimulus[area, default: 0] += credit.weightedStimulus
                     report.exposureDays[area, default: []].insert(day.dayNumber)
                     report.exerciseMatches[area, default: 0] += 1
                     report.exerciseKeys[area, default: []].insert(exerciseKey)
@@ -487,58 +486,44 @@ extension ClaudeService {
     }
 
     func directSetCredit(for exercise: WorkoutExerciseResponse, area: String) -> Double {
+        stimulusCredit(for: exercise, area: area).directSets
+    }
+
+    func weightedStimulusCredit(for exercise: WorkoutExerciseResponse, area: String) -> Double {
+        stimulusCredit(for: exercise, area: area).weightedStimulus
+    }
+
+    func stimulusCredit(for exercise: WorkoutExerciseResponse, area: String) -> StimulusCredit {
         let qualityKind = focusStimulusKind(
             exerciseName: exercise.exerciseName,
             muscleTarget: exercise.muscleTarget,
             focusArea: area
         )
         if qualityKind == .support {
-            return 0
+            return StimulusCredit(
+                directSets: 0,
+                weightedStimulus: focusStimulusCredit(for: qualityKind) * Double(exercise.sets)
+            )
         }
         let qualityCredit = focusStimulusCredit(for: qualityKind) * Double(exercise.sets)
         if qualityCredit > 0 {
-            return qualityCredit
+            return StimulusCredit(directSets: qualityCredit, weightedStimulus: qualityCredit)
         }
 
         let metadata = exerciseMetadata(for: exercise)
         let areaAliases = Set(stimulusAreaAliases(for: area).map(normalizedPriorityText))
         let primaryAliases = Set(metadata.primaryAreas.flatMap { stimulusAreaAliases(for: $0) }.map(normalizedPriorityText))
         if !areaAliases.isDisjoint(with: primaryAliases) {
-            return Double(exercise.sets)
+            return StimulusCredit(directSets: Double(exercise.sets), weightedStimulus: Double(exercise.sets))
         }
 
         let secondaryAliases = Set(metadata.secondaryAreas.flatMap { stimulusAreaAliases(for: $0) }.map(normalizedPriorityText))
         if !areaAliases.isDisjoint(with: secondaryAliases) {
-            return Double(exercise.sets) * 0.5
+            let credit = Double(exercise.sets) * 0.5
+            return StimulusCredit(directSets: credit, weightedStimulus: credit)
         }
 
-        return 0
-    }
-
-    func weightedStimulusCredit(for exercise: WorkoutExerciseResponse, area: String) -> Double {
-        let qualityKind = focusStimulusKind(
-            exerciseName: exercise.exerciseName,
-            muscleTarget: exercise.muscleTarget,
-            focusArea: area
-        )
-        let qualityCredit = focusStimulusCredit(for: qualityKind) * Double(exercise.sets)
-        if qualityCredit > 0 {
-            return qualityCredit
-        }
-
-        let metadata = exerciseMetadata(for: exercise)
-        let areaAliases = Set(stimulusAreaAliases(for: area).map(normalizedPriorityText))
-        let primaryAliases = Set(metadata.primaryAreas.flatMap { stimulusAreaAliases(for: $0) }.map(normalizedPriorityText))
-        if !areaAliases.isDisjoint(with: primaryAliases) {
-            return Double(exercise.sets)
-        }
-
-        let secondaryAliases = Set(metadata.secondaryAreas.flatMap { stimulusAreaAliases(for: $0) }.map(normalizedPriorityText))
-        if !areaAliases.isDisjoint(with: secondaryAliases) {
-            return Double(exercise.sets) * 0.5
-        }
-
-        return 0
+        return .none
     }
 
     func fatigueContribution(for exercise: WorkoutExerciseResponse, metadata: ExerciseMetadata) -> Int {

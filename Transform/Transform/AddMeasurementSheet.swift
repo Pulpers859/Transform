@@ -297,20 +297,27 @@ struct AddMeasurementSheet: View {
         }
 
         if !allMeasurementsEmpty {
+            let draft = MeasurementDraft(
+                chestText: chestText,
+                waistText: waistText,
+                hipsText: hipsText,
+                neckText: neckText,
+                rightArmText: rightArmText,
+                leftArmText: leftArmText,
+                rightThighText: rightThighText,
+                leftThighText: leftThighText,
+                rightCalfText: rightCalfText,
+                leftCalfText: leftCalfText,
+                bodyFatText: bodyFatText,
+                notes: trimmedNotes,
+                timing: selectedTiming,
+                isStandardMeasurement: isStandardMeasurement
+            )
             if let existing = measurementEntries.first(where: { Calendar.current.isDate($0.date, inSameDayAs: normalizedDate) }) {
-                applyMeasurementFields(to: existing, preservingExistingValues: true)
-                existing.date = normalizedDate
-                existing.measurementTiming = selectedTiming
-                existing.isStandardMeasurement = isStandardMeasurement
-                if !trimmedNotes.isEmpty {
-                    existing.notes = trimmedNotes
-                }
+                draft.apply(to: existing, date: normalizedDate, preservingExistingValues: true)
             } else {
                 let measurement = MeasurementEntry(date: normalizedDate)
-                applyMeasurementFields(to: measurement, preservingExistingValues: false)
-                measurement.notes = trimmedNotes
-                measurement.measurementTiming = selectedTiming
-                measurement.isStandardMeasurement = isStandardMeasurement
+                draft.apply(to: measurement, date: normalizedDate, preservingExistingValues: false)
                 modelContext.insert(measurement)
             }
         }
@@ -350,8 +357,25 @@ struct AddMeasurementSheet: View {
 
         return nil
     }
+}
 
-    func applyMeasurementFields(to measurement: MeasurementEntry, preservingExistingValues: Bool) {
+struct MeasurementDraft {
+    let chestText: String
+    let waistText: String
+    let hipsText: String
+    let neckText: String
+    let rightArmText: String
+    let leftArmText: String
+    let rightThighText: String
+    let leftThighText: String
+    let rightCalfText: String
+    let leftCalfText: String
+    let bodyFatText: String
+    let notes: String
+    let timing: String
+    let isStandardMeasurement: Bool
+
+    func apply(to measurement: MeasurementEntry, date: Date, preservingExistingValues: Bool) {
         assign(chestText, to: \.chestIn, on: measurement, preservingExistingValues: preservingExistingValues)
         assign(waistText, to: \.waistIn, on: measurement, preservingExistingValues: preservingExistingValues)
         assign(hipsText, to: \.hipsIn, on: measurement, preservingExistingValues: preservingExistingValues)
@@ -363,9 +387,16 @@ struct AddMeasurementSheet: View {
         assign(rightCalfText, to: \.rightCalfIn, on: measurement, preservingExistingValues: preservingExistingValues)
         assign(leftCalfText, to: \.leftCalfIn, on: measurement, preservingExistingValues: preservingExistingValues)
         assign(bodyFatText, to: \.bodyFatPct, on: measurement, preservingExistingValues: preservingExistingValues)
+
+        measurement.date = date
+        measurement.measurementTiming = timing
+        measurement.isStandardMeasurement = isStandardMeasurement
+        if !notes.isEmpty || !preservingExistingValues {
+            measurement.notes = notes
+        }
     }
 
-    func assign(
+    private func assign(
         _ text: String,
         to keyPath: ReferenceWritableKeyPath<MeasurementEntry, Double?>,
         on measurement: MeasurementEntry,

@@ -908,8 +908,10 @@ struct NutritionView: View {
     func generateNutritionProtocol() async {
         guard canUseAI, let analysis = latestAnalysis else { return }
 
-        let priorProgram = nutritionProgram
-        let priorFollowups = followupWeeks
+        let generationContext = NutritionGenerationRunContext(
+            priorProgram: nutritionProgram,
+            priorFollowups: followupWeeks
+        )
 
         guard !Task.isCancelled else { return }
         isGeneratingNutrition = true
@@ -924,14 +926,16 @@ struct NutritionView: View {
         }
 
         do {
-            let generated = try await buildNutritionProtocol(from: analysis)
+            let generated = try await buildNutritionProtocol(
+                from: analysis,
+                allowsRecoveryFallback: generationContext.allowsRecoveryFallback
+            )
             try Task.checkCancellation()
             guard !Task.isCancelled else { return }
 
-            if priorProgram != nil && generated.usesRecoveryEngineFallback {
-                nutritionProgram = priorProgram
-                followupWeeks = priorFollowups
-                nutritionErrorMessage = "Regeneration produced Recovery Engine fallback output, so your saved AI nutrition protocol was preserved. Check the API key/network and run generation again."
+            if generationContext.shouldPreserveExistingProtocol(after: generated) {
+                restoreNutritionGenerationContext(generationContext)
+                nutritionErrorMessage = NutritionGenerationRunContext.preservedFallbackMessage
                 TFHaptics.warning()
                 return
             }
@@ -949,19 +953,27 @@ struct NutritionView: View {
         } catch {
             guard !Task.isCancelled else { return }
             nutritionErrorMessage = "Generation failed: \(error.localizedDescription)"
-            nutritionProgram = priorProgram
-            followupWeeks = priorFollowups
+            restoreNutritionGenerationContext(generationContext)
             TFHaptics.error()
         }
     }
 
-    private func buildNutritionProtocol(from analysis: BodyAnalysisResult) async throws -> NutritionProtocolBuildResult {
+    private func restoreNutritionGenerationContext(_ context: NutritionGenerationRunContext) {
+        nutritionProgram = context.priorProgram
+        followupWeeks = context.priorFollowups
+    }
+
+    private func buildNutritionProtocol(
+        from analysis: BodyAnalysisResult,
+        allowsRecoveryFallback: Bool
+    ) async throws -> NutritionProtocolBuildResult {
         let metrics = adherenceMetrics
         let shiftMode = selectedShiftWorkMode
         let program = try await ClaudeService.shared.generateNutritionWeekOne(
             from: analysis,
             adherenceMetrics: metrics,
-            shiftWorkMode: shiftMode
+            shiftWorkMode: shiftMode,
+            allowsRecoveryFallback: allowsRecoveryFallback
         )
         var followupWeeks: [NutritionWeekResponse] = []
         var warningMessage: String?
@@ -985,7 +997,8 @@ struct NutritionView: View {
                     previousWeekJSON: previousWeekJSON,
                     analysisResult: analysis,
                     adherenceMetrics: metrics,
-                    shiftWorkMode: shiftMode
+                    shiftWorkMode: shiftMode,
+                    allowsRecoveryFallback: allowsRecoveryFallback
                 )
                 try Task.checkCancellation()
                 followupWeeks.append(nextWeek)
@@ -1125,5 +1138,20 @@ struct NutritionProtocolBuildResult {
         GeneratedContentSource.detect(in: program.programSummary) == .recoveryEngine
             || GeneratedContentSource.detect(in: program.weekOne.weekSummary) == .recoveryEngine
             || followupWeeks.contains { GeneratedContentSource.detect(in: $0.weekSummary) == .recoveryEngine }
+    }
+}
+
+struct NutritionGenerationRunContext {
+    let priorProgram: NutritionProgramResponse?
+    let priorFollowups: [NutritionWeekResponse]
+
+    static let preservedFallbackMessage = "Regeneration did not produce a complete AI nutrition protocol, so your saved plan was preserved. Check the API key/network and run generation again."
+
+    var allowsRecoveryFallback: Bool {
+        priorProgram == nil
+    }
+
+    func shouldPreserveExistingProtocol(after result: NutritionProtocolBuildResult) -> Bool {
+        priorProgram != nil && (result.usesRecoveryEngineFallback || result.partialGenerationWarning != nil)
     }
 }

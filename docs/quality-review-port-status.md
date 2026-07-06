@@ -49,6 +49,15 @@ the findings.
     imports from sub-second timestamp differences.
   - Add Measurement updates an existing same-day measurement instead of creating
     a hidden duplicate.
+  - Nutrition regeneration now passes explicit fallback eligibility into the
+    service and preserves a saved protocol when regeneration is partial.
+  - Workout stimulus accounting now uses a single direct/weighted credit object
+    so support-credit policy cannot drift between report and validator paths.
+  - Backup dedupe keys now use a central key builder instead of ad hoc string
+    concatenation.
+  - Large SwiftUI save paths were reduced with helper value types for nutrition
+    generation context and measurement drafts; workout set-role lookup no longer
+    uses crash-prone unique-key dictionary construction.
 
 ## Already present in the live app (no action)
 
@@ -68,10 +77,11 @@ the findings.
 Ordered roughly by value:
 
 1. **Nutrition generation error control-flow, remaining hardening.** The view now
-   refuses to replace a saved AI protocol with Recovery Engine fallback output,
-   but `NutritionGeneratorService` still needs a recoverability predicate so it
-   throws on terminal API errors and retries only structured-output failures.
-   Incremental per-week persistence also remains build-worthy follow-up.
+   refuses to replace a saved AI protocol with Recovery Engine fallback or
+   partial output, and service calls now make fallback eligibility explicit.
+   Remaining follow-up: add a recoverability predicate so terminal API errors
+   stop earlier while structured-output failures can still use correction
+   attempts. Incremental per-week persistence also remains build-worthy follow-up.
 2. **Debounced automatic backup** + `prettyPrinted` flag + `writeAutomaticBackupNow`
    + Restore Auto-Backup UI (`DataBackupManager`, `DashboardView`, `ContentView`).
    Removes per-checkbox main-thread JSON serialization of photo blobs.

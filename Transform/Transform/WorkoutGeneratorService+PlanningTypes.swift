@@ -219,6 +219,13 @@ extension ClaudeService {
         var dailyFatigue: [Int: Int] = [:]
     }
 
+    struct StimulusCredit {
+        let directSets: Double
+        let weightedStimulus: Double
+
+        static let none = StimulusCredit(directSets: 0, weightedStimulus: 0)
+    }
+
     enum ProceduralExerciseRole: String {
         case anchor
         case secondary

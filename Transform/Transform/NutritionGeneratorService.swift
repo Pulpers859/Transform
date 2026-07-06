@@ -217,7 +217,8 @@ extension ClaudeService {
     func generateNutritionWeekOne(
         from analysisResult: BodyAnalysisResult,
         adherenceMetrics: NutritionAdherenceMetrics? = nil,
-        shiftWorkMode: ShiftWorkNutritionMode = .normal
+        shiftWorkMode: ShiftWorkNutritionMode = .normal,
+        allowsRecoveryFallback: Bool = true
     ) async throws -> NutritionProgramResponse {
         let context = nutritionAnalysisContext(from: analysisResult)
         let macroLine = macroTargetLine(from: analysisResult.macroTargets)
@@ -290,13 +291,18 @@ extension ClaudeService {
             }
         }
 
+        let diagnostic = lastIssues.joined(separator: " | ")
         if !lastIssues.isEmpty {
-            print("[NutritionGeneratorService] Week 1 fallback activated after issues: \(lastIssues.joined(separator: " | "))")
+            print("[NutritionGeneratorService] Week 1 fallback activated after issues: \(diagnostic)")
+        }
+
+        guard allowsRecoveryFallback else {
+            throw ClaudeError.parseError("Week 1 nutrition generation did not produce a valid AI protocol. Existing saved protocol was preserved. \(diagnostic)")
         }
 
         return buildFallbackNutritionProgram(
             from: analysisResult,
-            diagnostic: lastIssues.joined(separator: " | ")
+            diagnostic: diagnostic
         )
     }
 
@@ -307,7 +313,8 @@ extension ClaudeService {
         previousWeekJSON: String,
         analysisResult: BodyAnalysisResult,
         adherenceMetrics: NutritionAdherenceMetrics? = nil,
-        shiftWorkMode: ShiftWorkNutritionMode = .normal
+        shiftWorkMode: ShiftWorkNutritionMode = .normal,
+        allowsRecoveryFallback: Bool = true
     ) async throws -> NutritionWeekResponse {
         let context = nutritionAnalysisContext(from: analysisResult)
         let macroLine = macroTargetLine(from: analysisResult.macroTargets)
@@ -381,14 +388,19 @@ extension ClaudeService {
             }
         }
 
+        let diagnostic = lastIssues.joined(separator: " | ")
         if !lastIssues.isEmpty {
-            print("[NutritionGeneratorService] Week \(weekNumber) fallback activated after issues: \(lastIssues.joined(separator: " | "))")
+            print("[NutritionGeneratorService] Week \(weekNumber) fallback activated after issues: \(diagnostic)")
+        }
+
+        guard allowsRecoveryFallback else {
+            throw ClaudeError.parseError("Week \(weekNumber) nutrition generation did not produce a valid AI week. \(diagnostic)")
         }
 
         return buildFallbackNutritionWeek(
             weekNumber: weekNumber,
             from: analysisResult,
-            diagnostic: lastIssues.joined(separator: " | ")
+            diagnostic: diagnostic
         )
     }
 
