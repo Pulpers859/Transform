@@ -1,8 +1,16 @@
 import SwiftUI
 import SwiftData
 
+/// Navigation target for the dashboard's training card: identifies a program
+/// day by number so the route stays Hashable without dragging a @Model into
+/// the navigation path.
+nonisolated struct WorkoutDayRoute: Hashable {
+    let dayNumber: Int
+}
+
 struct WorkoutView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(WorkoutDeepLink.self) private var workoutDeepLink
     @Query(sort: \WorkoutProgram.createdDate, order: .reverse) private var programs: [WorkoutProgram]
     @Query(sort: \BodyAnalysisSession.date, order: .reverse) private var analysisSessions: [BodyAnalysisSession]
     @Query(sort: \ExerciseWeightEntry.loggedAt, order: .reverse) private var exerciseWeightEntries: [ExerciseWeightEntry]
@@ -19,13 +27,14 @@ struct WorkoutView: View {
     @State private var feedbackDay: WorkoutDay?
     @State private var analysisThumbnail: UIImage?
     @State private var lastSyncedProgramID: UUID?
+    @State private var navPath = NavigationPath()
 
     var currentProgram: WorkoutProgram? { programs.first { !$0.isArchived } }
     var latestAnalysis: BodyAnalysisSession? { analysisSessions.first }
     var canUseAI: Bool { Config.hasAnthropicKey }
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $navPath) {
             ScrollView {
                 VStack(spacing: 20) {
                     if let program = currentProgram {
@@ -47,6 +56,23 @@ struct WorkoutView: View {
             }
             .workoutTabBarClearance()
             .navigationTitle("Workout")
+            .navigationDestination(for: WorkoutDayRoute.self) { route in
+                if let program = currentProgram,
+                   let day = program.sortedDays.first(where: { $0.dayNumber == route.dayNumber }) {
+                    if day.isRestDay {
+                        RestDayDetailView(day: day)
+                    } else {
+                        WorkoutDayDetailView(day: day)
+                    }
+                } else {
+                    // Program changed between the dashboard tap and navigation.
+                    ContentUnavailableView(
+                        "Session Not Found",
+                        systemImage: "figure.strengthtraining.traditional",
+                        description: Text("This session is no longer part of the active program.")
+                    )
+                }
+            }
             .task(id: latestAnalysis?.date) {
                 if let data = latestAnalysis?.photoData {
                     analysisThumbnail = UIImage.downsampledImage(from: data, maxDimension: 60)
@@ -87,6 +113,7 @@ struct WorkoutView: View {
             }
             .onAppear {
                 syncSelectedWeekWithCurrentProgram()
+                consumePendingDeepLink()
             }
             .onChange(of: programs.map(\.id)) { _, _ in
                 syncSelectedWeekWithCurrentProgram()
@@ -94,7 +121,22 @@ struct WorkoutView: View {
             .onChange(of: currentProgram?.currentWeek) { _, _ in
                 syncSelectedWeekWithCurrentProgram()
             }
+            .onChange(of: workoutDeepLink.pendingDayNumber) { _, _ in
+                consumePendingDeepLink()
+            }
         }
+    }
+
+    /// Lands on the day page the dashboard's training card asked for: selects
+    /// the week containing the day, then pushes its detail view.
+    private func consumePendingDeepLink() {
+        guard let dayNumber = workoutDeepLink.pendingDayNumber else { return }
+        workoutDeepLink.pendingDayNumber = nil
+        guard let program = currentProgram,
+              program.sortedDays.contains(where: { $0.dayNumber == dayNumber }) else { return }
+        selectedWeek = ((dayNumber - 1) / 7) + 1
+        navPath = NavigationPath()
+        navPath.append(WorkoutDayRoute(dayNumber: dayNumber))
     }
 
     // MARK: - Empty State

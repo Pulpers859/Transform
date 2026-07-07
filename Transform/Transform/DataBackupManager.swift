@@ -1163,6 +1163,15 @@ final class DataBackupManager {
         }
     }
 
+    /// Modification date of the newest automatic backup, for the dashboard's
+    /// backup-status indicator and the Settings backup section. Read-only;
+    /// never touches the backup contents or the drop guard.
+    var lastAutomaticBackupDate: Date? {
+        let url = automaticBackupURL(slot: 0)
+        let attributes = try? FileManager.default.attributesOfItem(atPath: url.path)
+        return attributes?[.modificationDate] as? Date
+    }
+
     private static let backupSlots = 3
 
     private func automaticBackupURL(slot: Int) -> URL {

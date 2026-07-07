@@ -53,20 +53,34 @@ extension View {
 // MARK: - Type Scale
 
 enum TFTypography {
-    static let heroMetric = Font.system(size: 44, weight: .black, design: .rounded)
-    static let heroTitle = Font.system(size: 36, weight: .black)
-    static let sectionTitle = Font.system(size: 10, weight: .bold, design: .monospaced)
-    static let cardTitle = Font.system(size: 15, weight: .semibold)
-    static let body = Font.system(size: 14, weight: .regular)
-    static let caption = Font.system(size: 12, weight: .medium)
-    static let micro = Font.system(size: 10, weight: .medium)
+    /// Scales a design size with the user's Dynamic Type setting, anchored to a
+    /// system text style and capped at 1.35× so the dense metric layouts grow
+    /// legibly instead of breaking. Computed per access (not cached in a `let`)
+    /// so a text-size change re-resolves on the next render pass.
+    private static func scaled(
+        _ size: CGFloat,
+        relativeTo style: UIFont.TextStyle,
+        weight: Font.Weight,
+        design: Font.Design = .default
+    ) -> Font {
+        let scaledSize = min(UIFontMetrics(forTextStyle: style).scaledValue(for: size), size * 1.35)
+        return Font.system(size: scaledSize, weight: weight, design: design)
+    }
 
-    static let ringValue = Font.system(size: 22, weight: .black, design: .rounded)
-    static let ringUnit = Font.system(size: 10, weight: .medium)
-    static let greeting = Font.system(size: 13, weight: .medium, design: .monospaced)
-    static let badgeLabel = Font.system(size: 9, weight: .bold)
-    static let chipLabel = Font.system(size: 12, weight: .semibold)
-    static let datePill = Font.system(size: 11, weight: .semibold, design: .monospaced)
+    static var heroMetric: Font { scaled(44, relativeTo: .largeTitle, weight: .black, design: .rounded) }
+    static var heroTitle: Font { scaled(36, relativeTo: .largeTitle, weight: .black) }
+    static var sectionTitle: Font { scaled(10, relativeTo: .caption2, weight: .bold, design: .monospaced) }
+    static var cardTitle: Font { scaled(15, relativeTo: .subheadline, weight: .semibold) }
+    static var body: Font { scaled(14, relativeTo: .body, weight: .regular) }
+    static var caption: Font { scaled(12, relativeTo: .caption, weight: .medium) }
+    static var micro: Font { scaled(10, relativeTo: .caption2, weight: .medium) }
+
+    static var ringValue: Font { scaled(22, relativeTo: .title2, weight: .black, design: .rounded) }
+    static var ringUnit: Font { scaled(10, relativeTo: .caption2, weight: .medium) }
+    static var greeting: Font { scaled(13, relativeTo: .footnote, weight: .medium, design: .monospaced) }
+    static var badgeLabel: Font { scaled(9, relativeTo: .caption2, weight: .bold) }
+    static var chipLabel: Font { scaled(12, relativeTo: .caption, weight: .semibold) }
+    static var datePill: Font { scaled(11, relativeTo: .caption, weight: .semibold, design: .monospaced) }
 }
 
 // MARK: - Color Tokens
@@ -82,9 +96,13 @@ enum TFColor {
     static let warning = Color(red: 0.95, green: 0.75, blue: 0.15)
     static let danger = Color.red
     static let info = Color.blue
-    static let protein = Color.red
-    static let carbs = Color.blue
-    static let fat = Color.yellow
+    // Macro trio: deliberately distinct in hue AND luminance (crimson / blue /
+    // amber) so 10pt rings stay separable for red-green colorblindness, and so
+    // protein no longer shares pure red with `danger` (which sits inches away
+    // on the dashboard meaning "over target").
+    static let protein = Color(red: 0.80, green: 0.16, blue: 0.32)
+    static let carbs = Color(red: 0.20, green: 0.48, blue: 0.97)
+    static let fat = Color(red: 0.98, green: 0.71, blue: 0.15)
     static let sleep = Color(red: 0.38, green: 0.35, blue: 0.82)
     static let measurement = Color.purple
 }

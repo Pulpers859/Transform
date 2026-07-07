@@ -1,14 +1,24 @@
 import SwiftUI
 import UIKit
+import SwiftData
+import UniformTypeIdentifiers
 
 struct AppSettingsView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
     @State private var showRestoreDefaultsConfirm = false
     @State private var showDeleteAPIKeyConfirm = false
     @State private var apiKeySetupPresentation: APIKeySetupPresentation?
     @State private var hasAnthropicAPIKey = Config.hasAnthropicKey
     @State private var hasKeychainAPIKey = AnthropicAPIKeyStore.storedKey != nil
     @State private var apiKeyErrorMessage: String?
+    @State private var backupDocument = BackupDocument()
+    @State private var showExporter = false
+    @State private var showImporter = false
+    @State private var showImportConfirm = false
+    @State private var showBackupAlert = false
+    @State private var backupMessage = ""
+    @State private var isPreparingExport = false
     @AppStorage(AppSettingsKeys.appearanceMode) private var appearanceMode = 0
 
     var body: some View {
@@ -77,12 +87,94 @@ struct AppSettingsView: View {
                 }
 
                 Section {
+                    LabeledContent("Last automatic backup") {
+                        Text(lastAutomaticBackupText)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Button {
+                        prepareExport()
+                    } label: {
+                        HStack {
+                            Label("Export Backup", systemImage: "square.and.arrow.up")
+                            if isPreparingExport {
+                                Spacer()
+                                ProgressView()
+                            }
+                        }
+                    }
+                    .disabled(isPreparingExport)
+
+                    Button {
+                        showImportConfirm = true
+                    } label: {
+                        Label("Import Backup", systemImage: "square.and.arrow.down")
+                    }
+                } header: {
+                    Text("Data & Backup")
+                } footer: {
+                    Text("Backups include all logged data and analysis photos. Importing merges the backup with what's already on this device — nothing is deleted or overwritten, and duplicates are skipped.")
+                }
+
+                Section {
                     Button("Restore All Defaults", role: .destructive) {
                         showRestoreDefaultsConfirm = true
                     }
                 } footer: {
                     Text("Replaces all profile, target, and medical settings with app defaults.")
                 }
+            }
+            .fileExporter(
+                isPresented: $showExporter,
+                document: backupDocument,
+                contentType: .json,
+                defaultFilename: backupFileName
+            ) { result in
+                switch result {
+                case .success:
+                    backupMessage = "Backup exported successfully."
+                    showBackupAlert = true
+                case .failure(let error):
+                    backupMessage = "Export failed: \(error.localizedDescription)"
+                    showBackupAlert = true
+                }
+            }
+            .fileImporter(isPresented: $showImporter, allowedContentTypes: [.json]) { result in
+                switch result {
+                case .success(let url):
+                    do {
+                        // fileImporter URLs are security-scoped; without acquiring
+                        // access, reading a backup from Files/iCloud fails on device.
+                        let didAccess = url.startAccessingSecurityScopedResource()
+                        defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
+                        let data = try Data(contentsOf: url)
+                        try DataBackupManager.shared.importBackup(from: data, into: modelContext)
+                        backupMessage = "Backup imported successfully."
+                    } catch {
+                        backupMessage = "Import failed: \(error.localizedDescription)"
+                    }
+                    showBackupAlert = true
+                case .failure(let error):
+                    backupMessage = "Import failed: \(error.localizedDescription)"
+                    showBackupAlert = true
+                }
+            }
+            .confirmationDialog(
+                "Import Backup?",
+                isPresented: $showImportConfirm,
+                titleVisibility: .visible
+            ) {
+                Button("Choose Backup File") {
+                    showImporter = true
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("The backup is merged with your existing data. Nothing is deleted or overwritten — entries already on this device are kept and duplicates are skipped.")
+            }
+            .alert("Backup", isPresented: $showBackupAlert) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(backupMessage)
             }
             .confirmationDialog(
                 "Restore Defaults?",
@@ -123,6 +215,40 @@ struct AppSettingsView: View {
                     Button("Done") { dismiss() }
                         .bold()
                 }
+            }
+        }
+    }
+
+    private var lastAutomaticBackupText: String {
+        guard let date = DataBackupManager.shared.lastAutomaticBackupDate else {
+            return "None yet"
+        }
+        return date.formatted(.relative(presentation: .named))
+    }
+
+    private var backupFileName: String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.dateFormat = "yyyy-MM-dd_HHmm"
+        return "Transform_Backup_\(formatter.string(from: Date()))"
+    }
+
+    /// Builds the export on the MainActor-bound backup manager (deliberately —
+    /// the guarded backup path stays single-context) but inside a Task with a
+    /// visible preparing state, so the button gives feedback instead of the
+    /// whole sheet freezing silently while a large payload encodes.
+    private func prepareExport() {
+        guard !isPreparingExport else { return }
+        isPreparingExport = true
+        Task { @MainActor in
+            defer { isPreparingExport = false }
+            do {
+                backupDocument = try DataBackupManager.shared.exportDocument(using: modelContext)
+                showExporter = true
+            } catch {
+                backupMessage = "Could not prepare backup: \(error.localizedDescription)"
+                showBackupAlert = true
             }
         }
     }
@@ -179,6 +305,7 @@ struct AppSettingsView: View {
         UserDefaults.standard.set(String(format: "%.0f", Config.defaultCarbTargetG), forKey: keys.carbTarget)
         UserDefaults.standard.set(String(format: "%.0f", Config.defaultFatTargetG), forKey: keys.fatTarget)
         UserDefaults.standard.set(String(format: "%.0f", Config.defaultBodyWeightGoalLbs), forKey: keys.bodyWeightGoal)
+        AppSettingsStore.stampBodyWeightGoalChange()
         UserDefaults.standard.set(0, forKey: keys.appearanceMode)
         appearanceMode = 0
     }
@@ -538,6 +665,12 @@ struct SettingsTargetsView: View {
             Section("Weight") {
                 targetField("Body Weight Goal", text: $bodyWeightGoal, suffix: "lb", keyboard: .decimalPad)
             }
+        }
+        .onChange(of: bodyWeightGoal) { _, _ in
+            // Anchors goal progress to "now": the dashboard measures the
+            // campaign from the trend weight at the last goal change, not from
+            // the oldest weight entry ever logged.
+            AppSettingsStore.stampBodyWeightGoalChange()
         }
         .scrollDismissesKeyboard(.interactively)
         .navigationTitle("Targets")

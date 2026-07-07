@@ -523,6 +523,128 @@ enum MacroTargetResolver {
     }
 }
 
+// MARK: - Training Phase
+
+/// Which direction the body-weight goal points relative to the current trend
+/// weight. Every good/bad judgment on progress surfaces (weight delta badges,
+/// calorie-average coloring, goal copy) must read this one resolver so a
+/// deliberate gaining phase is never scored with weight-loss semantics.
+enum TrainingPhase {
+    case cutting
+    case maintaining
+    case gaining
+
+    /// Deadband around the goal treated as maintenance so day-to-day noise near
+    /// goal weight doesn't flip the dashboard between cut and gain semantics.
+    static let maintenanceBandLbs = 2.0
+
+    static func resolve(
+        currentTrendWeightLbs: Double?,
+        goalWeightLbs: Double = Config.bodyWeightGoalLbs
+    ) -> TrainingPhase {
+        guard let current = currentTrendWeightLbs else { return .maintaining }
+        if goalWeightLbs < current - Self.maintenanceBandLbs { return .cutting }
+        if goalWeightLbs > current + Self.maintenanceBandLbs { return .gaining }
+        return .maintaining
+    }
+
+    /// Whether a weekly body-weight change moves toward the goal.
+    /// `nil` means the change is inside the noise band and should render neutral.
+    func isWeeklyChangeGood(_ weeklyChangeLbs: Double) -> Bool? {
+        let noiseBandLbs = 0.15
+        guard abs(weeklyChangeLbs) > noiseBandLbs else { return nil }
+        switch self {
+        case .cutting: return weeklyChangeLbs < 0
+        case .gaining: return weeklyChangeLbs > 0
+        case .maintaining: return abs(weeklyChangeLbs) < 0.75
+        }
+    }
+
+    /// Whether an average calorie intake is on-plan against the target.
+    /// Over target while gaining is expected; under-eating is the miss there.
+    func isCalorieAverageGood(average: Double, target: Double) -> Bool {
+        switch self {
+        case .cutting, .maintaining: return average <= target
+        case .gaining: return average >= target * 0.95
+        }
+    }
+}
+
+// MARK: - Analysis Freshness Policy
+
+/// Single source of truth for how old a body analysis can be before the UI
+/// nudges. Previously three call sites used three different day counts
+/// (30/45, 42, 56), so the same analysis age produced conflicting verdicts.
+enum AnalysisFreshness {
+    case fresh
+    case aging
+    case stale
+
+    static let agingAfterDays = 30
+    static let staleAfterDays = 45
+
+    static func resolve(daysAgo: Int) -> AnalysisFreshness {
+        if daysAgo <= Self.agingAfterDays { return .fresh }
+        if daysAgo <= Self.staleAfterDays { return .aging }
+        return .stale
+    }
+}
+
+// MARK: - Weight Goal Progress
+
+/// Progress toward the body-weight goal measured from a phase anchor (the
+/// trend weight when the goal was last set) rather than the oldest entry ever
+/// logged, with explicit at-goal and past-goal states instead of a bar that
+/// clamps at 100% forever and copy that misreads overshoot as approach.
+enum WeightGoalState {
+    case noData
+    case approaching(progress: Double, remainingLbs: Double)
+    case atGoal
+    case pastGoal(overshootLbs: Double)
+}
+
+enum WeightGoalProgressResolver {
+    /// Within this band of the goal the state reads "at goal".
+    static let atGoalBandLbs = 1.5
+    /// When no goal-change anchor is stored, measure from the trend weight
+    /// roughly 12 weeks back so imported multi-year history can't define "start".
+    static let fallbackAnchorWindowDays = 84
+
+    static func resolve(
+        trendPoints: [(date: Date, trendWeightLbs: Double)],
+        goalLbs: Double,
+        anchorDate: Date?,
+        now: Date = Date()
+    ) -> WeightGoalState {
+        guard let current = trendPoints.last?.trendWeightLbs else { return .noData }
+        if abs(current - goalLbs) <= Self.atGoalBandLbs { return .atGoal }
+
+        let effectiveAnchorDate = anchorDate
+            ?? Calendar.current.date(byAdding: .day, value: -Self.fallbackAnchorWindowDays, to: now)
+            ?? now
+        let anchorWeight = trendPoints.last(where: { $0.date <= effectiveAnchorDate })?.trendWeightLbs
+            ?? trendPoints.first?.trendWeightLbs
+            ?? current
+
+        let anchorSide = anchorWeight - goalLbs
+        let currentSide = current - goalLbs
+        if anchorSide != 0, currentSide.sign != anchorSide.sign {
+            return .pastGoal(overshootLbs: abs(currentSide))
+        }
+
+        let totalDistance = abs(anchorSide)
+        guard totalDistance > 0.01 else {
+            // Anchored at the goal but currently outside the band: drifted away.
+            return .approaching(progress: 0, remainingLbs: abs(currentSide))
+        }
+        let covered = (totalDistance - abs(currentSide)) / totalDistance
+        return .approaching(
+            progress: max(0, min(1, covered)),
+            remainingLbs: abs(currentSide)
+        )
+    }
+}
+
 nonisolated enum AppSettingsKeys {
     static let analysisAge = "analysis_profile_age"
     static let analysisSex = "analysis_profile_sex"
@@ -572,6 +694,7 @@ nonisolated enum AppSettingsKeys {
     static let fatTarget = "nutrition_fat_target"
     static let nutritionShiftWorkMode = "nutrition_shift_work_mode"
     static let bodyWeightGoal = "body_weight_goal"
+    static let bodyWeightGoalSetAt = "body_weight_goal_set_at"
     static let appearanceMode = "app_appearance_mode"
 }
 
@@ -1005,6 +1128,19 @@ enum AppSettingsStore {
 
     static var bodyWeightGoalLbs: Double {
         double(for: AppSettingsKeys.bodyWeightGoal, default: Config.defaultBodyWeightGoalLbs, min: 50, max: 999)
+    }
+
+    /// When the body-weight goal was last changed. Goal progress is measured
+    /// from the trend weight at this date (the current "campaign"), not from
+    /// the oldest weight entry ever logged.
+    static var bodyWeightGoalSetAt: Date? {
+        let stored = defaults.double(forKey: AppSettingsKeys.bodyWeightGoalSetAt)
+        guard stored > 0 else { return nil }
+        return Date(timeIntervalSince1970: stored)
+    }
+
+    static func stampBodyWeightGoalChange(at date: Date = Date()) {
+        defaults.set(date.timeIntervalSince1970, forKey: AppSettingsKeys.bodyWeightGoalSetAt)
     }
 
     static var personalAnalysisProfile: AnalysisClientProfile {

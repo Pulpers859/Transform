@@ -1,32 +1,54 @@
 import SwiftUI
 import SwiftData
 import Charts
-import UniformTypeIdentifiers
 
 struct DashboardView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(DayClock.self) private var dayClock
+    @Environment(WorkoutDeepLink.self) private var workoutDeepLink
+    @Binding var selectedTab: AppTab
+
+    // Weight history is deliberately unbounded: the trend line and goal-anchor
+    // resolution both legitimately read deep history. The high-churn stores
+    // (nutrition, sleep) are bounded at the query level instead — the dashboard
+    // only ever renders short windows of them.
     @Query(sort: \WeightEntry.date, order: .reverse) private var weightEntries: [WeightEntry]
-    @Query(sort: \NutritionEntry.date, order: .reverse) private var allNutrition: [NutritionEntry]
+    @Query private var recentNutrition: [NutritionEntry]
     @Query(sort: \BodyAnalysisSession.date, order: .reverse) private var analysisSessions: [BodyAnalysisSession]
     @Query(sort: \MeasurementEntry.date, order: .reverse) private var measurementEntries: [MeasurementEntry]
-    @Query(sort: \SleepEntry.date, order: .reverse) private var sleepEpisodes: [SleepEntry]
+    @Query private var sleepEpisodes: [SleepEntry]
     @Query(sort: \SavedNutritionProtocol.updatedAt, order: .reverse) private var savedNutritionProtocols: [SavedNutritionProtocol]
+    @Query(sort: \WorkoutProgram.createdDate, order: .reverse) private var programs: [WorkoutProgram]
 
     @State private var animateRings = false
-    @State private var backupDocument = BackupDocument()
-    @State private var showExporter = false
-    @State private var showImporter = false
-    @State private var showBackupAlert = false
-    @State private var backupMessage = ""
     @State private var showAddWeightSheet = false
     @State private var showAddFoodSheet = false
     @State private var showSettings = false
     @State private var sleepEditorRequest: SleepEditorRequest?
+    @State private var headlineExpanded = false
+    @State private var lastBackupDate: Date?
+
+    init(selectedTab: Binding<AppTab>) {
+        _selectedTab = selectedTab
+        // The dashboard renders at most ~8 days of nutrition (today's rings +
+        // the 7-day chart) and the sleep trend builder's recent windows, so
+        // fetching entire multi-year histories per render is pure waste.
+        let nutritionCutoff = Calendar.current.date(byAdding: .day, value: -10, to: Date()) ?? .distantPast
+        _recentNutrition = Query(
+            filter: #Predicate<NutritionEntry> { $0.date >= nutritionCutoff },
+            sort: [SortDescriptor(\NutritionEntry.date, order: .reverse)]
+        )
+        let sleepCutoff = Calendar.current.date(byAdding: .day, value: -60, to: Date()) ?? .distantPast
+        _sleepEpisodes = Query(
+            filter: #Predicate<SleepEntry> { $0.date >= sleepCutoff },
+            sort: [SortDescriptor(\SleepEntry.date, order: .reverse)]
+        )
+    }
 
     // MARK: - Computed Props
 
     var todayNutrition: [NutritionEntry] {
-        allNutrition.filter { Calendar.current.isDateInToday($0.date) }
+        recentNutrition.filter { Calendar.current.isDate($0.date, inSameDayAs: dayClock.today) }
     }
 
     var todayCalories: Int { todayNutrition.reduce(0) { $0 + $1.calories } }
@@ -43,23 +65,6 @@ struct DashboardView: View {
     }
 
     var currentWeight: Double? { weightEntries.first?.weightLbs }
-    var previousWeight: Double? { weightEntries.dropFirst().first?.weightLbs }
-    var weightDelta: Double? {
-        guard let c = currentWeight, let p = previousWeight else { return nil }
-        return c - p
-    }
-
-    var weightProgress: Double {
-        guard let current = currentWeight else { return 0 }
-        let start = weightEntries.last?.weightLbs ?? current
-        let goal = Config.bodyWeightGoalLbs
-        guard start != goal else { return 1.0 }
-        return max(0, min(1.0, (current - start) / (goal - start)))
-    }
-
-    var weightSparkline: [WeightEntry] {
-        Array(weightEntries.prefix(14).reversed())
-    }
 
     var weightTrend: WeightTrendSnapshot {
         WeightTrendBuilder.build(
@@ -86,33 +91,66 @@ struct DashboardView: View {
         return (center - paddedSpan / 2)...(center + paddedSpan / 2)
     }
 
-    var calorieProgress: Double {
-        min(Double(todayCalories) / Double(activeMacroTargets.calories), 1.0)
+    // MARK: - Training Phase & Goal Progress
+
+    var trainingPhase: TrainingPhase {
+        TrainingPhase.resolve(currentTrendWeightLbs: weightTrend.currentTrendWeightLbs)
     }
 
-    var proteinProgress: Double {
-        min(todayProtein / activeMacroTargets.proteinG, 1.0)
+    var weightGoalState: WeightGoalState {
+        WeightGoalProgressResolver.resolve(
+            trendPoints: weightTrend.points.map { (date: $0.date, trendWeightLbs: $0.trendWeightLbs) },
+            goalLbs: Config.bodyWeightGoalLbs,
+            anchorDate: AppSettingsStore.bodyWeightGoalSetAt
+        )
     }
 
     var remainingCaloriesToday: Int {
         activeMacroTargets.calories - todayCalories
     }
 
-    var weekCalorieData: [(Date, Double)] {
-        last7DaysCalories()
-    }
+    // MARK: - Week Calories
 
-    var weekAverageCalories: Double {
-        weekCalorieData.map { $0.1 }.reduce(0, +) / max(Double(weekCalorieData.count), 1)
+    struct DayCalorieDatum: Identifiable {
+        let id: Date
+        let date: Date
+        let calories: Double
+        let isLogged: Bool
     }
 
     var caloriesByDay: [Date: Double] {
         let calendar = Calendar.current
-        let cutoff = calendar.date(byAdding: .day, value: -8, to: Date()) ?? Date()
-        return allNutrition.lazy.filter { $0.date >= cutoff }.reduce(into: [Date: Double]()) { totals, entry in
+        let cutoff = calendar.date(byAdding: .day, value: -8, to: dayClock.today) ?? dayClock.today
+        return recentNutrition.lazy.filter { $0.date >= cutoff }.reduce(into: [Date: Double]()) { totals, entry in
             let day = calendar.startOfDay(for: entry.date)
             totals[day, default: 0] += Double(entry.calories)
         }
+    }
+
+    var weekCalorieData: [DayCalorieDatum] {
+        let calendar = Calendar.current
+        let byDay = caloriesByDay
+        return (0..<7).compactMap { offset -> DayCalorieDatum? in
+            guard let date = calendar.date(byAdding: .day, value: -offset, to: dayClock.today) else { return nil }
+            let day = calendar.startOfDay(for: date)
+            if let total = byDay[day] {
+                return DayCalorieDatum(id: day, date: day, calories: total, isLogged: true)
+            }
+            return DayCalorieDatum(id: day, date: day, calories: 0, isLogged: false)
+        }.reversed()
+    }
+
+    /// Average over days that were actually logged. Unlogged days must not
+    /// drag the average down into a false "under target" green — a week with
+    /// three logged days is an adherence problem, not a calorie deficit.
+    var weekAverageCalories: Double? {
+        let logged = weekCalorieData.filter(\.isLogged)
+        guard !logged.isEmpty else { return nil }
+        return logged.map(\.calories).reduce(0, +) / Double(logged.count)
+    }
+
+    var weekLoggedDayCount: Int {
+        weekCalorieData.filter(\.isLogged).count
     }
 
     var sleepTrend: SleepTrendSnapshot? {
@@ -129,8 +167,8 @@ struct DashboardView: View {
     // MARK: - Adherence Metrics
 
     var last7DaysNutritionEntries: [NutritionEntry] {
-        let cutoff = Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date()
-        return allNutrition.filter { $0.date >= cutoff }
+        let cutoff = Calendar.current.date(byAdding: .day, value: -7, to: dayClock.today) ?? dayClock.today
+        return recentNutrition.filter { $0.date >= cutoff }
     }
 
     var loggedDaysCount: Int {
@@ -180,7 +218,40 @@ struct DashboardView: View {
         return Calendar.current.dateComponents([.day], from: date, to: Date()).day
     }
 
+    var analysisFreshness: AnalysisFreshness? {
+        analysisDaysAgo.map { AnalysisFreshness.resolve(daysAgo: $0) }
+    }
+
+    func freshnessColor(_ freshness: AnalysisFreshness) -> Color {
+        switch freshness {
+        case .fresh: return TFColor.success
+        case .aging: return TFColor.accent
+        case .stale: return TFColor.danger
+        }
+    }
+
+    // MARK: - Training Card State
+
+    var currentProgram: WorkoutProgram? { programs.first { !$0.isArchived } }
+
+    var nextTrainingDay: WorkoutDay? {
+        currentProgram?.latestWeekDays.first { !$0.isCompleted }
+    }
+
     // MARK: - Coaching Headline
+
+    enum CoachAction {
+        case logMeal
+        case logSleep
+        case reanalyze
+    }
+
+    struct CoachingVerdict {
+        let message: String
+        let color: Color
+        let action: CoachAction?
+        let actionLabel: String?
+    }
 
     var proteinRate: Double {
         loggedDaysCount > 0 ? Double(proteinHitDays) / Double(loggedDaysCount) : 0
@@ -191,37 +262,67 @@ struct DashboardView: View {
         return "but protein is still the gap"
     }
 
-    var coachingHeadline: (String, Color) {
+    var coachingVerdict: CoachingVerdict {
         // Priority 1: Insufficient data
         if loggedDaysCount < 3 {
-            return ("Log meals consistently — only \(loggedDaysCount)/7 days tracked this week", TFColor.accent)
+            return CoachingVerdict(
+                message: "Log meals consistently — only \(loggedDaysCount)/7 days tracked this week",
+                color: TFColor.accent,
+                action: .logMeal,
+                actionLabel: "Log a meal"
+            )
         }
 
         // Priority 2: Risk flags
         if let trend = dashboardMeasurementTrend {
             if trend.interpretation == .likelyFatLoss,
                let rate = trend.weightChangeRatePerWeek, rate < -2.0 {
-                return ("Fat loss is fast — consider slowing the deficit to protect performance", TFColor.accent)
+                return CoachingVerdict(
+                    message: "Fat loss is fast — consider slowing the deficit to protect performance",
+                    color: TFColor.accent,
+                    action: nil,
+                    actionLabel: nil
+                )
             }
         }
 
-        if let daysAgo = analysisDaysAgo, daysAgo > 56 {
-            return ("AI targets are \(daysAgo) days old — consider re-analyzing before adjusting further", TFColor.accent)
+        if let daysAgo = analysisDaysAgo, AnalysisFreshness.resolve(daysAgo: daysAgo) == .stale {
+            return CoachingVerdict(
+                message: "AI targets are \(daysAgo) days old — consider re-analyzing before adjusting further",
+                color: TFColor.accent,
+                action: .reanalyze,
+                actionLabel: "Open Analysis"
+            )
         }
 
         // Priority 3: Acute recovery constraint
         if let sleepTrend, sleepTrend.acuteLoggedDays >= 2 {
             if sleepTrend.threeDayAverageHours < 5 {
-                return ("Acute sleep restriction — keep today's training submaximal and trim low-priority fatigue", TFColor.accent)
+                return CoachingVerdict(
+                    message: "Acute sleep restriction — keep today's training submaximal and trim low-priority fatigue",
+                    color: TFColor.accent,
+                    action: .logSleep,
+                    actionLabel: "Log sleep"
+                )
             }
             if sleepTrend.hasRecentPostCallRecovery || sleepTrend.underFiveHours > 0 {
-                return ("Recovery is constrained — prioritize technique, hydration, and an achievable session today", TFColor.accent)
+                return CoachingVerdict(
+                    message: "Recovery is constrained — prioritize technique, hydration, and an achievable session today",
+                    color: TFColor.accent,
+                    action: .logSleep,
+                    actionLabel: "Log sleep"
+                )
             }
         }
 
         // Priority 4: Major protein gap (standalone — before body trends)
         if proteinRate < 0.35 && loggedDaysCount >= 3 {
-            return ("Protein is the priority — hitting target on only \(proteinHitDays)/\(loggedDaysCount) logged days", TFColor.accent)
+            return CoachingVerdict(
+                message: "Protein is the priority — hitting target on only \(proteinHitDays)/\(loggedDaysCount) logged days",
+                color: TFColor.accent,
+                action: .logMeal,
+                actionLabel: "Log a meal"
+            )
         }
 
         // Priority 5: Body trends (with protein caveat when applicable)
@@ -229,16 +330,41 @@ struct DashboardView: View {
             let caveat = proteinCaveat.map { " — \($0)" } ?? ""
             switch trend.interpretation {
             case .likelyRecomposition:
-                return ("Waist trending down, weight stable\(caveat.isEmpty ? " — stay the course" : caveat)", caveat.isEmpty ? TFColor.success : TFColor.accent)
+                return CoachingVerdict(
+                    message: "Waist trending down, weight stable\(caveat.isEmpty ? " — stay the course" : caveat)",
+                    color: caveat.isEmpty ? TFColor.success : TFColor.accent,
+                    action: caveat.isEmpty ? nil : .logMeal,
+                    actionLabel: caveat.isEmpty ? nil : "Log a meal"
+                )
             case .likelyFatLoss:
-                return ("Fat loss tracking well\(caveat.isEmpty ? " — waist and weight both down" : caveat)", caveat.isEmpty ? TFColor.success : TFColor.accent)
+                return CoachingVerdict(
+                    message: "Fat loss tracking well\(caveat.isEmpty ? " — waist and weight both down" : caveat)",
+                    color: caveat.isEmpty ? TFColor.success : TFColor.accent,
+                    action: caveat.isEmpty ? nil : .logMeal,
+                    actionLabel: caveat.isEmpty ? nil : "Log a meal"
+                )
             case .possibleNoise:
-                return ("Recent changes may be noise — keep logging for clarity", .secondary)
+                return CoachingVerdict(
+                    message: "Recent changes may be noise — keep logging for clarity",
+                    color: .secondary,
+                    action: nil,
+                    actionLabel: nil
+                )
             case .likelyMassGain:
                 if trend.waistToWeightRatio != nil && trend.waistChangeIn.map({ $0 <= 0.1 }) == true {
-                    return ("Weight rising but waist controlled — check training performance before adjusting", .secondary)
+                    return CoachingVerdict(
+                        message: "Weight rising but waist controlled — check training performance before adjusting",
+                        color: .secondary,
+                        action: nil,
+                        actionLabel: nil
+                    )
                 }
-                return ("Weight and waist both rising — review targets if fat loss is the goal", TFColor.accent)
+                return CoachingVerdict(
+                    message: "Weight and waist both rising — review targets if fat loss is the goal",
+                    color: TFColor.accent,
+                    action: nil,
+                    actionLabel: nil
+                )
             default:
                 break
             }
@@ -246,15 +372,62 @@ struct DashboardView: View {
 
         // Priority 6: Moderate protein gap (no body trend to attach to)
         if proteinRate < 0.5 && loggedDaysCount >= 3 {
-            return ("Protein is the gap — hitting target on only \(proteinHitDays)/\(loggedDaysCount) logged days", TFColor.accent)
+            return CoachingVerdict(
+                message: "Protein is the gap — hitting target on only \(proteinHitDays)/\(loggedDaysCount) logged days",
+                color: TFColor.accent,
+                action: .logMeal,
+                actionLabel: "Log a meal"
+            )
         }
 
         // Priority 7: Praise
         if proteinRate >= 0.7 && loggedDaysCount >= 5 {
-            return ("Strong week — logging consistent, protein adherence solid", TFColor.success)
+            return CoachingVerdict(
+                message: "Strong week — logging consistent, protein adherence solid",
+                color: TFColor.success,
+                action: nil,
+                actionLabel: nil
+            )
         }
 
-        return ("Keep logging — consistency is what unlocks meaningful trends", .secondary)
+        return CoachingVerdict(
+            message: "Keep logging — consistency is what unlocks meaningful trends",
+            color: .secondary,
+            action: nil,
+            actionLabel: nil
+        )
+    }
+
+    /// The inputs the verdict was computed from, surfaced on expansion so the
+    /// single-line coaching call is explainable instead of an opaque decree.
+    var coachingEvidence: [String] {
+        var lines: [String] = []
+        lines.append("Logged \(loggedDaysCount)/7 days this week")
+        if loggedDaysCount > 0 {
+            lines.append("Protein target hit on \(proteinHitDays)/\(loggedDaysCount) logged days")
+        }
+        if let trend = dashboardMeasurementTrend, let change = trend.waistChangeIn, abs(change) > 0.05 {
+            lines.append(String(format: "Waist %+.1f in over the trend window", change))
+        }
+        if let sleepTrend, sleepTrend.acuteLoggedDays > 0 {
+            lines.append("3-day sleep average \(SleepFormatting.duration(sleepTrend.threeDayAverageHours))")
+        }
+        if let daysAgo = analysisDaysAgo {
+            lines.append("Body analysis \(daysAgo)d old")
+        }
+        return lines
+    }
+
+    func performCoachAction(_ action: CoachAction) {
+        TFHaptics.impact(.light)
+        switch action {
+        case .logMeal:
+            showAddFoodSheet = true
+        case .logSleep:
+            sleepEditorRequest = SleepEditorRequest(episode: nil)
+        case .reanalyze:
+            selectedTab = .analysis
+        }
     }
 
     // MARK: - Body
@@ -272,16 +445,18 @@ struct DashboardView: View {
                         VStack(spacing: TFSpacing.cardGap) {
                             coachingHeadlineCard
                                 .cardEntrance(index: 0)
-                            todayRingsCard
+                            trainingTodayCard
                                 .cardEntrance(index: 1)
-                            weightAndRecompCard
+                            todayRingsCard
                                 .cardEntrance(index: 2)
-                            sleepRecoveryCard
+                            weightAndRecompCard
                                 .cardEntrance(index: 3)
-                            WorkoutTimingInsightsCard()
+                            sleepRecoveryCard
                                 .cardEntrance(index: 4)
-                            weekCalorieChart
+                            WorkoutTimingInsightsCard()
                                 .cardEntrance(index: 5)
+                            weekCalorieChart
+                                .cardEntrance(index: 6)
                             bottomPadding
                         }
                         .padding(.horizontal, TFSpacing.horizontalMargin)
@@ -290,46 +465,6 @@ struct DashboardView: View {
                 .ignoresSafeArea(edges: .top)
             }
             .toolbar(.hidden, for: .navigationBar)
-            .fileExporter(
-                isPresented: $showExporter,
-                document: backupDocument,
-                contentType: .json,
-                defaultFilename: backupFileName
-            ) { result in
-                switch result {
-                case .success:
-                    backupMessage = "Backup exported successfully."
-                    showBackupAlert = true
-                case .failure(let error):
-                    backupMessage = "Export failed: \(error.localizedDescription)"
-                    showBackupAlert = true
-                }
-            }
-            .fileImporter(isPresented: $showImporter, allowedContentTypes: [.json]) { result in
-                switch result {
-                case .success(let url):
-                    do {
-                        // fileImporter URLs are security-scoped; without acquiring
-                        // access, reading a backup from Files/iCloud fails on device.
-                        let didAccess = url.startAccessingSecurityScopedResource()
-                        defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
-                        let data = try Data(contentsOf: url)
-                        try DataBackupManager.shared.importBackup(from: data, into: modelContext)
-                        backupMessage = "Backup imported successfully."
-                    } catch {
-                        backupMessage = "Import failed: \(error.localizedDescription)"
-                    }
-                    showBackupAlert = true
-                case .failure(let error):
-                    backupMessage = "Import failed: \(error.localizedDescription)"
-                    showBackupAlert = true
-                }
-            }
-            .alert("Backup", isPresented: $showBackupAlert) {
-                Button("OK", role: .cancel) {}
-            } message: {
-                Text(backupMessage)
-            }
             .sheet(isPresented: $showAddWeightSheet) {
                 AddWeightSheet()
             }
@@ -344,12 +479,18 @@ struct DashboardView: View {
             }
             .onAppear {
                 SleepTrendStore.refresh(using: modelContext)
+                lastBackupDate = DataBackupManager.shared.lastAutomaticBackupDate
                 withAnimation(.easeOut(duration: 0.9).delay(0.2)) {
                     animateRings = true
                 }
             }
             .onChange(of: sleepEntriesChangeToken) { _, _ in
                 SleepTrendStore.refresh(using: modelContext)
+            }
+            .onChange(of: showSettings) { _, isPresented in
+                if !isPresented {
+                    lastBackupDate = DataBackupManager.shared.lastAutomaticBackupDate
+                }
             }
         }
     }
@@ -363,16 +504,27 @@ struct DashboardView: View {
     var nextMealName: String {
         let now = Date()
 
-        if let lastMeal = todayNutrition.sorted(by: { $0.date < $1.date }).last {
+        if let lastMeal = todayNutrition.max(by: { $0.date < $1.date }) {
             let hoursSinceLast = now.timeIntervalSince(lastMeal.date) / 3600
             if hoursSinceLast < 2 {
                 return proteinRemainingG > 30 ? "Protein Snack" : "Snack"
             }
         }
 
+        // Time of day decides the default so custom meal names (post-call
+        // meals, shift snacks) can't force "Breakfast" at 8pm; the logged-name
+        // check only prevents suggesting a meal that was already logged.
         let loggedMeals = Set(todayNutrition.map { $0.mealName.lowercased() })
-        if !loggedMeals.contains("breakfast") { return "Breakfast" }
-        if !loggedMeals.contains("lunch") { return "Lunch" }
+        let hour = Calendar.current.component(.hour, from: now)
+        let windowMeal: String
+        switch hour {
+        case 4..<11: windowMeal = "Breakfast"
+        case 11..<16: windowMeal = "Lunch"
+        case 16..<22: windowMeal = "Dinner"
+        default: windowMeal = proteinRemainingG > 30 ? "Protein Snack" : "Snack"
+        }
+        if !loggedMeals.contains(windowMeal.lowercased()) { return windowMeal }
+        if hour < 16, !loggedMeals.contains("lunch") { return "Lunch" }
         if !loggedMeals.contains("dinner") { return "Dinner" }
         return proteinRemainingG > 30 ? "Protein Snack" : "Snack"
     }
@@ -380,134 +532,134 @@ struct DashboardView: View {
     // MARK: - Hero Header
 
     var heroHeader: some View {
-        ZStack(alignment: .bottomLeading) {
-            Rectangle()
-                .fill(
-                    LinearGradient(
-                        colors: [TFColor.heroGradientBottom, TFColor.heroGradientTop],
-                        startPoint: .bottom,
-                        endPoint: .top
-                    )
-                )
-                .frame(height: 230)
-
-            Canvas { context, size in
-                let spacing: CGFloat = 28
-                var x: CGFloat = 0
-                while x < size.width {
-                    var y: CGFloat = 0
-                    while y < size.height {
-                        let rect = CGRect(x: x, y: y, width: 1, height: 1)
-                        context.fill(Path(rect), with: .color(.white.opacity(0.04)))
-                        y += spacing
-                    }
-                    x += spacing
-                }
-            }
-            .frame(height: 230)
-
-            VStack(spacing: 0) {
-                Spacer()
-
-                Rectangle()
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 10) {
+                RoundedRectangle(cornerRadius: 2)
                     .fill(
                         LinearGradient(
-                            colors: [TFColor.accent.opacity(0.6), TFColor.accentWarm.opacity(0.15), .clear],
-                            startPoint: .leading,
-                            endPoint: .trailing
+                            colors: [TFColor.accent, TFColor.accentWarm],
+                            startPoint: .top,
+                            endPoint: .bottom
                         )
                     )
-                    .frame(height: 2)
-            }
-            .frame(height: 230)
+                    .frame(width: 4, height: 48)
 
-            VStack(alignment: .leading, spacing: 14) {
-                HStack(alignment: .top, spacing: 10) {
-                    RoundedRectangle(cornerRadius: 2)
-                        .fill(
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(greetingText)
+                        .font(TFTypography.greeting)
+                        .foregroundStyle(.white.opacity(0.5))
+                        .textCase(.uppercase)
+                        .tracking(2)
+
+                    Text("Transform.")
+                        .font(TFTypography.heroTitle)
+                        .foregroundStyle(
                             LinearGradient(
-                                colors: [TFColor.accent, TFColor.accentWarm],
-                                startPoint: .top,
-                                endPoint: .bottom
+                                colors: [.white, TFColor.accentWarm],
+                                startPoint: .leading,
+                                endPoint: .trailing
                             )
                         )
-                        .frame(width: 4, height: 48)
-
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(greetingText)
-                            .font(TFTypography.greeting)
-                            .foregroundStyle(.white.opacity(0.5))
-                            .textCase(.uppercase)
-                            .tracking(2)
-
-                        Text("Transform.")
-                            .font(TFTypography.heroTitle)
-                            .foregroundStyle(
-                                LinearGradient(
-                                    colors: [.white, TFColor.accentWarm],
-                                    startPoint: .leading,
-                                    endPoint: .trailing
-                                )
-                            )
-                    }
                 }
+            }
 
-                HStack(alignment: .center) {
-                    Menu {
-                        Button {
-                            do {
-                                backupDocument = try DataBackupManager.shared.exportDocument(using: modelContext)
-                                showExporter = true
-                            } catch {
-                                backupMessage = "Could not prepare backup: \(error.localizedDescription)"
-                                showBackupAlert = true
-                            }
-                        } label: {
-                            Label("Export Backup", systemImage: "square.and.arrow.up")
-                        }
+            HStack(alignment: .center) {
+                backupStatusChip
 
-                        Button {
-                            showImporter = true
-                        } label: {
-                            Label("Import Backup", systemImage: "square.and.arrow.down")
-                        }
-                    } label: {
-                        Label("Backup", systemImage: "externaldrive.badge.plus")
-                            .font(TFTypography.chipLabel)
-                            .foregroundStyle(.white.opacity(0.9))
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 7)
-                            .background(.white.opacity(0.08))
-                            .clipShape(Capsule())
-                    }
-
-                    Button {
-                        showSettings = true
-                    } label: {
-                        Label("Settings", systemImage: "gearshape.fill")
-                            .font(TFTypography.chipLabel)
-                            .foregroundStyle(.white.opacity(0.9))
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 7)
-                            .background(.white.opacity(0.08))
-                            .clipShape(Capsule())
-                    }
-
-                    Spacer()
-
-                    Text(Date().formatted(.dateTime.weekday(.wide).month().day()))
-                        .font(TFTypography.datePill)
-                        .foregroundStyle(.white.opacity(0.6))
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
+                Button {
+                    showSettings = true
+                } label: {
+                    Label("Settings", systemImage: "gearshape.fill")
+                        .font(TFTypography.chipLabel)
+                        .foregroundStyle(.white.opacity(0.9))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 7)
                         .background(.white.opacity(0.08))
                         .clipShape(Capsule())
                 }
+
+                Spacer()
+
+                // Border-only on purpose: filled capsules in this header mean
+                // "tappable"; the date is a read-only chip.
+                Text(Date().formatted(.dateTime.weekday(.wide).month().day()))
+                    .font(TFTypography.datePill)
+                    .foregroundStyle(.white.opacity(0.6))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .overlay(
+                        Capsule()
+                            .strokeBorder(.white.opacity(0.18), lineWidth: 1)
+                    )
             }
-            .padding(.horizontal, 20)
-            .padding(.bottom, 20)
         }
-        .frame(height: 230)
+        .padding(.horizontal, 20)
+        .padding(.bottom, 20)
+        .frame(maxWidth: .infinity, minHeight: 230, alignment: .bottomLeading)
+        .background {
+            ZStack {
+                LinearGradient(
+                    colors: [TFColor.heroGradientBottom, TFColor.heroGradientTop],
+                    startPoint: .bottom,
+                    endPoint: .top
+                )
+
+                Canvas { context, size in
+                    let spacing: CGFloat = 28
+                    var x: CGFloat = 0
+                    while x < size.width {
+                        var y: CGFloat = 0
+                        while y < size.height {
+                            let rect = CGRect(x: x, y: y, width: 1, height: 1)
+                            context.fill(Path(rect), with: .color(.white.opacity(0.04)))
+                            y += spacing
+                        }
+                        x += spacing
+                    }
+                }
+            }
+        }
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(
+                    LinearGradient(
+                        colors: [TFColor.accent.opacity(0.6), TFColor.accentWarm.opacity(0.15), .clear],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                )
+                .frame(height: 2)
+        }
+    }
+
+    /// Data-safety status, not an action menu: shows how stale the rolling
+    /// automatic backup is and deep-links to Settings, where the export/import
+    /// actions now live. Turns amber when the newest backup is old enough to
+    /// matter in a recovery.
+    var backupStatusChip: some View {
+        let staleAfterDays = 3
+        let daysAgo = lastBackupDate.map {
+            Calendar.current.dateComponents([.day], from: $0, to: Date()).day ?? 0
+        }
+        let isStale = daysAgo.map { $0 >= staleAfterDays } ?? true
+        let text: String = {
+            guard let daysAgo else { return "No backup yet" }
+            if daysAgo == 0 { return "Backed up today" }
+            return "Backup \(daysAgo)d ago"
+        }()
+
+        return Button {
+            showSettings = true
+        } label: {
+            Label(text, systemImage: isStale ? "externaldrive.badge.exclamationmark" : "externaldrive.badge.checkmark")
+                .font(TFTypography.chipLabel)
+                .foregroundStyle(isStale ? TFColor.warning : .white.opacity(0.9))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 7)
+                .background(.white.opacity(0.08))
+                .clipShape(Capsule())
+        }
+        .accessibilityLabel("Backup status: \(text). Opens Settings.")
     }
 
     var greetingText: String {
@@ -522,28 +674,149 @@ struct DashboardView: View {
     // MARK: - Coaching Headline Card
 
     var coachingHeadlineCard: some View {
-        let (message, color) = coachingHeadline
-        return HStack(spacing: 10) {
-            RoundedRectangle(cornerRadius: 3)
-                .fill(color)
-                .frame(width: 4, height: 36)
-            Text(message)
-                .font(.subheadline)
-                .fontWeight(.medium)
-                .foregroundStyle(.primary)
-            Spacer()
+        let verdict = coachingVerdict
+        return VStack(alignment: .leading, spacing: 0) {
+            Button {
+                TFHaptics.selection()
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                    headlineExpanded.toggle()
+                }
+            } label: {
+                HStack(spacing: 10) {
+                    RoundedRectangle(cornerRadius: 3)
+                        .fill(verdict.color)
+                        .frame(width: 4, height: 36)
+                    Text(verdict.message)
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                        .foregroundStyle(.primary)
+                        .multilineTextAlignment(.leading)
+                    Spacer()
+                    Image(systemName: "chevron.down")
+                        .font(.caption2.bold())
+                        .foregroundStyle(.tertiary)
+                        .rotationEffect(.degrees(headlineExpanded ? 180 : 0))
+                }
+            }
+            .buttonStyle(.plain)
+
+            if headlineExpanded {
+                VStack(alignment: .leading, spacing: 6) {
+                    Divider()
+                        .padding(.vertical, 8)
+
+                    ForEach(coachingEvidence, id: \.self) { line in
+                        HStack(spacing: 6) {
+                            Circle()
+                                .fill(verdict.color.opacity(0.5))
+                                .frame(width: 4, height: 4)
+                            Text(line)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+
+                    if let action = verdict.action, let label = verdict.actionLabel {
+                        Button {
+                            performCoachAction(action)
+                        } label: {
+                            Label(label, systemImage: "arrow.right.circle.fill")
+                                .font(.caption.bold())
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(verdict.color == .secondary ? TFColor.accent : verdict.color)
+                        .padding(.top, 6)
+                    }
+                }
+                .transition(.opacity)
+            }
         }
         .padding(14)
         .background(
             RoundedRectangle(cornerRadius: TFRadius.cardCompact)
-                .fill(color.opacity(0.08))
+                .fill(verdict.color.opacity(0.08))
         )
         .overlay(
             RoundedRectangle(cornerRadius: TFRadius.cardCompact)
-                .strokeBorder(color.opacity(0.2), lineWidth: 1)
+                .strokeBorder(verdict.color.opacity(0.2), lineWidth: 1)
         )
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Coaching: \(verdict.message). Double-tap to \(headlineExpanded ? "hide" : "show") the evidence behind this.")
+    }
+
+    // MARK: - Training Today Card
+
+    /// Deliberately compact: one glanceable line about the next session that
+    /// deep-links to the actual day page in the Workout tab, instead of a full
+    /// program card crowding the dashboard.
+    var trainingTodayCard: some View {
+        Button {
+            TFHaptics.impact(.light)
+            if let day = nextTrainingDay {
+                workoutDeepLink.pendingDayNumber = day.dayNumber
+            }
+            selectedTab = .workout
+        } label: {
+            HStack(spacing: TFSpacing.innerGap) {
+                Image(systemName: trainingCardIcon)
+                    .font(.title3)
+                    .foregroundStyle(TFColor.accent)
+                    .frame(width: 38, height: 38)
+                    .background(TFColor.accent.opacity(0.1))
+                    .clipShape(RoundedRectangle(cornerRadius: TFRadius.inner))
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(trainingCardTitle)
+                        .font(TFTypography.cardTitle)
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                    Text(trainingCardSubtitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.caption.bold())
+                    .foregroundStyle(.tertiary)
+            }
+            .compactCard()
+            .contentShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
+        }
+        .pressable()
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Coaching: \(message)")
+        .accessibilityLabel("Training: \(trainingCardTitle). \(trainingCardSubtitle). Opens the Workout tab.")
+    }
+
+    var trainingCardIcon: String {
+        guard currentProgram != nil else { return "figure.strengthtraining.traditional" }
+        guard let day = nextTrainingDay else { return "checkmark.seal.fill" }
+        return day.isRestDay ? "bed.double.fill" : "figure.strengthtraining.traditional"
+    }
+
+    var trainingCardTitle: String {
+        guard currentProgram != nil else { return "No active program" }
+        guard let day = nextTrainingDay else { return "Week complete" }
+        if day.isRestDay { return "Rest day" }
+        return day.dayName.isEmpty ? "Next session" : day.dayName
+    }
+
+    var trainingCardSubtitle: String {
+        guard let program = currentProgram else {
+            return "Generate your next mesocycle in the Workout tab"
+        }
+        guard let day = nextTrainingDay else {
+            return program.canGenerateNextWeek
+                ? "All sessions done — generate week \(program.currentWeek + 1) when ready"
+                : "Mesocycle finished — start a new program when ready"
+        }
+        if day.isRestDay {
+            return "Recovery: mobility, light cardio · Week \(program.currentWeek)"
+        }
+        let groups = day.muscleGroups.isEmpty ? "Training" : day.muscleGroups
+        return "\(groups) · \(day.exercises.count) exercises · Week \(program.currentWeek)"
     }
 
     // MARK: - Today's Rings Card
@@ -566,20 +839,20 @@ struct DashboardView: View {
             HStack(spacing: 20) {
                 ZStack {
                     AnimatedRing(
-                        progress: animateRings ? min(todayFat / activeMacroTargets.fatG, 1.0) : 0,
-                        color: .yellow,
+                        progress: animateRings ? safeRatio(todayFat, activeMacroTargets.fatG) : 0,
+                        color: TFColor.fat,
                         size: 130,
                         lineWidth: 10
                     )
                     AnimatedRing(
-                        progress: animateRings ? min(todayCarbs / activeMacroTargets.carbsG, 1.0) : 0,
-                        color: .blue,
+                        progress: animateRings ? safeRatio(todayCarbs, activeMacroTargets.carbsG) : 0,
+                        color: TFColor.carbs,
                         size: 106,
                         lineWidth: 10
                     )
                     AnimatedRing(
-                        progress: animateRings ? min(todayProtein / activeMacroTargets.proteinG, 1.0) : 0,
-                        color: .red,
+                        progress: animateRings ? safeRatio(todayProtein, activeMacroTargets.proteinG) : 0,
+                        color: TFColor.protein,
                         size: 82,
                         lineWidth: 10
                     )
@@ -597,11 +870,25 @@ struct DashboardView: View {
                 .accessibilityLabel("Today's macros: \(todayCalories) of \(activeMacroTargets.calories) calories, \(Int(todayProtein)) of \(Int(activeMacroTargets.proteinG)) grams protein, \(Int(todayCarbs)) of \(Int(activeMacroTargets.carbsG)) grams carbs, \(Int(todayFat)) of \(Int(activeMacroTargets.fatG)) grams fat")
 
                 VStack(alignment: .leading, spacing: 10) {
-                    ringLegendRow(color: .orange, label: "Calories", value: "\(todayCalories)", target: "\(activeMacroTargets.calories)", unit: "kcal")
+                    // Calories is the ring-center number, not a ring — styled as
+                    // a summary row so the legend doesn't advertise a fourth
+                    // ring that doesn't exist.
+                    HStack(spacing: 8) {
+                        Text("Calories")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.primary)
+                        Spacer()
+                        Text("\(todayCalories)")
+                            .font(.system(size: 14, weight: .bold, design: .rounded))
+                            .foregroundStyle(.primary)
+                        Text("/ \(activeMacroTargets.calories)kcal")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                    }
                     Divider()
-                    ringLegendRow(color: .red, label: "Protein", value: "\(Int(todayProtein))", target: "\(Int(activeMacroTargets.proteinG))", unit: "g")
-                    ringLegendRow(color: .blue, label: "Carbs", value: "\(Int(todayCarbs))", target: "\(Int(activeMacroTargets.carbsG))", unit: "g")
-                    ringLegendRow(color: .yellow, label: "Fat", value: "\(Int(todayFat))", target: "\(Int(activeMacroTargets.fatG))", unit: "g")
+                    ringLegendRow(color: TFColor.protein, label: "Protein", value: "\(Int(todayProtein))", target: "\(Int(activeMacroTargets.proteinG))", unit: "g")
+                    ringLegendRow(color: TFColor.carbs, label: "Carbs", value: "\(Int(todayCarbs))", target: "\(Int(activeMacroTargets.carbsG))", unit: "g")
+                    ringLegendRow(color: TFColor.fat, label: "Fat", value: "\(Int(todayFat))", target: "\(Int(activeMacroTargets.fatG))", unit: "g")
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -624,6 +911,11 @@ struct DashboardView: View {
         .heroCard()
     }
 
+    func safeRatio(_ value: Double, _ target: Double) -> Double {
+        guard target > 0 else { return 0 }
+        return value / target
+    }
+
     var adherenceLine: some View {
         HStack(spacing: 8) {
             HStack(spacing: 4) {
@@ -642,14 +934,14 @@ struct DashboardView: View {
             HStack(spacing: 4) {
                 Image(systemName: "flame.fill")
                     .font(.system(size: 9))
-                    .foregroundStyle(TFColor.danger)
+                    .foregroundStyle(TFColor.protein)
                 Text(loggedDaysCount > 0 ? "Protein: \(proteinHitDays)/\(loggedDaysCount)" : "Protein: —")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
-            .background(TFColor.danger.opacity(0.08))
+            .background(TFColor.protein.opacity(0.08))
             .clipShape(Capsule())
 
             Spacer()
@@ -679,7 +971,7 @@ struct DashboardView: View {
     var sleepRecoveryCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                sectionLabel("Sleep & Recovery")
+                TFSectionLabel(text: "Sleep & Recovery", color: TFColor.sleep)
                 Spacer()
                 Button {
                     sleepEditorRequest = SleepEditorRequest(episode: nil)
@@ -768,12 +1060,6 @@ struct DashboardView: View {
             .buttonStyle(.plain)
         }
         .dashCard()
-        .overlay(alignment: .top) {
-            Capsule()
-                .fill(TFColor.sleep.opacity(0.5))
-                .frame(width: 40, height: 3)
-                .padding(.top, 6)
-        }
     }
 
     // MARK: - Weight + Recomp Card
@@ -792,7 +1078,7 @@ struct DashboardView: View {
                 .buttonStyle(.bordered)
                 .tint(TFColor.accent)
                 if let delta = weightTrend.weeklyChangeLbs {
-                    deltaBadge(delta, invertGood: true)
+                    deltaBadge(delta)
                 }
             }
 
@@ -813,39 +1099,7 @@ struct DashboardView: View {
                     .foregroundStyle(.secondary)
             }
 
-            VStack(alignment: .leading, spacing: 6) {
-                HStack {
-                    Text("Goal: \(String(format: "%.0f", Config.bodyWeightGoalLbs)) lbs")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    if let current = currentWeight {
-                        let remaining = abs(current - Config.bodyWeightGoalLbs)
-                        Text(String(format: "%.1f lb to goal", remaining))
-                            .font(.caption.bold())
-                            .foregroundStyle(TFColor.accent)
-                    }
-                }
-
-                GeometryReader { geo in
-                    ZStack(alignment: .leading) {
-                        Capsule()
-                            .fill(TFColor.accent.opacity(0.12))
-                            .frame(height: 7)
-                        Capsule()
-                            .fill(
-                                LinearGradient(
-                                    colors: [TFColor.accent, TFColor.accentWarm],
-                                    startPoint: .leading,
-                                    endPoint: .trailing
-                                )
-                            )
-                            .frame(width: geo.size.width * (animateRings ? weightProgress : 0), height: 7)
-                            .animation(.easeOut(duration: 1.0).delay(0.3), value: animateRings)
-                    }
-                }
-                .frame(height: 6)
-            }
+            goalProgressSection
 
             if let trend = dashboardMeasurementTrend, trend.latestWaistIn != nil {
                 recompContextSection(trend: trend)
@@ -857,7 +1111,7 @@ struct DashboardView: View {
                     HStack(spacing: 6) {
                         Image(systemName: "ruler")
                             .font(.caption2)
-                            .foregroundStyle(.purple.opacity(0.6))
+                            .foregroundStyle(TFColor.measurement.opacity(0.6))
                         Text("Add waist measurement to unlock recomp context")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
@@ -910,9 +1164,9 @@ struct DashboardView: View {
                 .chartXAxis {
                     AxisMarks(values: .automatic(desiredCount: 4)) { value in
                         AxisGridLine(stroke: StrokeStyle(lineWidth: 0.6))
-                            .foregroundStyle(.orange.opacity(0.2))
+                            .foregroundStyle(TFColor.accent.opacity(0.2))
                         AxisTick(stroke: StrokeStyle(lineWidth: 0.6))
-                            .foregroundStyle(.orange.opacity(0.35))
+                            .foregroundStyle(TFColor.accent.opacity(0.35))
                         AxisValueLabel(format: .dateTime.month(.defaultDigits).day())
                             .font(.system(size: 9))
                             .foregroundStyle(.secondary)
@@ -921,9 +1175,9 @@ struct DashboardView: View {
                 .chartYAxis {
                     AxisMarks(position: .leading, values: .automatic(desiredCount: 4)) { _ in
                         AxisGridLine(stroke: StrokeStyle(lineWidth: 0.6))
-                            .foregroundStyle(.orange.opacity(0.2))
+                            .foregroundStyle(TFColor.accent.opacity(0.2))
                         AxisTick(stroke: StrokeStyle(lineWidth: 0.6))
-                            .foregroundStyle(.orange.opacity(0.35))
+                            .foregroundStyle(TFColor.accent.opacity(0.35))
                         AxisValueLabel()
                             .font(.system(size: 9))
                             .foregroundStyle(.secondary)
@@ -941,6 +1195,83 @@ struct DashboardView: View {
             }
         }
         .heroCard()
+    }
+
+    // MARK: - Goal Progress Section
+
+    var goalBarFraction: Double {
+        switch weightGoalState {
+        case .approaching(let progress, _): return progress
+        case .atGoal, .pastGoal: return 1.0
+        case .noData: return 0
+        }
+    }
+
+    var goalStatusText: String {
+        switch weightGoalState {
+        case .approaching(_, let remaining):
+            return String(format: "%.1f lb to goal", remaining)
+        case .atGoal:
+            return "At goal"
+        case .pastGoal(let overshoot):
+            return String(format: "%.1f lb past goal", overshoot)
+        case .noData:
+            return ""
+        }
+    }
+
+    var goalStatusColor: Color {
+        switch weightGoalState {
+        case .approaching: return TFColor.accent
+        case .atGoal: return TFColor.success
+        case .pastGoal: return TFColor.warning
+        case .noData: return .secondary
+        }
+    }
+
+    @ViewBuilder
+    var goalProgressSection: some View {
+        if case .noData = weightGoalState {
+            EmptyView()
+        } else {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Text("Goal: \(String(format: "%.0f", Config.bodyWeightGoalLbs)) lbs")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Text(goalStatusText)
+                        .font(.caption.bold())
+                        .foregroundStyle(goalStatusColor)
+                }
+
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Capsule()
+                            .fill(TFColor.accent.opacity(0.12))
+                            .frame(height: 7)
+                        Capsule()
+                            .fill(goalBarGradient)
+                            .frame(width: geo.size.width * (animateRings ? goalBarFraction : 0), height: 7)
+                            .animation(.easeOut(duration: 1.0).delay(0.3), value: animateRings)
+                    }
+                }
+                .frame(height: 6)
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Goal \(String(format: "%.0f", Config.bodyWeightGoalLbs)) pounds: \(goalStatusText)")
+        }
+    }
+
+    var goalBarGradient: LinearGradient {
+        switch weightGoalState {
+        case .atGoal:
+            return LinearGradient(colors: [TFColor.success, TFColor.success.opacity(0.7)], startPoint: .leading, endPoint: .trailing)
+        case .pastGoal:
+            return LinearGradient(colors: [TFColor.accentWarm, TFColor.warning], startPoint: .leading, endPoint: .trailing)
+        default:
+            return LinearGradient(colors: [TFColor.accent, TFColor.accentWarm], startPoint: .leading, endPoint: .trailing)
+        }
     }
 
     @ViewBuilder
@@ -985,10 +1316,10 @@ struct DashboardView: View {
     func dashboardInterpretationBadge(_ interpretation: MeasurementInterpretation) -> some View {
         let color: Color = {
             switch interpretation {
-            case .likelyFatLoss: return .green
-            case .likelyRecomposition: return .blue
-            case .likelyMassGain: return .orange
-            case .possibleNoise: return .yellow
+            case .likelyFatLoss: return TFColor.success
+            case .likelyRecomposition: return TFColor.info
+            case .likelyMassGain: return TFColor.accent
+            case .possibleNoise: return TFColor.warning
             case .insufficientData, .stableNoChange: return .secondary
             }
         }()
@@ -1006,7 +1337,7 @@ struct DashboardView: View {
             switch confidence {
             case .high: return TFColor.success
             case .moderate: return TFColor.warning
-            case .low: return .yellow
+            case .low: return TFColor.accent
             case .insufficient: return .secondary
             }
         }()
@@ -1025,17 +1356,30 @@ struct DashboardView: View {
         VStack(alignment: .leading, spacing: 14) {
             sectionLabel("7-Day Calories")
 
-            Chart(weekCalorieData, id: \.0) { (date, cals) in
-                BarMark(
-                    x: .value("Day", date, unit: .day),
-                    y: .value("Calories", cals)
-                )
-                .foregroundStyle(
-                    Calendar.current.isDateInToday(date)
-                    ? TFColor.accent
-                    : TFColor.accent.opacity(0.35)
-                )
-                .cornerRadius(4)
+            Chart {
+                ForEach(weekCalorieData) { day in
+                    if day.isLogged {
+                        BarMark(
+                            x: .value("Day", day.date, unit: .day),
+                            y: .value("Calories", day.calories)
+                        )
+                        .foregroundStyle(
+                            Calendar.current.isDate(day.date, inSameDayAs: dayClock.today)
+                            ? TFColor.accent
+                            : TFColor.accent.opacity(0.35)
+                        )
+                        .cornerRadius(4)
+                    } else {
+                        // Short gray stub so an unlogged day reads as "no data"
+                        // instead of blending into the axis like a fasted day.
+                        BarMark(
+                            x: .value("Day", day.date, unit: .day),
+                            y: .value("Calories", Double(activeMacroTargets.calories) * 0.04)
+                        )
+                        .foregroundStyle(Color.secondary.opacity(0.25))
+                        .cornerRadius(2)
+                    }
+                }
 
                 RuleMark(y: .value("Target", activeMacroTargets.calories))
                     .foregroundStyle(TFColor.accent.opacity(0.4))
@@ -1045,7 +1389,7 @@ struct DashboardView: View {
                 AxisMarks(values: .stride(by: .day)) { value in
                     if let date = value.as(Date.self) {
                         AxisValueLabel {
-                            Text(Calendar.current.isDateInToday(date) ? "Today" : date.formatted(.dateTime.weekday(.abbreviated)))
+                            Text(Calendar.current.isDate(date, inSameDayAs: dayClock.today) ? "Today" : date.formatted(.dateTime.weekday(.abbreviated)))
                                 .font(.caption2)
                         }
                     }
@@ -1062,34 +1406,58 @@ struct DashboardView: View {
             .accessibilityLabel("7-day calorie intake chart")
             .accessibilityValue(weekCalorieAccessibilitySummary)
 
-            HStack(spacing: 4) {
-                Text("7-day avg:")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                Text("\(Int(weekAverageCalories)) kcal")
-                    .font(.caption2.bold())
-                    .foregroundStyle(weekAverageCalories > Double(activeMacroTargets.calories) ? TFColor.danger : TFColor.success)
-                Text("· Target: \(activeMacroTargets.calories) kcal")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-            }
+            weekAverageLine
 
             analysisFreshnessLine
         }
         .dashCard()
     }
 
+    var weekAverageLine: some View {
+        HStack(spacing: 4) {
+            if let average = weekAverageCalories {
+                // Judge the average against target only with enough logged days
+                // to mean something, and judge it phase-aware: over target is
+                // the plan in a gaining phase, not a failure.
+                let color: Color = {
+                    guard weekLoggedDayCount >= 4 else { return .secondary }
+                    return trainingPhase.isCalorieAverageGood(
+                        average: average,
+                        target: Double(activeMacroTargets.calories)
+                    ) ? TFColor.success : TFColor.danger
+                }()
+                Text("Avg:")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                Text("\(Int(average)) kcal")
+                    .font(.caption2.bold())
+                    .foregroundStyle(color)
+                Text("across ^[\(weekLoggedDayCount) logged day](inflect: true)")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                Text("· Target: \(activeMacroTargets.calories) kcal")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            } else {
+                Text("No days logged this week")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+        }
+    }
+
     var analysisFreshnessLine: some View {
         HStack(spacing: 4) {
-            if let daysAgo = analysisDaysAgo {
-                let color: Color = daysAgo <= 30 ? TFColor.success : (daysAgo <= 45 ? TFColor.accent : TFColor.danger)
+            if let daysAgo = analysisDaysAgo, let freshness = analysisFreshness {
+                let color = freshnessColor(freshness)
                 Image(systemName: "sparkles")
                     .font(.caption2)
                     .foregroundStyle(color)
-                Text("Last analysis: \(daysAgo) day(s) ago")
+                Text("Last analysis: ^[\(daysAgo) day](inflect: true) ago")
                     .font(.caption2)
                     .foregroundStyle(color)
-                if daysAgo > 42 {
+                if freshness == .stale {
                     Text("· Consider re-analyzing")
                         .font(.caption2)
                         .foregroundStyle(TFColor.accent)
@@ -1107,17 +1475,17 @@ struct DashboardView: View {
             if activeMacroTargets.source == .adaptiveReview {
                 Text("Adaptive targets")
                     .font(.caption2)
-                    .foregroundStyle(.green.opacity(0.75))
+                    .foregroundStyle(TFColor.success.opacity(0.75))
             } else if activeMacroTargets.source == .analysis {
                 if let daysAgo = analysisDaysAgo {
-                    let stale = daysAgo > 56
+                    let stale = analysisFreshness == .stale
                     Text("AI targets · \(daysAgo)d")
                         .font(.caption2)
-                        .foregroundStyle(stale ? .red.opacity(0.7) : .orange.opacity(0.6))
+                        .foregroundStyle(stale ? TFColor.danger.opacity(0.7) : TFColor.accent.opacity(0.6))
                 } else {
                     Text("AI targets")
                         .font(.caption2)
-                        .foregroundStyle(.orange.opacity(0.6))
+                        .foregroundStyle(TFColor.accent.opacity(0.6))
                 }
             } else {
                 Text("Config targets")
@@ -1125,16 +1493,6 @@ struct DashboardView: View {
                     .foregroundStyle(.tertiary)
             }
         }
-    }
-
-    func last7DaysCalories() -> [(Date, Double)] {
-        let calendar = Calendar.current
-        return (0..<7).compactMap { offset -> (Date, Double)? in
-            guard let date = calendar.date(byAdding: .day, value: -offset, to: Date()) else { return nil }
-            let day = calendar.startOfDay(for: date)
-            let total = caloriesByDay[day] ?? 0
-            return (date, total)
-        }.reversed()
     }
 
     var bottomPadding: some View {
@@ -1155,29 +1513,38 @@ struct DashboardView: View {
     }
 
     var weekCalorieAccessibilitySummary: String {
-        "7-day average \(Int(weekAverageCalories)) calories against a target of \(activeMacroTargets.calories)"
+        guard let average = weekAverageCalories else {
+            return "No days logged this week. Target \(activeMacroTargets.calories) calories."
+        }
+        return "Average \(Int(average)) calories across \(weekLoggedDayCount) logged days, against a target of \(activeMacroTargets.calories)"
     }
 
     // MARK: - Helpers
-
-    var backupFileName: String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.calendar = Calendar(identifier: .gregorian)
-        formatter.dateFormat = "yyyy-MM-dd_HHmm"
-        return "Transform_Backup_\(formatter.string(from: Date()))"
-    }
 
     func sectionLabel(_ text: String) -> some View {
         TFSectionLabel(text: text)
     }
 
-    func deltaBadge(_ delta: Double, invertGood: Bool = false) -> some View {
-        let isGood = invertGood ? delta < 0 : delta > 0
+    /// Colors the weekly change by whether it moves toward the goal for the
+    /// current training phase — never by a hardcoded "loss is good" rule. A
+    /// change inside the noise band renders neutral, not red.
+    func deltaBadge(_ delta: Double) -> some View {
+        let verdict = trainingPhase.isWeeklyChangeGood(delta)
+        let badgeColor: Color = {
+            switch verdict {
+            case .some(true): return TFColor.success
+            case .some(false): return TFColor.danger
+            case .none: return .secondary
+            }
+        }()
+        let icon: String = {
+            if delta > 0.05 { return "arrow.up.right" }
+            if delta < -0.05 { return "arrow.down.right" }
+            return "arrow.right"
+        }()
         let sign = delta > 0 ? "+" : ""
-        let badgeColor = isGood ? TFColor.success : TFColor.danger
         return HStack(spacing: 3) {
-            Image(systemName: delta > 0 ? "arrow.up.right" : "arrow.down.right")
+            Image(systemName: icon)
                 .font(.system(size: 8, weight: .bold))
             Text("\(sign)\(String(format: "%.1f", delta)) lbs")
                 .font(.system(size: 11, weight: .bold))
@@ -1187,26 +1554,39 @@ struct DashboardView: View {
         .background(badgeColor.opacity(0.15))
         .foregroundStyle(badgeColor)
         .clipShape(Capsule())
+        .accessibilityLabel("Weekly change \(sign)\(String(format: "%.1f", delta)) pounds")
     }
 }
 
 // MARK: - Animated Ring
 
 struct AnimatedRing: View {
+    /// May exceed 1.0 — overshoot renders as a darker second lap (the Apple
+    /// rings idiom) instead of being clamped invisible, so an over-target fat
+    /// or protein day is distinguishable from a perfectly-hit one.
     let progress: Double
     let color: Color
     let size: CGFloat
     let lineWidth: CGFloat
+
+    private var baseProgress: Double { min(progress, 1.0) }
+    private var overflowProgress: Double { min(max(progress - 1.0, 0), 1.0) }
 
     var body: some View {
         ZStack {
             Circle()
                 .stroke(color.opacity(0.12), lineWidth: lineWidth)
             Circle()
-                .trim(from: 0, to: progress)
+                .trim(from: 0, to: baseProgress)
                 .stroke(color, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
                 .rotationEffect(.degrees(-90))
-                .animation(.easeOut(duration: 0.8), value: progress)
+                .animation(.easeOut(duration: 0.8), value: baseProgress)
+            Circle()
+                .trim(from: 0, to: overflowProgress)
+                .stroke(color, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
+                .brightness(-0.25)
+                .rotationEffect(.degrees(-90))
+                .animation(.easeOut(duration: 0.8), value: overflowProgress)
         }
         .frame(width: size, height: size)
         .accessibilityHidden(true)

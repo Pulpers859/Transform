@@ -1,6 +1,46 @@
 import SwiftUI
 import Foundation
 import Combine
+import UIKit
+import Observation
+
+// MARK: - Tabs
+
+enum AppTab: Hashable {
+    case dashboard
+    case analysis
+    case workout
+    case nutrition
+}
+
+// MARK: - Day Clock
+
+/// Single refreshing source for "today". Date-derived dashboard state (today's
+/// rings, greeting, 7-day windows) reads `today` so it invalidates when the
+/// calendar day rolls over or the clock changes — without a per-minute
+/// TimelineView re-evaluating the whole tree. Refreshed on significant time
+/// changes (midnight, DST, carrier time) and on foreground activation.
+@Observable
+final class DayClock {
+    private(set) var today: Date = Calendar.current.startOfDay(for: Date())
+
+    func refresh() {
+        let newToday = Calendar.current.startOfDay(for: Date())
+        if newToday != today {
+            today = newToday
+        }
+    }
+}
+
+// MARK: - Workout Deep Link
+
+/// Lets the dashboard's training card land on the matching day page inside the
+/// Workout tab: the dashboard posts the day number and switches tabs; the
+/// Workout tab consumes the request and pushes the detail view.
+@Observable
+final class WorkoutDeepLink {
+    var pendingDayNumber: Int?
+}
 
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
@@ -10,6 +50,9 @@ struct ContentView: View {
     @State private var didShowStartupWarning = false
     @State private var appAlert: AppAlertContent?
     @State private var apiKeySetupPresentation: APIKeySetupPresentation?
+    @State private var selectedTab: AppTab = .dashboard
+    @State private var dayClock = DayClock()
+    @State private var workoutDeepLink = WorkoutDeepLink()
 
     var resolvedColorScheme: ColorScheme? {
         switch appearanceMode {
@@ -24,35 +67,47 @@ struct ContentView: View {
     }
 
     var body: some View {
-        TabView {
-            DashboardView()
+        TabView(selection: $selectedTab) {
+            DashboardView(selectedTab: $selectedTab)
                 .tabItem {
                     Label("Dashboard", systemImage: "chart.line.uptrend.xyaxis")
                 }
+                .tag(AppTab.dashboard)
 
             BodyAnalysisView()
                 .tabItem {
                     Label("Analysis", systemImage: "camera.viewfinder")
                 }
+                .tag(AppTab.analysis)
 
             WorkoutView()
                 .tabItem {
                     Label("Workout", systemImage: "figure.strengthtraining.traditional")
                 }
+                .tag(AppTab.workout)
 
             NutritionView()
                 .tabItem {
                     Label("Nutrition", systemImage: "fork.knife")
                 }
+                .tag(AppTab.nutrition)
         }
+        .environment(dayClock)
+        .environment(workoutDeepLink)
         .preferredColorScheme(resolvedColorScheme)
         .tint(TFColor.accent)
         .onChange(of: scenePhase) { _, newPhase in
+            if newPhase == .active {
+                dayClock.refresh()
+            }
             if newPhase == .inactive || newPhase == .background {
                 if !WorkoutGenerationDiagnostics.isActive {
                     DataBackupManager.shared.writeAutomaticBackup(using: modelContext)
                 }
             }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.significantTimeChangeNotification)) { _ in
+            dayClock.refresh()
         }
         .onAppear {
             if !didShowStartupWarning, let startupWarning {
