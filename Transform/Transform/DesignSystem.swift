@@ -72,15 +72,15 @@ enum TFTypography {
     static var sectionTitle: Font { scaled(10, relativeTo: .caption2, weight: .bold, design: .monospaced) }
     static var cardTitle: Font { scaled(15, relativeTo: .subheadline, weight: .semibold) }
     static var body: Font { scaled(14, relativeTo: .body, weight: .regular) }
-    static var caption: Font { scaled(12, relativeTo: .caption, weight: .medium) }
+    static var caption: Font { scaled(12, relativeTo: .caption1, weight: .medium) }
     static var micro: Font { scaled(10, relativeTo: .caption2, weight: .medium) }
 
     static var ringValue: Font { scaled(22, relativeTo: .title2, weight: .black, design: .rounded) }
     static var ringUnit: Font { scaled(10, relativeTo: .caption2, weight: .medium) }
     static var greeting: Font { scaled(13, relativeTo: .footnote, weight: .medium, design: .monospaced) }
     static var badgeLabel: Font { scaled(9, relativeTo: .caption2, weight: .bold) }
-    static var chipLabel: Font { scaled(12, relativeTo: .caption, weight: .semibold) }
-    static var datePill: Font { scaled(11, relativeTo: .caption, weight: .semibold, design: .monospaced) }
+    static var chipLabel: Font { scaled(12, relativeTo: .caption1, weight: .semibold) }
+    static var datePill: Font { scaled(11, relativeTo: .caption1, weight: .semibold, design: .monospaced) }
 }
 
 // MARK: - Color Tokens
