@@ -702,8 +702,7 @@ struct ExerciseCard: View {
     }
 
     var setLogBreakdown: some View {
-        let analysis = workingSetAnalysis
-        let roles = setRoleLookup(from: analysis.sets)
+        let roles = workingSetAnalysis.rolesBySetID
 
         return VStack(alignment: .leading, spacing: 6) {
             Text("LAST SESSION")
@@ -973,14 +972,6 @@ struct ExerciseRestTimerView: View {
                 onClose: { showExpandedRestTimer = false }
             )
         }
-    }
-
-    private func setRoleLookup(from sets: [WorkingSetAnalysis.AnalyzedSet]) -> [UUID: WorkingSetAnalysis.Role] {
-        var lookup: [UUID: WorkingSetAnalysis.Role] = [:]
-        for set in sets {
-            lookup[set.id] = set.role
-        }
-        return lookup
     }
 
     func toggleRestTimer() {

@@ -618,6 +618,15 @@ extension WorkingSetAnalysis {
         return (top.weightLbs, top.reps)
     }
 
+    /// Role of each analyzed set keyed by its stable set-log ID, for views that
+    /// badge individual sets (warm-up / anomaly) without re-deriving the
+    /// analysis per row. Lives here — not as a private helper on some view —
+    /// so every renderer of per-set roles reads the same derivation.
+    var rolesBySetID: [UUID: Role] {
+        // Non-trapping on the (corrupt-data) chance of duplicate set IDs.
+        Dictionary(sets.map { ($0.id, $0.role) }, uniquingKeysWith: { first, _ in first })
+    }
+
     /// Anomaly-aware summary stats for a session: the qualified working top when it
     /// exists, otherwise the raw heaviest set. `nil` only when `logs` is empty, so
     /// callers supply their own final fallback. This is the single place the
