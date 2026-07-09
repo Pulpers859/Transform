@@ -293,6 +293,7 @@ struct ExerciseCard: View {
     let todaysSetLogs: [SetLogEntry]
     let onToggle: () -> Void
     let onLogWeight: () -> Void
+    @State private var showDetails = false
 
     var latestWeightLog: ExerciseWeightEntry? {
         weightSummary
@@ -403,13 +404,13 @@ struct ExerciseCard: View {
             guard seen.insert(key).inserted else { continue }
 
             kept.append(sentence)
-            if kept.count == 2 { break }
+            if kept.count == 3 { break }
         }
 
         let compact = kept.joined(separator: " ")
-        guard compact.count > 220 else { return compact }
+        guard compact.count > 420 else { return compact }
 
-        let prefix = compact.prefix(217).trimmingCharacters(in: .whitespacesAndNewlines)
+        let prefix = compact.prefix(417).trimmingCharacters(in: .whitespacesAndNewlines)
         return "\(prefix)..."
     }
 
@@ -481,56 +482,65 @@ struct ExerciseCard: View {
         return parsedPrescription?.tempo
     }
 
+    var prescriptionItems: [ExercisePrescriptionPillData] {
+        var items = [
+            ExercisePrescriptionPillData(icon: "square.stack.3d.up", label: "\(exercise.sets) sets"),
+            ExercisePrescriptionPillData(icon: "arrow.up.arrow.down", label: "\(exercise.reps) reps")
+        ]
+        if let tempo = displayTempo {
+            items.append(ExercisePrescriptionPillData(icon: "metronome", label: "Tempo \(tempo)"))
+        }
+        if let rir = parsedPrescription?.rir {
+            items.append(ExercisePrescriptionPillData(icon: "gauge", label: "RIR \(rir)"))
+        }
+        return items
+    }
+
+    var compactLastSessionText: String? {
+        guard !latestSetLogs.isEmpty else {
+            guard let latestWeightLog else { return nil }
+            var text = "\(formatWeight(latestWeightLog.weightLbs)) lb"
+            if let reps = latestWeightLog.repsCompleted {
+                text += " x \(reps)"
+            }
+            return text
+        }
+
+        let compactSets = workingSetAnalysis.workingSets
+        if let first = compactSets.first,
+           compactSets.allSatisfy({ abs($0.weightLbs - first.weightLbs) < 0.05 }) {
+            let reps = compactSets.map { "\($0.reps)" }.joined(separator: ", ")
+            return "\(formatWeight(first.weightLbs)) lb x \(reps)"
+        }
+
+        if !compactSets.isEmpty {
+            return compactSets
+                .map { "\(formatWeight($0.weightLbs))x\($0.reps)" }
+                .joined(separator: ", ")
+        }
+
+        return latestSetLogs
+            .map { "\(formatWeight($0.weightLbs))x\($0.repsCompleted)" }
+            .joined(separator: ", ")
+    }
+
+    var compactBestText: String? {
+        guard let bestWeightText else { return nil }
+        if let bestRepsTileText {
+            return "\(bestWeightText) · \(bestRepsTileText)"
+        }
+        return bestWeightText
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 12) {
-                Button {
-                    onToggle()
-                } label: {
-                    Image(systemName: exercise.isCompleted ? "checkmark.circle.fill" : "circle")
-                        .font(.title3)
-                        .foregroundStyle(exercise.isCompleted ? TFColor.success : .secondary)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(exercise.isCompleted ? "Mark \(exercise.exerciseName) incomplete" : "Mark \(exercise.exerciseName) complete")
+            exerciseHeader
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(exercise.exerciseName)
-                        .font(.subheadline.bold())
-                        .strikethrough(exercise.isCompleted, color: .secondary)
-                        .foregroundStyle(exercise.isCompleted ? .secondary : .primary)
+            VStack(alignment: .leading, spacing: 10) {
+                ExercisePrescriptionPillRow(items: prescriptionItems)
 
-                    if !exercise.muscleTarget.isEmpty {
-                        Text(exercise.muscleTarget)
-                            .font(.caption2)
-                            .foregroundStyle(TFColor.accent)
-                    }
-                }
-
-                Spacer()
-
-                Text("#\(exercise.order + 1)")
-                    .font(.caption2.bold())
-                    .foregroundStyle(.tertiary)
-            }
-            .padding(.horizontal, 14)
-            .padding(.top, 14)
-            .padding(.bottom, 10)
-
-            Divider().padding(.horizontal, 14)
-
-            if exercise.restSeconds > 0 {
-                ExerciseRestTimerView(exercise: exercise)
-                Divider().padding(.horizontal, 14)
-            }
-
-            VStack(spacing: 10) {
-                HStack(spacing: 10) {
-                    ExerciseStat(icon: "square.stack.3d.up", label: "Sets", value: "\(exercise.sets)")
-                    ExerciseStat(icon: "arrow.up.arrow.down", label: "Reps", value: exercise.reps)
-                    if let tempo = displayTempo {
-                        ExerciseStat(icon: "metronome", label: "Tempo", value: tempo)
-                    }
+                if exercise.restSeconds > 0 {
+                    ExerciseRestTimerView(exercise: exercise)
                 }
 
                 InlineSetLogger(
@@ -546,14 +556,10 @@ struct ExerciseCard: View {
                     }
                 )
 
-                if !latestSetLogs.isEmpty {
-                    setLogBreakdown
-                } else if latestWeightLog != nil {
-                    ExerciseWeightSnapshotTile(
-                        lastWeightText: latestWeightLog.map { "\(formatWeight($0.weightLbs)) lb" } ?? "-",
-                        lastRepsText: lastRepsTileText,
-                        bestWeightText: bestWeightText ?? "-",
-                        bestRepsText: bestRepsTileText
+                if let compactLastSessionText {
+                    LastSessionCompactRow(
+                        summary: compactLastSessionText,
+                        best: compactBestText
                     )
                 }
 
@@ -567,12 +573,78 @@ struct ExerciseCard: View {
                         text: "Check Set \(anomaly.setNumber): \(formatWeight(anomaly.weightLbs)) lb is well above your \(formatWeight(reference)) lb working sets. Confirm or fix the entry — it isn't used for progression."
                     )
                 }
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
 
-            if let parsedPrescription {
+                if !conciseCoachingNote.isEmpty {
+                    CoachingInsightCard(
+                        text: showDetails ? cleanedCoachingNote : conciseCoachingNote,
+                        isExpanded: showDetails
+                    )
+                }
+            }
+            .padding(14)
+
+            if let status = exercise.completionStatus, status != .completed {
+                completionStatusRow(status)
+            }
+
+            if showDetails {
                 Divider().padding(.horizontal, 14)
+                detailContent
+                    .padding(.horizontal, 14)
+                    .padding(.bottom, 10)
+            }
+
+            Divider().padding(.horizontal, 14)
+            exerciseActionRow
+        }
+        .background(exercise.isCompleted ? TFColor.success.opacity(0.05) : TFColor.surface)
+        .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(exercise.isCompleted ? TFColor.success.opacity(0.2) : Color.clear, lineWidth: 1)
+        )
+    }
+
+    private var exerciseHeader: some View {
+        HStack(spacing: 12) {
+            Button {
+                onToggle()
+            } label: {
+                Image(systemName: exercise.isCompleted ? "checkmark.circle.fill" : "circle")
+                    .font(.title3)
+                    .foregroundStyle(exercise.isCompleted ? TFColor.success : .secondary)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(exercise.isCompleted ? "Mark \(exercise.exerciseName) incomplete" : "Mark \(exercise.exerciseName) complete")
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(exercise.exerciseName)
+                    .font(.subheadline.bold())
+                    .strikethrough(exercise.isCompleted, color: .secondary)
+                    .foregroundStyle(exercise.isCompleted ? .secondary : .primary)
+
+                if !exercise.muscleTarget.isEmpty {
+                    Text(exercise.muscleTarget)
+                        .font(.caption2)
+                        .foregroundStyle(TFColor.accent)
+                }
+            }
+
+            Spacer()
+
+            Text("#\(exercise.order + 1)")
+                .font(.caption2.bold())
+                .foregroundStyle(.tertiary)
+        }
+        .padding(.horizontal, 14)
+        .padding(.top, 14)
+        .padding(.bottom, 10)
+    }
+
+    @ViewBuilder
+    private var detailContent: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if let parsedPrescription {
                 HStack(alignment: .center) {
                     Text(parsedPrescription.intensityLabel)
                         .font(parsedPrescription.intensity == .light ? .caption : .caption.bold())
@@ -586,119 +658,112 @@ struct ExerciseCard: View {
                             .foregroundStyle(.secondary)
                     }
                 }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
             }
 
-            Divider().padding(.horizontal, 14)
-            if let status = exercise.completionStatus, status != .completed {
-                HStack(spacing: 6) {
-                    Image(systemName: status.isSkipped ? "forward.fill" : "arrow.triangle.swap")
-                        .font(.caption2)
-                        .foregroundStyle(status.isSkipped ? TFColor.danger : TFColor.warning)
-                    Text(status.shortLabel)
-                        .font(.caption2.bold())
-                        .foregroundStyle(status.isSkipped ? TFColor.danger : TFColor.warning)
-                    Spacer()
-                    Button {
-                        exercise.completionStatus = nil
-                        if status.isSkipped { exercise.isCompleted = false }
-                        PersistenceReporter.saveWithBackup(modelContext, operation: "clear exercise status", haptic: .success)
-                    } label: {
-                        Text("Clear")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
-                    .buttonStyle(.plain)
-                }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 8)
-                .background(status.isSkipped ? TFColor.danger.opacity(0.06) : TFColor.warning.opacity(0.06))
+            if !latestSetLogs.isEmpty {
+                setLogBreakdown
+            } else if latestWeightLog != nil {
+                ExerciseWeightSnapshotTile(
+                    lastWeightText: latestWeightLog.map { "\(formatWeight($0.weightLbs)) lb" } ?? "-",
+                    lastRepsText: lastRepsTileText,
+                    bestWeightText: bestWeightText ?? "-",
+                    bestRepsText: bestRepsTileText
+                )
             }
-
-            Divider().padding(.horizontal, 14)
-            HStack {
-                Button {
-                    onLogWeight()
-                } label: {
-                    Label("Edit / Notes", systemImage: "square.and.pencil")
-                        .font(.caption.bold())
-                        .foregroundStyle(.secondary)
-                }
-                .buttonStyle(.plain)
-
-                Menu {
-                    ForEach(ExerciseCompletionStatus.allCases.filter { $0 != .completed }) { status in
-                        Button {
-                            exercise.completionStatus = status
-                            if status.isSkipped {
-                                exercise.isCompleted = true
-                            }
-                            PersistenceReporter.saveWithBackup(modelContext, operation: "set exercise status", haptic: .success)
-                        } label: {
-                            Text(status.rawValue)
-                        }
-                    }
-                } label: {
-                    Label("Skip", systemImage: "forward.fill")
-                        .font(.caption.bold())
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer()
-
-                NavigationLink {
-                    ExerciseProgressionView(exerciseName: exercise.exerciseName)
-                } label: {
-                    Label("Progression", systemImage: "chart.line.uptrend.xyaxis")
-                        .font(.caption.bold())
-                        .foregroundStyle(.secondary)
-                }
-
-                if let latestWeightLog {
-                    Text(latestWeightLog.loggedAt.formatted(date: .abbreviated, time: .shortened))
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
 
             if let latestWeightLog,
                !latestWeightLog.notes.isEmpty {
-                Divider().padding(.horizontal, 14)
                 VStack(alignment: .leading, spacing: 4) {
-                    if !latestWeightLog.notes.isEmpty {
-                        Text(latestWeightLog.notes)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(3)
-                    }
-                }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
-            }
-
-            if !conciseCoachingNote.isEmpty {
-                Divider().padding(.horizontal, 14)
-                HStack(alignment: .top, spacing: 6) {
-                    Image(systemName: "lightbulb.fill")
-                        .font(.caption2)
-                        .foregroundStyle(TFColor.warning)
-                    Text(conciseCoachingNote)
+                    Text("NOTES")
+                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .foregroundStyle(.tertiary)
+                        .tracking(1)
+                    Text(latestWeightLog.notes)
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
             }
         }
-        .background(exercise.isCompleted ? TFColor.success.opacity(0.05) : TFColor.surface)
-        .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(exercise.isCompleted ? TFColor.success.opacity(0.2) : Color.clear, lineWidth: 1)
-        )
+    }
+
+    private func completionStatusRow(_ status: ExerciseCompletionStatus) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: status.isSkipped ? "forward.fill" : "arrow.triangle.swap")
+                .font(.caption2)
+                .foregroundStyle(status.isSkipped ? TFColor.danger : TFColor.warning)
+            Text(status.shortLabel)
+                .font(.caption2.bold())
+                .foregroundStyle(status.isSkipped ? TFColor.danger : TFColor.warning)
+            Spacer()
+            Button {
+                exercise.completionStatus = nil
+                if status.isSkipped { exercise.isCompleted = false }
+                PersistenceReporter.saveWithBackup(modelContext, operation: "clear exercise status", haptic: .success)
+            } label: {
+                Text("Clear")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(status.isSkipped ? TFColor.danger.opacity(0.06) : TFColor.warning.opacity(0.06))
+    }
+
+    private var exerciseActionRow: some View {
+        HStack(spacing: 16) {
+            Button {
+                onLogWeight()
+            } label: {
+                Label("Edit", systemImage: "square.and.pencil")
+                    .font(.caption.bold())
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+
+            Menu {
+                ForEach(ExerciseCompletionStatus.allCases.filter { $0 != .completed }) { status in
+                    Button {
+                        exercise.completionStatus = status
+                        if status.isSkipped {
+                            exercise.isCompleted = true
+                        }
+                        PersistenceReporter.saveWithBackup(modelContext, operation: "set exercise status", haptic: .success)
+                    } label: {
+                        Text(status.rawValue)
+                    }
+                }
+            } label: {
+                Label("Skip", systemImage: "forward.fill")
+                    .font(.caption.bold())
+                    .foregroundStyle(.secondary)
+            }
+
+            NavigationLink {
+                ExerciseProgressionView(exerciseName: exercise.exerciseName)
+            } label: {
+                Label("Progression", systemImage: "chart.line.uptrend.xyaxis")
+                    .font(.caption.bold())
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer(minLength: 0)
+
+            Button {
+                withAnimation(.easeOut(duration: 0.18)) {
+                    showDetails.toggle()
+                }
+            } label: {
+                Label(showDetails ? "Hide" : "Details", systemImage: showDetails ? "chevron.up" : "chevron.down")
+                    .font(.caption.bold())
+                    .foregroundStyle(TFColor.accent)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
     }
 
     var setLogBreakdown: some View {
@@ -762,6 +827,149 @@ struct ExerciseCard: View {
     }
 
 
+}
+
+// MARK: - Exercise Compact Components
+
+struct ExercisePrescriptionPillData: Identifiable {
+    let icon: String
+    let label: String
+
+    var id: String { "\(icon)-\(label)" }
+}
+
+struct ExercisePrescriptionPillRow: View {
+    let items: [ExercisePrescriptionPillData]
+
+    var body: some View {
+        FlowLayout(spacing: 7, rowSpacing: 7) {
+            ForEach(items) { item in
+                HStack(spacing: 5) {
+                    Image(systemName: item.icon)
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(TFColor.accent)
+                    Text(item.label)
+                        .font(.caption2.bold())
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.82)
+                }
+                .padding(.horizontal, 9)
+                .padding(.vertical, 6)
+                .background(Color.primary.opacity(0.04))
+                .clipShape(Capsule())
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+}
+
+struct FlowLayout: Layout {
+    var spacing: CGFloat = 8
+    var rowSpacing: CGFloat = 8
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        arrangeSubviews(proposal: proposal, subviews: subviews).size
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let arrangement = arrangeSubviews(proposal: ProposedViewSize(width: bounds.width, height: proposal.height), subviews: subviews)
+        for item in arrangement.items {
+            subviews[item.index].place(
+                at: CGPoint(x: bounds.minX + item.origin.x, y: bounds.minY + item.origin.y),
+                proposal: ProposedViewSize(width: item.size.width, height: item.size.height)
+            )
+        }
+    }
+
+    private func arrangeSubviews(proposal: ProposedViewSize, subviews: Subviews) -> (items: [(index: Int, origin: CGPoint, size: CGSize)], size: CGSize) {
+        let maxWidth = proposal.width ?? .greatestFiniteMagnitude
+        var items: [(index: Int, origin: CGPoint, size: CGSize)] = []
+        var cursor = CGPoint.zero
+        var rowHeight: CGFloat = 0
+        var usedWidth: CGFloat = 0
+
+        for index in subviews.indices {
+            let size = subviews[index].sizeThatFits(.unspecified)
+            if cursor.x > 0, cursor.x + size.width > maxWidth {
+                cursor.x = 0
+                cursor.y += rowHeight + rowSpacing
+                rowHeight = 0
+            }
+            items.append((index, cursor, size))
+            cursor.x += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
+            usedWidth = max(usedWidth, cursor.x - spacing)
+        }
+
+        return (items, CGSize(width: min(usedWidth, maxWidth), height: cursor.y + rowHeight))
+    }
+}
+
+struct LastSessionCompactRow: View {
+    let summary: String
+    let best: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(alignment: .firstTextBaseline, spacing: 5) {
+                Text("Last")
+                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    .foregroundStyle(.tertiary)
+                    .tracking(1)
+                Text(summary)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+            }
+
+            if let best {
+                HStack(spacing: 4) {
+                    Image(systemName: "trophy.fill")
+                        .font(.system(size: 8))
+                        .foregroundStyle(TFColor.warning)
+                    Text("Best \(best)")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(Color.primary.opacity(0.04))
+        .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
+    }
+}
+
+struct CoachingInsightCard: View {
+    let text: String
+    let isExpanded: Bool
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 7) {
+            Image(systemName: "lightbulb.fill")
+                .font(.caption2)
+                .foregroundStyle(TFColor.warning)
+                .padding(.top, 1)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(isExpanded ? "Coaching" : "Cue")
+                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    .foregroundStyle(TFColor.warning.opacity(0.8))
+                    .tracking(1)
+                Text(text)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(TFColor.warning.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
 }
 
 // MARK: - Exercise Stat
@@ -879,74 +1087,84 @@ struct ExerciseRestTimerView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text("Rest Timer:")
-                    .font(.title3)
-                    .foregroundStyle(.primary)
-                Text(restDisplayText)
-                    .font(.title3.bold())
-                    .foregroundStyle(timerAccent)
-                    .monospacedDigit()
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-                    .frame(minWidth: 58, alignment: .leading)
-                Spacer()
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(spacing: 8) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(isRestTimerActive ? "Rest running" : restStatusLabel)
+                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .foregroundStyle(timerAccent.opacity(0.85))
+                        .tracking(1)
+                    Text(restDisplayText)
+                        .font(.subheadline.bold())
+                        .foregroundStyle(timerAccent)
+                        .monospacedDigit()
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                }
+
+                Spacer(minLength: 0)
+
+                Button {
+                    toggleRestTimer()
+                } label: {
+                    Label(isRestTimerActive ? "Pause" : (remainingRestSeconds != exercise.restSeconds ? "Resume" : "Start rest"), systemImage: isRestTimerActive ? "pause.fill" : "play.fill")
+                        .font(.caption.bold())
+                        .labelStyle(.titleAndIcon)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 7)
+                        .background(timerAccent)
+                        .foregroundStyle(.white)
+                        .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+
+                if remainingRestSeconds != exercise.restSeconds || isRestTimerActive || didCompleteRestTimer {
+                    Button {
+                        resetRestTimer()
+                    } label: {
+                        Image(systemName: "arrow.counterclockwise")
+                            .font(.caption.bold())
+                            .foregroundStyle(.secondary)
+                            .padding(7)
+                            .background(Color.primary.opacity(0.06))
+                            .clipShape(Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Reset rest timer")
+                }
 
                 Button {
                     showExpandedRestTimer = true
                 } label: {
                     Image(systemName: "arrow.up.left.and.arrow.down.right")
-                        .font(.caption.bold())
+                        .font(.caption2.bold())
                         .foregroundStyle(.secondary)
-                        .padding(8)
+                        .padding(7)
                         .background(Color.primary.opacity(0.06))
                         .clipShape(Circle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Open full-screen rest timer")
             }
 
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule()
-                        .fill(timerAccent.opacity(0.14))
-                    Capsule()
-                        .fill(timerAccent)
-                        .frame(width: geo.size.width * max(0, min(restProgress, 1)))
+            if isRestTimerActive || remainingRestSeconds != exercise.restSeconds || didCompleteRestTimer {
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Capsule()
+                            .fill(timerAccent.opacity(0.14))
+                        Capsule()
+                            .fill(timerAccent)
+                            .frame(width: geo.size.width * max(0, min(restProgress, 1)))
+                    }
                 }
-            }
-            .frame(height: 8)
-
-            HStack(spacing: 10) {
-                Button {
-                    toggleRestTimer()
-                } label: {
-                    Label(isRestTimerActive ? "Pause" : (remainingRestSeconds != exercise.restSeconds ? "Resume" : "Start Rest"), systemImage: isRestTimerActive ? "pause.fill" : "play.fill")
-                        .font(.subheadline.bold())
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .background(timerAccent)
-                        .foregroundStyle(.white)
-                        .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
-                }
-                .buttonStyle(.plain)
-
-                Button {
-                    resetRestTimer()
-                } label: {
-                    Label("Reset", systemImage: "arrow.counterclockwise")
-                        .font(.subheadline.bold())
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .background(Color.primary.opacity(0.06))
-                        .foregroundStyle(.primary)
-                        .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
-                }
-                .buttonStyle(.plain)
+                .frame(height: 5)
+                .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 14)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(timerAccent.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Rest timer: \(restStatusLabel), \(restDisplayText)")
         .onAppear {
@@ -955,6 +1173,11 @@ struct ExerciseRestTimerView: View {
             }
             if isRestTimerActive && restTimerTask == nil {
                 startRestTimer()
+            }
+        }
+        .onDisappear {
+            if !showExpandedRestTimer {
+                stopRestTimer()
             }
         }
         .fullScreenCover(isPresented: $showExpandedRestTimer) {
@@ -1831,6 +2054,10 @@ struct InlineSetLogger: View {
         VStack(spacing: 8) {
             header
             if expanded {
+                Text("Confirm each set as you finish.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 VStack(spacing: 6) {
                     ForEach(1...programmedCount, id: \.self) { n in
                         setRow(n)
@@ -1838,8 +2065,8 @@ struct InlineSetLogger: View {
                 }
             }
         }
-        .padding(10)
-        .background(Color.primary.opacity(0.04))
+        .padding(expanded ? 10 : 0)
+        .background(expanded ? Color.primary.opacity(0.04) : Color.clear)
         .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
     }
 
@@ -1850,22 +2077,26 @@ struct InlineSetLogger: View {
             HStack(spacing: 8) {
                 Image(systemName: "checklist")
                     .font(.caption.bold())
-                    .foregroundStyle(TFColor.accent)
+                    .foregroundStyle(.white)
                 Text("Log sets")
                     .font(.caption.bold())
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(.white)
                 Text("\(loggedCount)/\(programmedCount)")
                     .font(.system(size: 11, weight: .bold, design: .rounded))
                     .padding(.horizontal, 7)
                     .padding(.vertical, 2)
-                    .background((allLogged ? TFColor.success : TFColor.accent).opacity(0.15))
-                    .foregroundStyle(allLogged ? TFColor.success : TFColor.accent)
+                    .background(Color.white.opacity(0.18))
+                    .foregroundStyle(.white)
                     .clipShape(Capsule())
                 Spacer()
                 Image(systemName: expanded ? "chevron.up" : "chevron.down")
                     .font(.caption2.bold())
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.white.opacity(0.8))
             }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(allLogged ? TFColor.success : TFColor.accent)
+            .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -1909,6 +2140,10 @@ struct InlineSetLogger: View {
             .accessibilityLabel("Clear set \(n)")
             Image(systemName: "checkmark.circle.fill").font(.caption).foregroundStyle(TFColor.success)
         }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 7)
+        .background(Color(.systemBackground).opacity(0.55))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
     private func entryRow(_ n: Int) -> some View {
@@ -1929,6 +2164,10 @@ struct InlineSetLogger: View {
             .disabled(!canLog(n))
             .accessibilityLabel("Log set \(n)")
         }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(Color(.systemBackground).opacity(0.55))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
     private func setLabel(_ n: Int) -> some View {
