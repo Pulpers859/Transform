@@ -1,6 +1,16 @@
 import SwiftUI
 import SwiftData
 
+private struct AnalysisRunContext: Identifiable {
+    let id = UUID()
+    let photos: [AnalysisPhoto]
+    let inputContext: AnalysisInputContext
+    let priorAnalysis: BodyAnalysisResult?
+
+    var photoAngles: [String] { photos.map(\.pose) }
+    var photoCount: Int { photos.count }
+}
+
 struct BodyAnalysisView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \BodyAnalysisSession.date, order: .reverse) private var sessions: [BodyAnalysisSession]
@@ -27,6 +37,8 @@ struct BodyAnalysisView: View {
     @State private var showMedicalGateAlert = false
     @State private var sessionToDelete: BodyAnalysisSession?
     @State private var analysisTask: Task<Void, Never>?
+    @State private var activeAnalysisRun: AnalysisRunContext?
+    @State private var completedAnalysisRun: AnalysisRunContext?
     @State private var showProgressContextDetails = false
     @AppStorage(AppSettingsKeys.analysisCheckInTrainingContext) private var analysisCheckInTrainingContext = Config.defaultAnalysisCheckInTrainingContext
     @AppStorage(AppSettingsKeys.analysisCheckInBodyweightTrend) private var analysisCheckInBodyweightTrend = Config.defaultAnalysisCheckInBodyweightTrend
@@ -144,7 +156,9 @@ struct BodyAnalysisView: View {
             ScrollView {
                 VStack(spacing: 24) {
                     photoCollectionCard
+                        .disabled(isAnalyzing)
                     checkInCard
+                        .disabled(isAnalyzing)
                     if let automaticProgressSnapshot {
                         progressContextCard(snapshot: automaticProgressSnapshot)
                     }
@@ -168,12 +182,19 @@ struct BodyAnalysisView: View {
             .keyboardDismissToolbar()
             .navigationTitle("Body Analysis")
             .navigationDestination(isPresented: $showResult) {
-                if let result = analysisResult {
+                if let result = analysisResult,
+                   let runContext = completedAnalysisRun {
                     BodyAnalysisResultView(
                         result: result,
-                        photos: photos,
+                        photos: runContext.photos,
                         validationReport: validationReport,
-                        onSave: { saveSession(result: result) }
+                        onSave: { saveSession(result: result, runContext: runContext) }
+                    )
+                } else {
+                    ContentUnavailableView(
+                        "Analysis Not Available",
+                        systemImage: "figure.mind.and.body",
+                        description: Text("This analysis result is no longer available.")
                     )
                 }
             }
@@ -194,11 +215,6 @@ struct BodyAnalysisView: View {
                     }
                     TFHaptics.impact(.light)
                 }
-            }
-            .onDisappear {
-                analysisTask?.cancel()
-                analysisTask = nil
-                isAnalyzing = false
             }
             .alert("Analysis Error", isPresented: $showError) {
                 Button("OK", role: .cancel) {}
@@ -716,7 +732,7 @@ struct BodyAnalysisView: View {
                         ProgressView()
                             .tint(.white)
                             .padding(.trailing, 4)
-                        Text("Analyzing \(photos.count) photo\(photos.count == 1 ? "" : "s")...")
+                        Text("Analyzing \(activeAnalysisRun?.photoCount ?? photos.count) photo\((activeAnalysisRun?.photoCount ?? photos.count) == 1 ? "" : "s")...")
                     } else {
                         Image(systemName: "sparkles")
                         Text("Analyze My Physique")
@@ -741,8 +757,44 @@ struct BodyAnalysisView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
+            if let runContext = activeAnalysisRun, isAnalyzing {
+                analysisRunStatusCard(runContext)
+            }
+
             profileCompletenessIndicator
         }
+    }
+
+    private func analysisRunStatusCard(_ runContext: AnalysisRunContext) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: "lock.circle.fill")
+                    .foregroundStyle(TFColor.accent)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Analysis in progress")
+                        .font(.caption.bold())
+                    Text("This run is locked to the \(runContext.photoCount)-photo snapshot and current check-in context you started with. It will keep running if you leave this screen.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer()
+            }
+
+            Button(role: .destructive) {
+                cancelAnalysis()
+            } label: {
+                Label("Cancel analysis", systemImage: "xmark.circle")
+                    .font(.caption.bold())
+            }
+            .buttonStyle(.bordered)
+            .tint(TFColor.danger)
+        }
+        .padding(10)
+        .background(TFColor.surfaceElevated)
+        .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
     }
 
     private var profileCompletenessIndicator: some View {
@@ -825,55 +877,86 @@ struct BodyAnalysisView: View {
     @MainActor
     func proceedWithAnalysis() {
         analysisTask?.cancel()
+        let runContext = AnalysisRunContext(
+            photos: photos,
+            inputContext: currentAnalysisInputContext,
+            priorAnalysis: previousAnalysisResult
+        )
+        activeAnalysisRun = runContext
+        completedAnalysisRun = nil
+        analysisResult = nil
+        validationReport = nil
+        errorMessage = nil
+        showError = false
+        isAnalyzing = true
         analysisTask = Task {
-            await runAnalysis()
+            await runAnalysis(using: runContext)
         }
     }
 
     @MainActor
-    func runAnalysis() async {
-        guard !Task.isCancelled else { return }
-        isAnalyzing = true
+    func runAnalysis(using runContext: AnalysisRunContext) async {
         defer {
-            if !Task.isCancelled {
-                isAnalyzing = false
-                analysisTask = nil
-            }
+            finalizeAnalysisRun(runContext)
         }
 
         do {
             let result = try await ClaudeService.shared.analyzeBody(
-                photos: photos,
-                inputContext: currentAnalysisInputContext,
-                priorAnalysis: previousAnalysisResult
+                photos: runContext.photos,
+                inputContext: runContext.inputContext,
+                priorAnalysis: runContext.priorAnalysis
             )
             try Task.checkCancellation()
-            guard !Task.isCancelled else { return }
+            guard isCurrentAnalysisRun(runContext) else { return }
             let report = BodyAnalysisValidator.validate(
                 result,
-                photoAngles: photos.map(\.pose),
+                photoAngles: runContext.photoAngles,
                 bodyweightLbs: MacroTargetResolver.profileBodyweightLbs()
             )
+            guard isCurrentAnalysisRun(runContext) else { return }
             analysisResult = result
             validationReport = report
+            completedAnalysisRun = runContext
             showResult = true
             TFHaptics.success()
         } catch is CancellationError {
             return
         } catch {
-            guard !Task.isCancelled else { return }
+            guard isCurrentAnalysisRun(runContext) else { return }
             errorMessage = error.localizedDescription
             showError = true
             TFHaptics.error()
         }
     }
 
-    func saveSession(result: BodyAnalysisResult) {
+    @MainActor
+    private func finalizeAnalysisRun(_ runContext: AnalysisRunContext) {
+        guard activeAnalysisRun?.id == runContext.id else { return }
+        isAnalyzing = false
+        analysisTask = nil
+        activeAnalysisRun = nil
+    }
+
+    @MainActor
+    private func cancelAnalysis() {
+        analysisTask?.cancel()
+        analysisTask = nil
+        isAnalyzing = false
+        activeAnalysisRun = nil
+        TFHaptics.selection()
+    }
+
+    @MainActor
+    private func isCurrentAnalysisRun(_ runContext: AnalysisRunContext) -> Bool {
+        activeAnalysisRun?.id == runContext.id
+    }
+
+    func saveSession(result: BodyAnalysisResult, runContext: AnalysisRunContext) {
         // Use first photo as the thumbnail
-        guard let firstPhoto = photos.first,
+        guard let firstPhoto = runContext.photos.first,
               let imageData = firstPhoto.image.jpegData(compressionQuality: 0.7) else { return }
 
-        let poseLabel = photos.map { $0.pose }.joined(separator: " + ")
+        let poseLabel = runContext.photos.map { $0.pose }.joined(separator: " + ")
 
         // Encode full result as JSON for storage
         let jsonString: String
@@ -898,7 +981,7 @@ struct BodyAnalysisView: View {
             priorityMuscles: result.programmingPrioritySummary,
             dietRecommendation: result.dietRecommendations.first ?? "",
             analysisJSON: jsonString,
-            photoCount: photos.count
+            photoCount: runContext.photoCount
         )
         modelContext.insert(session)
         guard PersistenceReporter.save(modelContext, operation: "analysis session") else {
@@ -910,6 +993,7 @@ struct BodyAnalysisView: View {
         photos.removeAll()
         currentPose = poses.first ?? "Front"
         analysisResult = nil
+        completedAnalysisRun = nil
         showResult = false
         TFHaptics.success()
     }
