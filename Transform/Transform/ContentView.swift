@@ -53,6 +53,7 @@ struct ContentView: View {
     @State private var selectedTab: AppTab = .dashboard
     @State private var dayClock = DayClock()
     @State private var workoutDeepLink = WorkoutDeepLink()
+    @State private var bodyAnalysisRunStore = BodyAnalysisRunStore()
 
     var resolvedColorScheme: ColorScheme? {
         switch appearanceMode {
@@ -94,6 +95,7 @@ struct ContentView: View {
         }
         .environment(dayClock)
         .environment(workoutDeepLink)
+        .environment(bodyAnalysisRunStore)
         .preferredColorScheme(resolvedColorScheme)
         .tint(TFColor.accent)
         .onChange(of: scenePhase) { _, newPhase in

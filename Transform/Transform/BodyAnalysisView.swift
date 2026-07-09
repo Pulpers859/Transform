@@ -1,18 +1,9 @@
 import SwiftUI
 import SwiftData
 
-private struct AnalysisRunContext: Identifiable {
-    let id = UUID()
-    let photos: [AnalysisPhoto]
-    let inputContext: AnalysisInputContext
-    let priorAnalysis: BodyAnalysisResult?
-
-    var photoAngles: [String] { photos.map(\.pose) }
-    var photoCount: Int { photos.count }
-}
-
 struct BodyAnalysisView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(BodyAnalysisRunStore.self) private var analysisRunStore
     @Query(sort: \BodyAnalysisSession.date, order: .reverse) private var sessions: [BodyAnalysisSession]
     @Query(sort: \WeightEntry.date, order: .reverse) private var weightEntries: [WeightEntry]
     @Query(sort: \NutritionEntry.date, order: .reverse) private var nutritionEntries: [NutritionEntry]
@@ -27,18 +18,9 @@ struct BodyAnalysisView: View {
     @State private var showPhotoLibrary = false
     @State private var capturedImage: UIImage?
 
-    @State private var isAnalyzing = false
-    @State private var analysisResult: BodyAnalysisResult?
-    @State private var validationReport: AnalysisValidationReport?
-    @State private var showResult = false
-    @State private var errorMessage: String?
-    @State private var showError = false
     @State private var showDeleteConfirm = false
     @State private var showMedicalGateAlert = false
     @State private var sessionToDelete: BodyAnalysisSession?
-    @State private var analysisTask: Task<Void, Never>?
-    @State private var activeAnalysisRun: AnalysisRunContext?
-    @State private var completedAnalysisRun: AnalysisRunContext?
     @State private var showProgressContextDetails = false
     @AppStorage(AppSettingsKeys.analysisCheckInTrainingContext) private var analysisCheckInTrainingContext = Config.defaultAnalysisCheckInTrainingContext
     @AppStorage(AppSettingsKeys.analysisCheckInBodyweightTrend) private var analysisCheckInBodyweightTrend = Config.defaultAnalysisCheckInBodyweightTrend
@@ -156,9 +138,9 @@ struct BodyAnalysisView: View {
             ScrollView {
                 VStack(spacing: 24) {
                     photoCollectionCard
-                        .disabled(isAnalyzing)
+                        .disabled(analysisRunStore.isRunning)
                     checkInCard
-                        .disabled(isAnalyzing)
+                        .disabled(analysisRunStore.isRunning)
                     if let automaticProgressSnapshot {
                         progressContextCard(snapshot: automaticProgressSnapshot)
                     }
@@ -181,13 +163,24 @@ struct BodyAnalysisView: View {
             .scrollDismissesKeyboard(.interactively)
             .keyboardDismissToolbar()
             .navigationTitle("Body Analysis")
-            .navigationDestination(isPresented: $showResult) {
-                if let result = analysisResult,
-                   let runContext = completedAnalysisRun {
+            .navigationDestination(
+                isPresented: Binding(
+                    get: {
+                        analysisRunStore.result != nil && analysisRunStore.completedRun != nil
+                    },
+                    set: { isPresented in
+                        if !isPresented {
+                            analysisRunStore.clearCompletedPresentation()
+                        }
+                    }
+                )
+            ) {
+                if let result = analysisRunStore.result,
+                   let runContext = analysisRunStore.completedRun {
                     BodyAnalysisResultView(
                         result: result,
                         photos: runContext.photos,
-                        validationReport: validationReport,
+                        validationReport: analysisRunStore.validationReport,
                         onSave: { saveSession(result: result, runContext: runContext) }
                     )
                 } else {
@@ -216,10 +209,20 @@ struct BodyAnalysisView: View {
                     TFHaptics.impact(.light)
                 }
             }
-            .alert("Analysis Error", isPresented: $showError) {
+            .alert(
+                "Analysis Error",
+                isPresented: Binding(
+                    get: { analysisRunStore.errorMessage != nil },
+                    set: { isPresented in
+                        if !isPresented {
+                            analysisRunStore.errorMessage = nil
+                        }
+                    }
+                )
+            ) {
                 Button("OK", role: .cancel) {}
             } message: {
-                Text(errorMessage ?? "Unknown error")
+                Text(analysisRunStore.errorMessage ?? "Unknown error")
             }
             .alert("Delete Analysis?", isPresented: $showDeleteConfirm) {
                 Button("Delete", role: .destructive) {
@@ -728,11 +731,11 @@ struct BodyAnalysisView: View {
                 startAnalysis()
             } label: {
                 HStack {
-                    if isAnalyzing {
+                    if analysisRunStore.isRunning {
                         ProgressView()
                             .tint(.white)
                             .padding(.trailing, 4)
-                        Text("Analyzing \(activeAnalysisRun?.photoCount ?? photos.count) photo\((activeAnalysisRun?.photoCount ?? photos.count) == 1 ? "" : "s")...")
+                        Text("Analyzing \(analysisRunStore.activeRun?.photoCount ?? photos.count) photo\((analysisRunStore.activeRun?.photoCount ?? photos.count) == 1 ? "" : "s")...")
                     } else {
                         Image(systemName: "sparkles")
                         Text("Analyze My Physique")
@@ -745,19 +748,19 @@ struct BodyAnalysisView: View {
                 }
                 .frame(maxWidth: .infinity)
                 .padding()
-                .background(isAnalyzing ? TFColor.accent.opacity(0.6) : TFColor.accent)
+                .background(analysisRunStore.isRunning ? TFColor.accent.opacity(0.6) : TFColor.accent)
                 .foregroundStyle(.white)
                 .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
                 .bold()
             }
             .pressable()
-            .disabled(isAnalyzing || !canUseAI)
+            .disabled(analysisRunStore.isRunning || !canUseAI)
 
             Text("Photo analysis is strongest for visible physique patterns and broad training priorities. It is more limited for injury, posture, metabolic, and adherence assessment without added history or check-in data.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
-            if let runContext = activeAnalysisRun, isAnalyzing {
+            if let runContext = analysisRunStore.activeRun, analysisRunStore.isRunning {
                 analysisRunStatusCard(runContext)
             }
 
@@ -876,79 +879,19 @@ struct BodyAnalysisView: View {
 
     @MainActor
     func proceedWithAnalysis() {
-        analysisTask?.cancel()
         let runContext = AnalysisRunContext(
             photos: photos,
             inputContext: currentAnalysisInputContext,
-            priorAnalysis: previousAnalysisResult
+            priorAnalysis: previousAnalysisResult,
+            bodyweightLbs: MacroTargetResolver.profileBodyweightLbs()
         )
-        activeAnalysisRun = runContext
-        completedAnalysisRun = nil
-        analysisResult = nil
-        validationReport = nil
-        errorMessage = nil
-        showError = false
-        isAnalyzing = true
-        analysisTask = Task {
-            await runAnalysis(using: runContext)
-        }
-    }
-
-    @MainActor
-    func runAnalysis(using runContext: AnalysisRunContext) async {
-        defer {
-            finalizeAnalysisRun(runContext)
-        }
-
-        do {
-            let result = try await ClaudeService.shared.analyzeBody(
-                photos: runContext.photos,
-                inputContext: runContext.inputContext,
-                priorAnalysis: runContext.priorAnalysis
-            )
-            try Task.checkCancellation()
-            guard isCurrentAnalysisRun(runContext) else { return }
-            let report = BodyAnalysisValidator.validate(
-                result,
-                photoAngles: runContext.photoAngles,
-                bodyweightLbs: MacroTargetResolver.profileBodyweightLbs()
-            )
-            guard isCurrentAnalysisRun(runContext) else { return }
-            analysisResult = result
-            validationReport = report
-            completedAnalysisRun = runContext
-            showResult = true
-            TFHaptics.success()
-        } catch is CancellationError {
-            return
-        } catch {
-            guard isCurrentAnalysisRun(runContext) else { return }
-            errorMessage = error.localizedDescription
-            showError = true
-            TFHaptics.error()
-        }
-    }
-
-    @MainActor
-    private func finalizeAnalysisRun(_ runContext: AnalysisRunContext) {
-        guard activeAnalysisRun?.id == runContext.id else { return }
-        isAnalyzing = false
-        analysisTask = nil
-        activeAnalysisRun = nil
+        analysisRunStore.start(runContext)
     }
 
     @MainActor
     private func cancelAnalysis() {
-        analysisTask?.cancel()
-        analysisTask = nil
-        isAnalyzing = false
-        activeAnalysisRun = nil
+        analysisRunStore.cancel()
         TFHaptics.selection()
-    }
-
-    @MainActor
-    private func isCurrentAnalysisRun(_ runContext: AnalysisRunContext) -> Bool {
-        activeAnalysisRun?.id == runContext.id
     }
 
     func saveSession(result: BodyAnalysisResult, runContext: AnalysisRunContext) {
@@ -967,8 +910,7 @@ struct BodyAnalysisView: View {
             }
             jsonString = encoded
         } catch {
-            errorMessage = "Could not save this analysis because the full result could not be encoded."
-            showError = true
+            analysisRunStore.errorMessage = "Could not save this analysis because the full result could not be encoded."
             print("[BodyAnalysisView] Failed to encode analysis result for storage: \(error)")
             TFHaptics.error()
             return
@@ -992,9 +934,7 @@ struct BodyAnalysisView: View {
         DataBackupManager.shared.scheduleAutomaticBackup(using: modelContext)
         photos.removeAll()
         currentPose = poses.first ?? "Front"
-        analysisResult = nil
-        completedAnalysisRun = nil
-        showResult = false
+        analysisRunStore.clearCompletedPresentation()
         TFHaptics.success()
     }
 
