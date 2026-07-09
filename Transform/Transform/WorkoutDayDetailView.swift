@@ -895,7 +895,7 @@ struct ExercisePrescriptionPillRow: View {
     let items: [ExercisePrescriptionPillData]
 
     var body: some View {
-        FlowLayout(spacing: 7, rowSpacing: 7) {
+        ExercisePillFlowLayout(spacing: 7, rowSpacing: 7) {
             ForEach(items) { item in
                 HStack(spacing: 5) {
                     Image(systemName: item.icon)
@@ -917,7 +917,7 @@ struct ExercisePrescriptionPillRow: View {
     }
 }
 
-struct FlowLayout: Layout {
+struct ExercisePillFlowLayout: Layout {
     var spacing: CGFloat = 8
     var rowSpacing: CGFloat = 8
 
