@@ -133,6 +133,17 @@ struct BodyAnalysisView: View {
             .withMeasurements(analysisMeasurementSnapshot)
     }
 
+    var displayedPhotos: [AnalysisPhoto] {
+        if let activeRun = analysisRunStore.activeRun {
+            return activeRun.photos
+        }
+        return photos
+    }
+
+    var hasDisplayablePhotos: Bool {
+        !displayedPhotos.isEmpty
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -145,7 +156,7 @@ struct BodyAnalysisView: View {
                         progressContextCard(snapshot: automaticProgressSnapshot)
                     }
                     measurementsSection
-                    if !photos.isEmpty {
+                    if hasDisplayablePhotos {
                         photoQualityCard
                         analyzeButton
                         if !canUseAI {
@@ -256,12 +267,12 @@ struct BodyAnalysisView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Physique Photos")
                         .font(.headline)
-                    Text("\(photos.count) of 4 angles · More angles = better analysis")
+                    Text("\(displayedPhotos.count) of 4 angles · More angles = better analysis")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
-                if !photos.isEmpty {
+                if !analysisRunStore.isRunning && !photos.isEmpty {
                     Button("Clear All") {
                         photos.removeAll()
                         currentPose = "Front"
@@ -272,14 +283,14 @@ struct BodyAnalysisView: View {
             }
 
             // Photo grid
-            if photos.isEmpty {
+            if displayedPhotos.isEmpty {
                 emptyPhotoPlaceholder
             } else {
                 photoGrid
             }
 
             // Add more photos if we have room
-            if photos.count < 4 {
+            if !analysisRunStore.isRunning && photos.count < 4 {
                 VStack(alignment: .leading, spacing: 8) {
                     Label("Photo tip: stand relaxed and neutral (not flexing/posing) with consistent lighting for the most accurate analysis.", systemImage: "info.circle")
                         .font(.caption)
@@ -312,7 +323,7 @@ struct BodyAnalysisView: View {
 
     var photoGrid: some View {
         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
-            ForEach(Array(photos.enumerated()), id: \.element.id) { index, photo in
+            ForEach(Array(displayedPhotos.enumerated()), id: \.element.id) { index, photo in
                 ZStack(alignment: .topTrailing) {
                     Image(uiImage: photo.image)
                         .resizable()
@@ -332,6 +343,7 @@ struct BodyAnalysisView: View {
                 }
                 .overlay(alignment: .topLeading) {
                     Button {
+                        guard !analysisRunStore.isRunning, index < photos.count else { return }
                         photos.remove(at: index)
                         TFHaptics.impact(.light)
                     } label: {
@@ -679,7 +691,7 @@ struct BodyAnalysisView: View {
     // MARK: - Photo Quality Card
 
     var photoQualityCard: some View {
-        let provided = Set(photos.map(\.pose))
+        let provided = Set(displayedPhotos.map(\.pose))
         let allPoses = Set(poses)
         let missing = allPoses.subtracting(provided)
 
@@ -735,12 +747,12 @@ struct BodyAnalysisView: View {
                         ProgressView()
                             .tint(.white)
                             .padding(.trailing, 4)
-                        Text("Analyzing \(analysisRunStore.activeRun?.photoCount ?? photos.count) photo\((analysisRunStore.activeRun?.photoCount ?? photos.count) == 1 ? "" : "s")...")
+                        Text("Analyzing \(analysisRunStore.activeRun?.photoCount ?? displayedPhotos.count) photo\((analysisRunStore.activeRun?.photoCount ?? displayedPhotos.count) == 1 ? "" : "s")...")
                     } else {
                         Image(systemName: "sparkles")
                         Text("Analyze My Physique")
-                        if photos.count > 1 {
-                            Text("(\(photos.count) photos)")
+                        if displayedPhotos.count > 1 {
+                            Text("(\(displayedPhotos.count) photos)")
                                 .font(.caption)
                                 .opacity(0.8)
                         }
