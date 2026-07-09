@@ -57,7 +57,7 @@ struct WorkoutDayDetailView: View {
             WorkoutSessionFeedbackSheet(day: selectedDay)
         }
         .alert(
-            "Complete without logged sets?",
+            partialCompletionPromptTitle,
             isPresented: Binding(
                 get: { completionPromptExercise != nil },
                 set: { isPresented in
@@ -67,15 +67,15 @@ struct WorkoutDayDetailView: View {
                 }
             )
         ) {
-            Button("Log Sets", role: .cancel) {
+            Button("Log Missing Set", role: .cancel) {
                 if let exercise = completionPromptExercise {
                     exerciseForWeightLogging = exercise
                 }
                 completionPromptExercise = nil
             }
-            Button("Complete Anyway") {
+            Button(partialCompletionActionLabel) {
                 if let exercise = completionPromptExercise {
-                    toggleExercise(exercise, allowIncompleteLogs: true)
+                    completeExerciseAsModified(exercise)
                 }
                 completionPromptExercise = nil
             }
@@ -224,16 +224,35 @@ struct WorkoutDayDetailView: View {
         }
     }
 
+    var partialCompletionPromptTitle: String {
+        guard let exercise = completionPromptExercise else {
+            return "Finish as modified?"
+        }
+        let logged = todaysSetLogs(for: exercise).count
+        return logged > 0 ? "Finish \(logged)/\(exercise.sets) sets?" : "Complete without logged sets?"
+    }
+
+    var partialCompletionActionLabel: String {
+        guard let exercise = completionPromptExercise else {
+            return "Finish Modified"
+        }
+        let logged = todaysSetLogs(for: exercise).count
+        return logged > 0 ? "Finish \(logged)/\(exercise.sets)" : "Finish Modified"
+    }
+
     var completionPromptMessage: String {
         guard let exercise = completionPromptExercise else {
             return "Logging sets improves future progression cues."
         }
         let logged = todaysSetLogs(for: exercise).count
-        return "\(logged)/\(exercise.sets) sets are logged. Logging sets improves future progression cues."
+        if logged > 0 {
+            return "\(logged) of \(exercise.sets) planned sets are logged. This marks the exercise as Modified; progression will use only the sets you actually logged."
+        }
+        return "No sets are logged yet. This marks the exercise as Modified and does not create any fake reps or volume."
     }
 
-    func toggleExercise(_ exercise: WorkoutExercise, allowIncompleteLogs: Bool = false) {
-        if !allowIncompleteLogs, !exercise.isCompleted, exercise.sets > 0 {
+    func toggleExercise(_ exercise: WorkoutExercise) {
+        if !exercise.isCompleted, exercise.sets > 0 {
             let logged = todaysSetLogs(for: exercise).count
             if logged < exercise.sets {
                 completionPromptExercise = exercise
@@ -244,7 +263,11 @@ struct WorkoutDayDetailView: View {
 
         let previousExerciseState = exercise.isCompleted
         let previousDayState = day.isCompleted
+        let previousStatus = exercise.completionStatus
         exercise.isCompleted.toggle()
+        if !exercise.isCompleted && previousStatus == .completedModified {
+            exercise.completionStatus = nil
+        }
 
         let allDone = day.exercises.allSatisfy { $0.isCompleted }
         if allDone != day.isCompleted {
@@ -254,10 +277,40 @@ struct WorkoutDayDetailView: View {
         guard PersistenceReporter.save(modelContext, operation: "exercise completion toggle") else {
             modelContext.rollback()
             exercise.isCompleted = previousExerciseState
+            exercise.completionStatus = previousStatus
             day.isCompleted = previousDayState
             TFHaptics.error()
             return
         }
+        DataBackupManager.shared.writeAutomaticBackupCoalesced(using: modelContext)
+        TFHaptics.impact(.light)
+        if day.isCompleted && !previousDayState {
+            feedbackDay = day
+        }
+    }
+
+    func completeExerciseAsModified(_ exercise: WorkoutExercise) {
+        let previousExerciseState = exercise.isCompleted
+        let previousDayState = day.isCompleted
+        let previousStatus = exercise.completionStatus
+
+        exercise.isCompleted = true
+        exercise.completionStatus = .completedModified
+
+        let allDone = day.exercises.allSatisfy { $0.isCompleted }
+        if allDone != day.isCompleted {
+            day.isCompleted = allDone
+        }
+
+        guard PersistenceReporter.save(modelContext, operation: "exercise modified completion") else {
+            modelContext.rollback()
+            exercise.isCompleted = previousExerciseState
+            exercise.completionStatus = previousStatus
+            day.isCompleted = previousDayState
+            TFHaptics.error()
+            return
+        }
+
         DataBackupManager.shared.writeAutomaticBackupCoalesced(using: modelContext)
         TFHaptics.impact(.light)
         if day.isCompleted && !previousDayState {
