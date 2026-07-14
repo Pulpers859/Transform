@@ -994,6 +994,14 @@ extension ClaudeService {
         if calibration.recoveryConstrained && normalizedLevel != "High" && adjustedExerciseTarget > 1 {
             adjustedExerciseTarget -= 1
         }
+        // Feasibility invariant: the slot count must always be able to hold the
+        // (post-calibration) direct-set target under a ~4-set-per-exercise ceiling.
+        // Without this floor, the recovery/complexity slot reductions above can decouple
+        // slots from the target — e.g. 2 slots against a ~10-set High priority — leaving
+        // the allocator physically unable to reach directSetTarget, which the validator
+        // then reports as an unfixable "missed its direct-set target" hard failure.
+        let slotFloor = minimumExerciseSlots(forWeeklySetTarget: scaledDirectSets)
+        let reconciledExerciseTarget = max(1, min(5, max(adjustedExerciseTarget, slotFloor)))
 
         return MusclePriorityIntent(
             area: intent.area,
@@ -1001,7 +1009,7 @@ extension ClaudeService {
             rank: intent.rank,
             rationale: intent.rationale,
             weeklyDayTarget: intent.weeklyDayTarget,
-            weeklyExerciseTarget: max(1, min(5, adjustedExerciseTarget)),
+            weeklyExerciseTarget: reconciledExerciseTarget,
             weeklyDirectSetTarget: scaledDirectSets,
             weeklyStimulusTarget: scaledStimulus,
             preferredStyles: intent.preferredStyles,

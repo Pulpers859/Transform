@@ -879,10 +879,13 @@ extension ClaudeService {
     func validationDisposition(for issue: String, menuLocked: Bool = false) -> ValidationIssueDisposition {
         // In a locked-menu flow the deterministic allocator owns dosage and meaningful
         // frequency. Another AI call cannot repair these findings because set counts are locked.
+        // Only OVER-delivery / cap-exceed findings hard-fail a locked menu: those are real
+        // fatigue/safety problems the deterministic allocator should have avoided. Priority
+        // UNDER-delivery findings (missed direct-set / frequency / minimum-stimulus) are
+        // handled below as menu-locked warnings — see menuLockedDemotionPatterns — because
+        // the allocator already funded them to its feasible maximum and no downstream
+        // consumer can add locked sets, so hard-failing there only denies the user a program.
         let lockedPlanningPatterns = [
-            "missed its frequency target",
-            "minimum viable stimulus threshold",
-            "missed its direct-set target",
             "severely overshot its direct-set target",
             "overshot its direct-set target enough to create avoidable fatigue",
             "exceeds its focus-day direct-set cap",
@@ -980,6 +983,15 @@ extension ClaudeService {
 
     var menuLockedDemotionPatterns: [String] {
         [
+            // Priority UNDER-delivery in a locked-menu flow. The deterministic allocator owns
+            // set counts and always funds priorities to its feasible maximum, so a residual
+            // shortfall cannot be repaired by another AI call or by the procedural fallback
+            // (which shares this validator). It is also not dangerous. Surface it as an honest
+            // warning instead of a hard failure that would leave the user with no program at
+            // all. The upstream priority-coverage pass is what keeps these shortfalls rare.
+            "missed its direct-set target",
+            "missed its frequency target",
+            "minimum viable stimulus threshold",
             "uses too many weekly exercise variations",
             "was supposed to emphasize",
             "but never includes a prime",

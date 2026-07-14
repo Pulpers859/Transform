@@ -1436,8 +1436,14 @@ extension ClaudeService {
             trainingIntent: trainingIntent,
             avoidedExercises: avoidedExercises
         )
-        return allocateWeeklySetPrescription(
+        let feasibilityCompleteMenus = enforcePriorityDirectSetFeasibility(
             coverageCompleteMenus,
+            blueprint: blueprint,
+            trainingIntent: trainingIntent,
+            avoidedExercises: avoidedExercises
+        )
+        return allocateWeeklySetPrescription(
+            feasibilityCompleteMenus,
             blueprint: blueprint,
             weekNumber: weekNumber
         )
@@ -1523,6 +1529,150 @@ extension ClaudeService {
                     usedKeys.insert(key)
                     break candidateSearch
                 }
+            }
+        }
+
+        return updated
+    }
+
+    // MARK: - Priority Direct-Set Feasibility (the "fight")
+
+    /// Guarantees each priority actually has directly-crediting exercises spread across enough
+    /// distinct training days that its weekly `directSetTarget` is reachable under the blueprint's
+    /// per-session caps — BEFORE the allocator funds set counts.
+    ///
+    /// Without this, a small priority (e.g. Upper Chest, Lateral Deltoids) that the per-day
+    /// selection only trained on its single focus day collapses the weekly ceiling to one
+    /// session's cap (~8 sets). The allocator then physically cannot reach a ~10-set target, and
+    /// the validator reports an unfixable "missed its direct-set target" — the exact failure this
+    /// pass removes at the root. It mirrors `enforceBaselineMuscleCoverage`, but keyed on priority
+    /// frequency/slot targets instead of zero-coverage, and it only ever swaps a redundant
+    /// (duplicated-pattern, non-focus, non-anchor) slot, so no muscle loses its last exposure and
+    /// no session grows in length. Menu-locked-safe: the deterministic builder owns the menu here,
+    /// exactly where exercise selection is allowed to add work.
+    func enforcePriorityDirectSetFeasibility(
+        _ menus: [[PreSelectedExercise]],
+        blueprint: ProgramBlueprint,
+        trainingIntent: TrainingIntentPlan,
+        avoidedExercises: Set<String>
+    ) -> [[PreSelectedExercise]] {
+        var updated = menus
+        var usedKeys = Set(menus.joined().map { normalizeExerciseName($0.exerciseName) })
+
+        func credits(_ name: String, _ target: String, area: String) -> Bool {
+            directSetCredit(
+                for: WorkoutExerciseResponse(
+                    exerciseName: name,
+                    sets: 1,
+                    reps: "",
+                    tempo: "",
+                    restSeconds: 0,
+                    notes: "",
+                    muscleTarget: target
+                ),
+                area: area
+            ) > 0
+        }
+
+        for allocation in blueprint.priorityAllocations {
+            func creditingCount() -> Int {
+                updated.joined().filter { credits($0.exerciseName, $0.muscleTarget, area: allocation.area) }.count
+            }
+            func creditingDays() -> Set<Int> {
+                Set(updated.indices.filter { dayIndex in
+                    updated[dayIndex].contains { credits($0.exerciseName, $0.muscleTarget, area: allocation.area) }
+                })
+            }
+
+            let candidateDays = blueprint.dayPlans.indices.filter { dayIndex in
+                guard dayIndex < updated.count else { return false }
+                let plan = blueprint.dayPlans[dayIndex]
+                return !plan.isRestDay && !updated[dayIndex].isEmpty
+            }
+            guard !candidateDays.isEmpty else { continue }
+
+            let neededDays = min(allocation.targetFrequency, candidateDays.count)
+            // Enough distinct exercises that per-exercise sets can stay near the ~4-set ceiling
+            // instead of one movement being inflated to satisfy the target.
+            let neededSlots = min(allocation.targetExerciseSlots, candidateDays.count * 2)
+
+            var guardRail = neededSlots + candidateDays.count + 2
+            while guardRail > 0 {
+                guardRail -= 1
+                let days = creditingDays()
+                guard days.count < neededDays || creditingCount() < neededSlots else { break }
+
+                // Prefer style-compatible days without priority coverage (raises both day count
+                // and slot count); fall back to already-covered days (raises slot count only).
+                let orderedDays = candidateDays.sorted { lhs, rhs in
+                    let lhsUncovered = !days.contains(lhs)
+                    let rhsUncovered = !days.contains(rhs)
+                    if lhsUncovered != rhsUncovered { return lhsUncovered }
+                    return lhs < rhs
+                }
+
+                var placed = false
+                dayLoop: for dayIndex in orderedDays {
+                    // Never over-stack one session with a single priority.
+                    let dayCredits = updated[dayIndex].filter {
+                        credits($0.exerciseName, $0.muscleTarget, area: allocation.area)
+                    }.count
+                    guard dayCredits < 2 else { continue }
+
+                    let plan = blueprint.dayPlans[dayIndex]
+                    let focusIntent = focusIntentForArea(plan.focusArea, within: trainingIntent)
+                    let supportIntents = plan.supportAreas.compactMap { focusIntentForArea($0, within: trainingIntent) }
+
+                    for candidate in metadataFocusExerciseCatalog(for: allocation.area) {
+                        let key = normalizeExerciseName(candidate.name)
+                        guard !usedKeys.contains(key) else { continue }
+                        guard !avoidedExercises.contains(ExerciseWeightEntry.canonicalLookupKey(candidate.name)) else { continue }
+                        guard credits(candidate.name, candidate.target, area: allocation.area) else { continue }
+
+                        let probe = WorkoutExerciseResponse(
+                            exerciseName: candidate.name,
+                            sets: 1,
+                            reps: "",
+                            tempo: "",
+                            restSeconds: 0,
+                            notes: "",
+                            muscleTarget: candidate.target
+                        )
+                        guard exerciseMatchesDayStyle(probe, style: canonicalTrainingStyle(plan.style)) else { continue }
+                        guard let replaceIndex = baselineCoverageReplacementIndex(
+                            in: updated[dayIndex],
+                            focusIntent: focusIntent,
+                            supportIntents: supportIntents
+                        ) else { continue }
+
+                        // Do not evict a slot that already credits this same priority (net-zero swap).
+                        let evicted = updated[dayIndex][replaceIndex]
+                        guard !credits(evicted.exerciseName, evicted.muscleTarget, area: allocation.area) else { continue }
+
+                        var menusWithoutReplacedSlot = updated
+                        menusWithoutReplacedSlot[dayIndex].remove(at: replaceIndex)
+                        guard maintenanceSlotBudgetAllows(
+                            candidateName: candidate.name,
+                            candidateTarget: candidate.target,
+                            existingMenus: menusWithoutReplacedSlot,
+                            selectedToday: [],
+                            blueprint: blueprint
+                        ) else { continue }
+
+                        let metadata = exerciseMetadata(forExerciseName: candidate.name, muscleTarget: candidate.target)
+                        updated[dayIndex][replaceIndex] = PreSelectedExercise(
+                            exerciseName: candidate.name,
+                            muscleTarget: candidate.target,
+                            movementPattern: metadata.movementPattern,
+                            role: proceduralExerciseRole(for: candidate.name, muscleTarget: candidate.target),
+                            prescribedSets: 1
+                        )
+                        usedKeys.insert(key)
+                        placed = true
+                        break dayLoop
+                    }
+                }
+                if !placed { break }
             }
         }
 
