@@ -1167,8 +1167,50 @@ struct WorkoutView: View {
             var line = "- \(entry.exerciseName): \(Int(entry.weightLbs)) lb"
             if let reps = entry.repsCompleted { line += " x \(reps)" }
             line += " (\(formatter.string(from: entry.loggedAt)))"
+            if let verdict = progressionVerdict(for: entry) {
+                line += " — app verdict: \(verdict)"
+            }
             return line
         }.joined(separator: "\n")
+    }
+
+    /// Deterministic next-step verdict for one logged exercise, mirroring the
+    /// `ProgressionSuggestion` engine the workout screen shows the user. Injected into
+    /// the generation prompt so the AI's written progression cue cannot contradict the
+    /// live banner rendered next to it (seen live: coaching said "hold 70 lb in the
+    /// 10-12 range" while the banner correctly said "add load" after 3x14). Uses the
+    /// summary reps — per-set logs are not queried in this view — and the rep range
+    /// prescribed by the most recent program that ran the exercise.
+    func progressionVerdict(for entry: ExerciseWeightEntry) -> String? {
+        guard let reps = entry.repsCompleted, entry.weightLbs > 0,
+              let range = prescribedRepRange(forCanonicalKey: entry.canonicalExerciseKey)
+        else { return nil }
+
+        let weight = formatWeight(entry.weightLbs)
+        if reps >= range.high {
+            let next = formatWeight(
+                ProgressionSuggestion.nextLoad(from: entry.weightLbs, exerciseName: entry.exerciseName)
+            )
+            return "beat the \(range.low)-\(range.high) rep target at \(weight) lb — cue ADDING LOAD; next achievable step is \(next) lb"
+        }
+        if reps < range.low {
+            return "fell below the \(range.low)-\(range.high) rep target — cue HOLDING \(weight) lb and building reps"
+        }
+        return "inside the \(range.low)-\(range.high) rep target at \(weight) lb — cue ADDING REPS before load"
+    }
+
+    /// Rep range last prescribed for this exercise, matched by canonical key across the
+    /// newest-first `programs` query (which includes archived mesocycles).
+    func prescribedRepRange(forCanonicalKey key: String) -> RepRange? {
+        for program in programs {
+            for day in program.sortedDays {
+                for exercise in day.sortedExercises
+                where ExerciseWeightEntry.canonicalLookupKey(exercise.exerciseName) == key {
+                    if let range = RepRange.parse(exercise.reps) { return range }
+                }
+            }
+        }
+        return nil
     }
 
     func encodeJSONString<T: Encodable>(_ value: T, failureMessage: String) -> String? {

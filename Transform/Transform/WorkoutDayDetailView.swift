@@ -42,6 +42,9 @@ struct WorkoutDayDetailView: View {
             .padding()
         }
         .scrollDismissesKeyboard(.interactively)
+        // The default soft scroll edge leaves card text readable straight through the
+        // inline nav title on this dark theme; the hard edge keeps the bar legible.
+        .scrollEdgeEffectStyle(.hard, for: .top)
         .workoutTabBarClearance()
         .navigationTitle("Day \(day.dayNumber)")
         .navigationBarTitleDisplayMode(.inline)
@@ -420,8 +423,43 @@ struct ExerciseCard: View {
         hideProgressionCue: Bool,
         hideDeloadCue: Bool
     ) -> String {
+        let kept = coachingSentences(
+            from: note,
+            hideProgressionCue: hideProgressionCue,
+            hideDeloadCue: hideDeloadCue
+        ).prefix(3)
+
+        let compact = kept.joined(separator: " ")
+        guard compact.count > 420 else { return compact }
+
+        let prefix = compact.prefix(417).trimmingCharacters(in: .whitespacesAndNewlines)
+        return "\(prefix)..."
+    }
+
+    /// Full-length variant for the expanded Details view: same sentence filtering as the
+    /// collapsed cue, no sentence cap. The deterministic progression banner owns load/rep
+    /// advice, so an AI progression sentence surviving here can sit directly under a
+    /// banner saying the opposite (seen live: "hold 70 lb" under an "Add load" banner
+    /// after 3x14 beat a 10-12 prescription).
+    private func detailedWorkoutInsight(
+        from note: String,
+        hideProgressionCue: Bool,
+        hideDeloadCue: Bool
+    ) -> String {
+        coachingSentences(
+            from: note,
+            hideProgressionCue: hideProgressionCue,
+            hideDeloadCue: hideDeloadCue
+        ).joined(separator: " ")
+    }
+
+    private func coachingSentences(
+        from note: String,
+        hideProgressionCue: Bool,
+        hideDeloadCue: Bool
+    ) -> [String] {
         let sentences = splitSentences(note)
-        guard !sentences.isEmpty else { return "" }
+        guard !sentences.isEmpty else { return [] }
 
         var seen = Set<String>()
         var kept: [String] = []
@@ -442,7 +480,7 @@ struct ExerciseCard: View {
             if hideProgressionCue,
                containsAny(normalized, [
                 "next session", "add load", "add weight", "add reps", "before adding",
-                "progression", "progress load", "hold load", "increase to"
+                "before loading", "progression", "progress load", "hold load", "increase to"
                ]) {
                 continue
             }
@@ -457,14 +495,9 @@ struct ExerciseCard: View {
             guard seen.insert(key).inserted else { continue }
 
             kept.append(sentence)
-            if kept.count == 3 { break }
         }
 
-        let compact = kept.joined(separator: " ")
-        guard compact.count > 420 else { return compact }
-
-        let prefix = compact.prefix(417).trimmingCharacters(in: .whitespacesAndNewlines)
-        return "\(prefix)..."
+        return kept
     }
 
     private func splitSentences(_ text: String) -> [String] {
@@ -521,6 +554,14 @@ struct ExerciseCard: View {
 
     var conciseCoachingNote: String {
         conciseWorkoutInsight(
+            from: cleanedCoachingNote,
+            hideProgressionCue: progressionSuggestion != nil,
+            hideDeloadCue: isDeloadContext
+        )
+    }
+
+    var detailedCoachingNote: String {
+        detailedWorkoutInsight(
             from: cleanedCoachingNote,
             hideProgressionCue: progressionSuggestion != nil,
             hideDeloadCue: isDeloadContext
@@ -628,8 +669,11 @@ struct ExerciseCard: View {
                 }
 
                 if !conciseCoachingNote.isEmpty {
+                    // Expanded view gets the filtered full note, not the raw one: the raw
+                    // note can carry a generation-time progression cue that contradicts
+                    // the live ProgressionSuggestion banner rendered just above.
                     CoachingInsightCard(
-                        text: showDetails ? cleanedCoachingNote : conciseCoachingNote,
+                        text: showDetails ? detailedCoachingNote : conciseCoachingNote,
                         isExpanded: showDetails
                     )
                 }
@@ -1755,14 +1799,18 @@ struct ProgressionSuggestion {
     /// ones. Roughly 2.5% of the load, but the result is snapped to the smallest *real*
     /// load step for the equipment so the suggestion is always achievable. Dumbbells come
     /// in 5 lb pairs, so a 2.5 lb plate step would name an unloadable weight (e.g. 77.5 lb);
-    /// dumbbell lifts therefore step — and land — on 5 lb. Everything else uses a 2.5 lb
-    /// plate step. Equipment is inferred from the exercise name because the logged model
-    /// carries no equipment metadata; muscle-group guessing (the old approach) was strictly
-    /// worse. Returns the next weight to put on the bar/rack, not a bare increment.
+    /// dumbbell lifts therefore step — and land — on 5 lb. Selectorized weight stacks
+    /// (cables, pulldowns, pressdowns, machines) have the same problem: pins land on 5 or
+    /// 10 lb plates, so a 2.5 lb step names a stack position that doesn't exist (e.g.
+    /// 72.5 lb) — they step on 5 lb too. Everything else uses a 2.5 lb plate step.
+    /// Equipment is inferred from the exercise name because the logged model carries no
+    /// equipment metadata; muscle-group guessing (the old approach) was strictly worse.
+    /// Returns the next weight to put on the bar/rack, not a bare increment.
     static func nextLoad(from weight: Double, exerciseName: String) -> Double {
         guard weight > 0 else { return 2.5 }
         let isDumbbell = isDumbbellLift(exerciseName)
-        let step: Double = isDumbbell ? 5.0 : 2.5
+        let coarseIncrements = isDumbbell || isStackLift(exerciseName)
+        let step: Double = coarseIncrements ? 5.0 : 2.5
         let rawJump = max(weight * 0.025, step)
         let cappedJump = min(rawJump, isDumbbell ? 15.0 : 10.0)
         let target = weight + cappedJump
@@ -1778,6 +1826,20 @@ struct ProgressionSuggestion {
         if lowered.contains("dumbbell") { return true }
         let tokens = lowered.split { !$0.isLetter }
         return tokens.contains("db")
+    }
+
+    /// True when the exercise is loaded from a selectorized weight stack, inferred from
+    /// its name: "cable"/"machine" as whole-word tokens, plus movements that are
+    /// stack-driven by construction. Misses fall back to the 2.5 lb barbell step, so a
+    /// false negative only reproduces the old behavior.
+    static func isStackLift(_ name: String) -> Bool {
+        let lowered = name.lowercased()
+        if lowered.contains("pressdown") || lowered.contains("pushdown")
+            || lowered.contains("pulldown") || lowered.contains("pec deck") {
+            return true
+        }
+        let tokens = lowered.split { !$0.isLetter }
+        return tokens.contains("cable") || tokens.contains("machine")
     }
 
     /// Decide the next step from the genuine working sets only. Recommendations name the

@@ -279,7 +279,14 @@ extension ClaudeService {
         --- Logged performance (actual weights/reps from recent workouts — use for load cues) ---
         \(history)
         Use these actual loads to write concrete progression cues (e.g., "aim for 190 lb x 8" instead
-        of "select an appropriate weight"). Do not change the output schema or add new fields.
+        of "select an appropriate weight"). Where a line carries an "app verdict", that is the app's
+        deterministic progression engine speaking from the actual log — your written progression cue
+        for that exercise MUST agree with it: restate it in coaching language, never contradict it.
+        Never tell the user to hold a load and stay inside a rep range their logged reps already
+        exceed — that combination is impossible; prescribe the next load instead. Match increment
+        language to the equipment: dumbbells and weight-stack machines move in ~5 lb steps, barbells
+        in 2.5-5 lb, and "add a plate" is wrong for any cable/stack movement. Do not change the
+        output schema or add new fields.
         --- end logged performance ---
         """
     }

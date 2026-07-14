@@ -186,6 +186,9 @@ struct RestDayDetailView: View {
             }
             .padding()
         }
+        // Match WorkoutDayDetailView: hard top edge so scrolled content never reads
+        // through the inline nav title.
+        .scrollEdgeEffectStyle(.hard, for: .top)
         .workoutTabBarClearance()
         .navigationTitle("Recovery Day")
         .navigationBarTitleDisplayMode(.inline)
