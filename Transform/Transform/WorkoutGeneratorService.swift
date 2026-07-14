@@ -226,11 +226,7 @@ extension ClaudeService {
                         )
                         let decoded = try self.decodeJSONPayload(WorkoutProgramResponse.self, from: jsonString)
                         let cleaned = try await self.sanitizeProgramResponse(decoded)
-                        let prescribed = self.applyingPreselectedSetPrescription(
-                            to: cleaned,
-                            menus: exerciseMenus
-                        )
-                        return (i, .success(prescribed))
+                        return (i, .success(cleaned))
                     } catch {
                         return (i, .failure(error))
                     }
@@ -252,9 +248,13 @@ extension ClaudeService {
         for (i, result) in candidateResults {
             switch result {
             case .success(let cleaned):
-                let issues = validateProgramResponse(cleaned, blueprint: blueprint, expectedExerciseMenus: exerciseMenus, progressionVerdicts: progressionVerdicts)
+                let prescribed = applyingPreselectedSetPrescription(
+                    to: cleaned,
+                    menus: exerciseMenus
+                )
+                let issues = validateProgramResponse(prescribed, blueprint: blueprint, expectedExerciseMenus: exerciseMenus, progressionVerdicts: progressionVerdicts)
                 let score = issues.isEmpty ? 0 : scoreValidationIssues(issues, menuLocked: true)
-                scoredCandidates.append((response: cleaned, issues: issues, score: score))
+                scoredCandidates.append((response: prescribed, issues: issues, score: score))
                 if issues.isEmpty {
                     attemptTrace.append("Candidate \(i): Accepted — no issues")
                 } else {
@@ -544,12 +544,7 @@ extension ClaudeService {
                         )
                         let decoded = try self.decodeJSONPayload(WorkoutWeekResponse.self, from: jsonString)
                         let cleaned = try await self.sanitizeWeekResponse(decoded)
-                        let prescribed = self.applyingPreselectedSetPrescription(
-                            to: cleaned,
-                            menus: exerciseMenus,
-                            dayStart: dayStart
-                        )
-                        return (i, .success(prescribed))
+                        return (i, .success(cleaned))
                     } catch {
                         return (i, .failure(error))
                     }
@@ -571,8 +566,13 @@ extension ClaudeService {
         for (i, result) in candidateResults {
             switch result {
             case .success(let cleaned):
+                let prescribed = applyingPreselectedSetPrescription(
+                    to: cleaned,
+                    menus: exerciseMenus,
+                    dayStart: dayStart
+                )
                 let issues = validateWeekResponse(
-                    cleaned,
+                    prescribed,
                     dayStart: dayStart,
                     dayEnd: dayEnd,
                     previousWeekDays: hasValidPreviousWeek ? previousWeekDays : nil,
@@ -581,7 +581,7 @@ extension ClaudeService {
                     progressionVerdicts: progressionVerdicts
                 )
                 let score = issues.isEmpty ? 0 : scoreValidationIssues(issues, menuLocked: true)
-                scoredCandidates.append((response: cleaned, issues: issues, score: score))
+                scoredCandidates.append((response: prescribed, issues: issues, score: score))
                 if issues.isEmpty {
                     attemptTrace.append("Candidate \(i): Accepted — no issues")
                 } else {

@@ -1379,7 +1379,7 @@ extension ClaudeService {
                     usedAcrossDays: usedAcrossDays,
                     avoidedExercises: avoidedExercises,
                     selectionAllowed: {
-                        maintenanceSlotBudgetsAreFeasible(
+                        self.maintenanceSlotBudgetsAreFeasible(
                             existingMenus: allMenus,
                             selectedToday: $0,
                             blueprint: blueprint
@@ -1398,7 +1398,7 @@ extension ClaudeService {
                     usedAcrossDays: usedAcrossDays,
                     avoidedExercises: avoidedExercises,
                     selectionAllowed: {
-                        maintenanceSlotBudgetsAreFeasible(
+                        self.maintenanceSlotBudgetsAreFeasible(
                             existingMenus: allMenus,
                             selectedToday: $0,
                             blueprint: blueprint
