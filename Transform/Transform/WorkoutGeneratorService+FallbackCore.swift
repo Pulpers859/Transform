@@ -17,7 +17,18 @@ extension ClaudeService {
             exerciseMenus: exerciseMenus,
             diagnostic: diagnostic
         )
-        let issues = validateProgramResponse(fallback, blueprint: blueprint)
+        let (trimmedDays, _) = trimOvershootExercises(
+            days: fallback.days,
+            blueprint: blueprint
+        )
+        let trimmedFallback = WorkoutProgramResponse(
+            programName: fallback.programName,
+            programSummary: fallback.programSummary,
+            splitType: fallback.splitType,
+            daysPerWeek: fallback.daysPerWeek,
+            days: trimmedDays
+        )
+        let issues = validateProgramResponse(trimmedFallback, blueprint: blueprint)
         let hasHardFailure = issues.contains { validationDisposition(for: $0) == .hardFailure }
         guard issues.isEmpty || !hasHardFailure else {
             throw ClaudeError.parseError(
@@ -29,7 +40,7 @@ extension ClaudeService {
             print("[WorkoutGeneratorService] Procedural Week 1 fallback accepted with heuristic warnings: \(issues.joined(separator: " | "))")
         }
 
-        return fallback
+        return trimmedFallback
     }
 
     func validatedProceduralWeek(
@@ -56,8 +67,17 @@ extension ClaudeService {
             exerciseMenus: exerciseMenus,
             diagnostic: diagnostic
         )
+        let (trimmedDays, _) = trimOvershootExercises(
+            days: fallback.days,
+            blueprint: blueprint,
+            dayStart: dayStart
+        )
+        let trimmedFallback = WorkoutWeekResponse(
+            weekSummary: fallback.weekSummary,
+            days: trimmedDays
+        )
         let issues = validateWeekResponse(
-            fallback,
+            trimmedFallback,
             dayStart: dayStart,
             dayEnd: dayEnd,
             previousWeekDays: previousWeekDays,
@@ -74,7 +94,7 @@ extension ClaudeService {
             print("[WorkoutGeneratorService] Procedural week \(weekNumber) fallback accepted with heuristic warnings: \(issues.joined(separator: " | "))")
         }
 
-        return fallback
+        return trimmedFallback
     }
 
     func buildProceduralWeekOneProgram(
