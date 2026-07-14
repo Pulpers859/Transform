@@ -338,13 +338,15 @@ extension ClaudeService {
     func validateProgramResponse(
         _ program: WorkoutProgramResponse,
         blueprint: ProgramBlueprint,
-        expectedExerciseMenus: [[PreSelectedExercise]]? = nil
+        expectedExerciseMenus: [[PreSelectedExercise]]? = nil,
+        progressionVerdicts: [ExerciseProgressionVerdict] = []
     ) -> [String] {
         var issues: [String] = []
         let days = program.days
 
         issues.append(contentsOf: validateDaySet(days, dayStart: 1, dayEnd: 7))
         issues.append(contentsOf: validateBlueprint(days: days, blueprint: blueprint, dayStart: 1))
+        issues.append(contentsOf: validateCoachingCueConsistency(days: days, verdicts: progressionVerdicts))
         if let expectedExerciseMenus {
             issues.append(contentsOf: validateExerciseMenuAdherence(
                 days: days,
@@ -374,13 +376,15 @@ extension ClaudeService {
         dayEnd: Int,
         previousWeekDays: [WorkoutDayResponse]?,
         blueprint: ProgramBlueprint,
-        expectedExerciseMenus: [[PreSelectedExercise]]? = nil
+        expectedExerciseMenus: [[PreSelectedExercise]]? = nil,
+        progressionVerdicts: [ExerciseProgressionVerdict] = []
     ) -> [String] {
         var issues: [String] = []
         let days = week.days
 
         issues.append(contentsOf: validateDaySet(days, dayStart: dayStart, dayEnd: dayEnd))
         issues.append(contentsOf: validateBlueprint(days: days, blueprint: blueprint, dayStart: dayStart))
+        issues.append(contentsOf: validateCoachingCueConsistency(days: days, verdicts: progressionVerdicts))
         if let expectedExerciseMenus {
             issues.append(contentsOf: validateExerciseMenuAdherence(
                 days: days,
@@ -547,6 +551,12 @@ extension ClaudeService {
             }
         }
 
+        issues.append(contentsOf: validateNonPriorityMuscleVolume(
+            days: days,
+            blueprint: blueprint,
+            recoveryTight: recoveryTight
+        ))
+
         issues.append(contentsOf: validateDayPlans(days: days, blueprint: blueprint, dayStart: dayStart))
 
         for (dayNumber, fatigue) in stimulusReport.dailyFatigue where fatigue > maxDailyFatigueThreshold(for: days, dayNumber: dayNumber) {
@@ -556,6 +566,141 @@ extension ClaudeService {
         }
 
         return issues
+    }
+
+    /// 2026-07-14 audit fixes 3 + 4: the blueprint checks above police priority muscles
+    /// only, which let ~98 unbounded weekly sets and a zero-hamstring week pass silently.
+    /// Maintenance now has a ceiling and BASE-001 has a visible floor.
+    func validateNonPriorityMuscleVolume(
+        days: [WorkoutDayResponse],
+        blueprint: ProgramBlueprint,
+        recoveryTight: Bool
+    ) -> [String] {
+        var issues: [String] = []
+        let priorityAliases = priorityAliasUnion(for: blueprint)
+        // EvidenceProfile.md MAINT-001 [confidence: low-moderate]
+        let maintenanceCeiling = recoveryTight ? 8.0 : 10.0
+
+        for group in majorMuscleGroups {
+            let aliases = normalizedGroupAliases(forSeed: group.seed)
+            guard aliases.isDisjoint(with: priorityAliases) else { continue }
+
+            let directSets = weeklyDirectSets(forGroupAliases: aliases, days: days)
+            if directSets > maintenanceCeiling + 0.5 {
+                issues.append(
+                    "Non-priority muscle group '\(group.label)' exceeds the maintenance weekly volume ceiling (\(formatStimulusValue(directSets)) sets vs \(formatStimulusValue(maintenanceCeiling))). Maintenance means roughly 6-10 quality sets per week — trim redundant filler instead of stacking volume the recovery budget cannot pay for."
+                )
+            } else if directSets <= 0.01 {
+                // EvidenceProfile.md BASE-001 [confidence: high]
+                issues.append(
+                    "Muscle group '\(group.label)' receives zero direct sets this week. BASE-001 requires every major muscle group to keep at least a minimal weekly exposure — even maintenance is not zero."
+                )
+            }
+        }
+
+        return issues
+    }
+
+    // MARK: - Coaching Cue vs Logged History (enforcement half of 98349db)
+
+    /// The prompt already injects the deterministic progression verdict and requires the
+    /// AI cue to agree; nothing verified the model obeyed. Two history-contradicting cues
+    /// still shipped in the 2026-07-14 dump. This rule checks the two hard contradictions
+    /// only — "hold" cues against an add-load verdict and "add load" cues against a
+    /// below-range verdict. Mid-range (add-reps) verdicts are deliberately not policed:
+    /// "add reps before adding load" phrasing overlaps both vocabularies and false
+    /// positives there would erode trust in real findings.
+    func validateCoachingCueConsistency(
+        days: [WorkoutDayResponse],
+        verdicts: [ExerciseProgressionVerdict]
+    ) -> [String] {
+        guard !verdicts.isEmpty else { return [] }
+        let verdictsByKey = Dictionary(
+            verdicts.map { ($0.canonicalKey, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        var issues: [String] = []
+
+        for day in days where !day.isRestDay {
+            for exercise in day.exercises {
+                let key = ExerciseWeightEntry.canonicalLookupKey(exercise.exerciseName)
+                guard let verdict = verdictsByKey[key] else { continue }
+                guard let conflictSentence = coachingCueConflict(notes: exercise.notes, verdict: verdict.kind) else { continue }
+
+                let weight = formatStimulusValue(verdict.weightLbs)
+                let expected: String
+                switch verdict.kind {
+                case .addLoad:
+                    expected = "ADD LOAD (rep ceiling beaten at \(weight) lb)"
+                case .addRepsInRange:
+                    expected = "ADD REPS before load (inside the rep range at \(weight) lb)"
+                case .holdBelowRange:
+                    expected = "HOLD \(weight) lb and build reps (fell below the rep floor)"
+                }
+                issues.append(
+                    "Day \(day.dayNumber) exercise \(exercise.exerciseName): the coaching cue '\(conflictSentence)' contradicts the app's logged progression verdict — \(expected). Rewrite the cue to agree with the logged history; if the program is deliberately overriding the progression ladder, the cue must say so explicitly."
+                )
+            }
+        }
+
+        return issues
+    }
+
+    /// Returns the first non-conditional sentence that contradicts the verdict, nil when
+    /// the note is consistent. Conditional coaching ("if sleep is poor, hold the load")
+    /// is sanctioned by the prompt's progression model and never flagged.
+    func coachingCueConflict(notes: String, verdict: ProgressionVerdictKind) -> String? {
+        guard !notes.isEmpty else { return nil }
+
+        let holdPatterns = [
+            #"hold(ing)?\s+(at\s+)?\d+(\.\d+)?\s*(lb|lbs|pound)"#,
+            #"hold\s+(the|this|that|your)\s+(current\s+)?(load|weight)"#,
+            #"stay(ing)?\s+(at|with)\s+\d+"#,
+            #"stay(ing)?\s+(at|with)\s+(the|this)\s+(load|weight)"#,
+            #"keep\s+(the|this|your)\s+(same\s+)?(load|weight)"#,
+            #"same\s+(load|weight)"#,
+            #"(don't|do not)\s+add\s+(load|weight)"#
+        ]
+        let addLoadPatterns = [
+            #"add\s+(load|weight|a\s+plate)"#,
+            #"increase\s+(the\s+)?(load|weight)"#,
+            #"go\s+up\s+(in|to)\s+(load|weight)"#,
+            #"move\s+up\s+to\s+\d+(\.\d+)?\s*(lb|lbs)"#,
+            #"heavier\s+(load|weight|dumbbell|pair)"#,
+            #"load\s+increase"#
+        ]
+        let conditionalMarkers = ["if ", "when ", "once ", "after ", "unless "]
+
+        func matches(_ sentence: String, _ patterns: [String]) -> Bool {
+            patterns.contains {
+                sentence.range(of: $0, options: [.regularExpression, .caseInsensitive]) != nil
+            }
+        }
+
+        let sentences = notes
+            .split(whereSeparator: { ".;!?".contains($0) })
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+
+        for sentence in sentences {
+            let lowered = sentence.lowercased()
+            guard !conditionalMarkers.contains(where: { lowered.contains($0) }) else { continue }
+
+            switch verdict {
+            case .addLoad:
+                if matches(sentence, holdPatterns) && !matches(sentence, addLoadPatterns) {
+                    return sentence
+                }
+            case .holdBelowRange:
+                if matches(sentence, addLoadPatterns) {
+                    return sentence
+                }
+            case .addRepsInRange:
+                continue
+            }
+        }
+
+        return nil
     }
 
     func validateDaySet(_ days: [WorkoutDayResponse], dayStart: Int, dayEnd: Int) -> [String] {
@@ -677,7 +822,11 @@ extension ClaudeService {
             "undershot its targeted exercise-slot goal",
             "undershot its weighted stimulus target",
             "Too few anchor lifts carried over",
-            "substitution significantly increases shoulder risk"
+            "substitution significantly increases shoulder risk",
+            // BASE-001 floor: with a locked menu the AI cannot add a missing exercise,
+            // so this must never trigger a retry — the menu builder's coverage pass is
+            // the enforcement; this line is the observability net.
+            "receives zero direct sets this week"
         ]
     }
 
@@ -688,6 +837,8 @@ extension ClaudeService {
             "exceeds its per-session direct-set cap",
             "carries too much total fatigue load",
             "overshot its direct-set target enough to create avoidable fatigue",
+            "exceeds the maintenance weekly volume ceiling",
+            "contradicts the app's logged progression verdict",
             "was supposed to emphasize",
             "was planned for",
             "missed its direct-set target",
@@ -1017,6 +1168,67 @@ extension ClaudeService {
                 var updatedExercises = day.exercises
                 updatedExercises[target.exerciseIndex] = trimmedExercise
                 mutableDays[dayIndex] = WorkoutDayResponse(
+                    dayNumber: day.dayNumber,
+                    dayName: day.dayName,
+                    muscleGroups: day.muscleGroups,
+                    isRestDay: day.isRestDay,
+                    notes: day.notes,
+                    exercises: updatedExercises
+                )
+                didTrim = true
+            }
+        }
+
+        // Third pass — non-priority maintenance ceiling (EvidenceProfile.md MAINT-001,
+        // 2026-07-14 audit fix 3). This is
+        // deterministic set reduction so the correction loop does not spend an API call on
+        // filler volume the app can trim itself. Exercises crediting any priority area are
+        // untouchable here so this pass can never fight the blueprint targets above.
+        let maintenanceCeiling = recoveryTight ? 8.0 : 10.0
+        let priorityAliases = priorityAliasUnion(for: blueprint)
+        for group in majorMuscleGroups {
+            let aliases = normalizedGroupAliases(forSeed: group.seed)
+            guard aliases.isDisjoint(with: priorityAliases) else { continue }
+
+            var guardRail = 24
+            while weeklyDirectSets(forGroupAliases: aliases, days: mutableDays) > maintenanceCeiling + 0.5,
+                  guardRail > 0 {
+                guardRail -= 1
+
+                var candidate: (dayIndex: Int, exerciseIndex: Int, sets: Int)?
+                for (di, day) in mutableDays.enumerated() where !day.isRestDay {
+                    for (ei, exercise) in day.exercises.enumerated() {
+                        guard exercise.sets > 2 else { continue }
+                        guard exerciseDirectlyTargets(
+                            groupAliases: aliases,
+                            exerciseName: exercise.exerciseName,
+                            muscleTarget: exercise.muscleTarget
+                        ) else { continue }
+                        let creditsPriority = blueprint.priorityAllocations.contains {
+                            directSetCredit(for: exercise, area: $0.area) > 0
+                        }
+                        guard !creditsPriority else { continue }
+                        if candidate == nil || exercise.sets > candidate!.sets {
+                            candidate = (di, ei, exercise.sets)
+                        }
+                    }
+                }
+
+                guard let target = candidate else { break }
+                let day = mutableDays[target.dayIndex]
+                let exercise = day.exercises[target.exerciseIndex]
+                let trimmedSets = exercise.sets - 1
+                var updatedExercises = day.exercises
+                updatedExercises[target.exerciseIndex] = WorkoutExerciseResponse(
+                    exerciseName: exercise.exerciseName,
+                    sets: trimmedSets,
+                    reps: exercise.reps,
+                    tempo: exercise.tempo,
+                    restSeconds: exercise.restSeconds,
+                    notes: reconciledSetCountNotes(exercise.notes, toSetCount: trimmedSets),
+                    muscleTarget: exercise.muscleTarget
+                )
+                mutableDays[target.dayIndex] = WorkoutDayResponse(
                     dayNumber: day.dayNumber,
                     dayName: day.dayName,
                     muscleGroups: day.muscleGroups,

@@ -13,7 +13,7 @@ extension ClaudeService {
     var fallbackSourceLabel: String { "[Recovery Engine]" }
     var evidenceProfile: HypertrophyEvidenceProfile { Self.evidenceProfileCache }
     static let evidenceProfileCache = HypertrophyEvidenceProfile(
-        version: "hypertrophy_v1_5",
+        version: "hypertrophy_v1_6",
         defaultTrainingDays: 5,
         allowedStyles: ["Push", "Pull", "Legs", "Lower", "Upper", "Arms"],
         // EvidenceProfile.md FREQ-001 / SLOT-001 [confidence: moderate]
@@ -136,7 +136,7 @@ extension ClaudeService {
 
     // MARK: - Generate Week 1 (Initial)
 
-    func generateWeekOne(from analysisResult: BodyAnalysisResult, performanceHistory: String? = nil, skipHistory: String? = nil, exerciseHistory: ExerciseHistoryContext? = nil) async throws -> WorkoutProgramGenerationResult {
+    func generateWeekOne(from analysisResult: BodyAnalysisResult, performanceHistory: String? = nil, skipHistory: String? = nil, exerciseHistory: ExerciseHistoryContext? = nil, progressionVerdicts: [ExerciseProgressionVerdict] = []) async throws -> WorkoutProgramGenerationResult {
         WorkoutGenerationDiagnostics.markStage("building week 1 analysis context")
         let analysisSummary = analysisContext(from: analysisResult)
         let trainingIntent = trainingIntentPlan(from: analysisResult)
@@ -248,7 +248,7 @@ extension ClaudeService {
         for (i, result) in candidateResults {
             switch result {
             case .success(let cleaned):
-                let issues = validateProgramResponse(cleaned, blueprint: blueprint, expectedExerciseMenus: exerciseMenus)
+                let issues = validateProgramResponse(cleaned, blueprint: blueprint, expectedExerciseMenus: exerciseMenus, progressionVerdicts: progressionVerdicts)
                 let score = issues.isEmpty ? 0 : scoreValidationIssues(issues, menuLocked: true)
                 scoredCandidates.append((response: cleaned, issues: issues, score: score))
                 if issues.isEmpty {
@@ -310,7 +310,7 @@ extension ClaudeService {
                     daysPerWeek: best.response.daysPerWeek,
                     days: trimmedDays
                 )
-                let trimmedIssues = validateProgramResponse(trimmed, blueprint: blueprint, expectedExerciseMenus: exerciseMenus)
+                let trimmedIssues = validateProgramResponse(trimmed, blueprint: blueprint, expectedExerciseMenus: exerciseMenus, progressionVerdicts: progressionVerdicts)
                 if trimmedIssues.isEmpty {
                     print("[WorkoutGeneratorService] Week 1 best candidate accepted after trim — all issues resolved")
                     attemptTrace.append("Best candidate accepted after overshoot trim — all issues resolved")
@@ -358,7 +358,7 @@ extension ClaudeService {
                 )
                 let correctedDecoded = try decodeJSONPayload(WorkoutProgramResponse.self, from: correctedJSON)
                 let correctedCleaned = try await sanitizeProgramResponse(correctedDecoded)
-                let correctedIssues = validateProgramResponse(correctedCleaned, blueprint: blueprint, expectedExerciseMenus: exerciseMenus)
+                let correctedIssues = validateProgramResponse(correctedCleaned, blueprint: blueprint, expectedExerciseMenus: exerciseMenus, progressionVerdicts: progressionVerdicts)
 
                 if correctedIssues.isEmpty {
                     attemptTrace.append("Correction pass: Accepted — no issues")
@@ -383,7 +383,7 @@ extension ClaudeService {
                         daysPerWeek: correctedCleaned.daysPerWeek,
                         days: corrTrimDays
                     )
-                    let corrTrimIssues = validateProgramResponse(corrTrimmed, blueprint: blueprint, expectedExerciseMenus: exerciseMenus)
+                    let corrTrimIssues = validateProgramResponse(corrTrimmed, blueprint: blueprint, expectedExerciseMenus: exerciseMenus, progressionVerdicts: progressionVerdicts)
                     if corrTrimIssues.isEmpty || shouldAcceptAIOutput(despite: corrTrimIssues, menuLocked: true) {
                         let finalIssues = corrTrimIssues.isEmpty ? [] : corrTrimIssues
                         attemptTrace.append("Correction pass: Accepted after trim\(finalIssues.isEmpty ? "" : " with warnings")")
@@ -432,7 +432,7 @@ extension ClaudeService {
             exerciseMenus: exerciseMenus,
             diagnostic: lastIssues.joined(separator: " | ")
         )
-        let fallbackIssues = validateProgramResponse(fallbackResponse, blueprint: blueprint, expectedExerciseMenus: exerciseMenus)
+        let fallbackIssues = validateProgramResponse(fallbackResponse, blueprint: blueprint, expectedExerciseMenus: exerciseMenus, progressionVerdicts: progressionVerdicts)
         return WorkoutProgramGenerationResult(
             response: fallbackResponse,
             validatorWarnings: fallbackIssues,
@@ -467,7 +467,8 @@ extension ClaudeService {
         performanceHistory: String? = nil,
         sessionFeedbackSummary: String? = nil,
         skipHistory: String? = nil,
-        exerciseHistory: ExerciseHistoryContext? = nil
+        exerciseHistory: ExerciseHistoryContext? = nil,
+        progressionVerdicts: [ExerciseProgressionVerdict] = []
     ) async throws -> WorkoutWeekGenerationResult {
         let dayStart = ((weekNumber - 1) * 7) + 1
         let dayEnd = weekNumber * 7
@@ -619,7 +620,8 @@ extension ClaudeService {
                     dayEnd: dayEnd,
                     previousWeekDays: hasValidPreviousWeek ? previousWeekDays : nil,
                     blueprint: blueprint,
-                    expectedExerciseMenus: exerciseMenus
+                    expectedExerciseMenus: exerciseMenus,
+                    progressionVerdicts: progressionVerdicts
                 )
                 let score = issues.isEmpty ? 0 : scoreValidationIssues(issues, menuLocked: true)
                 scoredCandidates.append((response: cleaned, issues: issues, score: score))
@@ -683,7 +685,8 @@ extension ClaudeService {
                     dayEnd: dayEnd,
                     previousWeekDays: hasValidPreviousWeek ? previousWeekDays : nil,
                     blueprint: blueprint,
-                    expectedExerciseMenus: exerciseMenus
+                    expectedExerciseMenus: exerciseMenus,
+                    progressionVerdicts: progressionVerdicts
                 )
                 if trimmedIssues.isEmpty {
                     print("[WorkoutGeneratorService] Week \(weekNumber) best candidate accepted after trim — all issues resolved")
@@ -738,7 +741,8 @@ extension ClaudeService {
                     dayEnd: dayEnd,
                     previousWeekDays: hasValidPreviousWeek ? previousWeekDays : nil,
                     blueprint: blueprint,
-                    expectedExerciseMenus: exerciseMenus
+                    expectedExerciseMenus: exerciseMenus,
+                    progressionVerdicts: progressionVerdicts
                 )
 
                 if correctedIssues.isEmpty {
@@ -765,7 +769,8 @@ extension ClaudeService {
                         dayEnd: dayEnd,
                         previousWeekDays: hasValidPreviousWeek ? previousWeekDays : nil,
                         blueprint: blueprint,
-                        expectedExerciseMenus: exerciseMenus
+                        expectedExerciseMenus: exerciseMenus,
+                        progressionVerdicts: progressionVerdicts
                     )
                     if corrTrimIssues.isEmpty || shouldAcceptAIOutput(despite: corrTrimIssues, menuLocked: true) {
                         let finalIssues = corrTrimIssues.isEmpty ? [] : corrTrimIssues
@@ -826,7 +831,8 @@ extension ClaudeService {
             dayEnd: dayEnd,
             previousWeekDays: hasValidPreviousWeek ? previousWeekDays : nil,
             blueprint: blueprint,
-            expectedExerciseMenus: exerciseMenus
+            expectedExerciseMenus: exerciseMenus,
+            progressionVerdicts: progressionVerdicts
         )
         return WorkoutWeekGenerationResult(
             response: fallbackResponse,

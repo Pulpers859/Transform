@@ -80,9 +80,41 @@ extension ClaudeService {
     }
 
     func focusExerciseTargetCount(for intent: MusclePriorityIntent) -> Int {
+        // EvidenceProfile.md SLOT-001 / VOL-001 [confidence: moderate]
         let exposures = max(1, intent.weeklyDayTarget)
-        let perSessionTarget = Int(ceil(Double(intent.weeklyExerciseTarget) / Double(exposures)))
-        return max(1, min(3, perSessionTarget))
+        let slotDrivenTarget = Int(ceil(Double(intent.weeklyExerciseTarget) / Double(exposures)))
+        // Set-arithmetic floor: enough exercises per exposure that the session's share of
+        // the weekly direct-set target never forces a single exercise above ~4 sets.
+        let setDrivenTarget = Int(ceil(intent.weeklyDirectSetTarget / Double(exposures) / 4.0))
+        return max(1, min(3, max(slotDrivenTarget, setDrivenTarget)))
+    }
+
+    // MARK: - Within-Day Movement-Pattern Cap
+
+    /// Movement pattern used for the within-day redundancy cap; nil when metadata has no
+    /// usable pattern so unrecognized exercises never share one blocking bucket.
+    func menuMovementPattern(forExerciseName name: String, muscleTarget: String) -> String? {
+        let pattern = exerciseMetadata(forExerciseName: name, muscleTarget: muscleTarget)
+            .movementPattern
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return pattern.isEmpty ? nil : pattern
+    }
+
+    /// A single session gets at most 2 exercises of the same movement pattern. This is the
+    /// selection-time guard against menus like four vertical pulls or three flat presses in
+    /// one day — previously only penalized during fatigue trimming, never prevented.
+    func dayPatternCapAllows(
+        candidateName: String,
+        candidateTarget: String,
+        in selected: [(name: String, target: String)]
+    ) -> Bool {
+        guard let pattern = menuMovementPattern(forExerciseName: candidateName, muscleTarget: candidateTarget) else {
+            return true
+        }
+        let matches = selected.filter {
+            menuMovementPattern(forExerciseName: $0.name, muscleTarget: $0.target) == pattern
+        }.count
+        return matches < 2
     }
 
     func metadataFocusExerciseCatalog(for focusArea: String) -> [(name: String, target: String)] {
@@ -117,6 +149,7 @@ extension ClaudeService {
                 guard !usedAcrossDays.contains(candidateKey) else { continue }
                 guard !avoidedExercises.contains(ExerciseWeightEntry.canonicalLookupKey(candidate.name)) else { continue }
                 guard !result.contains(where: { normalizeExerciseName($0.name) == candidateKey }) else { continue }
+                guard dayPatternCapAllows(candidateName: candidate.name, candidateTarget: candidate.target, in: result) else { continue }
 
                 if result.count >= selectionLimit {
                     guard let removalIndex = result.indices.reversed().first(where: { index in
@@ -171,6 +204,7 @@ extension ClaudeService {
                     guard !usedAcrossDays.contains(candidateKey) else { continue }
                     guard !avoidedExercises.contains(ExerciseWeightEntry.canonicalLookupKey(candidate.name)) else { continue }
                     guard !result.contains(where: { normalizeExerciseName($0.name) == candidateKey }) else { continue }
+                    guard dayPatternCapAllows(candidateName: candidate.name, candidateTarget: candidate.target, in: result) else { continue }
 
                     if result.count >= selectionLimit {
                         guard let removalIndex = result.indices.reversed().first(where: { index in
@@ -1183,6 +1217,7 @@ extension ClaudeService {
             for candidate in catalog where selected.count < targetCount {
                 let key = normalizeExerciseName(candidate.name)
                 guard !used.contains(key) else { continue }
+                guard dayPatternCapAllows(candidateName: candidate.name, candidateTarget: candidate.target, in: selected) else { continue }
                 used.insert(key)
                 selected.append((candidate.name, candidate.target))
             }
@@ -1216,6 +1251,7 @@ extension ClaudeService {
                         muscleTarget: candidate.target
                     )
                     guard exerciseMatchesDayStyle(probe, style: styleKey) else { continue }
+                    guard dayPatternCapAllows(candidateName: candidate.name, candidateTarget: candidate.target, in: selected) else { continue }
                     used.insert(key)
                     selected.append((candidate.name, candidate.target))
                 }
@@ -1227,6 +1263,15 @@ extension ClaudeService {
             // this same menu, it becomes a deterministic, retry-proof generation dead-end.
             // Pain-avoided movements stay excluded (`catalog` is already history-filtered).
             if selected.count < 5 {
+                // First sweep honors the within-day pattern cap; the uncapped second sweep
+                // only runs if the menu is still short, because a <5 menu is a validator
+                // hard failure and a deterministic dead-end that outranks pattern hygiene.
+                for candidate in catalog where selected.count < 5 {
+                    let key = normalizeExerciseName(candidate.name)
+                    guard !selected.contains(where: { normalizeExerciseName($0.name) == key }) else { continue }
+                    guard dayPatternCapAllows(candidateName: candidate.name, candidateTarget: candidate.target, in: selected) else { continue }
+                    selected.append((candidate.name, candidate.target))
+                }
                 for candidate in catalog where selected.count < 5 {
                     let key = normalizeExerciseName(candidate.name)
                     guard !selected.contains(where: { normalizeExerciseName($0.name) == key }) else { continue }
@@ -1280,7 +1325,133 @@ extension ClaudeService {
             })
         }
 
-        return allMenus
+        return enforceBaselineMuscleCoverage(
+            allMenus,
+            blueprint: blueprint,
+            trainingIntent: trainingIntent,
+            avoidedExercises: avoidedExercises
+        )
+    }
+
+    // MARK: - BASE-001 Baseline Muscle Coverage (menu-level floor)
+
+    /// EvidenceProfile.md BASE-001 [confidence: high]. The per-day selection above only
+    /// enforces focus/support coverage, so a whole week could ship with zero direct work
+    /// for an unlisted muscle (seen live: no hamstring exposure all week while calves got
+    /// 6 sets). For every non-priority major muscle group with zero direct coverage, swap
+    /// one redundant slot for the lowest-fatigue direct movement on a style-compatible day.
+    func enforceBaselineMuscleCoverage(
+        _ menus: [[PreSelectedExercise]],
+        blueprint: ProgramBlueprint,
+        trainingIntent: TrainingIntentPlan,
+        avoidedExercises: Set<String>
+    ) -> [[PreSelectedExercise]] {
+        var updated = menus
+        var usedKeys = Set(menus.joined().map { normalizeExerciseName($0.exerciseName) })
+        let priorityAliases = priorityAliasUnion(for: blueprint)
+
+        for group in majorMuscleGroups {
+            let aliases = normalizedGroupAliases(forSeed: group.seed)
+            guard aliases.isDisjoint(with: priorityAliases) else { continue }
+
+            let covered = updated.joined().contains { exercise in
+                exerciseDirectlyTargets(
+                    groupAliases: aliases,
+                    exerciseName: exercise.exerciseName,
+                    muscleTarget: exercise.muscleTarget
+                )
+            }
+            guard !covered else { continue }
+
+            candidateSearch: for candidate in metadataFocusExerciseCatalog(for: group.seed) {
+                let key = normalizeExerciseName(candidate.name)
+                guard !usedKeys.contains(key) else { continue }
+                guard !avoidedExercises.contains(ExerciseWeightEntry.canonicalLookupKey(candidate.name)) else { continue }
+                guard exerciseDirectlyTargets(
+                    groupAliases: aliases,
+                    exerciseName: candidate.name,
+                    muscleTarget: candidate.target
+                ) else { continue }
+
+                let probe = WorkoutExerciseResponse(
+                    exerciseName: candidate.name,
+                    sets: 3,
+                    reps: "10-12",
+                    tempo: "",
+                    restSeconds: 60,
+                    notes: "",
+                    muscleTarget: candidate.target
+                )
+
+                for (dayOffset, plan) in blueprint.dayPlans.enumerated()
+                where !plan.isRestDay && dayOffset < updated.count && !updated[dayOffset].isEmpty {
+                    guard exerciseMatchesDayStyle(probe, style: canonicalTrainingStyle(plan.style)) else { continue }
+
+                    let focusIntent = focusIntentForArea(plan.focusArea, within: trainingIntent)
+                    let supportIntents = plan.supportAreas.compactMap { focusIntentForArea($0, within: trainingIntent) }
+                    guard let replaceIndex = baselineCoverageReplacementIndex(
+                        in: updated[dayOffset],
+                        focusIntent: focusIntent,
+                        supportIntents: supportIntents
+                    ) else { continue }
+
+                    let metadata = exerciseMetadata(forExerciseName: candidate.name, muscleTarget: candidate.target)
+                    updated[dayOffset][replaceIndex] = PreSelectedExercise(
+                        exerciseName: candidate.name,
+                        muscleTarget: candidate.target,
+                        movementPattern: metadata.movementPattern,
+                        role: proceduralExerciseRole(for: candidate.name, muscleTarget: candidate.target)
+                    )
+                    usedKeys.insert(key)
+                    break candidateSearch
+                }
+            }
+        }
+
+        return updated
+    }
+
+    /// Slot the coverage pass may sacrifice: prefer the last exercise whose movement
+    /// pattern is already duplicated in the session, never a focus/support match, never
+    /// an anchor. Returns nil when the day has nothing expendable.
+    func baselineCoverageReplacementIndex(
+        in menu: [PreSelectedExercise],
+        focusIntent: MusclePriorityIntent?,
+        supportIntents: [MusclePriorityIntent]
+    ) -> Int? {
+        let patternCounts = Dictionary(grouping: menu.indices, by: { menu[$0].movementPattern })
+            .mapValues(\.count)
+
+        func matchesDayIntent(_ exercise: PreSelectedExercise) -> Bool {
+            if let focusIntent,
+               exerciseMatchesTrainingIntent(
+                   name: exercise.exerciseName,
+                   target: exercise.muscleTarget,
+                   intent: focusIntent
+               ) {
+                return true
+            }
+            return supportIntents.contains { intent in
+                exerciseMatchesTrainingIntent(
+                    name: exercise.exerciseName,
+                    target: exercise.muscleTarget,
+                    intent: intent
+                )
+            }
+        }
+
+        if let redundantIndex = menu.indices.reversed().first(where: { index in
+            patternCounts[menu[index].movementPattern, default: 0] > 1
+                && !matchesDayIntent(menu[index])
+                && menu[index].role != .anchor
+        }) {
+            return redundantIndex
+        }
+
+        return menu.indices.reversed().first { index in
+            !matchesDayIntent(menu[index])
+                && (menu[index].role == .accessory || menu[index].role == .core)
+        }
     }
 
     // MARK: - Phase 2: Exercise History Filtering

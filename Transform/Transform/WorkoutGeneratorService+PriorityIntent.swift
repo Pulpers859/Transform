@@ -38,6 +38,7 @@ extension ClaudeService {
         let preferredPatterns = inferredMovementPatterns(for: canonicalArea, profile: profile, workoutRecommendations: workoutRecommendations)
         let defaultVolumeBias = priorityLevel == "High" ? "High" : "Moderate"
         let defaultDirectWorkBias = profile.label == "Core/Abs" ? "Direct emphasis" : "Primary hypertrophy emphasis"
+        let setTarget = weeklyDirectSetTarget(for: priorityLevel, volumeBias: defaultVolumeBias, directWorkBias: defaultDirectWorkBias)
 
         return MusclePriorityIntent(
             area: canonicalArea,
@@ -45,8 +46,11 @@ extension ClaudeService {
             rank: rank,
             rationale: rationale,
             weeklyDayTarget: weeklyDayTarget(for: priorityLevel, rank: rank),
-            weeklyExerciseTarget: weeklyExerciseTarget(for: priorityLevel, rank: rank),
-            weeklyDirectSetTarget: weeklyDirectSetTarget(for: priorityLevel, volumeBias: defaultVolumeBias, directWorkBias: defaultDirectWorkBias),
+            weeklyExerciseTarget: max(
+                weeklyExerciseTarget(for: priorityLevel, rank: rank),
+                minimumExerciseSlots(forWeeklySetTarget: setTarget)
+            ),
+            weeklyDirectSetTarget: setTarget,
             weeklyStimulusTarget: weeklyStimulusTarget(for: priorityLevel, volumeBias: defaultVolumeBias, directWorkBias: defaultDirectWorkBias),
             preferredStyles: profile.preferredStyles,
             preferredMovementPatterns: preferredPatterns,
@@ -87,6 +91,7 @@ extension ClaudeService {
         let cleanedVolumeBias = priority.volumeBias.trimmedOr(default: fallbackIntent.volumeBias)
         let cleanedDirectWorkBias = priority.directWorkBias.trimmedOr(default: fallbackIntent.directWorkBias)
         let cleanedRationale = priority.rationale.trimmedOr(default: fallbackIntent.rationale)
+        let setTarget = weeklyDirectSetTarget(for: level, volumeBias: cleanedVolumeBias, directWorkBias: cleanedDirectWorkBias)
 
         return MusclePriorityIntent(
             area: canonicalArea,
@@ -94,8 +99,14 @@ extension ClaudeService {
             rank: rank,
             rationale: cleanedRationale,
             weeklyDayTarget: max(1, min(3, priority.weeklyDayTarget)),
-            weeklyExerciseTarget: max(1, min(5, priority.weeklyExerciseTarget)),
-            weeklyDirectSetTarget: weeklyDirectSetTarget(for: level, volumeBias: cleanedVolumeBias, directWorkBias: cleanedDirectWorkBias),
+            // The structured intent's slot count is advisory; the set-target floor is not.
+            // An AI-supplied 2 slots against a 10.5-set target is what produced a 6-set
+            // single-exercise correction in the 2026-07-14 audit.
+            weeklyExerciseTarget: max(
+                max(1, min(5, priority.weeklyExerciseTarget)),
+                minimumExerciseSlots(forWeeklySetTarget: setTarget)
+            ),
+            weeklyDirectSetTarget: setTarget,
             weeklyStimulusTarget: weeklyStimulusTarget(for: level, volumeBias: cleanedVolumeBias, directWorkBias: cleanedDirectWorkBias),
             preferredStyles: cleanedStyles,
             preferredMovementPatterns: cleanedPatterns,
@@ -281,6 +292,14 @@ extension ClaudeService {
         // EvidenceProfile.md SLOT-001 [confidence: moderate]
         let normalizedLevel = normalizedPriorityLevel(priorityLevel, rank: rank)
         return evidenceProfile.exerciseSlotTargetsByPriority[normalizedLevel] ?? 1
+    }
+
+    /// Minimum weekly exercise slots implied by a direct-set target so that no single
+    /// exercise is forced above ~4 working sets. Without this floor, a 10+ set priority
+    /// arriving with 2 slots makes the correction pass inflate one exercise to 5-6 sets
+    /// to satisfy the validator — diminishing-returns volume the slot math created.
+    func minimumExerciseSlots(forWeeklySetTarget setTarget: Double) -> Int {
+        max(1, Int(ceil(setTarget / 4.0)))
     }
 
     func weeklyDirectSetTarget(for priorityLevel: String, volumeBias: String, directWorkBias: String) -> Double {
@@ -487,6 +506,71 @@ extension ClaudeService {
 
     func directSetCredit(for exercise: WorkoutExerciseResponse, area: String) -> Double {
         stimulusCredit(for: exercise, area: area).directSets
+    }
+
+    // MARK: - Major Muscle Group Accounting (BASE-001 floor / maintenance ceiling)
+
+    /// EvidenceProfile.md BASE-001 [confidence: high]. Seeds resolve through
+    /// `stimulusAreaAliases`, so "back" covers Lats/Upper Back/Mid Back and "core"
+    /// covers Abs/Obliques/Serratus. "calf" (not "calves") because the alias table
+    /// matches on the substring "calf".
+    var majorMuscleGroups: [(label: String, seed: String)] {
+        [
+            ("Chest", "chest"),
+            ("Back", "back"),
+            ("Shoulders", "shoulders"),
+            ("Biceps", "biceps"),
+            ("Triceps", "triceps"),
+            ("Quads", "quads"),
+            ("Hamstrings", "hamstrings"),
+            ("Glutes", "glutes"),
+            ("Calves", "calf"),
+            ("Core", "core")
+        ]
+    }
+
+    func normalizedGroupAliases(forSeed seed: String) -> Set<String> {
+        Set(stimulusAreaAliases(for: seed).map(normalizedPriorityText))
+    }
+
+    /// Union of all blueprint priority aliases; muscle groups intersecting this set are
+    /// governed by their priority allocations, not the maintenance ceiling / coverage floor.
+    func priorityAliasUnion(for blueprint: ProgramBlueprint) -> Set<String> {
+        Set(
+            blueprint.priorityAllocations
+                .flatMap { stimulusAreaAliases(for: $0.area) }
+                .map(normalizedPriorityText)
+        )
+    }
+
+    func exerciseDirectlyTargets(
+        groupAliases: Set<String>,
+        exerciseName: String,
+        muscleTarget: String
+    ) -> Bool {
+        let metadata = exerciseMetadata(forExerciseName: exerciseName, muscleTarget: muscleTarget)
+        let primaryAliases = Set(
+            metadata.primaryAreas
+                .flatMap { stimulusAreaAliases(for: $0) }
+                .map(normalizedPriorityText)
+        )
+        return !groupAliases.isDisjoint(with: primaryAliases)
+    }
+
+    /// Weekly direct sets for one muscle group, computed straight from the days rather
+    /// than from `WeekStimulusReport` — the report keys per metadata area, so summing
+    /// Lats + Upper Back + Mid Back keys would double-count multi-area rows.
+    func weeklyDirectSets(forGroupAliases aliases: Set<String>, days: [WorkoutDayResponse]) -> Double {
+        days.filter { !$0.isRestDay }.reduce(0.0) { weekTotal, day in
+            weekTotal + day.exercises.reduce(0.0) { dayTotal, exercise in
+                guard exerciseDirectlyTargets(
+                    groupAliases: aliases,
+                    exerciseName: exercise.exerciseName,
+                    muscleTarget: exercise.muscleTarget
+                ) else { return dayTotal }
+                return dayTotal + Double(exercise.sets)
+            }
+        }
     }
 
     func weightedStimulusCredit(for exercise: WorkoutExerciseResponse, area: String) -> Double {

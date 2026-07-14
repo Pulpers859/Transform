@@ -240,6 +240,23 @@ extension ClaudeService {
         let role: ProceduralExerciseRole
     }
 
+    /// Deterministic double-progression verdict for one logged exercise, mirroring the
+    /// ProgressionSuggestion banner. Built in WorkoutView from the same entries that feed
+    /// the prompt's "app verdict" lines (98349db), and passed into validation so the
+    /// validator can reject AI coaching cues that contradict the logged history.
+    enum ProgressionVerdictKind: String {
+        case addLoad
+        case addRepsInRange
+        case holdBelowRange
+    }
+
+    struct ExerciseProgressionVerdict {
+        let canonicalKey: String
+        let exerciseName: String
+        let kind: ProgressionVerdictKind
+        let weightLbs: Double
+    }
+
     struct ExerciseHistoryContext {
         let painExercises: Set<String>
         let equipmentSkipExercises: Set<String>

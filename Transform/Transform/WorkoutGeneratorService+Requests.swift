@@ -154,7 +154,15 @@ extension ClaudeService {
         }
 
         if issues.contains(where: { $0.contains("minimum viable stimulus threshold") || $0.contains("missed its frequency target") || $0.contains("missed its direct-set target") }) {
-            rules.append("- If frequency or direct-set targets are short, increase set counts on existing exercises targeting the underserved muscle.")
+            rules.append("- If frequency or direct-set targets are short, increase set counts on existing exercises targeting the underserved muscle — but never push a single exercise above 4 working sets (5 for the day's first anchor compound). If the target is still short at that ceiling, raise a second matching exercise instead of stacking more sets on one movement.")
+        }
+
+        if issues.contains(where: { $0.contains("contradicts the app's logged progression verdict") }) {
+            rules.append("- Rewrite only the flagged coaching cue text so it agrees with the app's logged progression verdict quoted in the issue. Do not change sets, reps, or exercises to resolve a cue contradiction.")
+        }
+
+        if issues.contains(where: { $0.contains("exceeds the maintenance weekly volume ceiling") }) {
+            rules.append("- Non-priority muscles are maintenance work: reduce their exercises toward 2-set doses until the named muscle group is at or under its weekly ceiling. Never cut priority-muscle volume to fix this.")
         }
 
         if issues.contains(where: { $0.contains("session budget") || $0.contains("too crowded") || $0.contains("fatigue load") }) {
