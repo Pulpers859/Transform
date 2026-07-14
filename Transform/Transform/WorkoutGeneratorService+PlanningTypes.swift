@@ -238,6 +238,7 @@ extension ClaudeService {
         let muscleTarget: String
         let movementPattern: String
         let role: ProceduralExerciseRole
+        var prescribedSets: Int
     }
 
     /// Deterministic double-progression verdict for one logged exercise, mirroring the

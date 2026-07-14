@@ -42,6 +42,11 @@ Use this skill to review the Transform workout-generation stack with the app's r
 - If the validator is wrong, improve the validator.
 - Preserve the split `WorkoutGeneratorService` architecture.
 - Fix the right layer instead of piling logic into one file.
+- Assume a post-generation trim or validator-severity change is incomplete until the audit
+  proves the upstream blueprint/menu/prescription could not have prevented the invalid state.
+- For multi-finding workshop dumps, reproduce each finding's arithmetic and verify whether one
+  shared cause truly explains all findings before saying they are fixed.
+- Treat fallback as a consumer of the same valid plan, not a second place to repair an invalid plan.
 - Distinguish evidence-backed conclusions from heuristic judgments.
 - Treat validator-clean output as insufficient proof of programming quality.
 - Prefer findings first when reviewing; summary second.

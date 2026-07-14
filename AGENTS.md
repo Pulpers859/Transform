@@ -37,6 +37,12 @@
 - If only part of the work is complete, either commit and push the finished subset or explicitly tell the user what is still intentionally local and why.
 - Preserve user changes unless the user explicitly asks otherwise.
 - Fix root causes, not cosmetic symptoms.
+- For generator or validator incidents, map the failure to its earliest deterministic cause
+  before editing. Post-generation trimming, warning demotion, fallback acceptance, or retry
+  changes are containment measures unless the planning layer is shown to be correct.
+- Do not claim a batch of generator findings is fixed because one shared warning disappeared.
+  Re-run or arithmetically reproduce every reported finding, and state separately what is
+  proven by code/tests versus what still requires the owner's physical-iPhone generation.
 - Keep workout quality and evidence-informed programming integrity ahead of validator convenience.
 - Respect the split `WorkoutGeneratorService` architecture.
 

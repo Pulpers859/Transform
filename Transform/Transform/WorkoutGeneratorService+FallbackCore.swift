@@ -17,19 +17,14 @@ extension ClaudeService {
             exerciseMenus: exerciseMenus,
             diagnostic: diagnostic
         )
-        let (trimmedDays, _) = trimOvershootExercises(
-            days: fallback.days,
-            blueprint: blueprint
+        let issues = validateProgramResponse(
+            fallback,
+            blueprint: blueprint,
+            expectedExerciseMenus: exerciseMenus ?? []
         )
-        let trimmedFallback = WorkoutProgramResponse(
-            programName: fallback.programName,
-            programSummary: fallback.programSummary,
-            splitType: fallback.splitType,
-            daysPerWeek: fallback.daysPerWeek,
-            days: trimmedDays
-        )
-        let issues = validateProgramResponse(trimmedFallback, blueprint: blueprint)
-        let hasHardFailure = issues.contains { validationDisposition(for: $0) == .hardFailure }
+        let hasHardFailure = issues.contains {
+            validationDisposition(for: $0, menuLocked: exerciseMenus != nil) == .hardFailure
+        }
         guard issues.isEmpty || !hasHardFailure else {
             throw ClaudeError.parseError(
                 "Procedural fallback generated an invalid Week 1 program: \(issues.joined(separator: " | "))"
@@ -40,7 +35,7 @@ extension ClaudeService {
             print("[WorkoutGeneratorService] Procedural Week 1 fallback accepted with heuristic warnings: \(issues.joined(separator: " | "))")
         }
 
-        return trimmedFallback
+        return fallback
     }
 
     func validatedProceduralWeek(
@@ -67,23 +62,17 @@ extension ClaudeService {
             exerciseMenus: exerciseMenus,
             diagnostic: diagnostic
         )
-        let (trimmedDays, _) = trimOvershootExercises(
-            days: fallback.days,
-            blueprint: blueprint,
-            dayStart: dayStart
-        )
-        let trimmedFallback = WorkoutWeekResponse(
-            weekSummary: fallback.weekSummary,
-            days: trimmedDays
-        )
         let issues = validateWeekResponse(
-            trimmedFallback,
+            fallback,
             dayStart: dayStart,
             dayEnd: dayEnd,
             previousWeekDays: previousWeekDays,
-            blueprint: blueprint
+            blueprint: blueprint,
+            expectedExerciseMenus: exerciseMenus ?? []
         )
-        let hasHardFailure = issues.contains { validationDisposition(for: $0) == .hardFailure }
+        let hasHardFailure = issues.contains {
+            validationDisposition(for: $0, menuLocked: exerciseMenus != nil) == .hardFailure
+        }
         guard issues.isEmpty || !hasHardFailure else {
             throw ClaudeError.parseError(
                 "Procedural fallback generated an invalid week \(weekNumber): \(issues.joined(separator: " | "))"
@@ -94,7 +83,7 @@ extension ClaudeService {
             print("[WorkoutGeneratorService] Procedural week \(weekNumber) fallback accepted with heuristic warnings: \(issues.joined(separator: " | "))")
         }
 
-        return trimmedFallback
+        return fallback
     }
 
     func buildProceduralWeekOneProgram(
@@ -183,12 +172,7 @@ extension ClaudeService {
                 exercises = programMenuExercises(
                     menu: menu!,
                     weekNumber: weekNumber,
-                    style: style,
-                    focus: focus,
-                    focusIntent: focusIntent,
-                    supportIntents: supportIntents,
-                    targetFatigueCap: plan.targetFatigueCap,
-                    targetSessionMinutes: plan.targetSessionMinutes
+                    focus: focus
                 )
             } else {
                 let styleKey = canonicalTrainingStyle(style)
@@ -239,13 +223,15 @@ extension ClaudeService {
             )
         }
 
-        days = repairedProceduralDays(
-            days,
-            weekNumber: weekNumber,
-            blueprint: blueprint,
-            dayStart: dayStart,
-            menuLocked: exerciseMenus != nil
-        )
+        if exerciseMenus == nil {
+            days = repairedProceduralDays(
+                days,
+                weekNumber: weekNumber,
+                blueprint: blueprint,
+                dayStart: dayStart,
+                menuLocked: false
+            )
+        }
 
         let summary = "Week \(weekNumber) for \(programName) (\(splitType)) applies phase-aware progression and shift-work-friendly session design."
         return WorkoutWeekResponse(
@@ -1304,12 +1290,7 @@ extension ClaudeService {
     func programMenuExercises(
         menu: [PreSelectedExercise],
         weekNumber: Int,
-        style: String,
-        focus: String,
-        focusIntent: MusclePriorityIntent?,
-        supportIntents: [MusclePriorityIntent],
-        targetFatigueCap: Int,
-        targetSessionMinutes: Int
+        focus: String
     ) -> [WorkoutExerciseResponse] {
         let mapped = menu.enumerated().map { index, item in
             let reps = proceduralRepRange(
@@ -1319,7 +1300,7 @@ extension ClaudeService {
             )
             return WorkoutExerciseResponse(
                 exerciseName: item.exerciseName,
-                sets: proceduralSets(for: weekNumber, exerciseName: item.exerciseName, muscleTarget: item.muscleTarget),
+                sets: item.prescribedSets,
                 reps: reps,
                 tempo: proceduralTempo(
                     for: weekNumber,
@@ -1339,15 +1320,7 @@ extension ClaudeService {
             )
         }
 
-        return balancedProceduralExercises(
-            mapped,
-            weekNumber: weekNumber,
-            focusIntent: focusIntent,
-            supportIntents: supportIntents,
-            targetFatigueCap: targetFatigueCap,
-            targetSessionMinutes: targetSessionMinutes,
-            menuLocked: true
-        )
+        return mapped
     }
 
     func exerciseCatalog(for style: String) -> [(name: String, target: String)] {

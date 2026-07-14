@@ -434,14 +434,96 @@ extension ClaudeService {
                 let actual = day.exercises[index]
                 let expectedName = canonicalExerciseName(expected.exerciseName, muscleTarget: expected.muscleTarget)
                 let actualName = canonicalExerciseName(actual.exerciseName, muscleTarget: actual.muscleTarget)
-                guard normalizeExerciseName(expectedName) != normalizeExerciseName(actualName) else { continue }
-
-                issues.append("Day \(dayNumber) did not follow the Pre-Selected Exercise Menu at slot \(index + 1): expected \(expected.exerciseName), but generated \(actual.exerciseName).")
+                if normalizeExerciseName(expectedName) != normalizeExerciseName(actualName) {
+                    issues.append("Day \(dayNumber) did not follow the Pre-Selected Exercise Menu at slot \(index + 1): expected \(expected.exerciseName), but generated \(actual.exerciseName).")
+                    continue
+                }
+                if actual.sets != expected.prescribedSets {
+                    issues.append("Day \(dayNumber) did not follow the Pre-Selected Exercise Menu at slot \(index + 1): \(expected.exerciseName) requires \(expected.prescribedSets) sets, but generated \(actual.sets).")
+                }
             }
         }
 
         var seen = Set<String>()
         return issues.filter { seen.insert($0).inserted }
+    }
+
+    /// The deterministic menu owns weekly dosage. Claude supplies reps, tempo, rest, and
+    /// coaching prose; this projection keeps its structured payload on the planned set budget
+    /// before scoring, so a model formatting deviation cannot trigger a paid correction pass.
+    func applyingPreselectedSetPrescription(
+        to days: [WorkoutDayResponse],
+        menus: [[PreSelectedExercise]],
+        dayStart: Int
+    ) -> [WorkoutDayResponse] {
+        var updated = days
+        for (offset, menu) in menus.enumerated() where !menu.isEmpty {
+            let dayNumber = dayStart + offset
+            guard let dayIndex = updated.firstIndex(where: { $0.dayNumber == dayNumber && !$0.isRestDay }) else {
+                continue
+            }
+            var exercises = updated[dayIndex].exercises
+            let comparableCount = min(exercises.count, menu.count)
+            for index in 0..<comparableCount {
+                let expected = menu[index]
+                let actualName = canonicalExerciseName(
+                    exercises[index].exerciseName,
+                    muscleTarget: exercises[index].muscleTarget
+                )
+                let expectedName = canonicalExerciseName(
+                    expected.exerciseName,
+                    muscleTarget: expected.muscleTarget
+                )
+                guard normalizeExerciseName(actualName) == normalizeExerciseName(expectedName) else { continue }
+                let exercise = exercises[index]
+                exercises[index] = WorkoutExerciseResponse(
+                    exerciseName: exercise.exerciseName,
+                    sets: expected.prescribedSets,
+                    reps: exercise.reps,
+                    tempo: exercise.tempo,
+                    restSeconds: exercise.restSeconds,
+                    notes: reconciledSetCountNotes(
+                        exercise.notes,
+                        toSetCount: expected.prescribedSets
+                    ),
+                    muscleTarget: exercise.muscleTarget
+                )
+            }
+            let day = updated[dayIndex]
+            updated[dayIndex] = WorkoutDayResponse(
+                dayNumber: day.dayNumber,
+                dayName: day.dayName,
+                muscleGroups: day.muscleGroups,
+                isRestDay: day.isRestDay,
+                notes: day.notes,
+                exercises: exercises
+            )
+        }
+        return updated
+    }
+
+    func applyingPreselectedSetPrescription(
+        to response: WorkoutProgramResponse,
+        menus: [[PreSelectedExercise]]
+    ) -> WorkoutProgramResponse {
+        WorkoutProgramResponse(
+            programName: response.programName,
+            programSummary: response.programSummary,
+            splitType: response.splitType,
+            daysPerWeek: response.daysPerWeek,
+            days: applyingPreselectedSetPrescription(to: response.days, menus: menus, dayStart: 1)
+        )
+    }
+
+    func applyingPreselectedSetPrescription(
+        to response: WorkoutWeekResponse,
+        menus: [[PreSelectedExercise]],
+        dayStart: Int
+    ) -> WorkoutWeekResponse {
+        WorkoutWeekResponse(
+            weekSummary: response.weekSummary,
+            days: applyingPreselectedSetPrescription(to: response.days, menus: menus, dayStart: dayStart)
+        )
     }
 
     func validateBlueprint(
@@ -577,13 +659,12 @@ extension ClaudeService {
         recoveryTight: Bool
     ) -> [String] {
         var issues: [String] = []
-        let priorityAliases = priorityAliasUnion(for: blueprint)
         // EvidenceProfile.md MAINT-001 [confidence: low-moderate]
         let maintenanceCeiling = recoveryTight ? 8.0 : 10.0
 
         for group in majorMuscleGroups {
             let aliases = normalizedGroupAliases(forSeed: group.seed)
-            guard aliases.isDisjoint(with: priorityAliases) else { continue }
+            guard !isMajorMuscleGroupPrioritized(seed: group.seed, blueprint: blueprint) else { continue }
 
             let directSets = weeklyDirectSets(forGroupAliases: aliases, days: days)
             if directSets > maintenanceCeiling + 0.5 {
@@ -796,6 +877,21 @@ extension ClaudeService {
     }
 
     func validationDisposition(for issue: String, menuLocked: Bool = false) -> ValidationIssueDisposition {
+        // In a locked-menu flow the deterministic allocator owns dosage and meaningful
+        // frequency. Another AI call cannot repair these findings because set counts are locked.
+        let lockedPlanningPatterns = [
+            "missed its frequency target",
+            "minimum viable stimulus threshold",
+            "missed its direct-set target",
+            "severely overshot its direct-set target",
+            "overshot its direct-set target enough to create avoidable fatigue",
+            "exceeds its focus-day direct-set cap",
+            "exceeds its per-session direct-set cap",
+            "exceeds the maintenance weekly volume ceiling"
+        ]
+        if menuLocked && matchesValidationIssue(issue, patterns: lockedPlanningPatterns) {
+            return .hardFailure
+        }
         if matchesValidationIssue(issue, patterns: acceptableWarningIssuePatterns) {
             return .acceptableWarning
         }
@@ -884,8 +980,6 @@ extension ClaudeService {
 
     var menuLockedDemotionPatterns: [String] {
         [
-            "missed its frequency target",
-            "minimum viable stimulus threshold",
             "uses too many weekly exercise variations",
             "was supposed to emphasize",
             "but never includes a prime",
@@ -1045,206 +1139,8 @@ extension ClaudeService {
         return issues
     }
 
-    // MARK: - Overshoot Trim Correction
-
-    func trimOvershootExercises(
-        days: [WorkoutDayResponse],
-        blueprint: ProgramBlueprint,
-        dayStart: Int = 1
-    ) -> (days: [WorkoutDayResponse], didTrim: Bool) {
-        var mutableDays = days
-        var didTrim = false
-        let recoveryTight = blueprint.calibration.recoveryConstrained || blueprint.calibration.poorNutritionAdherence
-        let trimMultiplier = recoveryTight ? 1.15 : 1.3
-        let trimBuffer = recoveryTight ? 0.0 : 0.5
-
-        for allocation in blueprint.priorityAllocations {
-            let report = buildWeekStimulusReport(from: mutableDays)
-            let coverage = priorityCoverage(for: allocation, stimulusReport: report)
-            let ceiling = allocation.directSetTarget * trimMultiplier + trimBuffer
-            guard coverage.directSets > ceiling else { continue }
-
-            var excess = coverage.directSets - ceiling
-            let allocatedDays = allocatedDayNumbers(for: allocation, blueprint: blueprint, dayStart: dayStart)
-
-            var targets: [(dayIndex: Int, exerciseIndex: Int, creditPerSet: Double, sets: Int, onAllocatedDay: Bool)] = []
-            for (di, day) in mutableDays.enumerated() where !day.isRestDay {
-                for (ei, exercise) in day.exercises.enumerated() {
-                    let credit = directSetCredit(for: exercise, area: allocation.area)
-                    guard credit > 0 else { continue }
-                    targets.append((
-                        dayIndex: di,
-                        exerciseIndex: ei,
-                        creditPerSet: credit / Double(max(1, exercise.sets)),
-                        sets: exercise.sets,
-                        onAllocatedDay: allocatedDays.contains(day.dayNumber)
-                    ))
-                }
-            }
-
-            targets.sort { lhs, rhs in
-                if lhs.onAllocatedDay != rhs.onAllocatedDay { return !lhs.onAllocatedDay }
-                return lhs.sets > rhs.sets
-            }
-
-            for target in targets {
-                guard excess > 0 else { break }
-                let day = mutableDays[target.dayIndex]
-                let exercise = day.exercises[target.exerciseIndex]
-                guard exercise.sets > 2 else { continue }
-
-                let setsToTrim = min(exercise.sets - 2, Int(ceil(excess / target.creditPerSet)))
-                guard setsToTrim > 0 else { continue }
-
-                let newSets = exercise.sets - setsToTrim
-                let newExercise = WorkoutExerciseResponse(
-                    exerciseName: exercise.exerciseName,
-                    sets: newSets,
-                    reps: exercise.reps,
-                    tempo: exercise.tempo,
-                    restSeconds: exercise.restSeconds,
-                    notes: reconciledSetCountNotes(exercise.notes, toSetCount: newSets),
-                    muscleTarget: exercise.muscleTarget
-                )
-                var newExercises = day.exercises
-                newExercises[target.exerciseIndex] = newExercise
-                mutableDays[target.dayIndex] = WorkoutDayResponse(
-                    dayNumber: day.dayNumber,
-                    dayName: day.dayName,
-                    muscleGroups: day.muscleGroups,
-                    isRestDay: day.isRestDay,
-                    notes: day.notes,
-                    exercises: newExercises
-                )
-                excess -= Double(setsToTrim) * target.creditPerSet
-                didTrim = true
-            }
-        }
-
-        for allocation in blueprint.priorityAllocations {
-            let maxPasses = 4
-            for _ in 0..<maxPasses {
-                let report = buildWeekStimulusReport(from: mutableDays)
-                guard let peak = peakDirectSession(for: allocation, stimulusReport: report) else { break }
-                let allowedCap = allowedPerSessionDirectSetCap(
-                    for: allocation,
-                    dayNumber: peak.dayNumber,
-                    blueprint: blueprint,
-                    dayStart: dayStart
-                )
-                guard peak.directSets > allowedCap + 0.01 else { break }
-                guard let dayIndex = mutableDays.firstIndex(where: { $0.dayNumber == peak.dayNumber }) else { break }
-                let day = mutableDays[dayIndex]
-
-                var sessionTargets: [(exerciseIndex: Int, creditPerSet: Double, sets: Int)] = []
-                for (ei, exercise) in day.exercises.enumerated() {
-                    let credit = directSetCredit(for: exercise, area: allocation.area)
-                    guard credit > 0, exercise.sets > 2 else { continue }
-                    sessionTargets.append((
-                        exerciseIndex: ei,
-                        creditPerSet: credit / Double(max(1, exercise.sets)),
-                        sets: exercise.sets
-                    ))
-                }
-
-                sessionTargets.sort { lhs, rhs in
-                    if lhs.creditPerSet != rhs.creditPerSet { return lhs.creditPerSet < rhs.creditPerSet }
-                    return lhs.sets > rhs.sets
-                }
-
-                guard let target = sessionTargets.first else { break }
-                let exercise = day.exercises[target.exerciseIndex]
-
-                let trimmedSets = exercise.sets - 1
-                let trimmedExercise = WorkoutExerciseResponse(
-                    exerciseName: exercise.exerciseName,
-                    sets: trimmedSets,
-                    reps: exercise.reps,
-                    tempo: exercise.tempo,
-                    restSeconds: exercise.restSeconds,
-                    notes: reconciledSetCountNotes(exercise.notes, toSetCount: trimmedSets),
-                    muscleTarget: exercise.muscleTarget
-                )
-                var updatedExercises = day.exercises
-                updatedExercises[target.exerciseIndex] = trimmedExercise
-                mutableDays[dayIndex] = WorkoutDayResponse(
-                    dayNumber: day.dayNumber,
-                    dayName: day.dayName,
-                    muscleGroups: day.muscleGroups,
-                    isRestDay: day.isRestDay,
-                    notes: day.notes,
-                    exercises: updatedExercises
-                )
-                didTrim = true
-            }
-        }
-
-        // Third pass — non-priority maintenance ceiling (EvidenceProfile.md MAINT-001,
-        // 2026-07-14 audit fix 3). This is
-        // deterministic set reduction so the correction loop does not spend an API call on
-        // filler volume the app can trim itself. Exercises crediting any priority area are
-        // untouchable here so this pass can never fight the blueprint targets above.
-        let maintenanceCeiling = recoveryTight ? 8.0 : 10.0
-        let priorityAliases = priorityAliasUnion(for: blueprint)
-        for group in majorMuscleGroups {
-            let aliases = normalizedGroupAliases(forSeed: group.seed)
-            guard aliases.isDisjoint(with: priorityAliases) else { continue }
-
-            var guardRail = 24
-            while weeklyDirectSets(forGroupAliases: aliases, days: mutableDays) > maintenanceCeiling + 0.5,
-                  guardRail > 0 {
-                guardRail -= 1
-
-                var candidate: (dayIndex: Int, exerciseIndex: Int, sets: Int)?
-                for (di, day) in mutableDays.enumerated() where !day.isRestDay {
-                    for (ei, exercise) in day.exercises.enumerated() {
-                        guard exercise.sets > 2 else { continue }
-                        guard exerciseDirectlyTargets(
-                            groupAliases: aliases,
-                            exerciseName: exercise.exerciseName,
-                            muscleTarget: exercise.muscleTarget
-                        ) else { continue }
-                        let creditsPriority = blueprint.priorityAllocations.contains {
-                            directSetCredit(for: exercise, area: $0.area) > 0
-                        }
-                        guard !creditsPriority else { continue }
-                        if candidate == nil || exercise.sets > candidate!.sets {
-                            candidate = (di, ei, exercise.sets)
-                        }
-                    }
-                }
-
-                guard let target = candidate else { break }
-                let day = mutableDays[target.dayIndex]
-                let exercise = day.exercises[target.exerciseIndex]
-                let trimmedSets = exercise.sets - 1
-                var updatedExercises = day.exercises
-                updatedExercises[target.exerciseIndex] = WorkoutExerciseResponse(
-                    exerciseName: exercise.exerciseName,
-                    sets: trimmedSets,
-                    reps: exercise.reps,
-                    tempo: exercise.tempo,
-                    restSeconds: exercise.restSeconds,
-                    notes: reconciledSetCountNotes(exercise.notes, toSetCount: trimmedSets),
-                    muscleTarget: exercise.muscleTarget
-                )
-                mutableDays[target.dayIndex] = WorkoutDayResponse(
-                    dayNumber: day.dayNumber,
-                    dayName: day.dayName,
-                    muscleGroups: day.muscleGroups,
-                    isRestDay: day.isRestDay,
-                    notes: day.notes,
-                    exercises: updatedExercises
-                )
-                didTrim = true
-            }
-        }
-
-        return (mutableDays, didTrim)
-    }
-
     /// Align any explicit per-exercise set-count claim in a coaching note with the
-    /// structured `sets` value. The over-volume trimmer (and set polishing) can lower an
+    /// structured `sets` value. Deterministic set projection (and set polishing) can change an
     /// exercise's set count after the note was written, leaving prose like "all 4 sets" /
     /// "complete 4 clean sets" contradicting a now-smaller structured count — which both
     /// shows the wrong number of log rows and makes the in-app progression cue greenlight a

@@ -133,7 +133,8 @@ extension ClaudeService {
         selectionLimit: Int,
         protectedPrefixCount: Int = 0,
         usedAcrossDays: Set<String> = [],
-        avoidedExercises: Set<String> = []
+        avoidedExercises: Set<String> = [],
+        selectionAllowed: (([(name: String, target: String)]) -> Bool)? = nil
     ) -> [(name: String, target: String)] {
         var result = selected
 
@@ -151,17 +152,19 @@ extension ClaudeService {
                 guard !result.contains(where: { normalizeExerciseName($0.name) == candidateKey }) else { continue }
                 guard dayPatternCapAllows(candidateName: candidate.name, candidateTarget: candidate.target, in: result) else { continue }
 
-                if result.count >= selectionLimit {
-                    guard let removalIndex = result.indices.reversed().first(where: { index in
+                var proposed = result
+                if proposed.count >= selectionLimit {
+                    guard let removalIndex = proposed.indices.reversed().first(where: { index in
                         index >= protectedPrefixCount &&
-                        !exerciseMatchesTrainingIntent(name: result[index].name, target: result[index].target, intent: focusIntent)
+                        !exerciseMatchesTrainingIntent(name: proposed[index].name, target: proposed[index].target, intent: focusIntent)
                     }) else {
                         return
                     }
-                    result.remove(at: removalIndex)
+                    proposed.remove(at: removalIndex)
                 }
-
-                result.append(candidate)
+                proposed.append(candidate)
+                guard selectionAllowed?(proposed) ?? true else { continue }
+                result = proposed
             }
         }
 
@@ -181,7 +184,8 @@ extension ClaudeService {
         selectionLimit: Int,
         protectedPrefixCount: Int = 0,
         usedAcrossDays: Set<String> = [],
-        avoidedExercises: Set<String> = []
+        avoidedExercises: Set<String> = [],
+        selectionAllowed: (([(name: String, target: String)]) -> Bool)? = nil
     ) -> [(name: String, target: String)] {
         var result = selected
 
@@ -206,31 +210,33 @@ extension ClaudeService {
                     guard !result.contains(where: { normalizeExerciseName($0.name) == candidateKey }) else { continue }
                     guard dayPatternCapAllows(candidateName: candidate.name, candidateTarget: candidate.target, in: result) else { continue }
 
-                    if result.count >= selectionLimit {
-                        guard let removalIndex = result.indices.reversed().first(where: { index in
+                    var proposed = result
+                    if proposed.count >= selectionLimit {
+                        guard let removalIndex = proposed.indices.reversed().first(where: { index in
                             guard index >= protectedPrefixCount else { return false }
                             if let focusIntent,
                                exerciseMatchesTrainingIntent(
-                                   name: result[index].name,
-                                   target: result[index].target,
+                                   name: proposed[index].name,
+                                   target: proposed[index].target,
                                    intent: focusIntent
                                ) {
                                 return false
                             }
                             return !supportIntents.contains { intent in
                                 exerciseMatchesTrainingIntent(
-                                    name: result[index].name,
-                                    target: result[index].target,
+                                    name: proposed[index].name,
+                                    target: proposed[index].target,
                                     intent: intent
                                 )
                             }
                         }) else {
                             break
                         }
-                        result.remove(at: removalIndex)
+                        proposed.remove(at: removalIndex)
                     }
-
-                    result.append(candidate)
+                    proposed.append(candidate)
+                    guard selectionAllowed?(proposed) ?? true else { continue }
+                    result = proposed
                     added = true
                     break
                 }
@@ -1135,6 +1141,55 @@ extension ClaudeService {
 
     // MARK: - Pre-Selected Exercise Menu (deterministic selection layer)
 
+    /// A maintenance budget must constrain exercise identity as well as set dosage. With a
+    /// meaningful two-set floor, an 8-set recovery-tight budget can support at most four
+    /// movements for a non-priority group; selecting more creates fragmented token work before
+    /// the set allocator even runs.
+    func maintenanceSlotBudgetAllows(
+        candidateName: String,
+        candidateTarget: String,
+        existingMenus: [[PreSelectedExercise]],
+        selectedToday: [(name: String, target: String)],
+        blueprint: ProgramBlueprint
+    ) -> Bool {
+        maintenanceSlotBudgetsAreFeasible(
+            existingMenus: existingMenus,
+            selectedToday: selectedToday + [(name: candidateName, target: candidateTarget)],
+            blueprint: blueprint
+        )
+    }
+
+    func maintenanceSlotBudgetsAreFeasible(
+        existingMenus: [[PreSelectedExercise]],
+        selectedToday: [(name: String, target: String)],
+        blueprint: ProgramBlueprint
+    ) -> Bool {
+        let recoveryTight = blueprint.calibration.recoveryConstrained
+            || blueprint.calibration.poorNutritionAdherence
+        let maintenanceCeiling = recoveryTight ? 8 : 10
+        let maxMeaningfulSlots = maintenanceCeiling / 2
+        for group in majorMuscleGroups {
+            let aliases = normalizedGroupAliases(forSeed: group.seed)
+            guard !isMajorMuscleGroupPrioritized(seed: group.seed, blueprint: blueprint) else { continue }
+            let priorCount = existingMenus.joined().filter {
+                exerciseDirectlyTargets(
+                    groupAliases: aliases,
+                    exerciseName: $0.exerciseName,
+                    muscleTarget: $0.muscleTarget
+                )
+            }.count
+            let todayCount = selectedToday.filter {
+                exerciseDirectlyTargets(
+                    groupAliases: aliases,
+                    exerciseName: $0.name,
+                    muscleTarget: $0.target
+                )
+            }.count
+            guard priorCount + todayCount <= maxMeaningfulSlots else { return false }
+        }
+        return true
+    }
+
     func preSelectedExerciseMenu(
         for blueprint: ProgramBlueprint,
         trainingIntent: TrainingIntentPlan,
@@ -1195,6 +1250,13 @@ extension ClaudeService {
             for exercise in retained {
                 let key = normalizeExerciseName(exercise.exerciseName)
                 guard !used.contains(key) else { continue }
+                guard maintenanceSlotBudgetAllows(
+                    candidateName: exercise.exerciseName,
+                    candidateTarget: exercise.muscleTarget,
+                    existingMenus: allMenus,
+                    selectedToday: selected,
+                    blueprint: blueprint
+                ) else { continue }
                 used.insert(key)
                 selected.append((exercise.exerciseName, exercise.muscleTarget))
             }
@@ -1218,6 +1280,13 @@ extension ClaudeService {
                 let key = normalizeExerciseName(candidate.name)
                 guard !used.contains(key) else { continue }
                 guard dayPatternCapAllows(candidateName: candidate.name, candidateTarget: candidate.target, in: selected) else { continue }
+                guard maintenanceSlotBudgetAllows(
+                    candidateName: candidate.name,
+                    candidateTarget: candidate.target,
+                    existingMenus: allMenus,
+                    selectedToday: selected,
+                    blueprint: blueprint
+                ) else { continue }
                 used.insert(key)
                 selected.append((candidate.name, candidate.target))
             }
@@ -1252,6 +1321,13 @@ extension ClaudeService {
                     )
                     guard exerciseMatchesDayStyle(probe, style: styleKey) else { continue }
                     guard dayPatternCapAllows(candidateName: candidate.name, candidateTarget: candidate.target, in: selected) else { continue }
+                    guard maintenanceSlotBudgetAllows(
+                        candidateName: candidate.name,
+                        candidateTarget: candidate.target,
+                        existingMenus: allMenus,
+                        selectedToday: selected,
+                        blueprint: blueprint
+                    ) else { continue }
                     used.insert(key)
                     selected.append((candidate.name, candidate.target))
                 }
@@ -1270,11 +1346,25 @@ extension ClaudeService {
                     let key = normalizeExerciseName(candidate.name)
                     guard !selected.contains(where: { normalizeExerciseName($0.name) == key }) else { continue }
                     guard dayPatternCapAllows(candidateName: candidate.name, candidateTarget: candidate.target, in: selected) else { continue }
+                    guard maintenanceSlotBudgetAllows(
+                        candidateName: candidate.name,
+                        candidateTarget: candidate.target,
+                        existingMenus: allMenus,
+                        selectedToday: selected,
+                        blueprint: blueprint
+                    ) else { continue }
                     selected.append((candidate.name, candidate.target))
                 }
                 for candidate in catalog where selected.count < 5 {
                     let key = normalizeExerciseName(candidate.name)
                     guard !selected.contains(where: { normalizeExerciseName($0.name) == key }) else { continue }
+                    guard maintenanceSlotBudgetAllows(
+                        candidateName: candidate.name,
+                        candidateTarget: candidate.target,
+                        existingMenus: allMenus,
+                        selectedToday: selected,
+                        blueprint: blueprint
+                    ) else { continue }
                     selected.append((candidate.name, candidate.target))
                 }
             }
@@ -1287,7 +1377,14 @@ extension ClaudeService {
                     selectionLimit: targetCount,
                     protectedPrefixCount: retainedCount,
                     usedAcrossDays: usedAcrossDays,
-                    avoidedExercises: avoidedExercises
+                    avoidedExercises: avoidedExercises,
+                    selectionAllowed: {
+                        maintenanceSlotBudgetsAreFeasible(
+                            existingMenus: allMenus,
+                            selectedToday: $0,
+                            blueprint: blueprint
+                        )
+                    }
                 )
             }
 
@@ -1299,7 +1396,14 @@ extension ClaudeService {
                     selectionLimit: targetCount,
                     protectedPrefixCount: retainedCount,
                     usedAcrossDays: usedAcrossDays,
-                    avoidedExercises: avoidedExercises
+                    avoidedExercises: avoidedExercises,
+                    selectionAllowed: {
+                        maintenanceSlotBudgetsAreFeasible(
+                            existingMenus: allMenus,
+                            selectedToday: $0,
+                            blueprint: blueprint
+                        )
+                    }
                 )
             }
 
@@ -1320,16 +1424,22 @@ extension ClaudeService {
                     exerciseName: item.name,
                     muscleTarget: item.target,
                     movementPattern: metadata.movementPattern,
-                    role: role
+                    role: role,
+                    prescribedSets: 1
                 )
             })
         }
 
-        return enforceBaselineMuscleCoverage(
+        let coverageCompleteMenus = enforceBaselineMuscleCoverage(
             allMenus,
             blueprint: blueprint,
             trainingIntent: trainingIntent,
             avoidedExercises: avoidedExercises
+        )
+        return allocateWeeklySetPrescription(
+            coverageCompleteMenus,
+            blueprint: blueprint,
+            weekNumber: weekNumber
         )
     }
 
@@ -1348,11 +1458,9 @@ extension ClaudeService {
     ) -> [[PreSelectedExercise]] {
         var updated = menus
         var usedKeys = Set(menus.joined().map { normalizeExerciseName($0.exerciseName) })
-        let priorityAliases = priorityAliasUnion(for: blueprint)
-
         for group in majorMuscleGroups {
             let aliases = normalizedGroupAliases(forSeed: group.seed)
-            guard aliases.isDisjoint(with: priorityAliases) else { continue }
+            guard !isMajorMuscleGroupPrioritized(seed: group.seed, blueprint: blueprint) else { continue }
 
             let covered = updated.joined().contains { exercise in
                 exerciseDirectlyTargets(
@@ -1394,13 +1502,23 @@ extension ClaudeService {
                         focusIntent: focusIntent,
                         supportIntents: supportIntents
                     ) else { continue }
+                    var menusWithoutReplacedSlot = updated
+                    menusWithoutReplacedSlot[dayOffset].remove(at: replaceIndex)
+                    guard maintenanceSlotBudgetAllows(
+                        candidateName: candidate.name,
+                        candidateTarget: candidate.target,
+                        existingMenus: menusWithoutReplacedSlot,
+                        selectedToday: [],
+                        blueprint: blueprint
+                    ) else { continue }
 
                     let metadata = exerciseMetadata(forExerciseName: candidate.name, muscleTarget: candidate.target)
                     updated[dayOffset][replaceIndex] = PreSelectedExercise(
                         exerciseName: candidate.name,
                         muscleTarget: candidate.target,
                         movementPattern: metadata.movementPattern,
-                        role: proceduralExerciseRole(for: candidate.name, muscleTarget: candidate.target)
+                        role: proceduralExerciseRole(for: candidate.name, muscleTarget: candidate.target),
+                        prescribedSets: 1
                     )
                     usedKeys.insert(key)
                     break candidateSearch
@@ -1409,6 +1527,289 @@ extension ClaudeService {
         }
 
         return updated
+    }
+
+    // MARK: - Weekly Set Allocation
+
+    /// Owns weekly dosage before the locked menu reaches either Claude or procedural fallback.
+    /// Priority targets are funded first; remaining movements can grow only while every
+    /// non-priority major muscle they directly train remains inside its maintenance budget.
+    func allocateWeeklySetPrescription(
+        _ menus: [[PreSelectedExercise]],
+        blueprint: ProgramBlueprint,
+        weekNumber: Int
+    ) -> [[PreSelectedExercise]] {
+        var allocated = menus.map { menu in
+            menu.map { exercise in
+                var seeded = exercise
+                seeded.prescribedSets = 1
+                return seeded
+            }
+        }
+        let recoveryTight = blueprint.calibration.recoveryConstrained
+            || blueprint.calibration.poorNutritionAdherence
+        let maintenanceCeiling = recoveryTight ? 8.0 : 10.0
+        let maintenanceGroups = majorMuscleGroups.compactMap { group -> (label: String, aliases: Set<String>)? in
+            let aliases = normalizedGroupAliases(forSeed: group.seed)
+            guard !isMajorMuscleGroupPrioritized(seed: group.seed, blueprint: blueprint) else { return nil }
+            return (group.label, aliases)
+        }
+
+        func response(dayIndex: Int, exerciseIndex: Int, addingSet: Bool = false) -> WorkoutExerciseResponse {
+            let exercise = allocated[dayIndex][exerciseIndex]
+            let sets = exercise.prescribedSets + (addingSet ? 1 : 0)
+            let reps = proceduralRepRange(
+                for: weekNumber,
+                exerciseName: exercise.exerciseName,
+                muscleTarget: exercise.muscleTarget
+            )
+            return WorkoutExerciseResponse(
+                exerciseName: exercise.exerciseName,
+                sets: sets,
+                reps: reps,
+                tempo: proceduralTempo(
+                    for: weekNumber,
+                    exerciseName: exercise.exerciseName,
+                    muscleTarget: exercise.muscleTarget,
+                    reps: reps
+                ),
+                restSeconds: proceduralRestSeconds(
+                    for: exercise.exerciseName,
+                    muscleTarget: exercise.muscleTarget
+                ),
+                notes: "",
+                muscleTarget: exercise.muscleTarget
+            )
+        }
+
+        func maintenanceSets(for aliases: Set<String>, addingAt location: (Int, Int)? = nil) -> Double {
+            allocated.indices.reduce(0.0) { weekTotal, dayIndex in
+                weekTotal + allocated[dayIndex].indices.reduce(0.0) { dayTotal, exerciseIndex in
+                    let exercise = allocated[dayIndex][exerciseIndex]
+                    guard exerciseDirectlyTargets(
+                        groupAliases: aliases,
+                        exerciseName: exercise.exerciseName,
+                        muscleTarget: exercise.muscleTarget
+                    ) else { return dayTotal }
+                    let extra = location?.0 == dayIndex && location?.1 == exerciseIndex ? 1 : 0
+                    return dayTotal + Double(exercise.prescribedSets + extra)
+                }
+            }
+        }
+
+        func priorityCoverage(
+            for allocation: BlueprintPriorityAllocation,
+            addingAt location: (Int, Int)? = nil
+        ) -> (direct: Double, weighted: Double) {
+            var direct = 0.0
+            var weighted = 0.0
+            for dayIndex in allocated.indices {
+                for exerciseIndex in allocated[dayIndex].indices {
+                    let exercise = response(
+                        dayIndex: dayIndex,
+                        exerciseIndex: exerciseIndex,
+                        addingSet: location?.0 == dayIndex && location?.1 == exerciseIndex
+                    )
+                    direct += directSetCredit(for: exercise, area: allocation.area)
+                    weighted += weightedStimulusCredit(for: exercise, area: allocation.area)
+                }
+            }
+            return (direct, weighted)
+        }
+
+        func canAddSet(dayIndex: Int, exerciseIndex: Int) -> Bool {
+            let exercise = allocated[dayIndex][exerciseIndex]
+            let roleDefault = proceduralSets(
+                for: weekNumber,
+                exerciseName: exercise.exerciseName,
+                muscleTarget: exercise.muscleTarget
+            )
+            guard exercise.prescribedSets < roleDefault else { return false }
+
+            for group in maintenanceGroups where exerciseDirectlyTargets(
+                groupAliases: group.aliases,
+                exerciseName: exercise.exerciseName,
+                muscleTarget: exercise.muscleTarget
+            ) {
+                guard maintenanceSets(
+                    for: group.aliases,
+                    addingAt: (dayIndex, exerciseIndex)
+                ) <= maintenanceCeiling + 0.01 else { return false }
+            }
+
+            // A set funded for one priority may also credit another. Check every weekly ledger
+            // jointly so shared Chest/Triceps or Quads/Glutes work cannot overfill a later
+            // priority before its own allocation pass begins.
+            for allocation in blueprint.priorityAllocations {
+                let current = priorityCoverage(for: allocation)
+                let projected = priorityCoverage(
+                    for: allocation,
+                    addingAt: (dayIndex, exerciseIndex)
+                )
+                let addsDirectCredit = projected.direct > current.direct + 0.01
+                guard !addsDirectCredit
+                        || projected.direct <= allocation.directSetTarget + 0.01 else {
+                    return false
+                }
+            }
+
+            guard dayIndex < blueprint.dayPlans.count else { return false }
+            let plan = blueprint.dayPlans[dayIndex]
+            let dayExercises = allocated[dayIndex].indices.map { index in
+                response(
+                    dayIndex: dayIndex,
+                    exerciseIndex: index,
+                    addingSet: index == exerciseIndex
+                )
+            }
+            guard estimatedDayFatigue(for: dayExercises) <= plan.targetFatigueCap else { return false }
+            guard estimatedSessionMinutes(for: proceduralTrainingDay(from: dayExercises))
+                    <= plan.targetSessionMinutes + 3 else { return false }
+
+            for allocation in blueprint.priorityAllocations {
+                let candidate = response(
+                    dayIndex: dayIndex,
+                    exerciseIndex: exerciseIndex,
+                    addingSet: true
+                )
+                guard directSetCredit(for: candidate, area: allocation.area) > 0 else { continue }
+                let dayDirectSets = dayExercises.reduce(0.0) {
+                    $0 + directSetCredit(for: $1, area: allocation.area)
+                }
+                let isFocusDay = plan.focusArea.map {
+                    normalizedPriorityText($0) == normalizedPriorityText(allocation.area)
+                } ?? false
+                let cap = isFocusDay
+                    ? allocation.maxFocusSessionDirectSets
+                    : allocation.maxPerSessionDirectSets
+                guard dayDirectSets <= cap + 0.01 else { return false }
+            }
+
+            return true
+        }
+
+        // Fund blueprint priorities before distributing maintenance volume.
+        for allocation in blueprint.priorityAllocations {
+            let meaningfulThreshold = minimumMeaningfulPriorityExposureSets(for: allocation.area)
+            let candidateDays = allocated.indices
+                .filter { dayIndex in
+                    allocated[dayIndex].indices.contains { exerciseIndex in
+                        directSetCredit(
+                            for: response(dayIndex: dayIndex, exerciseIndex: exerciseIndex),
+                            area: allocation.area
+                        ) > 0
+                    }
+                }
+                .sorted { lhs, rhs in
+                    let lhsFocus = blueprint.dayPlans[lhs].focusArea.map {
+                        normalizedPriorityText($0) == normalizedPriorityText(allocation.area)
+                    } ?? false
+                    let rhsFocus = blueprint.dayPlans[rhs].focusArea.map {
+                        normalizedPriorityText($0) == normalizedPriorityText(allocation.area)
+                    } ?? false
+                    if lhsFocus != rhsFocus { return lhsFocus }
+                    return lhs < rhs
+                }
+
+            // Establish distinct meaningful exposures first so the weekly total cannot be
+            // concentrated into one impressive-looking day while frequency quietly misses.
+            for dayIndex in candidateDays.prefix(allocation.targetFrequency) {
+                var exposureGuardRail = 12
+                while exposureGuardRail > 0 {
+                    exposureGuardRail -= 1
+                    let dayDirectSets = allocated[dayIndex].indices.reduce(0.0) {
+                        $0 + directSetCredit(
+                            for: response(dayIndex: dayIndex, exerciseIndex: $1),
+                            area: allocation.area
+                        )
+                    }
+                    guard dayDirectSets + 0.01 < meaningfulThreshold else { break }
+
+                    let candidates = allocated[dayIndex].indices.compactMap { exerciseIndex -> (Int, Int)? in
+                        guard canAddSet(dayIndex: dayIndex, exerciseIndex: exerciseIndex) else { return nil }
+                        let probe = response(dayIndex: dayIndex, exerciseIndex: exerciseIndex, addingSet: true)
+                        guard directSetCredit(for: probe, area: allocation.area) > 0 else { return nil }
+                        let kind = focusStimulusKind(
+                            exerciseName: probe.exerciseName,
+                            muscleTarget: probe.muscleTarget,
+                            focusArea: allocation.area
+                        )
+                        let qualityScore: Int
+                        switch kind {
+                        case .prime: qualityScore = 30
+                        case .secondary: qualityScore = 20
+                        case .support: qualityScore = 10
+                        case .none: qualityScore = 0
+                        }
+                        return (exerciseIndex, qualityScore - allocated[dayIndex][exerciseIndex].prescribedSets)
+                    }
+                    guard let target = candidates.max(by: { $0.1 < $1.1 }) else { break }
+                    allocated[dayIndex][target.0].prescribedSets += 1
+                }
+            }
+
+            var guardRail = 80
+            while guardRail > 0 {
+                guardRail -= 1
+                let current = priorityCoverage(for: allocation)
+                guard current.direct + 0.01 < allocation.directSetTarget
+                        || current.weighted + 0.01 < allocation.weightedStimulusTarget else { break }
+
+                let candidates = allocated.indices.flatMap { dayIndex in
+                    allocated[dayIndex].indices.compactMap { exerciseIndex -> (Int, Int, Int)? in
+                        guard canAddSet(dayIndex: dayIndex, exerciseIndex: exerciseIndex) else { return nil }
+                        let probe = response(dayIndex: dayIndex, exerciseIndex: exerciseIndex, addingSet: true)
+                        let credit = stimulusCredit(for: probe, area: allocation.area)
+                        guard credit.directSets > 0 || credit.weightedStimulus > 0 else { return nil }
+                        let kind = focusStimulusKind(
+                            exerciseName: probe.exerciseName,
+                            muscleTarget: probe.muscleTarget,
+                            focusArea: allocation.area
+                        )
+                        let qualityScore: Int
+                        switch kind {
+                        case .prime: qualityScore = 30
+                        case .secondary: qualityScore = 20
+                        case .support: qualityScore = 10
+                        case .none: qualityScore = 0
+                        }
+                        let focusBonus = blueprint.dayPlans[dayIndex].focusArea.map {
+                            normalizedPriorityText($0) == normalizedPriorityText(allocation.area) ? 5 : 0
+                        } ?? 0
+                        return (dayIndex, exerciseIndex, qualityScore + focusBonus - allocated[dayIndex][exerciseIndex].prescribedSets)
+                    }
+                }
+                guard let target = candidates.max(by: { $0.2 < $1.2 }) else { break }
+                allocated[target.0][target.1].prescribedSets += 1
+            }
+        }
+
+        // Fill useful maintenance work toward role defaults without ever exceeding a
+        // shared weekly budget. Multi-primary exercises debit every affected group.
+        var madeProgress = true
+        var guardRail = 160
+        while madeProgress && guardRail > 0 {
+            guardRail -= 1
+            madeProgress = false
+            for dayIndex in allocated.indices {
+                for exerciseIndex in allocated[dayIndex].indices {
+                    let exercise = allocated[dayIndex][exerciseIndex]
+                    let targetsMaintenance = maintenanceGroups.contains { group in
+                        exerciseDirectlyTargets(
+                            groupAliases: group.aliases,
+                            exerciseName: exercise.exerciseName,
+                            muscleTarget: exercise.muscleTarget
+                        )
+                    }
+                    guard targetsMaintenance else { continue }
+                    guard canAddSet(dayIndex: dayIndex, exerciseIndex: exerciseIndex) else { continue }
+                    allocated[dayIndex][exerciseIndex].prescribedSets += 1
+                    madeProgress = true
+                }
+            }
+        }
+
+        return allocated
     }
 
     /// Slot the coverage pass may sacrifice: prefer the last exercise whose movement

@@ -49,6 +49,29 @@ Format per incident: symptom → root cause → fix → doctrine ("do not re-fig
 - **Fix arc**: Design system introduced (`867d1fd`), token migration across view files (`1dbcea3`, `e3e6cf0`, `2368200`), haptics centralized into `TFHaptics` and color tokens unified (`02ccb86`), VoiceOver chart summaries and radius-drift fixes (`1653482`). 526+ token uses; tokens live in `Transform/Transform/DesignSystem.swift`.
 - **Doctrine**: New UI code uses `TFColor` / `TFTypography` / `TFHaptics` tokens, not raw `Color(...)`, system fonts, or ad hoc `UIImpactFeedbackGenerator` calls.
 
+## INC-8: Maintenance ceilings added after dosage instead of before it (2026-07-14)
+
+- **Symptom**: A recovery-tight Week 1 reported five maintenance-volume violations (Back,
+  Triceps, Quads, Hamstrings, and Glutes). Procedural fallback reproduced the same totals.
+- **Root cause**: The locked menu carried exercise identity and role but no weekly set
+  prescription. Fallback assigned every slot the full role default (four anchor sets, three
+  sets otherwise), while the AI independently invented the same dosage. Multi-primary lower-body
+  movements debited several muscle groups at once. The validator's ceiling existed only after
+  this invalid weekly dosage had already been created.
+- **Failed containment**: `b60d294` ran the output trimmer on fallback. It could reduce some
+  totals, but two-set/anchor floors and priority protections meant some locked menus were
+  mathematically impossible to trim under the ceiling. It did not correct planning ownership.
+- **Fix**: `PreSelectedExercise.prescribedSets` and
+  `allocateWeeklySetPrescription` in
+  `Transform/Transform/WorkoutGeneratorService+ExerciseSelection.swift` allocate priority
+  targets first, then spend shared maintenance budgets before the AI call. Menu construction
+  also caps maintenance exercise identities at the number that can receive meaningful two-set
+  doses. The prompt, response projection, validator, and fallback consume that same prescription.
+  The maintenance-only output trimmer and fallback trim were removed.
+- **Doctrine**: The deterministic plan owns weekly dosage. Locked-menu consumers must not create
+  or repair their own independent set budgets. Post-generation trimming is observability or
+  containment, never the primary fix for an infeasible plan.
+
 ## Candidate entries (unverified details — confirm before citing)
 
 - Uniform prescription cleanup in sanitization and prompt-caching/model-ID changes in the Anthropic request path are mentioned in `transform-generator-audit` references as recent-change risks, but no incident narrative is recorded for them.

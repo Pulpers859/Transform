@@ -144,33 +144,16 @@ extension ClaudeService {
             "- Preserve the program's real strengths, but the listed validator issues are not optional."
         ]
 
-        if issues.contains(where: { $0.contains("overshot its direct-set target enough to create avoidable fatigue") || $0.contains("exceeds its focus-day direct-set cap") || $0.contains("exceeds its per-session direct-set cap") }) {
-            rules.append("- When a priority muscle overshoots its weekly direct-set target or a session cap, reduce set counts on the exercises targeting that muscle until the caps are satisfied.")
-            rules.append("- Reduce sets on accessory/isolation work first; preserve sets on the prime compound.")
-        }
-
-        if issues.contains(where: { $0.contains("already reached its weekly target") }) {
-            rules.append("- When a priority muscle has already reached its weekly direct-set target, reduce set counts on excess exercises targeting that muscle rather than adding more volume.")
-        }
-
-        if issues.contains(where: { $0.contains("minimum viable stimulus threshold") || $0.contains("missed its frequency target") || $0.contains("missed its direct-set target") }) {
-            rules.append("- If frequency or direct-set targets are short, increase set counts on existing exercises targeting the underserved muscle — but never push a single exercise above 4 working sets (5 for the day's first anchor compound). If the target is still short at that ceiling, raise a second matching exercise instead of stacking more sets on one movement.")
-        }
-
         if issues.contains(where: { $0.contains("contradicts the app's logged progression verdict") }) {
             rules.append("- Rewrite only the flagged coaching cue text so it agrees with the app's logged progression verdict quoted in the issue. Do not change sets, reps, or exercises to resolve a cue contradiction.")
         }
 
-        if issues.contains(where: { $0.contains("exceeds the maintenance weekly volume ceiling") }) {
-            rules.append("- Non-priority muscles are maintenance work: reduce their exercises toward 2-set doses until the named muscle group is at or under its weekly ceiling. Never cut priority-muscle volume to fix this.")
-        }
-
         if issues.contains(where: { $0.contains("session budget") || $0.contains("too crowded") || $0.contains("fatigue load") }) {
-            rules.append("- Keep shift-work recovery in mind: reduce set counts on lower-priority exercises to bring session fatigue within budget.")
+            rules.append("- Set counts are locked. Bring the session inside its time budget by correcting excessive rest periods within the role-specific ranges.")
         }
 
         if issues.contains(where: { $0.contains("Pre-Selected Exercise Menu") }) {
-            rules.append("- The Pre-Selected Exercise Menu is locked. Use the exact exercise names in the exact order for each listed day; only adjust sets, reps, tempo, rest, and notes.")
+            rules.append("- The Pre-Selected Exercise Menu is locked. Use the exact exercise names, order, and set counts for each listed day; only adjust reps, tempo, rest, and notes.")
         }
 
         return rules.joined(separator: "\n")
@@ -189,14 +172,14 @@ extension ClaudeService {
             let focus = dayPlan.focusArea.map { ", focus: \($0)" } ?? ""
             lines.append("Day \(dayNumber) (\(dayPlan.style)\(focus)):")
             for (i, exercise) in exercises.enumerated() {
-                lines.append("  \(i + 1). \(exercise.exerciseName) [\(exercise.muscleTarget)] — \(exercise.role.rawValue)")
+                lines.append("  \(i + 1). \(exercise.exerciseName) [\(exercise.muscleTarget)] — \(exercise.prescribedSets) sets, \(exercise.role.rawValue)")
             }
         }
 
         guard !lines.isEmpty else { return "" }
 
         return """
-        --- Pre-Selected Exercise Menu (use these exact exercises; do not add, remove, or substitute) ---
+        --- Pre-Selected Exercise Menu (use these exact exercises and set counts; do not add, remove, substitute, or change sets) ---
         \(lines.joined(separator: "\n"))
         --- end Pre-Selected Exercise Menu ---
         """
@@ -216,7 +199,7 @@ extension ClaudeService {
         The user's Body Analysis is the north star of this entire mesocycle. You will also be
         given a Structured Training Intent derived from that analysis and a Deterministic Weekly
         Blueprint generated from the evidence profile. Treat the Weekly Blueprint as the execution
-        plan for split structure, day emphasis, exercise selection, frequency, and weekly
+        plan for split structure, day emphasis, exercise selection, set allocation, frequency, and weekly
         priorities. Every choice you make must still be directly traceable back to the underlying
         analysis.
 
@@ -242,7 +225,7 @@ extension ClaudeService {
         - Exactly 7 days, dayNumber 1..7.
         - 4-6 training days, 1-3 rest days. Choose the split based on the priority muscles and
           region breakdown in the analysis — don't default.
-        - Training days: exercises as listed in the Pre-Selected Exercise Menu. Rest days: empty
+        - Training days: exercises and set counts exactly as listed in the Pre-Selected Exercise Menu. Rest days: empty
           exercises array.
         - 60-75 minute sessions.
         - Day theme and exercises must align (an Arms day cannot include squats; a Legs day cannot
@@ -250,9 +233,9 @@ extension ClaudeService {
         - Follow the Weekly Blueprint exactly when deciding split structure, session emphasis,
           and weekly priority allocation.
         - A Pre-Selected Exercise Menu is provided in the coaching inputs. It lists the exact
-          exercises for each training day. Use these exercises in the order given. Do not add,
-          remove, or substitute exercises. Your job is to program sets, reps, tempo, rest, and
-          coaching notes for each one. Use the exercise names exactly as given.
+        exercises and set counts for each training day. Use them in the order given. Do not add,
+        remove, substitute, or change set counts. Your job is to program reps, tempo, rest, and
+        coaching notes for each one. Use the exercise names exactly as given.
         - Rest and tempo must match exercise role. Do not lazily assign one identical rest period
           or one identical tempo to every movement in a mixed session.
         - Tempo is only for rep-based lifts where eccentric/concentric cadence matters. For
@@ -345,9 +328,9 @@ extension ClaudeService {
         only a PROGRESSION REFERENCE — use it to know what load/volume was achieved last week so
         you can apply appropriate overload or deload for THIS phase.
 
-        Exercise selection is locked by the Pre-Selected Exercise Menu — do not add, remove, or
-        substitute exercises. Focus your coaching judgment on programming: sets, reps, tempo,
-        rest, progression cues, and notes.
+        Exercise selection and set allocation are locked by the Pre-Selected Exercise Menu — do
+        not add, remove, substitute, or change set counts. Focus your coaching judgment on reps,
+        tempo, rest, progression cues, and notes.
 
         Session Notes still must be personal, specific, analysis-anchored, and include a "Warm-up:"
         line (on its own line) with specific warm-up and mobility items separated by commas, tied
@@ -361,14 +344,14 @@ extension ClaudeService {
         Programming constraints:
         - Exactly 7 days for the requested dayNumber range.
         - 4-6 training days, 1-3 rest days.
-        - Training days: exercises as listed in the Pre-Selected Exercise Menu. Rest days: empty
+        - Training days: exercises and set counts exactly as listed in the Pre-Selected Exercise Menu. Rest days: empty
           exercises array.
         - Day theme and exercises must align.
         - Follow the Weekly Blueprint exactly when deciding split structure, session emphasis,
           and weekly priority allocation.
         - A Pre-Selected Exercise Menu is provided in the coaching inputs. It lists the exact
-          exercises for each training day. Use these exercises in the order given. Do not add,
-          remove, or substitute exercises. Your job is to program sets, reps, tempo, rest, and
+          exercises and set counts for each training day. Use them in the order given. Do not add,
+          remove, substitute, or change set counts. Your job is to program reps, tempo, rest, and
           coaching notes for each one. Use the exercise names exactly as given.
         - Rest and tempo must match exercise role. Do not lazily assign one identical rest period
           or one identical tempo to every movement in a mixed session.
@@ -625,7 +608,12 @@ extension ClaudeService {
     func exerciseSchema() -> [String: Any] {
         let properties: [String: Any] = [
             "exerciseName": stringProp("Specific lift name, e.g., 'Incline Dumbbell Press'."),
-            "sets": integerProp(minimum: 1, maximum: 8),
+            "sets": [
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 8,
+                "description": "Use the exact set count prescribed for this exercise in the Pre-Selected Exercise Menu."
+            ],
             "reps": stringProp("Rep prescription, e.g., '8-10' or 'AMRAP'."),
             // EvidenceProfile.md TEMPO-001 [confidence: low]
             "tempo": stringProp("Optional. Use an explicit 4-part tempo for rep-based lifts when cadence matters, e.g., '3-1-1-0' or '2-0-X-1'. Omit or leave empty for carries, distance-based work, and similar drills where a 4-part tempo is not meaningful."),
@@ -647,7 +635,7 @@ extension ClaudeService {
         let exercisesProp: [String: Any] = [
             "type": "array",
             "items": exerciseSchema(),
-            "description": "Training days: exactly the exercises listed in the Pre-Selected Exercise Menu for that day, in order. Rest days: empty array."
+            "description": "Training days: exactly the exercises and set counts listed in the Pre-Selected Exercise Menu for that day, in order. Rest days: empty array."
         ]
         let properties: [String: Any] = [
             "dayNumber": integerProp(allowedValues: dayNumbers),

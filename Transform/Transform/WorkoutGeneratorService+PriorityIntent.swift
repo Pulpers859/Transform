@@ -533,14 +533,58 @@ extension ClaudeService {
         Set(stimulusAreaAliases(for: seed).map(normalizedPriorityText))
     }
 
-    /// Union of all blueprint priority aliases; muscle groups intersecting this set are
-    /// governed by their priority allocations, not the maintenance ceiling / coverage floor.
-    func priorityAliasUnion(for blueprint: ProgramBlueprint) -> Set<String> {
-        Set(
-            blueprint.priorityAllocations
-                .flatMap { stimulusAreaAliases(for: $0.area) }
+    /// Maps a specific priority to explicit major-muscle ledgers. Composite exercise metadata such
+    /// as Posterior Chain and Quads/Glutes must not make neighboring groups look prioritized.
+    func majorMuscleGroupSeeds(forPriorityArea area: String) -> Set<String> {
+        let normalized = normalizedPriorityText(area)
+        if normalized.contains("posterior chain") {
+            return ["hamstrings", "glutes"]
+        }
+        if normalized.contains("quad") && normalized.contains("glute") {
+            return ["quads", "glutes"]
+        }
+        if normalized == "arms" || normalized.contains("arm development") {
+            return ["biceps", "triceps"]
+        }
+        if normalized == "legs" || normalized.contains("lower body") {
+            return ["quads", "hamstrings", "glutes", "calf"]
+        }
+        if normalized.contains("upper chest") || normalized == "chest" || normalized.contains("pec") {
+            return ["chest"]
+        }
+        if normalized.contains("lateral delt") || normalized.contains("rear delt")
+            || normalized.contains("posterior delt") || normalized.contains("front delt")
+            || normalized.contains("anterior delt") || normalized.contains("shoulder") {
+            return ["shoulders"]
+        }
+        if containsPriorityPhrase(
+            in: normalized,
+            keywords: ["back", "lat", "lats", "latissimus dorsi", "latissimus"]
+        ) {
+            return ["back"]
+        }
+        if normalized.contains("bicep") || normalized.contains("brachialis") {
+            return ["biceps"]
+        }
+        if normalized.contains("tricep") { return ["triceps"] }
+        if normalized.contains("quad") { return ["quads"] }
+        if normalized.contains("hamstring") { return ["hamstrings"] }
+        if normalized.contains("glute") { return ["glutes"] }
+        if normalized.contains("calf") { return ["calf"] }
+        if normalized.contains("core") || normalized.contains("abs")
+            || normalized.contains("oblique") || normalized.contains("serratus") {
+            return ["core"]
+        }
+        return []
+    }
+
+    func isMajorMuscleGroupPrioritized(seed: String, blueprint: ProgramBlueprint) -> Bool {
+        let normalizedSeed = normalizedPriorityText(seed)
+        return blueprint.priorityAllocations.contains {
+            majorMuscleGroupSeeds(forPriorityArea: $0.area)
                 .map(normalizedPriorityText)
-        )
+                .contains(normalizedSeed)
+        }
     }
 
     func exerciseDirectlyTargets(

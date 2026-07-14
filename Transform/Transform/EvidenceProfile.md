@@ -43,6 +43,15 @@ This file is the programming contract for the workout generator. The goal is not
 
 ## Operational notes
 
+### Deterministic dosage ownership
+- The pre-selected exercise menu owns both exercise identity and working-set dosage before any
+  AI request. Priority targets are allocated first; every non-priority movement then spends from
+  the applicable major-muscle maintenance budget, including every group credited by shared-primary
+  metadata.
+- Recovery-tight maintenance groups are limited to at most four meaningful exercise identities
+  under the 8-set ceiling. Fallback and AI output consume the same prescription; neither creates
+  a separate role-default set budget or repairs maintenance volume after generation.
+
 ### Directional evidence vs exact numbers
 The literature is stronger on directional principles than on one exact bodybuilding template. For example:
 - higher weekly volume tends to support hypertrophy better than very low volume
