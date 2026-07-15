@@ -76,7 +76,10 @@ let package = Package(
         .testTarget(
             name: "TransformGeneratorCoreTests",
             dependencies: ["Transform"],
-            path: "Tests/TransformGeneratorCoreTests"
+            path: "Tests/TransformGeneratorCoreTests",
+            resources: [
+                .process("Fixtures")
+            ]
         )
     ]
 )

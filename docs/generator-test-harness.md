@@ -119,9 +119,15 @@ The CI job has a 12-minute timeout so a future runaway cannot wall the pipeline.
 
 ## Where it's going
 
-- **Golden fixtures** — freeze `(analysis, blueprint) → allocated menu + validator verdict`
-  snapshots for the cases that have bitten us (recovery-tight, zero-hamstring, multi-primary
-  lower body) so silent output drift fails CI.
+- **Regression fixtures** — `GeneratorTroubleshootingTests` now recreates a privacy-safe
+  structured failure class for the historical five maintenance-volume errors and snapshots
+  its allocated menu plus validator verdict. This is not a byte-for-byte replay of the old
+  Workshop bundle. Add recovery-tight, zero-hamstring, and multi-primary lower-body fixtures
+  using the same versioned pattern.
+- **Optional live smoke** — `.github/workflows/generator-troubleshooting.yml` can manually run
+  one bounded Anthropic request through the production request/parser/validator contract with
+  explicit API-spend confirmation. See
+  `docs/generator-troubleshooting-workflow.md` for its guarantees and limits.
 - **Effort governance and autoregulation (roadmap #3)** — connect logged performance to the
   next prescription through double progression, with explicit RIR as a separate signal rather
   than inferring proximity to failure from completed reps alone.

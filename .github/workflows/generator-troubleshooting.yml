@@ -1,0 +1,69 @@
+name: Generator Troubleshooting
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_live_ai:
+        description: "Also run one API-billed Anthropic contract check"
+        type: boolean
+        required: true
+        default: false
+      confirm_api_usage:
+        description: "Type RUN_LIVE_AI to authorize the live job"
+        type: string
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: generator-troubleshooting
+  cancel-in-progress: false
+
+jobs:
+  deterministic-replay:
+    runs-on: macos-latest
+    timeout-minutes: 12
+    env:
+      TRANSFORM_FIXTURE_SNAPSHOT_OUTPUT: ${{ github.workspace }}/generator-fixture-snapshot.txt
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Run captured generator regression
+        run: swift test --filter GeneratorTroubleshootingTests/testFiveMaintenanceErrorFixtureStaysResolved
+
+      - name: Upload deterministic snapshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: generator-fixture-snapshot
+          path: generator-fixture-snapshot.txt
+          if-no-files-found: warn
+          retention-days: 14
+
+  live-structured-contract:
+    if: ${{ inputs.run_live_ai && inputs.confirm_api_usage == 'RUN_LIVE_AI' }}
+    needs: deterministic-replay
+    runs-on: macos-latest
+    timeout-minutes: 12
+    env:
+      TRANSFORM_RUN_LIVE_ANTHROPIC_SMOKE: "1"
+      TRANSFORM_HEADLESS_ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      TRANSFORM_LIVE_SMOKE_OUTPUT: ${{ github.workspace }}/live-generator-report.txt
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Run one bounded live structured generation
+        run: swift test --filter GeneratorTroubleshootingTests/testLiveWeekOneStructuredContract
+
+      - name: Upload redacted troubleshooting verdict
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-generator-report
+          path: live-generator-report.txt
+          if-no-files-found: warn
+          retention-days: 7

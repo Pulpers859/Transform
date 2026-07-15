@@ -1,0 +1,75 @@
+{
+  "schemaVersion": 1,
+  "id": "historical-five-maintenance-error-class",
+  "stage": "weekOne",
+  "analysis": {
+    "overallAssessment": "Synthetic regression fixture for a trained adult pursuing hypertrophy while managing limited recovery. No personal or medical data is included.",
+    "trainingAssessment": "Maintain broad muscular coverage while emphasizing upper chest and lateral deltoids. Core work should remain modest and repeatable.",
+    "recoveryRiskAssessment": "Recovery is somewhat constrained, so non-priority volume must remain near maintenance rather than expanding into filler work.",
+    "priorityMuscles": [
+      "Upper Chest",
+      "Lateral Deltoids",
+      "Core/Abs"
+    ],
+    "workoutRecommendations": [
+      "Use repeatable incline pressing for upper-chest progression.",
+      "Use stable cable and machine lateral-raise variations for side-delt volume.",
+      "Keep direct abdominal work modest because visibility is not stimulus-limited."
+    ],
+    "structuredTrainingIntent": {
+      "splitRecommendation": "Upper/Lower with a dedicated push emphasis",
+      "weeklyTrainingDays": 5,
+      "priorities": [
+        {
+          "area": "Upper Chest",
+          "priorityLevel": "High",
+          "rationale": "Improve clavicular-pec development with progressive incline work.",
+          "weeklyDayTarget": 2,
+          "weeklyExerciseTarget": 3,
+          "preferredStyles": ["Push", "Upper"],
+          "preferredMovementPatterns": ["incline press", "low incline fly"],
+          "volumeBias": "High",
+          "directWorkBias": "Direct emphasis"
+        },
+        {
+          "area": "Lateral Deltoids",
+          "priorityLevel": "High",
+          "rationale": "Improve shoulder width with stable direct work.",
+          "weeklyDayTarget": 2,
+          "weeklyExerciseTarget": 3,
+          "preferredStyles": ["Upper", "Push", "Arms"],
+          "preferredMovementPatterns": ["lateral raise", "cable lateral raise"],
+          "volumeBias": "High",
+          "directWorkBias": "Direct emphasis"
+        },
+        {
+          "area": "Core/Abs",
+          "priorityLevel": "Medium",
+          "rationale": "Preserve abdominal strength and thickness without displacing recoverable hypertrophy work.",
+          "weeklyDayTarget": 2,
+          "weeklyExerciseTarget": 2,
+          "preferredStyles": ["Upper", "Lower"],
+          "preferredMovementPatterns": ["loaded trunk flexion", "controlled leg raise"],
+          "volumeBias": "Moderate",
+          "directWorkBias": "Modest direct work"
+        }
+      ],
+      "programmingNotes": [
+        "Keep non-priority Back, Triceps, Quads, Hamstrings, and Glutes within recoverable maintenance volume.",
+        "Prefer repeated lifts that support progression over unnecessary weekly variation."
+      ]
+    }
+  },
+  "expected": {
+    "trainingDays": 5,
+    "validatorIssues": [],
+    "forbiddenIssueFragments": [
+      "Non-priority muscle group 'Back' exceeds the maintenance weekly volume ceiling",
+      "Non-priority muscle group 'Triceps' exceeds the maintenance weekly volume ceiling",
+      "Non-priority muscle group 'Quads' exceeds the maintenance weekly volume ceiling",
+      "Non-priority muscle group 'Hamstrings' exceeds the maintenance weekly volume ceiling",
+      "Non-priority muscle group 'Glutes' exceeds the maintenance weekly volume ceiling"
+    ],
+    "menuSignature": ""
+  }
+}

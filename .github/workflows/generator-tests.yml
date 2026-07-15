@@ -20,6 +20,8 @@ jobs:
     # Deterministic generation should be sub-second per program. A hard cap keeps a
     # future runaway (see the legacy-path over-generation gap) from walling CI for 10+ min.
     timeout-minutes: 12
+    env:
+      TRANSFORM_FIXTURE_SNAPSHOT_OUTPUT: ${{ github.workspace }}/generator-fixture-snapshot.txt
 
     steps:
       - uses: actions/checkout@v5
@@ -31,3 +33,12 @@ jobs:
 
       - name: Run headless generator tests
         run: swift test --parallel
+
+      - name: Upload generator fixture snapshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: generator-fixture-snapshot
+          path: generator-fixture-snapshot.txt
+          if-no-files-found: warn
+          retention-days: 14

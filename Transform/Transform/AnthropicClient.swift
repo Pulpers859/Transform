@@ -36,6 +36,21 @@ final class AnthropicClient {
     }()
     private init() {}
 
+    private var resolvedAPIKey: String {
+        #if !canImport(UIKit)
+        // Headless macOS integration tests cannot read the iPhone Keychain. This
+        // runtime-only credential path is compiled out of the app target and keeps
+        // CI secrets out of tracked files, build settings, and request diagnostics.
+        if let raw = ProcessInfo.processInfo.environment["TRANSFORM_HEADLESS_ANTHROPIC_API_KEY"] {
+            let key = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !key.isEmpty {
+                return key
+            }
+        }
+        #endif
+        return Config.anthropicAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     // MARK: - Public API
 
     /// Text-mode request. Returns concatenated `text` content blocks.
@@ -72,13 +87,15 @@ final class AnthropicClient {
         body: [String: Any],
         toolName: String,
         timeout: TimeInterval = 120,
-        context: AnthropicRequestContext? = nil
+        context: AnthropicRequestContext? = nil,
+        attemptLimit: Int? = nil
     ) async throws -> String {
         let data = try await performRequest(
             body: body,
             timeout: timeout,
             requestKind: "structured",
-            context: context
+            context: context,
+            attemptLimit: attemptLimit
         )
 
         let rootObject: Any
@@ -132,13 +149,14 @@ final class AnthropicClient {
         body: [String: Any],
         timeout: TimeInterval,
         requestKind: String,
-        context: AnthropicRequestContext?
+        context: AnthropicRequestContext?,
+        attemptLimit: Int? = nil
     ) async throws -> Data {
         guard let url = URL(string: "https://api.anthropic.com/v1/messages") else {
             throw ClaudeError.apiError("Invalid API URL")
         }
 
-        let apiKey = Config.anthropicAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        let apiKey = resolvedAPIKey
         guard !apiKey.isEmpty else {
             throw ClaudeError.apiError(Config.anthropicKeyStatus.requestFailureMessage)
         }
@@ -164,7 +182,8 @@ final class AnthropicClient {
             details: startDetails
         )
 
-        for attempt in 1...maxAttempts {
+        let allowedAttempts = max(1, min(maxAttempts, attemptLimit ?? maxAttempts))
+        for attempt in 1...allowedAttempts {
             try Task.checkCancellation()
             do {
                 var request = URLRequest(url: url)
@@ -199,7 +218,7 @@ final class AnthropicClient {
                     return data
                 }
 
-                if shouldRetry(statusCode: httpResponse.statusCode), attempt < maxAttempts {
+                if shouldRetry(statusCode: httpResponse.statusCode), attempt < allowedAttempts {
                     let delayNanos = retryDelay(for: httpResponse, attempt: attempt)
                     logRequest(
                         requestID: requestID,
@@ -261,7 +280,7 @@ final class AnthropicClient {
                     lifecycleAtEnd: lifecycleAtEnd
                 )
 
-                if shouldRetry(error: error), attempt < maxAttempts {
+                if shouldRetry(error: error), attempt < allowedAttempts {
                     logRequest(
                         requestID: requestID,
                         event: "retry_scheduled",
