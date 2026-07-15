@@ -1,0 +1,30 @@
+name: Generator Tests
+
+# Headless regression tests for the deterministic workout-generation core.
+# Runs the pure planning logic (menu-lock -> allocation -> validation -> procedural
+# fallback) with `swift test` on a macOS runner — no simulator, no device, no network.
+# Complements swift.yml (which builds the full iOS app target).
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+permissions:
+  contents: read
+
+jobs:
+  generator-tests:
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Show toolchain
+        run: |
+          swift --version
+          xcodebuild -version
+
+      - name: Run headless generator tests
+        run: swift test --parallel

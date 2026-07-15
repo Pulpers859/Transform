@@ -1,0 +1,87 @@
+# Generator Test Harness
+
+Headless, network-free regression coverage for Transform's deterministic
+workout-generation core. This is step #2 of the "A+ generator" roadmap: it ends the era
+of shipping generator changes "correct-by-inspection" with no automated verification.
+
+## Why
+
+The iOS app is validated by building in Xcode and running on a physical iPhone — the source
+of truth for "does it work." But the generator's *pure planning logic* (menu-lock → weekly
+set allocation → validation → procedural fallback) is ordinary Swift that does **not** need
+an iPhone, a simulator, or the network to run. Until now it had zero automated tests, so a
+whole class of bugs (the "required vs achievable weekly volume" drift) could recur silently
+and only surface as a failed generation on device.
+
+This package compiles **only** that core plus its model dependencies and exercises it with
+plain `swift test` on any Mac or a GitHub `macos` runner.
+
+## What it is
+
+- **`Package.swift`** (repo root) — an SPM package with one library target,
+  `TransformGeneratorCore`, that compiles the **real app source files in place** (no copies,
+  single source of truth) and one test target, `TransformGeneratorCoreTests`.
+- **`Tests/TransformGeneratorCoreTests/`** — the tests.
+- **`.github/workflows/generator-tests.yml`** — runs `swift test` on `macos-latest`.
+
+The Xcode app target (`Transform/Transform.xcodeproj`) is **not touched**. The project uses
+Xcode 16 synchronized folders, so no `project.pbxproj` changes are involved.
+
+### The one code change outside the package
+
+`ClaudeService.swift`'s body-analysis photo path uses `UIKit` (`UIImage`), which does not
+exist on macOS. Since every generator file is an `extension ClaudeService`, the base type
+must compile off-device. The `AnalysisPhoto` struct, the two `analyzeBody(...)` entry
+points, and `import UIKit` are wrapped in `#if canImport(UIKit)`. On iOS/device builds
+`canImport(UIKit)` is **true**, so this is completely inert — no behavior change. On macOS
+the photo path compiles out and the generator core builds.
+
+## Running it
+
+```sh
+# from the repo root
+swift test
+```
+
+macOS 14+ is required (SwiftData `@Model` types).
+
+## First-run: finalizing the source closure
+
+The `sources` list in `Package.swift` is the deterministic-generator dependency closure as
+determined by inspection. Swift's transitive type resolution can only be confirmed by a
+compiler, and this harness was authored in a Linux container without one. The **first**
+`swift build` on a Mac may report:
+
+```
+error: cannot find type 'SomeType' in scope
+```
+
+Fix: add the file under `Transform/Transform/` that defines `SomeType` to the `sources`
+array in `Package.swift`. Every candidate file is Foundation / SwiftData / SwiftUI only
+(no UIKit), so adding it is safe. Repeat until the build is clean — expect one or two
+rounds, not a rewrite. If SPM complains about unhandled resource files in the target path,
+add them to an `exclude:` list on the target.
+
+## What the current tests cover
+
+`DeterministicGenerationTests` runs the full network-free chain
+(`trainingIntentPlan → programBlueprint → preSelectedExerciseMenu →
+validatedProceduralWeekOneProgram`) and asserts:
+
+1. **`testSmallMusclePrioritiesDoNotHardFail`** — the exact regression: "Upper Chest" +
+   "Lateral Deltoids" priorities (small groups whose direct-set target historically outran
+   the achievable menu ceiling) must not throw.
+2. **`testRepresentativePrioritiesNeverHardFail`** — a sweep across representative priority
+   sets; none may hard-fail. This is where "works every time" starts to become provable
+   rather than asserted.
+3. **`testGeneratedProgramIsStructurallyComplete`** — a produced week has 7 days, at least
+   one training day, a name, and no empty training days.
+
+## Where it's going
+
+- **Golden fixtures** — freeze `(analysis, blueprint) → allocated menu + validator verdict`
+  snapshots for the cases that have bitten us (recovery-tight, zero-hamstring, multi-primary
+  lower body) so silent output drift fails CI.
+- **Self-consistency assertion (roadmap #1)** — once the credit ledger is unified, assert at
+  generation time that the allocator's coverage equals the validator's recomputed report.
+  That invariant belongs here as a test and in the generator as a runtime check.

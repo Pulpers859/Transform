@@ -1,8 +1,14 @@
+#if canImport(UIKit)
 import UIKit
+#endif
 import Foundation
 
 // MARK: - Photo Input
 
+// UIKit-only: the photo/body-analysis path depends on UIImage. Guarded so the
+// generator core compiles on macOS (headless test harness). Inert on iOS/device
+// builds where canImport(UIKit) is true — no behavior change.
+#if canImport(UIKit)
 struct AnalysisPhoto: Identifiable {
     let id = UUID()
     let image: UIImage
@@ -49,6 +55,7 @@ struct AnalysisPhoto: Identifiable {
         }
     }
 }
+#endif
 
 // MARK: - Claude Service
 
@@ -58,6 +65,9 @@ class ClaudeService {
 
     // MARK: - Multi-Photo Body Analysis
 
+    // UIKit-only body-analysis entry points (consume AnalysisPhoto / UIImage). Guarded
+    // so the generator core is buildable headlessly on macOS; active on device.
+    #if canImport(UIKit)
     func analyzeBody(
         photos: [AnalysisPhoto],
         inputContext suppliedInputContext: AnalysisInputContext? = nil,
@@ -261,6 +271,7 @@ class ClaudeService {
             inputContext: inputContext
         )
     }
+    #endif
 
     // MARK: - Network Request
 
