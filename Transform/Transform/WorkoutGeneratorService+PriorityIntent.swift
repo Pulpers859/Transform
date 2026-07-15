@@ -785,7 +785,8 @@ extension ClaudeService {
     ) -> [WeeklyVariationViolation] {
         blueprint.priorityAllocations.flatMap { allocation in
             let cap = maximumUsefulVariationCount(for: allocation)
-            return weeklyVariationBuckets(for: allocation.area).compactMap { bucket in
+            let violations: [WeeklyVariationViolation] = weeklyVariationBuckets(for: allocation.area).compactMap {
+                bucket -> WeeklyVariationViolation? in
                 let names = exerciseIdentities.reduce(into: Set<String>()) { result, exercise in
                     let metadata = exerciseMetadata(
                         forExerciseName: exercise.name,
@@ -803,6 +804,7 @@ extension ClaudeService {
                     cap: cap
                 )
             }
+            return violations
         }
     }
 
