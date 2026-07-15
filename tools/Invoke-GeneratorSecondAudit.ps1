@@ -1,5 +1,6 @@
 param(
-    [string]$OutputPath = '.agents\generator-second-audit.md'
+    [string]$OutputPath = '.agents\generator-second-audit.md',
+    [switch]$ValidateOnly
 )
 
 $ErrorActionPreference = 'Stop'
@@ -37,32 +38,33 @@ $outputDirectory = Split-Path -Parent $outputFile
 New-Item -ItemType Directory -Force -Path $outputDirectory | Out-Null
 
 $packetPath = Join-Path $outputDirectory 'generator-review-packet.md'
-$status = git status --short
-$diff = git diff --no-ext-diff HEAD --
-$trackedFiles = git diff --name-only HEAD --
-$untrackedFiles = git ls-files --others --exclude-standard
-$changedFiles = @($trackedFiles) + @($untrackedFiles) | Sort-Object -Unique
-$untrackedSections = foreach ($file in $untrackedFiles) {
-    $fullPath = Join-Path $repoRoot $file
-    if (-not (Test-Path -LiteralPath $fullPath -PathType Leaf)) { continue }
-    $content = Get-Content -Raw -LiteralPath $fullPath
-    @(
-        "## Untracked File: $file",
-        '```text',
-        $content,
-        '```',
-        ''
-    ) -join "`n"
+$untrackedFiles = @(git ls-files --others --exclude-standard)
+if ($untrackedFiles.Count -gt 0) {
+    throw "Untracked files are not sent to Claude Code. Stage the intended review files first, then rerun. Untracked: $($untrackedFiles -join ', ')"
 }
 
-$diffText = @(
-    ($diff -join "`n"),
-    ($untrackedSections -join "`n")
-) -join "`n"
+$status = git status --short
+$changedFiles = @(git diff --name-only HEAD --)
+$diffText = git diff --no-ext-diff HEAD -- | Out-String
+if ([string]::IsNullOrWhiteSpace($diffText)) {
+    throw "No tracked or staged diff exists for review."
+}
+if ($diffText.Length -gt 200000) {
+    throw "The review diff exceeds 200,000 characters. Split the change into a smaller auditable unit."
+}
+
 $secretPatterns = @(
     'sk-ant-[A-Za-z0-9_-]{20,}',
     'sk-[A-Za-z0-9_-]{32,}',
-    'gh[opsu]_[A-Za-z0-9]{20,}'
+    'github_pat_[A-Za-z0-9_]{20,}',
+    'gh[opsru]_[A-Za-z0-9]{20,}',
+    'AKIA[0-9A-Z]{16}',
+    'ASIA[0-9A-Z]{16}',
+    'xox[baprs]-[A-Za-z0-9-]{20,}',
+    'AIza[0-9A-Za-z_-]{30,}',
+    '-----BEGIN ([A-Z ]+ )?PRIVATE KEY-----',
+    'eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}',
+    '(?i)(api[_-]?key|client[_-]?secret|password|access[_-]?token)\s*[:=]\s*["'']?[A-Za-z0-9_./+=-]{20,}'
 )
 foreach ($pattern in $secretPatterns) {
     if ($diffText -match $pattern) {
@@ -83,19 +85,27 @@ $packet = @(
     ($changedFiles -join "`n"),
     '```',
     '',
-    '## Tracked Diff And Untracked File Contents',
+    '## Tracked And Staged Diff',
     '```diff',
     $diffText,
     '```'
 ) -join "`n"
 Set-Content -LiteralPath $packetPath -Value $packet -Encoding utf8
+if ($ValidateOnly) {
+    Write-Host "Review packet and credential checks passed: $packetPath" -ForegroundColor Cyan
+    exit 0
+}
 
 $prompt = @"
 Perform a second, adversarial review of the current Transform generator changes.
 
 Repository: $repoRoot
-Start with AGENTS.md and this packet: $packetPath
-You have read-only tools only. Do not edit files, run builds, invoke APIs, or expose secrets.
+You have no tools and cannot inspect any file beyond the sanitized review packet included below.
+Do not request secrets or claim to have run builds, tests, APIs, or source-tree searches.
+
+Transform priorities, in order: workout quality, evidence-informed programming integrity,
+robustness and silent-failure prevention, validator correctness, API cost, maintainability.
+Fix root causes instead of trimming output or weakening validator findings.
 
 Assume the first implementation is incomplete. Findings must lead, ordered by severity,
 with exact file and line references. Audit these independently:
@@ -108,9 +118,18 @@ with exact file and line references. Audit these independently:
 - missing tests, CI failure modes, and misleading documentation.
 
 Finish with one of: APPROVE, APPROVE WITH FOLLOW-UPS, or REQUEST CHANGES. Be blunt and concise.
+
+$packet
 "@
 
-$review = & $claudeCommand -p --permission-mode plan --tools 'Read,Grep,Glob' --output-format text $prompt 2>&1
+$claudeArgs = @(
+    '-p',
+    '--permission-mode', 'plan',
+    '--tools', '',
+    '--output-format', 'text',
+    $prompt
+)
+$review = & $claudeCommand @claudeArgs 2>&1
 if ($LASTEXITCODE -ne 0) {
     throw "Claude Code review failed with exit code $LASTEXITCODE.`n$($review -join "`n")"
 }

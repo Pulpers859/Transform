@@ -182,6 +182,45 @@ final class GeneratorTroubleshootingTests: XCTestCase {
         }
     }
 
+    func testMaintenanceVolumeGuardPositiveControls() throws {
+        let fixture = try loadFixture()
+        let intent = service.trainingIntentPlan(from: fixture.analysis)
+        let blueprint = service.programBlueprint(for: intent, weekNumber: 1)
+        let menus = service.preSelectedExerciseMenu(
+            for: blueprint,
+            trainingIntent: intent,
+            weekNumber: 1,
+            previousWeekDays: nil
+        )
+        let baseline = try service.validatedProceduralWeekOneProgram(
+            from: fixture.analysis,
+            trainingIntent: intent,
+            blueprint: blueprint,
+            exerciseMenus: menus
+        )
+        let controls = [
+            (label: "Back", exercise: "Lat Pulldown", target: "Lats"),
+            (label: "Triceps", exercise: "Rope Triceps Pressdown", target: "Triceps"),
+            (label: "Quads", exercise: "Leg Extension", target: "Quads"),
+            (label: "Hamstrings", exercise: "Leg Curl", target: "Hamstrings"),
+            (label: "Glutes", exercise: "Hip Thrust", target: "Glutes")
+        ]
+
+        for control in controls {
+            let inflated = appendingOvervolumeExercise(
+                to: baseline,
+                exerciseName: control.exercise,
+                muscleTarget: control.target
+            )
+            let issues = service.validateProgramResponse(inflated, blueprint: blueprint)
+            let expected = "Non-priority muscle group '\(control.label)' exceeds the maintenance weekly volume ceiling"
+            XCTAssertTrue(
+                issues.contains { $0.localizedCaseInsensitiveContains(expected) },
+                "Maintenance validator failed its positive control for \(control.label): \(issues.joined(separator: " | "))"
+            )
+        }
+    }
+
     private func loadFixture() throws -> Fixture {
         guard let url = Bundle.module.url(
             forResource: "five-maintenance-errors",
@@ -219,6 +258,42 @@ final class GeneratorTroubleshootingTests: XCTestCase {
             "Validator issues: \(issues.count)",
             "Issues:"
         ] + issueLines).joined(separator: "\n") + "\n"
+    }
+
+    private func appendingOvervolumeExercise(
+        to program: WorkoutProgramResponse,
+        exerciseName: String,
+        muscleTarget: String
+    ) -> WorkoutProgramResponse {
+        var days = program.days
+        guard let dayIndex = days.firstIndex(where: { !$0.isRestDay }) else {
+            return program
+        }
+        let day = days[dayIndex]
+        let extra = WorkoutExerciseResponse(
+            exerciseName: exerciseName,
+            sets: 12,
+            reps: "8-12",
+            tempo: "2-0-1-0",
+            restSeconds: 90,
+            notes: "Synthetic validator positive control only.",
+            muscleTarget: muscleTarget
+        )
+        days[dayIndex] = WorkoutDayResponse(
+            dayNumber: day.dayNumber,
+            dayName: day.dayName,
+            muscleGroups: day.muscleGroups,
+            isRestDay: day.isRestDay,
+            notes: day.notes,
+            exercises: day.exercises + [extra]
+        )
+        return WorkoutProgramResponse(
+            programName: program.programName,
+            programSummary: program.programSummary,
+            splitType: program.splitType,
+            daysPerWeek: program.daysPerWeek,
+            days: days
+        )
     }
 
     private func writeArtifactIfRequested(_ contents: String, environmentKey: String) throws {

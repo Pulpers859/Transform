@@ -22,7 +22,7 @@ validator.
 | **Slowness bug** (harness caught it) | ✅ Fixed & CI-verified. Menu phase **~195,000 ms → ~2,000 ms in debug (~95×)**, output numerically identical. |
 | **Over-generation bug** (harness caught it) | ✅ Fixed and CI-verified with a sub-region-aware variation policy. All five original legacy combinations run instead of being skipped. |
 | **Roadmap #1 — unify credit ledger + generation-time invariant** | ✅ Fixed and CI-verified. Direct sets require primary metadata, each exercise counts once per priority, and allocation asserts equality with validator recomputation. |
-| **Phone-free troubleshooting workflow** | ✅ Added and CI-verified. A versioned failure-class fixture pins the allocated menu and validator verdict; a manual live Anthropic contract check is bounded to one HTTP attempt; Claude Code can independently review generator diffs with read-only tools. |
+| **Phone-free troubleshooting workflow** | ✅ Added and CI-verified. A versioned failure-class fixture pins the allocated menu and validator verdict; a manual live Anthropic contract check is bounded to one HTTP attempt; Claude Code can independently review credential-scanned diffs with no tools. |
 | **Roadmap #3 — effort governance + autoregulation loop** | 🔲 Not started. This is now the next roadmap build. |
 
 **Current troubleshooting checkpoint:** `bb4e256` on `main`; both the full Swift build

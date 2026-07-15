@@ -11,9 +11,10 @@ keeping the limits honest. It does not add OpenAI or ChatGPT to the app.
    job recreates the privacy-safe priority/recovery conditions behind the historical five
    maintenance-volume errors and uploads the allocated-menu snapshot. It is a failure-class
    regression, not a byte-for-byte replay of the old Workshop bundle.
-3. `tools/Invoke-GeneratorSecondAudit.ps1` sends the current diff and source tree to the
-   locally authenticated Claude Code CLI for an independent read-only review. Claude receives
-   `Read`, `Grep`, and `Glob` only; it cannot edit files or run shell commands from this review.
+3. `tools/Invoke-GeneratorSecondAudit.ps1` sends a credential-scanned tracked/staged diff to
+   the locally authenticated Claude Code CLI for an independent review. Claude receives no
+   tools and cannot inspect the filesystem, edit files, or run commands. The script refuses
+   untracked files; stage the intended review files first.
 
 ## Optional live Anthropic smoke test
 
@@ -52,7 +53,8 @@ primary generator debugger.
 1. Reproduce a finding with a privacy-safe fixture or captured JSON.
 2. Map it to planning, parsing, metadata, validation, fallback, or UI/debug reporting.
 3. Fix the earliest deterministic cause and run the generator tests in macOS CI.
-4. Run `tools/Invoke-GeneratorSecondAudit.ps1` before committing substantial generator work.
+4. Stage the intended files, then run `tools/Invoke-GeneratorSecondAudit.ps1` before committing
+   substantial generator work.
 5. Resolve every material second-audit finding.
 6. Use the live manual workflow only when request/model behavior is relevant.
 7. Build and run on the physical iPhone before treating a release as fully validated.
