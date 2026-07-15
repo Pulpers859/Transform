@@ -55,6 +55,9 @@ This file is the programming contract for the workout generator. The goal is not
 - The exercise catalog stays broad, but one weekly prescription stays narrow. Variation budgets
   count primary-target exercise identities, not every compound that gives a muscle secondary
   stimulus. Composite priorities such as Back use separate lat and upper/mid-back buckets.
+- Priority feasibility counts prime hypertrophy slots, not token secondary credit. A prime slot
+  may receive up to four working sets when weekly, per-session, fatigue, and time caps all allow
+  it; this keeps `SLOT-001` arithmetic consistent with `VOL-001` without adding extra movements.
 
 ### Directional evidence vs exact numbers
 The literature is stronger on directional principles than on one exact bodybuilding template. For example:

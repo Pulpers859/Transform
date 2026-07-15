@@ -1169,21 +1169,22 @@ extension ClaudeService {
         for group in majorMuscleGroups {
             let aliases = normalizedGroupAliases(forSeed: group.seed)
             guard !isMajorMuscleGroupPrioritized(seed: group.seed, blueprint: blueprint) else { continue }
-            let priorCount = existingMenus.joined().filter {
-                exerciseDirectlyTargets(
+            var distinctNames = existingMenus.joined().reduce(into: Set<String>()) { result, exercise in
+                guard exerciseDirectlyTargets(
                     groupAliases: aliases,
-                    exerciseName: $0.exerciseName,
-                    muscleTarget: $0.muscleTarget
-                )
-            }.count
-            let todayCount = selectedToday.filter {
-                exerciseDirectlyTargets(
-                    groupAliases: aliases,
-                    exerciseName: $0.name,
-                    muscleTarget: $0.target
-                )
-            }.count
-            guard priorCount + todayCount <= maxMeaningfulSlots else { return false }
+                    exerciseName: exercise.exerciseName,
+                    muscleTarget: exercise.muscleTarget
+                ) else { return }
+                result.insert(normalizeExerciseName(exercise.exerciseName))
+            }
+            for exercise in selectedToday where exerciseDirectlyTargets(
+                groupAliases: aliases,
+                exerciseName: exercise.name,
+                muscleTarget: exercise.target
+            ) {
+                distinctNames.insert(normalizeExerciseName(exercise.name))
+            }
+            guard distinctNames.count <= maxMeaningfulSlots else { return false }
         }
         return true
     }
@@ -1590,18 +1591,11 @@ extension ClaudeService {
         var updated = menus
 
         func credits(_ name: String, _ target: String, area: String) -> Bool {
-            directSetCredit(
-                for: WorkoutExerciseResponse(
-                    exerciseName: name,
-                    sets: 1,
-                    reps: "",
-                    tempo: "",
-                    restSeconds: 0,
-                    notes: "",
-                    muscleTarget: target
-                ),
-                area: area
-            ) > 0
+            focusStimulusKind(
+                exerciseName: name,
+                muscleTarget: target,
+                focusArea: area
+            ) == .prime
         }
 
         for allocation in blueprint.priorityAllocations {
@@ -1899,7 +1893,15 @@ extension ClaudeService {
                 exerciseName: exercise.exerciseName,
                 muscleTarget: exercise.muscleTarget
             )
-            guard exercise.prescribedSets < roleDefault else { return false }
+            let isPrimePriorityExercise = allocations.indices.contains { allocIndex in
+                accounting[dayIndex][exerciseIndex].unitDirect[allocIndex] > 0
+                    && accounting[dayIndex][exerciseIndex].qualityScore[allocIndex] == 30
+            }
+            // SLOT-001's feasibility floor assumes a prime priority slot can hold about four
+            // sets. Honor that same ceiling here instead of creating a plan that promises
+            // 12 sets across three slots and then caps every accessory at three.
+            let setCeiling = isPrimePriorityExercise ? max(roleDefault, 4) : roleDefault
+            guard exercise.prescribedSets < setCeiling else { return false }
 
             for groupIndex in maintenanceGroups.indices
                 where accounting[dayIndex][exerciseIndex].groupTargets[groupIndex] {
