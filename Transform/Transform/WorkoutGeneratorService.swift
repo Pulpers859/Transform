@@ -393,7 +393,11 @@ extension ClaudeService {
     }
 
     static func availableMemoryMB() -> Int {
-        #if canImport(os)
+        // os_proc_available_memory() is API_UNAVAILABLE(macos) — it exists only on
+        // iOS/tvOS/watchOS. Guard on platform, not canImport(os) (os imports fine on
+        // macOS), so the generator core builds for the headless test harness. Device
+        // behavior is unchanged (os(iOS) is true there).
+        #if os(iOS) || os(tvOS) || os(watchOS)
         return Int(os_proc_available_memory() / (1024 * 1024))
         #else
         return -1

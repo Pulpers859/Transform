@@ -46,6 +46,7 @@ let package = Package(
 
                 // Deterministic workout generator (the menu-locked planning core).
                 "WorkoutGeneratorDebugModels.swift",
+                "WorkoutGenerationDiagnostics.swift",
                 "WorkoutGeneratorService.swift",
                 "WorkoutGeneratorService+PlanningTypes.swift",
                 "WorkoutGeneratorService+MetadataProfiles.swift",
