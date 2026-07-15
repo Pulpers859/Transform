@@ -29,15 +29,23 @@ let package = Package(
         .macOS(.v14)
     ],
     targets: [
+        // The target is named "Transform" to match the iOS app's module name, so that
+        // module-qualified references in the sources (e.g. `Transform.formatWeight`)
+        // resolve within this module.
         .target(
-            name: "TransformGeneratorCore",
+            name: "Transform",
             path: "Transform/Transform",
             sources: [
                 // Service base + networking (ClaudeService's UIKit photo path is guarded
                 // behind #if canImport(UIKit), so it compiles cleanly off-device).
                 "ClaudeService.swift",
                 "AnthropicClient.swift",
+                "AnthropicAPIKeyStore.swift",
                 "Config.swift",
+                // Harness-only shims for free functions that live in UIKit/SwiftUI files
+                // (e.g. formatWeight in DesignSystem.swift) which are excluded here.
+                // Guarded so it is empty in the iOS app build.
+                "HarnessShims.swift",
                 // Peripheral types referenced by the files above: AppLifecycleSnapshot
                 // (AnthropicClient error diagnostics; UIKit already guarded in-file) and
                 // AdaptiveMacroOverride (Config macro-target calc). Both Foundation-safe.
@@ -67,7 +75,7 @@ let package = Package(
         ),
         .testTarget(
             name: "TransformGeneratorCoreTests",
-            dependencies: ["TransformGeneratorCore"],
+            dependencies: ["Transform"],
             path: "Tests/TransformGeneratorCoreTests"
         )
     ]

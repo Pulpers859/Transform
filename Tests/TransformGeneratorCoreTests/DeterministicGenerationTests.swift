@@ -1,5 +1,5 @@
 import XCTest
-@testable import TransformGeneratorCore
+@testable import Transform
 
 /// Headless, network-free regression tests for the deterministic workout-generation core.
 ///
