@@ -25,7 +25,7 @@ validator.
 | **Phone-free troubleshooting workflow** | ✅ Added and CI-verified. A versioned failure-class fixture pins the allocated menu and validator verdict; a manual live Anthropic contract check is bounded to one HTTP attempt; Claude Code can independently review credential-scanned diffs with no tools. |
 | **Roadmap #3 — effort governance + autoregulation loop** | 🟡 In progress. The app had UI-side progression cues, but generation was using a summary top-set shortcut. The shared per-set decision path and headless regression coverage are now in place; effort/RIR governance remains. |
 
-**Current troubleshooting checkpoint:** `b02e04e` on `main`; the progression-cue sanitization repair, live contract check, shared per-set progression decision, Generator Tests, and full Xcode build are green.
+**Current troubleshooting checkpoint:** `b0e0d33` on `main`; the progression-cue sanitization repair, shared per-set progression decision, latest-performance-log coverage, Generator Tests, and full Xcode build are green. The latest billed live contract check also passed on `9d837e5`; that headless fixture does not execute the SwiftData-backed `WorkoutView` wiring.
 
 **If you do one thing next:** finish roadmap #3 by keeping per-set double-progression decisions consistent across workout UI, generation prompts, and validation; do not assume completed reps reveal RIR.
 
@@ -309,7 +309,7 @@ a runtime assertion and dedicated harness test fail on any divergence.
 Close the performance→prescription loop using logged performance (hit prescribed
 reps/weight → double-progression advance). The app now centralizes that decision and
 feeds the same per-set evidence to the generation verdict path; deterministic tests now
-cover mixed-set, failed-set, and legacy-summary cases. The remaining roadmap
+cover mixed-set, failed-set, legacy-summary, and latest-usable-log cases. The remaining roadmap
 work is explicit effort/RIR as a *secondary* signal and multi-session progression
 governance (see §1 note — logged reps alone can't see proximity-to-failure).
 
