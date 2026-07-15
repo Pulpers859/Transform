@@ -30,6 +30,4 @@ jobs:
           xcodebuild -version
 
       - name: Run headless generator tests
-        # TEMP: sequential (no --parallel) so per-generation PHASE-TIMING prints stream to the
-        # log while diagnosing the slowness. Restore --parallel once the hotspot is fixed.
-        run: swift test
+        run: swift test --parallel

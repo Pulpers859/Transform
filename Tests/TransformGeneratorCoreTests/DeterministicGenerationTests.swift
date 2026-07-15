@@ -95,33 +95,21 @@ final class DeterministicGenerationTests: XCTestCase {
 
     /// Runs the full deterministic chain and returns the validated Week 1 program.
     /// Throws if any locked-menu/allocation/validation stage produces a hard failure.
-    ///
-    /// TEMP: per-phase timing prints (grep "PHASE-TIMING" in CI logs) to locate the ~1.9 min/gen
-    /// hotspot. Remove once the slowness is fixed.
-    private func generateWeekOne(from result: BodyAnalysisResult, label: String = "") throws -> WorkoutProgramResponse {
-        func now() -> Double { Date().timeIntervalSinceReferenceDate }
-        let t0 = now()
+    private func generateWeekOne(from result: BodyAnalysisResult) throws -> WorkoutProgramResponse {
         let intent = service.trainingIntentPlan(from: result)
-        let t1 = now()
         let blueprint = service.programBlueprint(for: intent, weekNumber: 1)
-        let t2 = now()
         let menus = service.preSelectedExerciseMenu(
             for: blueprint,
             trainingIntent: intent,
             weekNumber: 1,
             previousWeekDays: nil
         )
-        let t3 = now()
-        let program = try service.validatedProceduralWeekOneProgram(
+        return try service.validatedProceduralWeekOneProgram(
             from: result,
             trainingIntent: intent,
             blueprint: blueprint,
             exerciseMenus: menus
         )
-        let t4 = now()
-        func ms(_ a: Double, _ b: Double) -> String { String(format: "%.0fms", (b - a) * 1000) }
-        print("PHASE-TIMING [\(label)] intent=\(ms(t0, t1)) blueprint=\(ms(t1, t2)) menu=\(ms(t2, t3)) validatedProcedural=\(ms(t3, t4)) TOTAL=\(ms(t0, t4))")
-        return program
     }
 
     // MARK: - Regression: the reported small-muscle failure (structured-intent path)
@@ -142,7 +130,7 @@ final class DeterministicGenerationTests: XCTestCase {
         )
         let result = analysis(structured: structured, priorityMuscles: ["Upper Chest", "Lateral Deltoids"])
         XCTAssertNoThrow(
-            try generateWeekOne(from: result, label: "upperchest+latdelt"),
+            try generateWeekOne(from: result),
             "Structured Upper Chest / Lateral Deltoids intent must not hard-fail the generator"
         )
     }
@@ -182,7 +170,7 @@ final class DeterministicGenerationTests: XCTestCase {
         for (label, structured) in cases {
             let muscles = structured.priorities.map(\.area)
             XCTAssertNoThrow(
-                try generateWeekOne(from: analysis(structured: structured, priorityMuscles: muscles), label: label),
+                try generateWeekOne(from: analysis(structured: structured, priorityMuscles: muscles)),
                 "Realistic structured intent '\(label)' hard-failed the generator"
             )
         }
