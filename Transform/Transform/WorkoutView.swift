@@ -1249,16 +1249,17 @@ struct WorkoutView: View {
     ) -> WorkoutProgressionDecision? {
         guard let range = prescribedRepRange(forCanonicalKey: entry.canonicalExerciseKey) else { return nil }
         let key = entry.canonicalExerciseKey
-        var latestSetLogs: [SetLogEntry] = []
-        for log in performanceLogs
-            .filter({ $0.canonicalExerciseKey == key && !$0.setLogsJSON.isEmpty })
-            .sorted(by: { $0.loggedAt > $1.loggedAt }) {
-            let decoded = log.decodedSetLogs
-            if !decoded.isEmpty {
-                latestSetLogs = decoded
-                break
-            }
+        let snapshots = performanceLogs.map {
+            WorkoutPerformanceLogSnapshot(
+                canonicalExerciseKey: $0.canonicalExerciseKey,
+                loggedAt: $0.loggedAt,
+                setLogs: $0.decodedSetLogs
+            )
         }
+        let latestSetLogs = WorkoutProgressionEngine.latestUsableSetLogs(
+            for: key,
+            from: snapshots
+        )
         return WorkoutProgressionEngine.evaluate(
             latestSetLogs: latestSetLogs,
             summaryWeight: entry.weightLbs,

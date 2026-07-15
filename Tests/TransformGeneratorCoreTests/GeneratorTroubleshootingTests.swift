@@ -1,4 +1,5 @@
 import Foundation
+import Foundation
 import XCTest
 @testable import Transform
 
@@ -190,6 +191,32 @@ final class GeneratorTroubleshootingTests: XCTestCase {
         XCTAssertEqual(decision.workingWeight, 80)
         XCTAssertEqual(decision.workingSetCount, 0)
         XCTAssertFalse(decision.usedPerSetEvidence)
+    }
+
+    func testProgressionEngineUsesLatestUsablePerformanceLog() throws {
+        let key = "barbell-row"
+        let older = WorkoutPerformanceLogSnapshot(
+            canonicalExerciseKey: key,
+            loggedAt: Date(timeIntervalSince1970: 100),
+            setLogs: [SetLogEntry(setNumber: 1, weightLbs: 90, repsCompleted: 12)]
+        )
+        let newerMalformed = WorkoutPerformanceLogSnapshot(
+            canonicalExerciseKey: key,
+            loggedAt: Date(timeIntervalSince1970: 200),
+            setLogs: []
+        )
+        let unrelated = WorkoutPerformanceLogSnapshot(
+            canonicalExerciseKey: "bench-press",
+            loggedAt: Date(timeIntervalSince1970: 300),
+            setLogs: [SetLogEntry(setNumber: 1, weightLbs: 185, repsCompleted: 8)]
+        )
+
+        let logs = WorkoutProgressionEngine.latestUsableSetLogs(
+            for: key,
+            from: [older, newerMalformed, unrelated]
+        )
+
+        XCTAssertEqual(logs, older.setLogs)
     }
 
     func testLiveWeekOneStructuredContract() async throws {

@@ -30,7 +30,24 @@ struct WorkoutProgressionDecision: Equatable {
     let usedPerSetEvidence: Bool
 }
 
+struct WorkoutPerformanceLogSnapshot: Equatable {
+    let canonicalExerciseKey: String
+    let loggedAt: Date
+    let setLogs: [SetLogEntry]
+}
+
 enum WorkoutProgressionEngine {
+    static func latestUsableSetLogs(
+        for canonicalExerciseKey: String,
+        from snapshots: [WorkoutPerformanceLogSnapshot]
+    ) -> [SetLogEntry] {
+        snapshots
+            .filter { $0.canonicalExerciseKey == canonicalExerciseKey }
+            .sorted { $0.loggedAt > $1.loggedAt }
+            .first { !$0.setLogs.isEmpty }?
+            .setLogs ?? []
+    }
+
     static func evaluate(
         analysis: WorkingSetAnalysis,
         summaryWeight: Double?,
