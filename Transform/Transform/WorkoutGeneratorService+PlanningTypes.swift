@@ -220,6 +220,7 @@ extension ClaudeService {
     }
 
     struct WeekStimulusReport {
+        var entries: [WeekStimulusEntry] = []
         var directSets: [String: Double] = [:]
         var directSetsByDay: [String: [Int: Double]] = [:]
         var weightedStimulus: [String: Double] = [:]
@@ -230,6 +231,11 @@ extension ClaudeService {
         var directExerciseNames: [String: Set<String>] = [:]
         var peakSessionFatigue: [String: Int] = [:]
         var dailyFatigue: [Int: Int] = [:]
+    }
+
+    struct WeekStimulusEntry {
+        let dayNumber: Int
+        let exercise: WorkoutExerciseResponse
     }
 
     struct StimulusCredit {

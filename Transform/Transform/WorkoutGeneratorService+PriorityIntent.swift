@@ -340,48 +340,40 @@ extension ClaudeService {
     }
 
     func priorityCoverage(for allocation: BlueprintPriorityAllocation, stimulusReport: WeekStimulusReport) -> PriorityCoverage {
-        let aliases = stimulusAreaAliases(for: allocation.area)
         var directSetsByDay: [Int: Double] = [:]
+        var exposureDays = Set<Int>()
+        var exerciseKeys = Set<String>()
+        var directExerciseNames = Set<String>()
+        var directSets = 0.0
+        var weightedStimulus = 0.0
 
-        let dayMatches = aliases.reduce(into: Set<Int>()) { partialResult, alias in
-            partialResult.formUnion(stimulusReport.exposureDays[alias] ?? [])
-        }.count
+        for entry in stimulusReport.entries {
+            let credit = stimulusCredit(for: entry.exercise, area: allocation.area)
+            guard credit.directSets > 0 || credit.weightedStimulus > 0 else { continue }
 
-        for alias in aliases {
-            for (dayNumber, directSets) in stimulusReport.directSetsByDay[alias] ?? [:] {
-                directSetsByDay[dayNumber, default: 0] += directSets
+            exposureDays.insert(entry.dayNumber)
+            exerciseKeys.insert("\(entry.dayNumber):\(normalizeExerciseName(entry.exercise.exerciseName))")
+            weightedStimulus += credit.weightedStimulus
+            if credit.directSets > 0 {
+                directSets += credit.directSets
+                directSetsByDay[entry.dayNumber, default: 0] += credit.directSets
+                directExerciseNames.insert(normalizeExerciseName(entry.exercise.exerciseName))
             }
         }
 
         let meaningfulThreshold = minimumMeaningfulPriorityExposureSets(for: allocation.area)
         let meaningfulDayMatches = directSetsByDay.values.filter { $0 + 0.01 >= meaningfulThreshold }.count
-
-        let exerciseMatches = aliases.reduce(into: Set<String>()) { partialResult, alias in
-            partialResult.formUnion(stimulusReport.exerciseKeys[alias] ?? [])
-        }.count
-
-        let variationCount = aliases.reduce(into: Set<String>()) { partialResult, alias in
-            partialResult.formUnion(stimulusReport.directExerciseNames[alias] ?? [])
-        }.count
-
-        let directSets = aliases.reduce(0.0) { partialResult, alias in
-            partialResult + (stimulusReport.directSets[alias] ?? 0)
-        }
-
-        let weightedStimulus = aliases.reduce(0.0) { partialResult, alias in
-            partialResult + (stimulusReport.weightedStimulus[alias] ?? 0)
-        }
-
+        let aliases = stimulusAreaAliases(for: allocation.area)
         let peakSessionFatigue = aliases.reduce(0) { partialResult, alias in
             max(partialResult, stimulusReport.peakSessionFatigue[alias] ?? 0)
         }
 
         return PriorityCoverage(
             label: allocation.area,
-            dayMatches: dayMatches,
+            dayMatches: exposureDays.count,
             meaningfulDayMatches: meaningfulDayMatches,
-            exerciseMatches: exerciseMatches,
-            variationCount: variationCount,
+            exerciseMatches: exerciseKeys.count,
+            variationCount: directExerciseNames.count,
             directSets: directSets,
             weightedStimulus: weightedStimulus,
             peakSessionFatigue: peakSessionFatigue
@@ -392,13 +384,12 @@ extension ClaudeService {
         for allocation: BlueprintPriorityAllocation,
         stimulusReport: WeekStimulusReport
     ) -> (dayNumber: Int, directSets: Double)? {
-        let aliases = stimulusAreaAliases(for: allocation.area)
         var totalsByDay: [Int: Double] = [:]
 
-        for alias in aliases {
-            for (dayNumber, directSets) in stimulusReport.directSetsByDay[alias] ?? [:] {
-                totalsByDay[dayNumber, default: 0] += directSets
-            }
+        for entry in stimulusReport.entries {
+            let directSets = directSetCredit(for: entry.exercise, area: allocation.area)
+            guard directSets > 0 else { continue }
+            totalsByDay[entry.dayNumber, default: 0] += directSets
         }
 
         guard let peak = totalsByDay.max(by: { lhs, rhs in lhs.value < rhs.value }) else {
@@ -459,6 +450,7 @@ extension ClaudeService {
             var fatigueByArea: [String: Int] = [:]
 
             for exercise in day.exercises {
+                report.entries.append(WeekStimulusEntry(dayNumber: day.dayNumber, exercise: exercise))
                 let metadata = exerciseMetadata(for: exercise)
                 let fatigueContribution = fatigueContribution(for: exercise, metadata: metadata)
                 dayFatigue += fatigueContribution
@@ -506,7 +498,10 @@ extension ClaudeService {
     }
 
     func directSetCredit(for exercise: WorkoutExerciseResponse, area: String) -> Double {
-        stimulusCredit(for: exercise, area: area).directSets
+        let metadata = exerciseMetadata(for: exercise)
+        let areaAliases = Set(stimulusAreaAliases(for: area).map(normalizedPriorityText))
+        let primaryAreas = Set(metadata.primaryAreas.map(normalizedPriorityText))
+        return areaAliases.isDisjoint(with: primaryAreas) ? 0 : Double(exercise.sets)
     }
 
     // MARK: - Major Muscle Group Accounting (BASE-001 floor / maintenance ceiling)
@@ -594,12 +589,8 @@ extension ClaudeService {
         muscleTarget: String
     ) -> Bool {
         let metadata = exerciseMetadata(forExerciseName: exerciseName, muscleTarget: muscleTarget)
-        let primaryAliases = Set(
-            metadata.primaryAreas
-                .flatMap { stimulusAreaAliases(for: $0) }
-                .map(normalizedPriorityText)
-        )
-        return !groupAliases.isDisjoint(with: primaryAliases)
+        let primaryAreas = Set(metadata.primaryAreas.map(normalizedPriorityText))
+        return !groupAliases.isDisjoint(with: primaryAreas)
     }
 
     /// Weekly direct sets for one muscle group, computed straight from the days rather
@@ -623,36 +614,21 @@ extension ClaudeService {
     }
 
     func stimulusCredit(for exercise: WorkoutExerciseResponse, area: String) -> StimulusCredit {
+        let directSets = directSetCredit(for: exercise, area: area)
         let qualityKind = focusStimulusKind(
             exerciseName: exercise.exerciseName,
             muscleTarget: exercise.muscleTarget,
             focusArea: area
         )
-        if qualityKind == .support {
-            return StimulusCredit(
-                directSets: 0,
-                weightedStimulus: focusStimulusCredit(for: qualityKind) * Double(exercise.sets)
-            )
-        }
         let qualityCredit = focusStimulusCredit(for: qualityKind) * Double(exercise.sets)
-        if qualityCredit > 0 {
-            return StimulusCredit(directSets: qualityCredit, weightedStimulus: qualityCredit)
-        }
-
         let metadata = exerciseMetadata(for: exercise)
         let areaAliases = Set(stimulusAreaAliases(for: area).map(normalizedPriorityText))
-        let primaryAliases = Set(metadata.primaryAreas.flatMap { stimulusAreaAliases(for: $0) }.map(normalizedPriorityText))
-        if !areaAliases.isDisjoint(with: primaryAliases) {
-            return StimulusCredit(directSets: Double(exercise.sets), weightedStimulus: Double(exercise.sets))
-        }
-
-        let secondaryAliases = Set(metadata.secondaryAreas.flatMap { stimulusAreaAliases(for: $0) }.map(normalizedPriorityText))
-        if !areaAliases.isDisjoint(with: secondaryAliases) {
-            let credit = Double(exercise.sets) * 0.5
-            return StimulusCredit(directSets: credit, weightedStimulus: credit)
-        }
-
-        return .none
+        let secondaryAreas = Set(metadata.secondaryAreas.map(normalizedPriorityText))
+        let secondaryCredit = areaAliases.isDisjoint(with: secondaryAreas)
+            ? 0
+            : Double(exercise.sets) * 0.5
+        let weightedStimulus = max(directSets, qualityCredit, secondaryCredit)
+        return StimulusCredit(directSets: directSets, weightedStimulus: weightedStimulus)
     }
 
     func fatigueContribution(for exercise: WorkoutExerciseResponse, metadata: ExerciseMetadata) -> Int {

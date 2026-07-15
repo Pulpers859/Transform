@@ -287,6 +287,51 @@ final class DeterministicGenerationTests: XCTestCase {
         XCTAssertEqual(violations.first?.cap, 4)
     }
 
+    func testDirectSetCreditRequiresPrimaryMetadataMatch() {
+        let genericPress = WorkoutExerciseResponse(
+            exerciseName: "Dumbbell Bench Press",
+            sets: 3,
+            reps: "8-10",
+            tempo: "",
+            restSeconds: 90,
+            notes: "",
+            muscleTarget: "Chest"
+        )
+        let inclinePress = WorkoutExerciseResponse(
+            exerciseName: "Incline Dumbbell Press",
+            sets: 3,
+            reps: "8-10",
+            tempo: "",
+            restSeconds: 90,
+            notes: "",
+            muscleTarget: "Upper Chest"
+        )
+
+        XCTAssertEqual(service.directSetCredit(for: genericPress, area: "Upper Chest"), 0)
+        XCTAssertGreaterThan(service.weightedStimulusCredit(for: genericPress, area: "Upper Chest"), 0)
+        XCTAssertEqual(service.directSetCredit(for: inclinePress, area: "Upper Chest"), 3)
+    }
+
+    func testAllocatedMenusMatchValidatorStimulusLedger() {
+        let cases = [
+            legacyAnalysis(priorities: ["Upper Chest"]),
+            legacyAnalysis(priorities: ["Back", "Rear Deltoids"]),
+            legacyAnalysis(priorities: ["Calves"]),
+        ]
+
+        for result in cases {
+            let inputs = planningInputs(from: result)
+            let issues = service.allocationLedgerConsistencyIssues(
+                inputs.menus,
+                blueprint: inputs.blueprint
+            )
+            XCTAssertTrue(
+                issues.isEmpty,
+                "Allocator and validator ledgers diverged: \(issues.joined(separator: " | "))"
+            )
+        }
+    }
+
     // MARK: - Structural invariants of a generated program
 
     func testGeneratedProgramIsStructurallyComplete() throws {
@@ -329,6 +374,15 @@ final class DeterministicGenerationTests: XCTestCase {
         for combo in combinations {
             let result = legacyAnalysis(priorities: combo)
             let inputs = planningInputs(from: result)
+            for (index, menu) in inputs.menus.enumerated()
+                where !inputs.blueprint.dayPlans[index].isRestDay {
+                XCTAssertGreaterThanOrEqual(
+                    menu.count,
+                    5,
+                    "Legacy priority set \(combo) produced a short locked menu on day \(index + 1): "
+                        + planningDescription(blueprint: inputs.blueprint, menus: inputs.menus)
+                )
+            }
             do {
                 let program = try service.validatedProceduralWeekOneProgram(
                     from: result,

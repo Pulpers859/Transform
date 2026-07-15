@@ -782,29 +782,16 @@ extension ClaudeService {
         intent: MusclePriorityIntent,
         sets: Int
     ) -> Double {
-        let qualityKind = focusStimulusKind(
+        let exercise = WorkoutExerciseResponse(
             exerciseName: exerciseName,
-            muscleTarget: muscleTarget,
-            focusArea: intent.area
+            sets: sets,
+            reps: "",
+            tempo: "",
+            restSeconds: 0,
+            notes: "",
+            muscleTarget: muscleTarget
         )
-        let qualityCredit = focusStimulusCredit(for: qualityKind) * Double(sets)
-        if qualityCredit > 0 {
-            return qualityCredit
-        }
-
-        let metadata = exerciseMetadata(forExerciseName: exerciseName, muscleTarget: muscleTarget)
-        let focusAliases = Set(stimulusAreaAliases(for: intent.area).map(normalizedPriorityText))
-        let primaryAliases = Set(metadata.primaryAreas.flatMap { stimulusAreaAliases(for: $0) }.map(normalizedPriorityText))
-        if !focusAliases.isDisjoint(with: primaryAliases) {
-            return Double(sets)
-        }
-
-        let secondaryAliases = Set(metadata.secondaryAreas.flatMap { stimulusAreaAliases(for: $0) }.map(normalizedPriorityText))
-        if !focusAliases.isDisjoint(with: secondaryAliases) {
-            return Double(sets) * 0.5
-        }
-
-        return 0
+        return directSetCredit(for: exercise, area: intent.area)
     }
 
     func directSetReductionPriority(
@@ -1371,10 +1358,27 @@ extension ClaudeService {
             // this same menu, it becomes a deterministic, retry-proof generation dead-end.
             // Pain-avoided movements stay excluded (`catalog` is already history-filtered).
             if selected.count < 5 {
+                // A split can label compatible lower-body sessions differently (for example,
+                // "Lower" and "Legs"). Reuse established, style-compatible identities across
+                // that catalog boundary before introducing another weekly variation.
+                let compatibleEstablished = allMenus.flatMap { $0 }.compactMap { exercise -> (name: String, target: String)? in
+                    let probe = WorkoutExerciseResponse(
+                        exerciseName: exercise.exerciseName,
+                        sets: 3,
+                        reps: "10-12",
+                        tempo: "",
+                        restSeconds: 60,
+                        notes: "",
+                        muscleTarget: exercise.muscleTarget
+                    )
+                    guard exerciseMatchesDayStyle(probe, style: styleKey) else { return nil }
+                    return (exercise.exerciseName, exercise.muscleTarget)
+                }
+                let repeatPool = compatibleEstablished + catalog
                 // First sweep honors the within-day pattern cap; the uncapped second sweep
                 // only runs if the menu is still short, because a <5 menu is a validator
                 // hard failure and a deterministic dead-end that outranks pattern hygiene.
-                for candidate in catalog where selected.count < 5 {
+                for candidate in repeatPool where selected.count < 5 {
                     let key = normalizeExerciseName(candidate.name)
                     guard !selected.contains(where: { normalizeExerciseName($0.name) == key }) else { continue }
                     guard dayPatternCapAllows(candidateName: candidate.name, candidateTarget: candidate.target, in: selected) else { continue }
@@ -1387,7 +1391,7 @@ extension ClaudeService {
                     ) else { continue }
                     selected.append((candidate.name, candidate.target))
                 }
-                for candidate in catalog where selected.count < 5 {
+                for candidate in repeatPool where selected.count < 5 {
                     let key = normalizeExerciseName(candidate.name)
                     guard !selected.contains(where: { normalizeExerciseName($0.name) == key }) else { continue }
                     guard menuPlanningBudgetAllows(
@@ -2037,7 +2041,64 @@ extension ClaudeService {
             }
         }
 
+        let consistencyIssues = allocationLedgerConsistencyIssues(
+            allocated,
+            blueprint: blueprint
+        )
+        assert(
+            consistencyIssues.isEmpty,
+            "Weekly allocation and validator stimulus ledgers diverged: \(consistencyIssues.joined(separator: " | "))"
+        )
         return allocated
+    }
+
+    /// The allocator and validator must derive identical priority totals from the locked menu.
+    /// Keeping this check at the planning boundary prevents a future accounting change from
+    /// producing a menu that looks funded to allocation but deterministically fails validation.
+    func allocationLedgerConsistencyIssues(
+        _ menus: [[PreSelectedExercise]],
+        blueprint: ProgramBlueprint
+    ) -> [String] {
+        let days = menus.indices.map { dayIndex in
+            let exercises = menus[dayIndex].map { exercise in
+                WorkoutExerciseResponse(
+                    exerciseName: exercise.exerciseName,
+                    sets: exercise.prescribedSets,
+                    reps: "",
+                    tempo: "",
+                    restSeconds: 0,
+                    notes: "",
+                    muscleTarget: exercise.muscleTarget
+                )
+            }
+            return WorkoutDayResponse(
+                dayNumber: dayIndex + 1,
+                dayName: "Planning Day \(dayIndex + 1)",
+                muscleGroups: "Planning",
+                isRestDay: exercises.isEmpty,
+                notes: "",
+                exercises: exercises
+            )
+        }
+        let report = buildWeekStimulusReport(from: days)
+
+        return blueprint.priorityAllocations.compactMap { allocation in
+            let allocated = days.reduce(into: StimulusCredit.none) { total, day in
+                for exercise in day.exercises {
+                    let credit = stimulusCredit(for: exercise, area: allocation.area)
+                    total = StimulusCredit(
+                        directSets: total.directSets + credit.directSets,
+                        weightedStimulus: total.weightedStimulus + credit.weightedStimulus
+                    )
+                }
+            }
+            let validated = priorityCoverage(for: allocation, stimulusReport: report)
+            guard abs(allocated.directSets - validated.directSets) > 0.01
+                    || abs(allocated.weightedStimulus - validated.weightedStimulus) > 0.01 else {
+                return nil
+            }
+            return "\(allocation.area): allocator \(formatStimulusValue(allocated.directSets))/\(formatStimulusValue(allocated.weightedStimulus)), validator \(formatStimulusValue(validated.directSets))/\(formatStimulusValue(validated.weightedStimulus))"
+        }
     }
 
     /// Slot the coverage pass may sacrifice: prefer the last exercise whose movement
