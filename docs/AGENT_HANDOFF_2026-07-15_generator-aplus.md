@@ -23,7 +23,7 @@ validator.
 | **Over-generation bug** (harness caught it) | ✅ Fixed and CI-verified with a sub-region-aware variation policy. All five original legacy combinations run instead of being skipped. |
 | **Roadmap #1 — unify credit ledger + generation-time invariant** | ✅ Fixed and CI-verified. Direct sets require primary metadata, each exercise counts once per priority, and allocation asserts equality with validator recomputation. |
 | **Phone-free troubleshooting workflow** | ✅ Added and CI-verified. A versioned failure-class fixture pins the allocated menu and validator verdict; a manual live Anthropic contract check is bounded to one HTTP attempt; Claude Code can independently review credential-scanned diffs with no tools. |
-| **Roadmap #3 — effort governance + autoregulation loop** | 🟡 In progress. The app had UI-side progression cues, but generation was using a summary top-set shortcut. The shared per-set decision path and headless regression coverage are now in place; effort/RIR governance remains. |
+| **Roadmap #3 — effort governance + autoregulation loop** | 🟡 In progress. The shared per-set decision path, latest-log coverage, and deterministic session-level effort governance are now in place. Explicit per-set RIR capture and exercise-specific multi-session autoregulation remain. |
 
 **Current troubleshooting checkpoint:** `b0e0d33` on `main`; the progression-cue sanitization repair, shared per-set progression decision, latest-performance-log coverage, Generator Tests, and full Xcode build are green. The latest billed live contract check also passed on `9d837e5`; that headless fixture does not execute the SwiftData-backed `WorkoutView` wiring.
 
@@ -309,9 +309,11 @@ a runtime assertion and dedicated harness test fail on any divergence.
 Close the performance→prescription loop using logged performance (hit prescribed
 reps/weight → double-progression advance). The app now centralizes that decision and
 feeds the same per-set evidence to the generation verdict path; deterministic tests now
-cover mixed-set, failed-set, legacy-summary, and latest-usable-log cases. The remaining roadmap
-work is explicit effort/RIR as a *secondary* signal and multi-session progression
-governance (see §1 note — logged reps alone can't see proximity-to-failure).
+cover mixed-set, failed-set, legacy-summary, latest-usable-log, and repeated-effort-signal
+cases. Existing session feedback now produces a conservative, deterministic governance
+signal for next-week generation. The remaining roadmap work is explicit per-set RIR
+capture and exercise-specific multi-session progression governance (see §1 note — logged
+reps alone can't see proximity-to-failure).
 
 ---
 
@@ -374,7 +376,8 @@ headless macOS `swift test` harness (roadmap #2, done). It caught a ~95× slowne
 legacy over-generation, short late-week menus, and disagreement between allocation and
 validation. The variation policy and canonical direct-set ledger are now implemented and
 CI-green (roadmap #1, done). Roadmap #3 is in progress: the shared per-set
-performance→prescription decision path is implemented and tested, with effort/RIR
-remaining an explicit secondary signal (roadmap #3, §6.3).
+performance→prescription decision path and conservative session-level effort governance
+are implemented and tested. Explicit per-set RIR capture remains a secondary signal to
+add when the logging UX can capture it honestly (roadmap #3, §6.3).
 Commit to `main`, fast-forward only, never force-push, never suggest the simulator,
 and be brutally honest with the owner — that's the job.
