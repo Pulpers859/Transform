@@ -3,9 +3,11 @@
   "id": "historical-five-maintenance-error-class",
   "stage": "weekOne",
   "analysis": {
-    "overallAssessment": "Synthetic regression fixture for a trained adult pursuing hypertrophy while managing limited recovery. No personal or medical data is included.",
+    "overallAssessment": "Synthetic regression fixture for a trained adult pursuing hypertrophy during a mild fat-loss phase while managing limited recovery. No personal or medical data is included.",
     "trainingAssessment": "Maintain broad muscular coverage while emphasizing upper chest and lateral deltoids. Core work should remain modest and repeatable.",
-    "recoveryRiskAssessment": "Recovery is somewhat constrained, so non-priority volume must remain near maintenance rather than expanding into filler work.",
+    "nutritionAssessment": "No nutrition logs were recorded, so adherence cannot be verified during the fat-loss phase.",
+    "adherenceAssessment": "Nutrition adherence could not be evaluated because no intake was logged.",
+    "recoveryRiskAssessment": "Variable sleep from shift-work includes some nights under 5 hours, so recovery is constrained and non-priority volume must remain near maintenance.",
     "priorityMuscles": [
       "Upper Chest",
       "Lateral Deltoids",
@@ -62,6 +64,9 @@
   },
   "expected": {
     "trainingDays": 5,
+    "recoveryConstrained": true,
+    "poorNutritionAdherence": true,
+    "recompositionGoal": true,
     "validatorIssues": [],
     "forbiddenIssueFragments": [
       "Non-priority muscle group 'Back' exceeds the maintenance weekly volume ceiling",
@@ -70,6 +75,6 @@
       "Non-priority muscle group 'Hamstrings' exceeds the maintenance weekly volume ceiling",
       "Non-priority muscle group 'Glutes' exceeds the maintenance weekly volume ceiling"
     ],
-    "menuSignature": ""
+    "menuSignature": []
   }
 }

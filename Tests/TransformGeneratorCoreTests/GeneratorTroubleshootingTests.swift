@@ -7,9 +7,12 @@ final class GeneratorTroubleshootingTests: XCTestCase {
     private struct Fixture: Decodable {
         struct Expected: Decodable {
             let trainingDays: Int
+            let recoveryConstrained: Bool
+            let poorNutritionAdherence: Bool
+            let recompositionGoal: Bool
             let validatorIssues: [String]
             let forbiddenIssueFragments: [String]
-            let menuSignature: String
+            let menuSignature: [String]
         }
 
         let schemaVersion: Int
@@ -27,6 +30,9 @@ final class GeneratorTroubleshootingTests: XCTestCase {
         XCTAssertEqual(fixture.stage, "weekOne")
         let intent = service.trainingIntentPlan(from: fixture.analysis)
         let blueprint = service.programBlueprint(for: intent, weekNumber: 1)
+        XCTAssertEqual(blueprint.calibration.recoveryConstrained, fixture.expected.recoveryConstrained)
+        XCTAssertEqual(blueprint.calibration.poorNutritionAdherence, fixture.expected.poorNutritionAdherence)
+        XCTAssertEqual(blueprint.calibration.recompositionGoal, fixture.expected.recompositionGoal)
         let menus = service.preSelectedExerciseMenu(
             for: blueprint,
             trainingIntent: intent,
@@ -71,7 +77,10 @@ final class GeneratorTroubleshootingTests: XCTestCase {
         if !fixture.expected.menuSignature.isEmpty {
             XCTAssertEqual(signature, fixture.expected.menuSignature, "Allocated menu snapshot drifted")
         }
-        try writeArtifactIfRequested(signature, environmentKey: "TRANSFORM_FIXTURE_SNAPSHOT_OUTPUT")
+        try writeArtifactIfRequested(
+            signature.joined(separator: "\n"),
+            environmentKey: "TRANSFORM_FIXTURE_SNAPSHOT_OUTPUT"
+        )
     }
 
     func testLiveWeekOneStructuredContract() async throws {
@@ -184,13 +193,13 @@ final class GeneratorTroubleshootingTests: XCTestCase {
         return try JSONDecoder().decode(Fixture.self, from: Data(contentsOf: url))
     }
 
-    private func menuSignature(_ menus: [[ClaudeService.PreSelectedExercise]]) -> String {
+    private func menuSignature(_ menus: [[ClaudeService.PreSelectedExercise]]) -> [String] {
         menus.enumerated().map { offset, menu in
             let slots = menu.map {
                 "\($0.exerciseName)#\($0.prescribedSets)#\($0.muscleTarget)"
             }.joined(separator: " | ")
             return "Day \(offset + 1): \(slots.isEmpty ? "REST" : slots)"
-        }.joined(separator: "\n")
+        }
     }
 
     private func liveSummary(

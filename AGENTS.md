@@ -43,6 +43,10 @@
 - Do not claim a batch of generator findings is fixed because one shared warning disappeared.
   Re-run or arithmetically reproduce every reported finding, and state separately what is
   proven by code/tests versus what still requires the owner's physical-iPhone generation.
+- Before committing substantial generator changes, run `tools/Invoke-GeneratorSecondAudit.ps1`
+  so the current diff receives an independent, read-only Claude Code review. Resolve material
+  findings before push. If Claude is unavailable or out of usage credits, say so explicitly and
+  perform a separate adversarial audit; never represent an incomplete Claude run as approval.
 - Keep workout quality and evidence-informed programming integrity ahead of validator convenience.
 - Respect the split `WorkoutGeneratorService` architecture.
 
