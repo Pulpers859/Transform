@@ -58,6 +58,7 @@ let package = Package(
                 "BodyAnalysisModels.swift",
                 "WorkoutModels.swift",
                 "WorkoutProgressionEngine.swift",
+                "WorkoutEffortGovernance.swift",
 
                 // Deterministic workout generator (the menu-locked planning core).
                 "WorkoutGeneratorDebugModels.swift",

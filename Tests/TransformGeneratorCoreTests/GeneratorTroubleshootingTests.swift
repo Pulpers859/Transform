@@ -219,6 +219,50 @@ final class GeneratorTroubleshootingTests: XCTestCase {
         XCTAssertEqual(logs, older.setLogs)
     }
 
+    func testEffortGovernanceRequiresRepeatedRecoverySignals() {
+        let singleFlag = WorkoutSessionFeedbackSnapshot(
+            effort: 5,
+            stimulus: 3,
+            jointPain: 0,
+            performanceRawValue: "Same"
+        )
+        let painFlag = WorkoutSessionFeedbackSnapshot(
+            effort: 3,
+            stimulus: 2,
+            jointPain: 3,
+            performanceRawValue: "Same"
+        )
+
+        XCTAssertEqual(
+            WorkoutEffortGovernance.signal(from: [singleFlag]),
+            .neutral
+        )
+        XCTAssertEqual(
+            WorkoutEffortGovernance.signal(from: [singleFlag, painFlag]),
+            .protectRecovery
+        )
+        XCTAssertTrue(
+            WorkoutEffortGovernance.guidance(for: .protectRecovery).contains("Hold load progression")
+        )
+    }
+
+    func testEffortGovernanceRecognizesRepeatedProgressionHeadroom() {
+        let headroom = WorkoutSessionFeedbackSnapshot(
+            effort: 3,
+            stimulus: 4,
+            jointPain: 0,
+            performanceRawValue: "Better"
+        )
+
+        XCTAssertEqual(
+            WorkoutEffortGovernance.signal(from: [headroom, headroom]),
+            .progressionHeadroom
+        )
+        XCTAssertTrue(
+            WorkoutEffortGovernance.guidance(for: .progressionHeadroom).contains("add reps before load")
+        )
+    }
+
     func testLiveWeekOneStructuredContract() async throws {
         let environment = ProcessInfo.processInfo.environment
         guard environment["TRANSFORM_RUN_LIVE_ANTHROPIC_SMOKE"] == "1" else {

@@ -930,7 +930,7 @@ struct WorkoutView: View {
         }
         guard !relevant.isEmpty else { return nil }
 
-        return relevant.map { day in
+        let feedbackLines = relevant.map { day in
             let skippedExercises = day.sortedExercises.filter { exercise in
                 guard let status = exercise.completionStatus else { return false }
                 return status != .completed
@@ -967,7 +967,23 @@ struct WorkoutView: View {
             let noteSuffix = note.isEmpty ? "" : " Note: \(String(note.prefix(160)))"
             return "\(dayHeader): effort \(day.sessionEffort)/5, stimulus \(day.stimulusQuality)/5, joint pain \(day.jointPain)/5, performance \(performance).\(noteSuffix)\(skipSuffix)\(timingSuffix)"
         }
-        .joined(separator: "\n")
+        let feedbackSnapshots = relevant.compactMap { day -> WorkoutSessionFeedbackSnapshot? in
+            guard day.hasSessionFeedback else { return nil }
+            return WorkoutSessionFeedbackSnapshot(
+                effort: day.sessionEffort,
+                stimulus: day.stimulusQuality,
+                jointPain: day.jointPain,
+                performanceRawValue: day.performanceRating?.rawValue ?? ""
+            )
+        }
+        guard !feedbackSnapshots.isEmpty else {
+            return feedbackLines.joined(separator: "\n")
+        }
+
+        let governance = WorkoutEffortGovernance.guidance(
+            for: WorkoutEffortGovernance.signal(from: feedbackSnapshots)
+        )
+        return (feedbackLines + [governance]).joined(separator: "\n")
     }
 
     /// Aggregates recurring skip / substitution / modification patterns across the supplied
