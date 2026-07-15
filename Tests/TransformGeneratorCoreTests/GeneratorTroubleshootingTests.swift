@@ -83,6 +83,45 @@ final class GeneratorTroubleshootingTests: XCTestCase {
         )
     }
 
+    func testSanitizationRepairsMissingProgressionCueWithoutDiscardingFormCue() async throws {
+        let response = WorkoutProgramResponse(
+            programName: "Sanitization Test",
+            programSummary: "A focused test response.",
+            splitType: "Upper",
+            daysPerWeek: 4,
+            days: [
+                WorkoutDayResponse(
+                    dayNumber: 1,
+                    dayName: "Upper",
+                    muscleGroups: "Shoulders",
+                    isRestDay: false,
+                    notes: "Today's focus is controlled upper-body work. Warm-up: light cable raises and shoulder circles.",
+                    exercises: [
+                        WorkoutExerciseResponse(
+                            exerciseName: "Cable Lateral Raise",
+                            sets: 2,
+                            reps: "12-15",
+                            tempo: "2-0-1-0",
+                            restSeconds: 75,
+                            notes: "Keep a soft elbow bend and lift through the side delt.",
+                            muscleTarget: "Lateral Deltoids"
+                        )
+                    ]
+                )
+            ]
+        )
+
+        let cleaned = try await service.sanitizeProgramResponse(response)
+        let notes = try XCTUnwrap(cleaned.days.first?.exercises.first?.notes)
+
+        XCTAssertTrue(notes.contains("soft elbow bend"), "Sanitization discarded the model's valid form cue")
+        XCTAssertTrue(
+            service.hasConcreteProgressionCue(notes),
+            "Sanitization must repair a non-empty note that lacks a concrete progression cue"
+        )
+        XCTAssertTrue(notes.contains("Baseline target:"), "Week 1 repair should use the baseline progression guidance")
+    }
+
     func testLiveWeekOneStructuredContract() async throws {
         let environment = ProcessInfo.processInfo.environment
         guard environment["TRANSFORM_RUN_LIVE_ANTHROPIC_SMOKE"] == "1" else {

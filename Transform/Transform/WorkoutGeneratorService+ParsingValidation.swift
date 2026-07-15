@@ -216,14 +216,13 @@ extension ClaudeService {
         )
 
         WorkoutGenerationDiagnostics.markStage("sanitize \(tag) notes")
-        let fallbackNotes = proceduralExerciseNotes(
-            weekNumber: weekNumber,
+        let cleanedNotes = polishedExerciseNotes(
+            rawNotes: exercise.notes,
             exerciseName: cleanedName,
             muscleTarget: cleanedTarget,
-            index: exerciseIndex,
-            focus: cleanedTarget
+            weekNumber: weekNumber,
+            exerciseIndex: exerciseIndex
         )
-        let cleanedNotes = normalizedExerciseCoachingText(exercise.notes, fallback: fallbackNotes)
         // Keep any set-count the note cites in step with the (possibly polished) structured
         // count so prose and the SETS tile / log rows can't disagree.
         let reconciledNotes = reconciledSetCountNotes(cleanedNotes, toSetCount: cleanedSets)

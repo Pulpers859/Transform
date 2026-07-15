@@ -123,9 +123,9 @@ $packet
 "@
 
 $claudeArgs = @(
-    '-p',
+    '--print',
     '--permission-mode', 'plan',
-    '--tools', '',
+    '--tools=',
     '--output-format', 'text',
     $prompt
 )
