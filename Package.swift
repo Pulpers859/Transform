@@ -38,6 +38,11 @@ let package = Package(
                 "ClaudeService.swift",
                 "AnthropicClient.swift",
                 "Config.swift",
+                // Peripheral types referenced by the files above: AppLifecycleSnapshot
+                // (AnthropicClient error diagnostics; UIKit already guarded in-file) and
+                // AdaptiveMacroOverride (Config macro-target calc). Both Foundation-safe.
+                "AppLifecycleMonitor.swift",
+                "AdaptiveInsights.swift",
 
                 // Shared model layer. (Models.swift — the sleep/nutrition/weight
                 // persistence models — is intentionally NOT here: nothing in the
