@@ -39,8 +39,9 @@ let package = Package(
                 "AnthropicClient.swift",
                 "Config.swift",
 
-                // Shared model layer.
-                "Models.swift",
+                // Shared model layer. (Models.swift — the sleep/nutrition/weight
+                // persistence models — is intentionally NOT here: nothing in the
+                // generator closure references it, and it drags in unrelated types.)
                 "BodyAnalysisModels.swift",
                 "WorkoutModels.swift",
 
