@@ -92,11 +92,13 @@ final class DeterministicGenerationTests: XCTestCase {
         )
     }
 
-    /// Runs the full deterministic chain and returns the validated Week 1 program plus the
-    /// blueprint needed for invariant checks.
-    private func generatePlannedWeekOne(
+    private func planningInputs(
         from result: BodyAnalysisResult
-    ) throws -> (program: WorkoutProgramResponse, blueprint: ClaudeService.ProgramBlueprint) {
+    ) -> (
+        intent: ClaudeService.TrainingIntentPlan,
+        blueprint: ClaudeService.ProgramBlueprint,
+        menus: [[ClaudeService.PreSelectedExercise]]
+    ) {
         let intent = service.trainingIntentPlan(from: result)
         let blueprint = service.programBlueprint(for: intent, weekNumber: 1)
         let menus = service.preSelectedExerciseMenu(
@@ -105,13 +107,22 @@ final class DeterministicGenerationTests: XCTestCase {
             weekNumber: 1,
             previousWeekDays: nil
         )
+        return (intent, blueprint, menus)
+    }
+
+    /// Runs the full deterministic chain and returns the validated Week 1 program plus the
+    /// blueprint needed for invariant checks.
+    private func generatePlannedWeekOne(
+        from result: BodyAnalysisResult
+    ) throws -> (program: WorkoutProgramResponse, blueprint: ClaudeService.ProgramBlueprint) {
+        let inputs = planningInputs(from: result)
         let program = try service.validatedProceduralWeekOneProgram(
             from: result,
-            trainingIntent: intent,
-            blueprint: blueprint,
-            exerciseMenus: menus
+            trainingIntent: inputs.intent,
+            blueprint: inputs.blueprint,
+            exerciseMenus: inputs.menus
         )
-        return (program, blueprint)
+        return (program, inputs.blueprint)
     }
 
     private func generateWeekOne(from result: BodyAnalysisResult) throws -> WorkoutProgramResponse {
@@ -122,6 +133,19 @@ final class DeterministicGenerationTests: XCTestCase {
         violations.map {
             "\($0.area) / \($0.bucket): \($0.count) vs cap \($0.cap)"
         }.joined(separator: " | ")
+    }
+
+    private func planningDescription(
+        blueprint: ClaudeService.ProgramBlueprint,
+        menus: [[ClaudeService.PreSelectedExercise]]
+    ) -> String {
+        blueprint.dayPlans.enumerated().map { offset, plan in
+            let menu = offset < menus.count ? menus[offset] : []
+            let exercises = menu.map { "\($0.exerciseName) [\($0.prescribedSets)]" }
+                .joined(separator: ", ")
+            return "Day \(plan.dayIndex) \(plan.style) focus=\(plan.focusArea ?? "none") "
+                + "count=\(menu.count): \(exercises)"
+        }.joined(separator: " || ")
     }
 
     // MARK: - Regression: the reported small-muscle failure (structured-intent path)
@@ -303,18 +327,28 @@ final class DeterministicGenerationTests: XCTestCase {
         ]
 
         for combo in combinations {
+            let result = legacyAnalysis(priorities: combo)
+            let inputs = planningInputs(from: result)
             do {
-                let generated = try generatePlannedWeekOne(from: legacyAnalysis(priorities: combo))
+                let program = try service.validatedProceduralWeekOneProgram(
+                    from: result,
+                    trainingIntent: inputs.intent,
+                    blueprint: inputs.blueprint,
+                    exerciseMenus: inputs.menus
+                )
                 let violations = service.weeklyVariationViolations(
-                    in: generated.program.days,
-                    blueprint: generated.blueprint
+                    in: program.days,
+                    blueprint: inputs.blueprint
                 )
                 XCTAssertTrue(
                     violations.isEmpty,
                     "Legacy priority set \(combo) exceeded weekly variation budgets: \(variationDescription(violations))"
                 )
             } catch {
-                XCTFail("Legacy priority set \(combo) hard-failed: \(error)")
+                XCTFail(
+                    "Legacy priority set \(combo) hard-failed: \(error). Planning snapshot: "
+                        + planningDescription(blueprint: inputs.blueprint, menus: inputs.menus)
+                )
             }
         }
     }
