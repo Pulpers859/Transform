@@ -19,7 +19,7 @@ plain `swift test` on any Mac or a GitHub `macos` runner.
 ## What it is
 
 - **`Package.swift`** (repo root) — an SPM package with one library target,
-  `TransformGeneratorCore`, that compiles the **real app source files in place** (no copies,
+  `Transform`, that compiles the **real app source files in place** (no copies,
   single source of truth) and one test target, `TransformGeneratorCoreTests`.
 - **`Tests/TransformGeneratorCoreTests/`** — the tests.
 - **`.github/workflows/generator-tests.yml`** — runs `swift test` on `macos-latest`.
@@ -72,15 +72,15 @@ The generator can be driven two ways, and they behave very differently:
 - **Legacy path** — the analysis carries only `priorityMuscles` strings.
   `trainingIntentPlan(from:)` falls back to a weaker builder.
 
-### Finding: legacy-path over-generation (tracked)
+### Regression: legacy-path over-generation
 
 On its first green build the harness caught a real bug: on the **legacy path**, concentrated
-priorities cause massive over-generation — up to **~20 exercise variations for a single area**
-(validator cap is 4), hard-failing validation, and taking **~90s per generation** (device-
-relevant, since generation builds plain structs, not SwiftData). Suspected cause: menu build +
-baseline coverage + `enforcePriorityDirectSetFeasibility` + weekly allocation all funnel volume
-into one dominant area with no shared ceiling. This is tracked in the skipped test
-`testLegacyPriorityMusclesPathRobustness`; remove the skip when fixed.
+priorities produced up to **~20 reported exercise variations for one area** and took about 90
+seconds per generation. The performance issue was fixed by precomputing set-credit accounting.
+The variation issue had two causes: the validator mixed secondary-stimulus compounds into the
+variation count, while menu selection and feasibility passes preferred or required unused
+movements across days. The regression now has a shared primary-target, sub-region-aware weekly
+variation policy and `testLegacyPriorityMusclesPathRobustness` runs instead of being skipped.
 
 ## What the current tests cover
 
@@ -94,8 +94,12 @@ validatedProceduralWeekOneProgram`) and asserts:
    arms, legs) must all generate. This is where "works every time" starts to become provable.
 3. **`testGeneratedProgramIsStructurallyComplete`** — a produced week has 7 days, at least
    one training day, a name, and no empty training days.
-4. **`testLegacyPriorityMusclesPathRobustness`** — SKIPPED; documents the legacy-path
-   over-generation gap above.
+4. **`testStructuredPlansRespectWeeklyVariationBudgets`** — production-like structured Back
+   and Arms plans must remain inside the weekly variation policy.
+5. **`testBroadBackVariationBudgetIsSubregionAware`** — four lat and four upper/mid-back
+   movements fit separate buckets, while a fifth lat movement is rejected.
+6. **`testLegacyPriorityMusclesPathRobustness`** — the concentrated legacy combinations from
+   the original failing sweep must generate without exceeding variation budgets.
 
 The CI job has a 12-minute timeout so a future runaway cannot wall the pipeline.
 

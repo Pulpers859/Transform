@@ -143,11 +143,17 @@ extension ClaudeService {
         }
 
         func injectFocusCandidates(from catalog: [(name: String, target: String)]) {
-            for candidate in catalog {
+            let orderedCandidates = catalog.enumerated().sorted { lhs, rhs in
+                let lhsUsed = usedAcrossDays.contains(normalizeExerciseName(lhs.element.name))
+                let rhsUsed = usedAcrossDays.contains(normalizeExerciseName(rhs.element.name))
+                if lhsUsed != rhsUsed { return !lhsUsed }
+                return lhs.offset < rhs.offset
+            }.map(\.element)
+
+            for candidate in orderedCandidates {
                 guard focusMatchCount(in: result) < targetCount else { return }
                 guard exerciseMatchesTrainingIntent(name: candidate.name, target: candidate.target, intent: focusIntent) else { continue }
                 let candidateKey = normalizeExerciseName(candidate.name)
-                guard !usedAcrossDays.contains(candidateKey) else { continue }
                 guard !avoidedExercises.contains(ExerciseWeightEntry.canonicalLookupKey(candidate.name)) else { continue }
                 guard !result.contains(where: { normalizeExerciseName($0.name) == candidateKey }) else { continue }
                 guard dayPatternCapAllows(candidateName: candidate.name, candidateTarget: candidate.target, in: result) else { continue }
@@ -202,10 +208,16 @@ extension ClaudeService {
 
             var added = false
             for catalog in catalogs where !added {
-                for candidate in catalog {
+                let orderedCandidates = catalog.enumerated().sorted { lhs, rhs in
+                    let lhsUsed = usedAcrossDays.contains(normalizeExerciseName(lhs.element.name))
+                    let rhsUsed = usedAcrossDays.contains(normalizeExerciseName(rhs.element.name))
+                    if lhsUsed != rhsUsed { return !lhsUsed }
+                    return lhs.offset < rhs.offset
+                }.map(\.element)
+
+                for candidate in orderedCandidates {
                     guard exerciseMatchesTrainingIntent(name: candidate.name, target: candidate.target, intent: supportIntent) else { continue }
                     let candidateKey = normalizeExerciseName(candidate.name)
-                    guard !usedAcrossDays.contains(candidateKey) else { continue }
                     guard !avoidedExercises.contains(ExerciseWeightEntry.canonicalLookupKey(candidate.name)) else { continue }
                     guard !result.contains(where: { normalizeExerciseName($0.name) == candidateKey }) else { continue }
                     guard dayPatternCapAllows(candidateName: candidate.name, candidateTarget: candidate.target, in: result) else { continue }
@@ -1145,20 +1157,6 @@ extension ClaudeService {
     /// meaningful two-set floor, an 8-set recovery-tight budget can support at most four
     /// movements for a non-priority group; selecting more creates fragmented token work before
     /// the set allocator even runs.
-    func maintenanceSlotBudgetAllows(
-        candidateName: String,
-        candidateTarget: String,
-        existingMenus: [[PreSelectedExercise]],
-        selectedToday: [(name: String, target: String)],
-        blueprint: ProgramBlueprint
-    ) -> Bool {
-        maintenanceSlotBudgetsAreFeasible(
-            existingMenus: existingMenus,
-            selectedToday: selectedToday + [(name: candidateName, target: candidateTarget)],
-            blueprint: blueprint
-        )
-    }
-
     func maintenanceSlotBudgetsAreFeasible(
         existingMenus: [[PreSelectedExercise]],
         selectedToday: [(name: String, target: String)],
@@ -1188,6 +1186,39 @@ extension ClaudeService {
             guard priorCount + todayCount <= maxMeaningfulSlots else { return false }
         }
         return true
+    }
+
+    func menuPlanningBudgetAllows(
+        candidateName: String,
+        candidateTarget: String,
+        existingMenus: [[PreSelectedExercise]],
+        selectedToday: [(name: String, target: String)],
+        blueprint: ProgramBlueprint
+    ) -> Bool {
+        menuPlanningBudgetsAreFeasible(
+            existingMenus: existingMenus,
+            selectedToday: selectedToday + [(name: candidateName, target: candidateTarget)],
+            blueprint: blueprint
+        )
+    }
+
+    func menuPlanningBudgetsAreFeasible(
+        existingMenus: [[PreSelectedExercise]],
+        selectedToday: [(name: String, target: String)],
+        blueprint: ProgramBlueprint
+    ) -> Bool {
+        guard maintenanceSlotBudgetsAreFeasible(
+            existingMenus: existingMenus,
+            selectedToday: selectedToday,
+            blueprint: blueprint
+        ) else {
+            return false
+        }
+
+        let identities = existingMenus.joined().map {
+            (name: $0.exerciseName, target: $0.muscleTarget)
+        } + selectedToday
+        return weeklyVariationViolations(for: identities, blueprint: blueprint).isEmpty
     }
 
     func preSelectedExerciseMenu(
@@ -1250,7 +1281,7 @@ extension ClaudeService {
             for exercise in retained {
                 let key = normalizeExerciseName(exercise.exerciseName)
                 guard !used.contains(key) else { continue }
-                guard maintenanceSlotBudgetAllows(
+                guard menuPlanningBudgetAllows(
                     candidateName: exercise.exerciseName,
                     candidateTarget: exercise.muscleTarget,
                     existingMenus: allMenus,
@@ -1280,7 +1311,7 @@ extension ClaudeService {
                 let key = normalizeExerciseName(candidate.name)
                 guard !used.contains(key) else { continue }
                 guard dayPatternCapAllows(candidateName: candidate.name, candidateTarget: candidate.target, in: selected) else { continue }
-                guard maintenanceSlotBudgetAllows(
+                guard menuPlanningBudgetAllows(
                     candidateName: candidate.name,
                     candidateTarget: candidate.target,
                     existingMenus: allMenus,
@@ -1321,7 +1352,7 @@ extension ClaudeService {
                     )
                     guard exerciseMatchesDayStyle(probe, style: styleKey) else { continue }
                     guard dayPatternCapAllows(candidateName: candidate.name, candidateTarget: candidate.target, in: selected) else { continue }
-                    guard maintenanceSlotBudgetAllows(
+                    guard menuPlanningBudgetAllows(
                         candidateName: candidate.name,
                         candidateTarget: candidate.target,
                         existingMenus: allMenus,
@@ -1346,7 +1377,7 @@ extension ClaudeService {
                     let key = normalizeExerciseName(candidate.name)
                     guard !selected.contains(where: { normalizeExerciseName($0.name) == key }) else { continue }
                     guard dayPatternCapAllows(candidateName: candidate.name, candidateTarget: candidate.target, in: selected) else { continue }
-                    guard maintenanceSlotBudgetAllows(
+                    guard menuPlanningBudgetAllows(
                         candidateName: candidate.name,
                         candidateTarget: candidate.target,
                         existingMenus: allMenus,
@@ -1358,7 +1389,7 @@ extension ClaudeService {
                 for candidate in catalog where selected.count < 5 {
                     let key = normalizeExerciseName(candidate.name)
                     guard !selected.contains(where: { normalizeExerciseName($0.name) == key }) else { continue }
-                    guard maintenanceSlotBudgetAllows(
+                    guard menuPlanningBudgetAllows(
                         candidateName: candidate.name,
                         candidateTarget: candidate.target,
                         existingMenus: allMenus,
@@ -1379,7 +1410,7 @@ extension ClaudeService {
                     usedAcrossDays: usedAcrossDays,
                     avoidedExercises: avoidedExercises,
                     selectionAllowed: {
-                        self.maintenanceSlotBudgetsAreFeasible(
+                        self.menuPlanningBudgetsAreFeasible(
                             existingMenus: allMenus,
                             selectedToday: $0,
                             blueprint: blueprint
@@ -1398,7 +1429,7 @@ extension ClaudeService {
                     usedAcrossDays: usedAcrossDays,
                     avoidedExercises: avoidedExercises,
                     selectionAllowed: {
-                        self.maintenanceSlotBudgetsAreFeasible(
+                        self.menuPlanningBudgetsAreFeasible(
                             existingMenus: allMenus,
                             selectedToday: $0,
                             blueprint: blueprint
@@ -1510,7 +1541,7 @@ extension ClaudeService {
                     ) else { continue }
                     var menusWithoutReplacedSlot = updated
                     menusWithoutReplacedSlot[dayOffset].remove(at: replaceIndex)
-                    guard maintenanceSlotBudgetAllows(
+                    guard menuPlanningBudgetAllows(
                         candidateName: candidate.name,
                         candidateTarget: candidate.target,
                         existingMenus: menusWithoutReplacedSlot,
@@ -1557,7 +1588,6 @@ extension ClaudeService {
         avoidedExercises: Set<String>
     ) -> [[PreSelectedExercise]] {
         var updated = menus
-        var usedKeys = Set(menus.joined().map { normalizeExerciseName($0.exerciseName) })
 
         func credits(_ name: String, _ target: String, area: String) -> Bool {
             directSetCredit(
@@ -1575,6 +1605,33 @@ extension ClaudeService {
         }
 
         for allocation in blueprint.priorityAllocations {
+            func feasibilityCandidates() -> [(name: String, target: String)] {
+                var seen = Set<String>()
+                var candidates: [(name: String, target: String)] = []
+
+                // Reuse established prime movements first. A repeated lift on a second day
+                // creates another programmable slot without spending another variation.
+                for exercise in updated.joined() {
+                    let key = normalizeExerciseName(exercise.exerciseName)
+                    guard !seen.contains(key) else { continue }
+                    guard focusStimulusKind(
+                        exerciseName: exercise.exerciseName,
+                        muscleTarget: exercise.muscleTarget,
+                        focusArea: allocation.area
+                    ) == .prime else { continue }
+                    seen.insert(key)
+                    candidates.append((exercise.exerciseName, exercise.muscleTarget))
+                }
+
+                for candidate in metadataFocusExerciseCatalog(for: allocation.area) {
+                    let key = normalizeExerciseName(candidate.name)
+                    guard !seen.contains(key) else { continue }
+                    seen.insert(key)
+                    candidates.append(candidate)
+                }
+                return candidates
+            }
+
             func creditingCount() -> Int {
                 updated.joined().filter { credits($0.exerciseName, $0.muscleTarget, area: allocation.area) }.count
             }
@@ -1592,8 +1649,9 @@ extension ClaudeService {
             guard !candidateDays.isEmpty else { continue }
 
             let neededDays = min(allocation.targetFrequency, candidateDays.count)
-            // Enough distinct exercises that per-exercise sets can stay near the ~4-set ceiling
-            // instead of one movement being inflated to satisfy the target.
+            // Enough weekly exercise slots that each occurrence can stay near the ~4-set ceiling.
+            // A repeated movement on another day is a valid slot and is preferred over needless
+            // within-week variation.
             let neededSlots = min(allocation.targetExerciseSlots, candidateDays.count * 2)
 
             var guardRail = neededSlots + candidateDays.count + 2
@@ -1623,9 +1681,11 @@ extension ClaudeService {
                     let focusIntent = focusIntentForArea(plan.focusArea, within: trainingIntent)
                     let supportIntents = plan.supportAreas.compactMap { focusIntentForArea($0, within: trainingIntent) }
 
-                    for candidate in metadataFocusExerciseCatalog(for: allocation.area) {
+                    for candidate in feasibilityCandidates() {
                         let key = normalizeExerciseName(candidate.name)
-                        guard !usedKeys.contains(key) else { continue }
+                        guard !updated[dayIndex].contains(where: {
+                            normalizeExerciseName($0.exerciseName) == key
+                        }) else { continue }
                         guard !avoidedExercises.contains(ExerciseWeightEntry.canonicalLookupKey(candidate.name)) else { continue }
                         guard credits(candidate.name, candidate.target, area: allocation.area) else { continue }
 
@@ -1651,7 +1711,7 @@ extension ClaudeService {
 
                         var menusWithoutReplacedSlot = updated
                         menusWithoutReplacedSlot[dayIndex].remove(at: replaceIndex)
-                        guard maintenanceSlotBudgetAllows(
+                        guard menuPlanningBudgetAllows(
                             candidateName: candidate.name,
                             candidateTarget: candidate.target,
                             existingMenus: menusWithoutReplacedSlot,
@@ -1667,7 +1727,6 @@ extension ClaudeService {
                             role: proceduralExerciseRole(for: candidate.name, muscleTarget: candidate.target),
                             prescribedSets: 1
                         )
-                        usedKeys.insert(key)
                         placed = true
                         break dayLoop
                     }

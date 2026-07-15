@@ -13,7 +13,7 @@ extension ClaudeService {
     var fallbackSourceLabel: String { "[Recovery Engine]" }
     var evidenceProfile: HypertrophyEvidenceProfile { Self.evidenceProfileCache }
     static let evidenceProfileCache = HypertrophyEvidenceProfile(
-        version: "hypertrophy_v1_6",
+        version: "hypertrophy_v1_7",
         defaultTrainingDays: 5,
         allowedStyles: ["Push", "Pull", "Legs", "Lower", "Upper", "Arms"],
         // EvidenceProfile.md FREQ-001 / SLOT-001 [confidence: moderate]

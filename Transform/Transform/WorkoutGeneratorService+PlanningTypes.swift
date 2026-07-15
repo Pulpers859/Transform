@@ -40,6 +40,18 @@ extension ClaudeService {
         let peakSessionFatigue: Int
     }
 
+    struct WeeklyVariationBucket {
+        let label: String
+        let primaryAreas: Set<String>
+    }
+
+    struct WeeklyVariationViolation {
+        let area: String
+        let bucket: String
+        let count: Int
+        let cap: Int
+    }
+
     struct ProgramCalibrationProfile {
         let lowPerformanceDataQuality: Bool
         let poorNutritionAdherence: Bool
@@ -215,6 +227,7 @@ extension ClaudeService {
         var exerciseMatches: [String: Int] = [:]
         var exerciseKeys: [String: Set<String>] = [:]
         var exerciseNames: [String: Set<String>] = [:]
+        var directExerciseNames: [String: Set<String>] = [:]
         var peakSessionFatigue: [String: Int] = [:]
         var dailyFatigue: [Int: Int] = [:]
     }

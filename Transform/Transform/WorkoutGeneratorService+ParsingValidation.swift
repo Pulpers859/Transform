@@ -539,6 +539,7 @@ extension ClaudeService {
         var issues: [String] = []
         let trainingDayCount = days.filter { !$0.isRestDay }.count
         let stimulusReport = buildWeekStimulusReport(from: days)
+        let variationViolations = weeklyVariationViolations(in: days, blueprint: blueprint)
 
         if trainingDayCount != blueprint.weeklyTrainingDays {
             issues.append(
@@ -563,8 +564,6 @@ extension ClaudeService {
                 && coverage.directSets + 0.5 < allocation.directSetTarget
             let weightedStimulusMiss = coverage.weightedStimulus + 1.0 < allocation.weightedStimulusTarget
                 && directSetMiss
-            let variationCap = maximumUsefulVariationCount(for: allocation)
-
             if frequencyMiss {
                 issues.append(
                     "Blueprint priority '\(coverage.label)' missed its frequency target (\(coverage.dayMatches)/\(allocation.targetFrequency) targeted days)."
@@ -599,9 +598,12 @@ extension ClaudeService {
                     "Blueprint priority '\(coverage.label)' undershot its weighted stimulus target (\(formatStimulusValue(coverage.weightedStimulus))/\(formatStimulusValue(allocation.weightedStimulusTarget)))."
                 )
             }
-            if coverage.variationCount > variationCap {
+            for violation in variationViolations where normalizedPriorityText(violation.area) == normalizedPriorityText(allocation.area) {
+                let scope = normalizedPriorityText(violation.bucket) == normalizedPriorityText(violation.area)
+                    ? ""
+                    : " sub-region '\(violation.bucket)'"
                 issues.append(
-                    "Blueprint priority '\(coverage.label)' uses too many weekly exercise variations (\(coverage.variationCount) vs cap \(variationCap)). Keep 1-2 repeatable main lifts and trim redundant rotation so progression stays trackable."
+                    "Blueprint priority '\(coverage.label)'\(scope) uses too many weekly exercise variations (\(violation.count) vs cap \(violation.cap)). Keep repeatable main lifts and rotate additional catalog options across mesocycles instead of within one week."
                 )
             }
 

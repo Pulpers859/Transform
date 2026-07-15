@@ -1,6 +1,6 @@
 # Transform Evidence Profile
 
-Version: `hypertrophy_v1_6`
+Version: `hypertrophy_v1_7`
 Last updated: `July 14, 2026`
 Scope: `General hypertrophy-oriented bodybuilding programming for healthy adults using a fully equipped commercial gym`
 
@@ -24,6 +24,7 @@ This file is the programming contract for the workout generator. The goal is not
 | `BASE-001` | Baseline whole-body frequency | Programs should expose all major muscle groups to resistance training at least `2` days/week across the weekly plan | High | The ACSM 2026 position stand and public-facing summary both support training all major muscle groups on two or more days per week as a core healthy-adult prescription anchor |
 | `FREQ-001` | Weekly frequency by priority | High priority muscles default to `2` targeted exposures/week; medium and low default to `1` targeted exposures/week, while the full plan should still satisfy `BASE-001` | Moderate | The ACSM review supports at least two weekly exposures at the whole-program level, but exact targeted frequency for specialization remains more context-sensitive and is still mediated by total weekly volume and recoverability |
 | `SLOT-001` | Targeted exercise slots by priority | High priority areas default to `3` targeted exercise slots/week; medium `2`; low `1` | Moderate | This gives the generator a concrete way to distribute emphasis without forcing all stimulus into one session |
+| `VAR-001` | Weekly exercise variation | Single-region priorities cap distinct primary exercises at `4` for high, `3` for medium, and `2` for low priority; broad composite areas apply that ceiling separately to real anatomical sub-regions, and repeated lifts should be preferred once a bucket is full | Low-Moderate | Stable exercises make progressive overload, skill retention, and performance comparison possible; the exact ceilings are pragmatic coaching guard rails, so catalog breadth belongs across mesocycles rather than being exhausted inside one week |
 | `VOL-001` | Weekly direct sets by priority | High priority areas target roughly `8-12` direct sets/week; medium `5-8`; low `3-5`, then adjust for volume/direct-work bias | Moderate | The ACSM umbrella review strengthens the case that hypertrophy is enhanced by higher weekly volume, citing `>=10` sets/week as a useful anchor, but exact set targets still vary by muscle group, training age, and exercise choice |
 | `MAINT-001` | Non-priority maintenance ceiling | Muscle groups outside the blueprint's priority list are maintenance work capped at roughly `10` direct sets/week (`8` when recovery or nutrition adherence is constrained); zero weekly direct sets for a major muscle group violates `BASE-001` and must be surfaced | Low-Moderate | Priority-only volume policing let non-priority volume grow unbounded (~98 weekly sets in a deficit) while hamstrings received zero sets undetected; a maintenance band of roughly 6-10 sets preserves tissue without stealing recovery from priorities, though the exact ceiling is a pragmatic coaching number rather than a settled literature value |
 | `CONC-001` | Focus-day concentration allowance | Priority muscles may concentrate a larger share of weekly direct sets into a designated focus day than a simple even split would allow, but should still avoid putting essentially the entire weekly stimulus into one session | Low-Moderate | Real hypertrophy specialization often uses emphasis days rather than perfectly flat distribution; the validator should catch reckless piling-on, not reject every legitimate focus session |
@@ -51,6 +52,9 @@ This file is the programming contract for the workout generator. The goal is not
 - Recovery-tight maintenance groups are limited to at most four meaningful exercise identities
   under the 8-set ceiling. Fallback and AI output consume the same prescription; neither creates
   a separate role-default set budget or repairs maintenance volume after generation.
+- The exercise catalog stays broad, but one weekly prescription stays narrow. Variation budgets
+  count primary-target exercise identities, not every compound that gives a muscle secondary
+  stimulus. Composite priorities such as Back use separate lat and upper/mid-back buckets.
 
 ### Directional evidence vs exact numbers
 The literature is stronger on directional principles than on one exact bodybuilding template. For example:

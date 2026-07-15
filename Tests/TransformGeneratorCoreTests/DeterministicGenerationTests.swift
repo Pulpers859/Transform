@@ -12,10 +12,9 @@ import XCTest
 ///    owner's real generations go through. These tests assert it works.
 ///  * LEGACY path: analysis carries only `priorityMuscles` strings (no structured intent).
 ///    `trainingIntentPlan(from:)` falls back to a weaker builder. The harness discovered this
-///    path over-generates badly for concentrated priorities (up to 20 exercise variations for
-///    one area) and is pathologically slow. That is a real but separate, lower-severity
-///    robustness gap — see `testLegacyPriorityMusclesPathRobustness` (skipped) and
-///    docs/generator-test-harness.md.
+///    path previously over-generated badly for concentrated priorities (up to 20 exercise
+///    variations for one area). `testLegacyPriorityMusclesPathRobustness` keeps that exact
+///    failure class covered.
 ///
 /// The class is @MainActor to tolerate any actor isolation on the generator surface; every
 /// method in the chain below is synchronous (throwing), so no awaits are required.
@@ -93,9 +92,11 @@ final class DeterministicGenerationTests: XCTestCase {
         )
     }
 
-    /// Runs the full deterministic chain and returns the validated Week 1 program.
-    /// Throws if any locked-menu/allocation/validation stage produces a hard failure.
-    private func generateWeekOne(from result: BodyAnalysisResult) throws -> WorkoutProgramResponse {
+    /// Runs the full deterministic chain and returns the validated Week 1 program plus the
+    /// blueprint needed for invariant checks.
+    private func generatePlannedWeekOne(
+        from result: BodyAnalysisResult
+    ) throws -> (program: WorkoutProgramResponse, blueprint: ClaudeService.ProgramBlueprint) {
         let intent = service.trainingIntentPlan(from: result)
         let blueprint = service.programBlueprint(for: intent, weekNumber: 1)
         let menus = service.preSelectedExerciseMenu(
@@ -104,12 +105,23 @@ final class DeterministicGenerationTests: XCTestCase {
             weekNumber: 1,
             previousWeekDays: nil
         )
-        return try service.validatedProceduralWeekOneProgram(
+        let program = try service.validatedProceduralWeekOneProgram(
             from: result,
             trainingIntent: intent,
             blueprint: blueprint,
             exerciseMenus: menus
         )
+        return (program, blueprint)
+    }
+
+    private func generateWeekOne(from result: BodyAnalysisResult) throws -> WorkoutProgramResponse {
+        try generatePlannedWeekOne(from: result).program
+    }
+
+    private func variationDescription(_ violations: [ClaudeService.WeeklyVariationViolation]) -> String {
+        violations.map {
+            "\($0.area) / \($0.bucket): \($0.count) vs cap \($0.cap)"
+        }.joined(separator: " | ")
     }
 
     // MARK: - Regression: the reported small-muscle failure (structured-intent path)
@@ -176,6 +188,81 @@ final class DeterministicGenerationTests: XCTestCase {
         }
     }
 
+    func testStructuredPlansRespectWeeklyVariationBudgets() throws {
+        let cases: [(String, StructuredTrainingIntent)] = [
+            ("broad back", StructuredTrainingIntent(
+                splitRecommendation: "Push / Pull / Legs",
+                weeklyTrainingDays: 6,
+                priorities: [
+                    priority("Back", styles: ["Pull", "Upper"], patterns: ["row", "pulldown"]),
+                    priority("Rear Deltoids", level: "Medium", dayTarget: 2, exerciseTarget: 2,
+                             styles: ["Pull", "Upper"], patterns: ["reverse fly"]),
+                ],
+                programmingNotes: ["Build lat width and upper-back thickness."]
+            )),
+            ("broad arms", StructuredTrainingIntent(
+                splitRecommendation: "Upper / Lower",
+                weeklyTrainingDays: 5,
+                priorities: [
+                    priority("Arms", styles: ["Arms", "Upper"], patterns: ["curl", "extension"]),
+                ],
+                programmingNotes: ["Repeatable arm specialization."]
+            )),
+        ]
+
+        for (label, structured) in cases {
+            let result = analysis(
+                structured: structured,
+                priorityMuscles: structured.priorities.map(\.area)
+            )
+            let generated = try generatePlannedWeekOne(from: result)
+            let violations = service.weeklyVariationViolations(
+                in: generated.program.days,
+                blueprint: generated.blueprint
+            )
+            XCTAssertTrue(
+                violations.isEmpty,
+                "Structured intent '\(label)' exceeded weekly variation budgets: \(variationDescription(violations))"
+            )
+        }
+    }
+
+    func testBroadBackVariationBudgetIsSubregionAware() {
+        let structured = StructuredTrainingIntent(
+            splitRecommendation: "Push / Pull / Legs",
+            weeklyTrainingDays: 6,
+            priorities: [
+                priority("Back", styles: ["Pull", "Upper"], patterns: ["row", "pulldown"]),
+            ],
+            programmingNotes: []
+        )
+        let result = analysis(structured: structured, priorityMuscles: ["Back"])
+        let intent = service.trainingIntentPlan(from: result)
+        let blueprint = service.programBlueprint(for: intent, weekNumber: 1)
+
+        let balancedBack: [(name: String, target: String)] = [
+            ("Pull-Up (Weighted or Assisted)", "Lats"),
+            ("Lat Pulldown", "Lats"),
+            ("Straight-Arm Pulldown", "Lats"),
+            ("Single-Arm Dumbbell Row", "Lats"),
+            ("Chest-Supported Row", "Upper Back"),
+            ("Chest-Supported T-Bar Row", "Upper Back"),
+            ("Wide-Grip Cable Row", "Upper Back"),
+            ("Machine Row", "Mid Back"),
+        ]
+        XCTAssertTrue(
+            service.weeklyVariationViolations(for: balancedBack, blueprint: blueprint).isEmpty,
+            "Four lat and four upper/mid-back exercises should fit separate Back sub-region budgets"
+        )
+
+        let latHeavy = balancedBack + [(name: "Neutral-Grip Lat Pulldown", target: "Lats")]
+        let violations = service.weeklyVariationViolations(for: latHeavy, blueprint: blueprint)
+        XCTAssertEqual(violations.count, 1)
+        XCTAssertEqual(violations.first?.bucket, "Lat width")
+        XCTAssertEqual(violations.first?.count, 5)
+        XCTAssertEqual(violations.first?.cap, 4)
+    }
+
     // MARK: - Structural invariants of a generated program
 
     func testGeneratedProgramIsStructurallyComplete() throws {
@@ -201,20 +288,34 @@ final class DeterministicGenerationTests: XCTestCase {
         }
     }
 
-    // MARK: - KNOWN GAP (skipped): legacy priorityMuscles path over-generates
+    // MARK: - Regression: legacy priorityMuscles path over-generation
 
-    /// The harness discovered that the LEGACY path (priorityMuscles only, no structured intent)
-    /// over-generates for concentrated priorities — producing up to ~20 exercise variations for a
-    /// single area, hard-failing validation, and taking ~90s per generation. This is a real but
-    /// separate robustness gap being tracked for a dedicated fix (suspected: the interaction of
-    /// menu build + baseline coverage + priority-feasibility + allocation all funneling volume
-    /// into one dominant area). Skipped so it does not wall CI with a 13-minute red run.
-    /// Remove the skip once the legacy-path over-generation is fixed.
+    /// These are the concentrated legacy combinations from the original failing CI sweep. They
+    /// must generate and stay inside the same weekly variation policy as structured production
+    /// inputs; a validator-clean result alone is not enough.
     func testLegacyPriorityMusclesPathRobustness() throws {
-        throw XCTSkip("KNOWN GAP: legacy priorityMuscles path over-generates + is very slow for concentrated priorities. Tracked for a dedicated generator fix. See docs/generator-test-harness.md.")
-        // Intended assertion once fixed:
-        // for combo in [["Upper Chest"], ["Calves"], ["Back", "Rear Deltoids"]] {
-        //     XCTAssertNoThrow(try generateWeekOne(from: legacyAnalysis(priorities: combo)))
-        // }
+        let combinations = [
+            ["Upper Chest"],
+            ["Biceps", "Triceps"],
+            ["Hamstrings", "Glutes"],
+            ["Back", "Rear Deltoids"],
+            ["Calves"],
+        ]
+
+        for combo in combinations {
+            do {
+                let generated = try generatePlannedWeekOne(from: legacyAnalysis(priorities: combo))
+                let violations = service.weeklyVariationViolations(
+                    in: generated.program.days,
+                    blueprint: generated.blueprint
+                )
+                XCTAssertTrue(
+                    violations.isEmpty,
+                    "Legacy priority set \(combo) exceeded weekly variation budgets: \(variationDescription(violations))"
+                )
+            } catch {
+                XCTFail("Legacy priority set \(combo) hard-failed: \(error)")
+            }
+        }
     }
 }

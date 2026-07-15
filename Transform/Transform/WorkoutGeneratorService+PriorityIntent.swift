@@ -361,7 +361,7 @@ extension ClaudeService {
         }.count
 
         let variationCount = aliases.reduce(into: Set<String>()) { partialResult, alias in
-            partialResult.formUnion(stimulusReport.exerciseNames[alias] ?? [])
+            partialResult.formUnion(stimulusReport.directExerciseNames[alias] ?? [])
         }.count
 
         let directSets = aliases.reduce(0.0) { partialResult, alias in
@@ -479,6 +479,7 @@ extension ClaudeService {
                     report.exerciseMatches[area, default: 0] += 1
                     report.exerciseKeys[area, default: []].insert(exerciseKey)
                     report.exerciseNames[area, default: []].insert(normalizeExerciseName(exercise.exerciseName))
+                    report.directExerciseNames[area, default: []].insert(normalizeExerciseName(exercise.exerciseName))
                     stimulatedAreas.insert(area)
                     fatigueByArea[area, default: 0] += fatigueContribution
                 }
@@ -712,6 +713,117 @@ extension ClaudeService {
         default:
             return 2
         }
+    }
+
+    /// EvidenceProfile.md VAR-001 [confidence: low-moderate]. Broad priorities receive
+    /// independent ceilings for real anatomical sub-regions; a single-region priority uses
+    /// one flat ceiling. Bucket membership is based on primary exercise metadata so indirect
+    /// work does not masquerade as a distinct isolation variation.
+    func weeklyVariationBuckets(for area: String) -> [WeeklyVariationBucket] {
+        func bucket(_ label: String, _ primaryAreas: [String]) -> WeeklyVariationBucket {
+            WeeklyVariationBucket(
+                label: label,
+                primaryAreas: Set(primaryAreas.map(normalizedPriorityText))
+            )
+        }
+
+        switch normalizedPriorityText(area) {
+        case "back":
+            return [
+                bucket("Lat width", ["Lats"]),
+                bucket("Upper / mid back", ["Back", "Upper Back", "Mid Back"])
+            ]
+        case "chest":
+            return [
+                bucket("Upper chest", ["Upper Chest"]),
+                bucket("Mid / lower chest", ["Chest"])
+            ]
+        case "shoulders", "deltoids":
+            return [
+                bucket("Anterior deltoids", ["Anterior Deltoids", "Front Deltoids"]),
+                bucket("Lateral deltoids", ["Lateral Deltoids"]),
+                bucket("Rear deltoids", ["Rear Deltoids", "Posterior Deltoids"]),
+                bucket("General shoulder control", ["Shoulders", "Deltoids"])
+            ]
+        case "arms":
+            return [
+                bucket("Elbow flexors", ["Arms", "Biceps", "Brachialis"]),
+                bucket("Triceps", ["Triceps"]),
+                bucket("Forearms", ["Forearms"])
+            ]
+        case "core", "core abs":
+            return [
+                bucket("Anterior core", ["Core/Abs", "Abs", "Lower Abs", "Anterior Core"]),
+                bucket("Obliques", ["Obliques"]),
+                bucket("Serratus", ["Serratus"])
+            ]
+        case "legs", "lower body":
+            return [
+                bucket("Quads", ["Quads", "Quads/Glutes"]),
+                bucket("Hamstrings", ["Hamstrings", "Posterior Chain"]),
+                bucket("Glutes", ["Glutes"]),
+                bucket("Calves", ["Calves"])
+            ]
+        case "posterior chain":
+            return [
+                bucket("Hamstrings / hinge", ["Hamstrings", "Posterior Chain"]),
+                bucket("Glutes", ["Glutes"])
+            ]
+        case "quads glutes":
+            return [
+                bucket("Quads", ["Quads", "Quads/Glutes"]),
+                bucket("Glutes", ["Glutes"])
+            ]
+        default:
+            return [bucket(area, stimulusAreaAliases(for: area))]
+        }
+    }
+
+    func weeklyVariationViolations(
+        for exerciseIdentities: [(name: String, target: String)],
+        blueprint: ProgramBlueprint
+    ) -> [WeeklyVariationViolation] {
+        blueprint.priorityAllocations.flatMap { allocation in
+            let cap = maximumUsefulVariationCount(for: allocation)
+            return weeklyVariationBuckets(for: allocation.area).compactMap { bucket in
+                let names = exerciseIdentities.reduce(into: Set<String>()) { result, exercise in
+                    let metadata = exerciseMetadata(
+                        forExerciseName: exercise.name,
+                        muscleTarget: exercise.target
+                    )
+                    let primaryAreas = Set(metadata.primaryAreas.map(normalizedPriorityText))
+                    guard !bucket.primaryAreas.isDisjoint(with: primaryAreas) else { return }
+                    result.insert(normalizeExerciseName(exercise.name))
+                }
+                guard names.count > cap else { return nil }
+                return WeeklyVariationViolation(
+                    area: allocation.area,
+                    bucket: bucket.label,
+                    count: names.count,
+                    cap: cap
+                )
+            }
+        }
+    }
+
+    func weeklyVariationViolations(
+        in menus: [[PreSelectedExercise]],
+        blueprint: ProgramBlueprint
+    ) -> [WeeklyVariationViolation] {
+        weeklyVariationViolations(
+            for: menus.joined().map { ($0.exerciseName, $0.muscleTarget) },
+            blueprint: blueprint
+        )
+    }
+
+    func weeklyVariationViolations(
+        in days: [WorkoutDayResponse],
+        blueprint: ProgramBlueprint
+    ) -> [WeeklyVariationViolation] {
+        weeklyVariationViolations(
+            for: days.filter { !$0.isRestDay }.flatMap(\.exercises).map { ($0.exerciseName, $0.muscleTarget) },
+            blueprint: blueprint
+        )
     }
 
 }
