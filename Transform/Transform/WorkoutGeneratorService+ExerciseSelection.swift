@@ -1705,6 +1705,77 @@ extension ClaudeService {
             return (group.label, aliases)
         }
 
+        let allocations = blueprint.priorityAllocations
+
+        // Precomputed per-exercise accounting. During allocation only `prescribedSets` changes —
+        // exercise identity (name/target) is fixed — and stimulus credit is exactly linear in set
+        // count, so each exercise's per-set ("unit") credit for a given priority is constant.
+        // Precomputing it turns the coverage/maintenance ledgers from O(days x exercises x
+        // response-build) rescans (rebuilding rep/tempo/rest strings only to read name/target/sets)
+        // into cheap multiply-adds. This is the difference between ~200s and milliseconds per
+        // generation for hard-to-fund small-muscle priorities. Numerically identical to the old path.
+        struct ExerciseAccounting {
+            var unitDirect: [Double]   // indexed by allocation index
+            var unitWeighted: [Double] // indexed by allocation index
+            var qualityScore: [Int]    // indexed by allocation index (prime 30 / sec 20 / support 10 / none 0)
+            var groupTargets: [Bool]   // indexed by maintenance-group index
+        }
+        let accounting: [[ExerciseAccounting]] = allocated.map { day in
+            day.map { exercise -> ExerciseAccounting in
+                let unit = WorkoutExerciseResponse(
+                    exerciseName: exercise.exerciseName,
+                    sets: 1,
+                    reps: "",
+                    tempo: "",
+                    restSeconds: 0,
+                    notes: "",
+                    muscleTarget: exercise.muscleTarget
+                )
+                var unitDirect: [Double] = []
+                var unitWeighted: [Double] = []
+                var qualityScore: [Int] = []
+                unitDirect.reserveCapacity(allocations.count)
+                unitWeighted.reserveCapacity(allocations.count)
+                qualityScore.reserveCapacity(allocations.count)
+                for allocation in allocations {
+                    let credit = stimulusCredit(for: unit, area: allocation.area)
+                    unitDirect.append(credit.directSets)
+                    unitWeighted.append(credit.weightedStimulus)
+                    switch focusStimulusKind(
+                        exerciseName: exercise.exerciseName,
+                        muscleTarget: exercise.muscleTarget,
+                        focusArea: allocation.area
+                    ) {
+                    case .prime: qualityScore.append(30)
+                    case .secondary: qualityScore.append(20)
+                    case .support: qualityScore.append(10)
+                    case .none: qualityScore.append(0)
+                    }
+                }
+                let groupTargets = maintenanceGroups.map { group in
+                    exerciseDirectlyTargets(
+                        groupAliases: group.aliases,
+                        exerciseName: exercise.exerciseName,
+                        muscleTarget: exercise.muscleTarget
+                    )
+                }
+                return ExerciseAccounting(
+                    unitDirect: unitDirect,
+                    unitWeighted: unitWeighted,
+                    qualityScore: qualityScore,
+                    groupTargets: groupTargets
+                )
+            }
+        }
+        // Whether each day's focus area matches each priority (stable; used for focus caps/bonuses).
+        let focusMatch: [[Bool]] = blueprint.dayPlans.indices.map { dayIndex in
+            allocations.map { allocation in
+                blueprint.dayPlans[dayIndex].focusArea.map {
+                    normalizedPriorityText($0) == normalizedPriorityText(allocation.area)
+                } ?? false
+            }
+        }
+
         func response(dayIndex: Int, exerciseIndex: Int, addingSet: Bool = false) -> WorkoutExerciseResponse {
             let exercise = allocated[dayIndex][exerciseIndex]
             let sets = exercise.prescribedSets + (addingSet ? 1 : 0)
@@ -1732,36 +1803,31 @@ extension ClaudeService {
             )
         }
 
-        func maintenanceSets(for aliases: Set<String>, addingAt location: (Int, Int)? = nil) -> Double {
-            allocated.indices.reduce(0.0) { weekTotal, dayIndex in
-                weekTotal + allocated[dayIndex].indices.reduce(0.0) { dayTotal, exerciseIndex in
-                    let exercise = allocated[dayIndex][exerciseIndex]
-                    guard exerciseDirectlyTargets(
-                        groupAliases: aliases,
-                        exerciseName: exercise.exerciseName,
-                        muscleTarget: exercise.muscleTarget
-                    ) else { return dayTotal }
+        func maintenanceSets(groupIndex: Int, addingAt location: (Int, Int)? = nil) -> Double {
+            var total = 0.0
+            for dayIndex in allocated.indices {
+                for exerciseIndex in allocated[dayIndex].indices
+                    where accounting[dayIndex][exerciseIndex].groupTargets[groupIndex] {
                     let extra = location?.0 == dayIndex && location?.1 == exerciseIndex ? 1 : 0
-                    return dayTotal + Double(exercise.prescribedSets + extra)
+                    total += Double(allocated[dayIndex][exerciseIndex].prescribedSets + extra)
                 }
             }
+            return total
         }
 
         func priorityCoverage(
-            for allocation: BlueprintPriorityAllocation,
+            allocIndex: Int,
             addingAt location: (Int, Int)? = nil
         ) -> (direct: Double, weighted: Double) {
             var direct = 0.0
             var weighted = 0.0
             for dayIndex in allocated.indices {
                 for exerciseIndex in allocated[dayIndex].indices {
-                    let exercise = response(
-                        dayIndex: dayIndex,
-                        exerciseIndex: exerciseIndex,
-                        addingSet: location?.0 == dayIndex && location?.1 == exerciseIndex
-                    )
-                    direct += directSetCredit(for: exercise, area: allocation.area)
-                    weighted += weightedStimulusCredit(for: exercise, area: allocation.area)
+                    let extra = location?.0 == dayIndex && location?.1 == exerciseIndex ? 1 : 0
+                    let sets = Double(allocated[dayIndex][exerciseIndex].prescribedSets + extra)
+                    let acct = accounting[dayIndex][exerciseIndex]
+                    direct += sets * acct.unitDirect[allocIndex]
+                    weighted += sets * acct.unitWeighted[allocIndex]
                 }
             }
             return (direct, weighted)
@@ -1776,13 +1842,10 @@ extension ClaudeService {
             )
             guard exercise.prescribedSets < roleDefault else { return false }
 
-            for group in maintenanceGroups where exerciseDirectlyTargets(
-                groupAliases: group.aliases,
-                exerciseName: exercise.exerciseName,
-                muscleTarget: exercise.muscleTarget
-            ) {
+            for groupIndex in maintenanceGroups.indices
+                where accounting[dayIndex][exerciseIndex].groupTargets[groupIndex] {
                 guard maintenanceSets(
-                    for: group.aliases,
+                    groupIndex: groupIndex,
                     addingAt: (dayIndex, exerciseIndex)
                 ) <= maintenanceCeiling + 0.01 else { return false }
             }
@@ -1790,15 +1853,15 @@ extension ClaudeService {
             // A set funded for one priority may also credit another. Check every weekly ledger
             // jointly so shared Chest/Triceps or Quads/Glutes work cannot overfill a later
             // priority before its own allocation pass begins.
-            for allocation in blueprint.priorityAllocations {
-                let current = priorityCoverage(for: allocation)
+            for allocIndex in allocations.indices {
+                let current = priorityCoverage(allocIndex: allocIndex)
                 let projected = priorityCoverage(
-                    for: allocation,
+                    allocIndex: allocIndex,
                     addingAt: (dayIndex, exerciseIndex)
                 )
                 let addsDirectCredit = projected.direct > current.direct + 0.01
                 guard !addsDirectCredit
-                        || projected.direct <= allocation.directSetTarget + 0.01 else {
+                        || projected.direct <= allocations[allocIndex].directSetTarget + 0.01 else {
                     return false
                 }
             }
@@ -1816,22 +1879,17 @@ extension ClaudeService {
             guard estimatedSessionMinutes(for: proceduralTrainingDay(from: dayExercises))
                     <= plan.targetSessionMinutes + 3 else { return false }
 
-            for allocation in blueprint.priorityAllocations {
-                let candidate = response(
-                    dayIndex: dayIndex,
-                    exerciseIndex: exerciseIndex,
-                    addingSet: true
-                )
-                guard directSetCredit(for: candidate, area: allocation.area) > 0 else { continue }
-                let dayDirectSets = dayExercises.reduce(0.0) {
-                    $0 + directSetCredit(for: $1, area: allocation.area)
+            for allocIndex in allocations.indices {
+                guard accounting[dayIndex][exerciseIndex].unitDirect[allocIndex] > 0 else { continue }
+                var dayDirectSets = 0.0
+                for index in allocated[dayIndex].indices {
+                    let extra = index == exerciseIndex ? 1 : 0
+                    dayDirectSets += Double(allocated[dayIndex][index].prescribedSets + extra)
+                        * accounting[dayIndex][index].unitDirect[allocIndex]
                 }
-                let isFocusDay = plan.focusArea.map {
-                    normalizedPriorityText($0) == normalizedPriorityText(allocation.area)
-                } ?? false
-                let cap = isFocusDay
-                    ? allocation.maxFocusSessionDirectSets
-                    : allocation.maxPerSessionDirectSets
+                let cap = focusMatch[dayIndex][allocIndex]
+                    ? allocations[allocIndex].maxFocusSessionDirectSets
+                    : allocations[allocIndex].maxPerSessionDirectSets
                 guard dayDirectSets <= cap + 0.01 else { return false }
             }
 
@@ -1839,24 +1897,18 @@ extension ClaudeService {
         }
 
         // Fund blueprint priorities before distributing maintenance volume.
-        for allocation in blueprint.priorityAllocations {
+        for allocIndex in allocations.indices {
+            let allocation = allocations[allocIndex]
             let meaningfulThreshold = minimumMeaningfulPriorityExposureSets(for: allocation.area)
             let candidateDays = allocated.indices
                 .filter { dayIndex in
                     allocated[dayIndex].indices.contains { exerciseIndex in
-                        directSetCredit(
-                            for: response(dayIndex: dayIndex, exerciseIndex: exerciseIndex),
-                            area: allocation.area
-                        ) > 0
+                        accounting[dayIndex][exerciseIndex].unitDirect[allocIndex] > 0
                     }
                 }
                 .sorted { lhs, rhs in
-                    let lhsFocus = blueprint.dayPlans[lhs].focusArea.map {
-                        normalizedPriorityText($0) == normalizedPriorityText(allocation.area)
-                    } ?? false
-                    let rhsFocus = blueprint.dayPlans[rhs].focusArea.map {
-                        normalizedPriorityText($0) == normalizedPriorityText(allocation.area)
-                    } ?? false
+                    let lhsFocus = focusMatch[lhs][allocIndex]
+                    let rhsFocus = focusMatch[rhs][allocIndex]
                     if lhsFocus != rhsFocus { return lhsFocus }
                     return lhs < rhs
                 }
@@ -1867,30 +1919,17 @@ extension ClaudeService {
                 var exposureGuardRail = 12
                 while exposureGuardRail > 0 {
                     exposureGuardRail -= 1
-                    let dayDirectSets = allocated[dayIndex].indices.reduce(0.0) {
-                        $0 + directSetCredit(
-                            for: response(dayIndex: dayIndex, exerciseIndex: $1),
-                            area: allocation.area
-                        )
+                    var dayDirectSets = 0.0
+                    for exerciseIndex in allocated[dayIndex].indices {
+                        dayDirectSets += Double(allocated[dayIndex][exerciseIndex].prescribedSets)
+                            * accounting[dayIndex][exerciseIndex].unitDirect[allocIndex]
                     }
                     guard dayDirectSets + 0.01 < meaningfulThreshold else { break }
 
                     let candidates = allocated[dayIndex].indices.compactMap { exerciseIndex -> (Int, Int)? in
                         guard canAddSet(dayIndex: dayIndex, exerciseIndex: exerciseIndex) else { return nil }
-                        let probe = response(dayIndex: dayIndex, exerciseIndex: exerciseIndex, addingSet: true)
-                        guard directSetCredit(for: probe, area: allocation.area) > 0 else { return nil }
-                        let kind = focusStimulusKind(
-                            exerciseName: probe.exerciseName,
-                            muscleTarget: probe.muscleTarget,
-                            focusArea: allocation.area
-                        )
-                        let qualityScore: Int
-                        switch kind {
-                        case .prime: qualityScore = 30
-                        case .secondary: qualityScore = 20
-                        case .support: qualityScore = 10
-                        case .none: qualityScore = 0
-                        }
+                        guard accounting[dayIndex][exerciseIndex].unitDirect[allocIndex] > 0 else { return nil }
+                        let qualityScore = accounting[dayIndex][exerciseIndex].qualityScore[allocIndex]
                         return (exerciseIndex, qualityScore - allocated[dayIndex][exerciseIndex].prescribedSets)
                     }
                     guard let target = candidates.max(by: { $0.1 < $1.1 }) else { break }
@@ -1901,32 +1940,17 @@ extension ClaudeService {
             var guardRail = 80
             while guardRail > 0 {
                 guardRail -= 1
-                let current = priorityCoverage(for: allocation)
+                let current = priorityCoverage(allocIndex: allocIndex)
                 guard current.direct + 0.01 < allocation.directSetTarget
                         || current.weighted + 0.01 < allocation.weightedStimulusTarget else { break }
 
                 let candidates = allocated.indices.flatMap { dayIndex in
                     allocated[dayIndex].indices.compactMap { exerciseIndex -> (Int, Int, Int)? in
                         guard canAddSet(dayIndex: dayIndex, exerciseIndex: exerciseIndex) else { return nil }
-                        let probe = response(dayIndex: dayIndex, exerciseIndex: exerciseIndex, addingSet: true)
-                        let credit = stimulusCredit(for: probe, area: allocation.area)
-                        guard credit.directSets > 0 || credit.weightedStimulus > 0 else { return nil }
-                        let kind = focusStimulusKind(
-                            exerciseName: probe.exerciseName,
-                            muscleTarget: probe.muscleTarget,
-                            focusArea: allocation.area
-                        )
-                        let qualityScore: Int
-                        switch kind {
-                        case .prime: qualityScore = 30
-                        case .secondary: qualityScore = 20
-                        case .support: qualityScore = 10
-                        case .none: qualityScore = 0
-                        }
-                        let focusBonus = blueprint.dayPlans[dayIndex].focusArea.map {
-                            normalizedPriorityText($0) == normalizedPriorityText(allocation.area) ? 5 : 0
-                        } ?? 0
-                        return (dayIndex, exerciseIndex, qualityScore + focusBonus - allocated[dayIndex][exerciseIndex].prescribedSets)
+                        let acct = accounting[dayIndex][exerciseIndex]
+                        guard acct.unitDirect[allocIndex] > 0 || acct.unitWeighted[allocIndex] > 0 else { return nil }
+                        let focusBonus = focusMatch[dayIndex][allocIndex] ? 5 : 0
+                        return (dayIndex, exerciseIndex, acct.qualityScore[allocIndex] + focusBonus - allocated[dayIndex][exerciseIndex].prescribedSets)
                     }
                 }
                 guard let target = candidates.max(by: { $0.2 < $1.2 }) else { break }
@@ -1943,14 +1967,7 @@ extension ClaudeService {
             madeProgress = false
             for dayIndex in allocated.indices {
                 for exerciseIndex in allocated[dayIndex].indices {
-                    let exercise = allocated[dayIndex][exerciseIndex]
-                    let targetsMaintenance = maintenanceGroups.contains { group in
-                        exerciseDirectlyTargets(
-                            groupAliases: group.aliases,
-                            exerciseName: exercise.exerciseName,
-                            muscleTarget: exercise.muscleTarget
-                        )
-                    }
+                    let targetsMaintenance = accounting[dayIndex][exerciseIndex].groupTargets.contains(true)
                     guard targetsMaintenance else { continue }
                     guard canAddSet(dayIndex: dayIndex, exerciseIndex: exerciseIndex) else { continue }
                     allocated[dayIndex][exerciseIndex].prescribedSets += 1
