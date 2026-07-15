@@ -17,6 +17,9 @@ permissions:
 jobs:
   generator-tests:
     runs-on: macos-latest
+    # Deterministic generation should be sub-second per program. A hard cap keeps a
+    # future runaway (see the legacy-path over-generation gap) from walling CI for 10+ min.
+    timeout-minutes: 12
 
     steps:
       - uses: actions/checkout@v5
