@@ -57,6 +57,7 @@ let package = Package(
                 // generator closure references it, and it drags in unrelated types.)
                 "BodyAnalysisModels.swift",
                 "WorkoutModels.swift",
+                "WorkoutProgressionEngine.swift",
 
                 // Deterministic workout generator (the menu-locked planning core).
                 "WorkoutGeneratorDebugModels.swift",

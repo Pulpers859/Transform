@@ -264,7 +264,7 @@ extension ClaudeService {
     /// ProgressionSuggestion banner. Built in WorkoutView from the same entries that feed
     /// the prompt's "app verdict" lines (98349db), and passed into validation so the
     /// validator can reject AI coaching cues that contradict the logged history.
-    enum ProgressionVerdictKind: String {
+    enum ProgressionVerdictKind: String, Equatable {
         case addLoad
         case addRepsInRange
         case holdBelowRange

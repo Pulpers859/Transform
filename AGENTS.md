@@ -37,6 +37,9 @@
 - If only part of the work is complete, either commit and push the finished subset or explicitly tell the user what is still intentionally local and why.
 - Preserve user changes unless the user explicitly asks otherwise.
 - Fix root causes, not cosmetic symptoms.
+- Treat every first implementation as provisional: after making a fix, perform a separate
+  adversarial audit that assumes the fix is incomplete, checks the original failure path,
+  and adds or runs regression coverage before declaring the incident resolved.
 - For generator or validator incidents, map the failure to its earliest deterministic cause
   before editing. Post-generation trimming, warning demotion, fallback acceptance, or retry
   changes are containment measures unless the planning layer is shown to be correct.

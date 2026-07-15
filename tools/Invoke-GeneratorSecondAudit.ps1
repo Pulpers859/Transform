@@ -126,10 +126,9 @@ $claudeArgs = @(
     '--print',
     '--permission-mode', 'plan',
     '--tools=',
-    '--output-format', 'text',
-    $prompt
+    '--output-format', 'text'
 )
-$review = & $claudeCommand @claudeArgs 2>&1
+$review = $prompt | & $claudeCommand @claudeArgs 2>&1
 if ($LASTEXITCODE -ne 0) {
     throw "Claude Code review failed with exit code $LASTEXITCODE.`n$($review -join "`n")"
 }

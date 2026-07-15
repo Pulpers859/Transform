@@ -122,6 +122,76 @@ final class GeneratorTroubleshootingTests: XCTestCase {
         XCTAssertTrue(notes.contains("Baseline target:"), "Week 1 repair should use the baseline progression guidance")
     }
 
+    func testProgressionEngineUsesAllWorkingSetsInsteadOfSummaryTopSet() throws {
+        let range = try XCTUnwrap(RepRange.parse("10–14"))
+        let logs = [14, 10, 10].enumerated().map { index, reps in
+            SetLogEntry(setNumber: index + 1, weightLbs: 70, repsCompleted: reps)
+        }
+
+        let decision = try XCTUnwrap(
+            WorkoutProgressionEngine.evaluate(
+                latestSetLogs: logs,
+                summaryWeight: 70,
+                summaryReps: 14,
+                repRange: range
+            )
+        )
+
+        XCTAssertEqual(decision.kind, .addRepsInRange)
+        XCTAssertEqual(decision.workingSetCount, 3)
+        XCTAssertEqual(decision.ceilingSetCount, 1)
+        XCTAssertTrue(decision.usedPerSetEvidence)
+    }
+
+    func testProgressionEngineAddsLoadOnlyWhenWorkingSetsAreReady() throws {
+        let range = try XCTUnwrap(RepRange.parse("8-12"))
+        let completeLogs = [12, 12, 12].enumerated().map { index, reps in
+            SetLogEntry(setNumber: index + 1, weightLbs: 100, repsCompleted: reps)
+        }
+        let incompleteLogs = [12, 7, 12].enumerated().map { index, reps in
+            SetLogEntry(setNumber: index + 1, weightLbs: 100, repsCompleted: reps)
+        }
+
+        let complete = try XCTUnwrap(
+            WorkoutProgressionEngine.evaluate(
+                latestSetLogs: completeLogs,
+                summaryWeight: 100,
+                summaryReps: 12,
+                repRange: range
+            )
+        )
+        let incomplete = try XCTUnwrap(
+            WorkoutProgressionEngine.evaluate(
+                latestSetLogs: incompleteLogs,
+                summaryWeight: 100,
+                summaryReps: 12,
+                repRange: range
+            )
+        )
+
+        XCTAssertEqual(complete.kind, .addLoad)
+        XCTAssertEqual(incomplete.kind, .holdBelowRange)
+        XCTAssertEqual(WorkoutProgressionEngine.nextLoad(from: 70, exerciseName: "Cable Lateral Raise"), 75)
+        XCTAssertEqual(WorkoutProgressionEngine.nextLoad(from: 100, exerciseName: "Barbell Row"), 102.5)
+    }
+
+    func testProgressionEngineFallsBackToLegacySummaryWithoutSetLogs() throws {
+        let range = try XCTUnwrap(RepRange.parse("8-12"))
+        let decision = try XCTUnwrap(
+            WorkoutProgressionEngine.evaluate(
+                latestSetLogs: [],
+                summaryWeight: 80,
+                summaryReps: 12,
+                repRange: range
+            )
+        )
+
+        XCTAssertEqual(decision.kind, .addLoad)
+        XCTAssertEqual(decision.workingWeight, 80)
+        XCTAssertEqual(decision.workingSetCount, 0)
+        XCTAssertFalse(decision.usedPerSetEvidence)
+    }
+
     func testLiveWeekOneStructuredContract() async throws {
         let environment = ProcessInfo.processInfo.environment
         guard environment["TRANSFORM_RUN_LIVE_ANTHROPIC_SMOKE"] == "1" else {

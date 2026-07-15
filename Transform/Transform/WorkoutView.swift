@@ -14,6 +14,7 @@ struct WorkoutView: View {
     @Query(sort: \WorkoutProgram.createdDate, order: .reverse) private var programs: [WorkoutProgram]
     @Query(sort: \BodyAnalysisSession.date, order: .reverse) private var analysisSessions: [BodyAnalysisSession]
     @Query(sort: \ExerciseWeightEntry.loggedAt, order: .reverse) private var exerciseWeightEntries: [ExerciseWeightEntry]
+    @Query(sort: \ExercisePerformanceLog.loggedAt, order: .reverse) private var exercisePerformanceLogs: [ExercisePerformanceLog]
 
     @State private var isGenerating = false
     @State private var errorMessage: String?
@@ -666,7 +667,7 @@ struct WorkoutView: View {
         }
 
         do {
-            let performanceHistory = compactPerformanceHistory(from: exerciseWeightEntries)
+            let performanceHistory = compactPerformanceHistory(from: exerciseWeightEntries, performanceLogs: exercisePerformanceLogs)
             let history = exerciseHistoryContext(from: programs)
             // `programs` includes archived mesocycles, so skip/pain patterns persist
             // across program boundaries.
@@ -675,7 +676,7 @@ struct WorkoutView: View {
                 performanceHistory: performanceHistory,
                 skipHistory: recurringSkipHistory(across: programs),
                 exerciseHistory: history,
-                progressionVerdicts: progressionVerdictContexts(from: exerciseWeightEntries)
+                progressionVerdicts: progressionVerdictContexts(from: exerciseWeightEntries, performanceLogs: exercisePerformanceLogs)
             )
             let response = generationResult.response
             try Task.checkCancellation()
@@ -768,7 +769,7 @@ struct WorkoutView: View {
 
         do {
             WorkoutGenerationDiagnostics.markStage("requesting week \(nextWeek) program from AI")
-            let performanceHistory = compactPerformanceHistory(from: exerciseWeightEntries)
+            let performanceHistory = compactPerformanceHistory(from: exerciseWeightEntries, performanceLogs: exercisePerformanceLogs)
             let history = exerciseHistoryContext(from: programs)
             let generationResult = try await ClaudeService.shared.generateNextWeek(
                 weekNumber: nextWeek,
@@ -783,7 +784,7 @@ struct WorkoutView: View {
                 ),
                 skipHistory: recurringSkipHistory(across: programs),
                 exerciseHistory: history,
-                progressionVerdicts: progressionVerdictContexts(from: exerciseWeightEntries)
+                progressionVerdicts: progressionVerdictContexts(from: exerciseWeightEntries, performanceLogs: exercisePerformanceLogs)
             )
             let response = generationResult.response
             try Task.checkCancellation()
@@ -1167,17 +1168,24 @@ struct WorkoutView: View {
         return recent
     }
 
-    func compactPerformanceHistory(from entries: [ExerciseWeightEntry], limit: Int = 10) -> String? {
+    func compactPerformanceHistory(
+        from entries: [ExerciseWeightEntry],
+        performanceLogs: [ExercisePerformanceLog],
+        limit: Int = 10
+    ) -> String? {
         let recent = recentPerformanceEntries(from: entries, limit: limit)
         guard !recent.isEmpty else { return nil }
         let formatter = DateFormatter()
         formatter.dateStyle = .short
         formatter.timeStyle = .none
         return recent.map { entry in
-            var line = "- \(entry.exerciseName): \(Int(entry.weightLbs)) lb"
-            if let reps = entry.repsCompleted { line += " x \(reps)" }
+            let decision = progressionDecision(for: entry, performanceLogs: performanceLogs)
+            let weight = decision?.workingWeight ?? entry.weightLbs
+            let reps = decision?.minimumWorkingReps ?? entry.repsCompleted
+            var line = "- \(entry.exerciseName): \(Int(weight)) lb"
+            if let reps { line += " x \(reps)" }
             line += " (\(formatter.string(from: entry.loggedAt)))"
-            if let verdict = progressionVerdict(for: entry) {
+            if let verdict = progressionVerdict(for: entry, performanceLogs: performanceLogs) {
                 line += " — app verdict: \(verdict)"
             }
             return line
@@ -1187,14 +1195,18 @@ struct WorkoutView: View {
     /// Structured verdicts for the validator's cue-vs-history rule — the enforcement half
     /// of the prompt-side verdict injection above (98349db). Built from the same entries
     /// and the same verdict logic that feed the prompt.
-    func progressionVerdictContexts(from entries: [ExerciseWeightEntry], limit: Int = 10) -> [ClaudeService.ExerciseProgressionVerdict] {
+    func progressionVerdictContexts(
+        from entries: [ExerciseWeightEntry],
+        performanceLogs: [ExercisePerformanceLog],
+        limit: Int = 10
+    ) -> [ClaudeService.ExerciseProgressionVerdict] {
         recentPerformanceEntries(from: entries, limit: limit).compactMap { entry in
-            guard let kind = progressionVerdictKind(for: entry) else { return nil }
+            guard let decision = progressionDecision(for: entry, performanceLogs: performanceLogs) else { return nil }
             return ClaudeService.ExerciseProgressionVerdict(
                 canonicalKey: entry.canonicalExerciseKey,
                 exerciseName: entry.exerciseName,
-                kind: kind,
-                weightLbs: entry.weightLbs
+                kind: decision.kind,
+                weightLbs: decision.workingWeight
             )
         }
     }
@@ -1204,18 +1216,22 @@ struct WorkoutView: View {
     /// the generation prompt so the AI's written progression cue cannot contradict the
     /// live banner rendered next to it (seen live: coaching said "hold 70 lb in the
     /// 10-12 range" while the banner correctly said "add load" after 3x14). Uses the
-    /// summary reps — per-set logs are not queried in this view — and the rep range
-    /// prescribed by the most recent program that ran the exercise.
-    func progressionVerdict(for entry: ExerciseWeightEntry) -> String? {
-        guard let kind = progressionVerdictKind(for: entry),
+    /// the latest usable per-set log when one exists, falling back to the summary reps for
+    /// legacy records, and the rep range prescribed by the most recent program that ran
+    /// the exercise.
+    func progressionVerdict(
+        for entry: ExerciseWeightEntry,
+        performanceLogs: [ExercisePerformanceLog]
+    ) -> String? {
+        guard let decision = progressionDecision(for: entry, performanceLogs: performanceLogs),
               let range = prescribedRepRange(forCanonicalKey: entry.canonicalExerciseKey)
         else { return nil }
 
-        let weight = formatWeight(entry.weightLbs)
-        switch kind {
+        let weight = formatWeight(decision.workingWeight)
+        switch decision.kind {
         case .addLoad:
             let next = formatWeight(
-                ProgressionSuggestion.nextLoad(from: entry.weightLbs, exerciseName: entry.exerciseName)
+                WorkoutProgressionEngine.nextLoad(from: decision.workingWeight, exerciseName: entry.exerciseName)
             )
             return "beat the \(range.low)-\(range.high) rep target at \(weight) lb — cue ADDING LOAD; next achievable step is \(next) lb"
         case .holdBelowRange:
@@ -1227,14 +1243,26 @@ struct WorkoutView: View {
 
     /// Single source of truth for the verdict decision so the prompt text above and the
     /// structured validator verdicts cannot drift apart.
-    func progressionVerdictKind(for entry: ExerciseWeightEntry) -> ClaudeService.ProgressionVerdictKind? {
-        guard let reps = entry.repsCompleted, entry.weightLbs > 0,
-              let range = prescribedRepRange(forCanonicalKey: entry.canonicalExerciseKey)
-        else { return nil }
-
-        if reps >= range.high { return .addLoad }
-        if reps < range.low { return .holdBelowRange }
-        return .addRepsInRange
+    func progressionDecision(
+        for entry: ExerciseWeightEntry,
+        performanceLogs: [ExercisePerformanceLog]
+    ) -> WorkoutProgressionDecision? {
+        guard let range = prescribedRepRange(forCanonicalKey: entry.canonicalExerciseKey) else { return nil }
+        let key = entry.canonicalExerciseKey
+        let latestSetLogs = performanceLogs
+            .filter { $0.canonicalExerciseKey == key && !$0.setLogsJSON.isEmpty }
+            .sorted { $0.loggedAt > $1.loggedAt }
+            .compactMap { log in
+                let decoded = log.decodedSetLogs
+                return decoded.isEmpty ? nil : decoded
+            }
+            .first ?? []
+        return WorkoutProgressionEngine.evaluate(
+            latestSetLogs: latestSetLogs,
+            summaryWeight: entry.weightLbs,
+            summaryReps: entry.repsCompleted,
+            repRange: range
+        )
     }
 
     /// Rep range last prescribed for this exercise, matched by canonical key across the

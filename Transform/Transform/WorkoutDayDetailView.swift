@@ -1695,30 +1695,6 @@ struct ExercisePrescription {
 
 // MARK: - Progression Suggestion
 
-struct RepRange {
-    let low: Int
-    let high: Int
-
-    static func parse(_ reps: String) -> RepRange? {
-        let cleaned = reps
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .replacingOccurrences(of: "–", with: "-")
-            .replacingOccurrences(of: "—", with: "-")
-
-        if cleaned.contains("-") {
-            let parts = cleaned.split(separator: "-").compactMap { Int($0.trimmingCharacters(in: .whitespaces)) }
-            guard parts.count == 2, parts[0] > 0, parts[1] >= parts[0] else { return nil }
-            return RepRange(low: parts[0], high: parts[1])
-        }
-
-        if let single = Int(cleaned), single > 0 {
-            return RepRange(low: single, high: single)
-        }
-
-        return nil
-    }
-}
-
 struct ProgressionSuggestion {
     let icon: String
     let text: String
@@ -1755,157 +1731,66 @@ struct ProgressionSuggestion {
         lastWeight: Double,
         exerciseName: String
     ) -> ProgressionSuggestion? {
-        // Preferred path: reason over the genuine working sets, robust to warm-up ramps
-        // and to a lone anomalous spike (which is excluded here and surfaced separately).
-        if let workingWeight = analysis.workingWeight, !analysis.workingSets.isEmpty {
-            return fromWorkingSets(
-                workingSets: analysis.workingSets,
-                workingWeight: workingWeight,
-                repRange: repRange,
-                exerciseName: exerciseName
-            )
-        }
+        guard let decision = WorkoutProgressionEngine.evaluate(
+            analysis: analysis,
+            summaryWeight: lastWeight,
+            summaryReps: summaryRepsCompleted,
+            repRange: repRange
+        ) else { return nil }
 
-        // Degraded path: older logs with no usable per-set data. Reason from the summary
-        // alone — outliers cannot be detected without the individual sets.
-        guard let repsCompleted = summaryRepsCompleted else { return nil }
+        let weightText = formatWeight(decision.workingWeight)
+        let nextText = formatWeight(
+            WorkoutProgressionEngine.nextLoad(from: decision.workingWeight, exerciseName: exerciseName)
+        )
 
-        if repsCompleted >= repRange.high {
-            let suggestedWeight = nextLoad(from: lastWeight, exerciseName: exerciseName)
+        switch decision.kind {
+        case .addLoad:
+            if decision.workingSetCount > 0 && decision.ceilingSetCount < decision.workingSetCount {
+                return ProgressionSuggestion(
+                    icon: "arrow.up.circle.fill",
+                    text: "Add load — \(decision.ceilingSetCount) of \(decision.workingSetCount) sets hit \(repRange.high) at \(weightText) lb. Try \(nextText) lb next session",
+                    color: TFColor.success
+                )
+            }
             return ProgressionSuggestion(
                 icon: "arrow.up.circle.fill",
-                text: "Increase to \(formatWeight(suggestedWeight)) lb next session",
+                text: decision.usedPerSetEvidence
+                    ? "Add load — \(weightText) lb felt complete. Try \(nextText) lb next session"
+                    : "Increase to \(nextText) lb next session",
                 color: TFColor.success
             )
-        }
-
-        if repsCompleted < repRange.low {
+        case .holdBelowRange:
+            let reps = decision.minimumWorkingReps ?? repRange.low
             return ProgressionSuggestion(
                 icon: "arrow.down.circle.fill",
-                text: "Stay at \(formatWeight(lastWeight)) lb, focus on form and full ROM",
+                text: decision.usedPerSetEvidence
+                    ? "Hold \(weightText) lb — a working set dropped to \(reps) (target \(repRange.low)-\(repRange.high)); even your sets out before adding"
+                    : "Stay at \(weightText) lb, focus on form and full ROM",
                 color: TFColor.warning
             )
-        }
-
-        return ProgressionSuggestion(
-            icon: "arrow.right.circle.fill",
-            text: "On track — aim for \(repsCompleted + 1)-\(repRange.high) reps next session",
-            color: .blue
-        )
-    }
-
-    /// Next-session target weight, derived from the working weight rather than the muscle
-    /// group: heavier loads tolerate larger absolute jumps and lighter loads need smaller
-    /// ones. Roughly 2.5% of the load, but the result is snapped to the smallest *real*
-    /// load step for the equipment so the suggestion is always achievable. Dumbbells come
-    /// in 5 lb pairs, so a 2.5 lb plate step would name an unloadable weight (e.g. 77.5 lb);
-    /// dumbbell lifts therefore step — and land — on 5 lb. Selectorized weight stacks
-    /// (cables, pulldowns, pressdowns, machines) have the same problem: pins land on 5 or
-    /// 10 lb plates, so a 2.5 lb step names a stack position that doesn't exist (e.g.
-    /// 72.5 lb) — they step on 5 lb too. Everything else uses a 2.5 lb plate step.
-    /// Equipment is inferred from the exercise name because the logged model carries no
-    /// equipment metadata; muscle-group guessing (the old approach) was strictly worse.
-    /// Returns the next weight to put on the bar/rack, not a bare increment.
-    static func nextLoad(from weight: Double, exerciseName: String) -> Double {
-        guard weight > 0 else { return 2.5 }
-        let isDumbbell = isDumbbellLift(exerciseName)
-        let coarseIncrements = isDumbbell || isStackLift(exerciseName)
-        let step: Double = coarseIncrements ? 5.0 : 2.5
-        let rawJump = max(weight * 0.025, step)
-        let cappedJump = min(rawJump, isDumbbell ? 15.0 : 10.0)
-        let target = weight + cappedJump
-        // Snap to the nearest real step so the named weight actually exists on the rack.
-        return (target / step).rounded() * step
-    }
-
-    /// True when the exercise is performed with dumbbells, inferred from its name.
-    /// Matches the canonical "dumbbell" token and the "DB" abbreviation as a whole word
-    /// so substrings (e.g. "abductor") never trigger a false positive.
-    static func isDumbbellLift(_ name: String) -> Bool {
-        let lowered = name.lowercased()
-        if lowered.contains("dumbbell") { return true }
-        let tokens = lowered.split { !$0.isLetter }
-        return tokens.contains("db")
-    }
-
-    /// True when the exercise is loaded from a selectorized weight stack, inferred from
-    /// its name: "cable"/"machine" as whole-word tokens, plus movements that are
-    /// stack-driven by construction. Misses fall back to the 2.5 lb barbell step, so a
-    /// false negative only reproduces the old behavior.
-    static func isStackLift(_ name: String) -> Bool {
-        let lowered = name.lowercased()
-        if lowered.contains("pressdown") || lowered.contains("pushdown")
-            || lowered.contains("pulldown") || lowered.contains("pec deck") {
-            return true
-        }
-        let tokens = lowered.split { !$0.isLetter }
-        return tokens.contains("cable") || tokens.contains("machine")
-    }
-
-    /// Decide the next step from the genuine working sets only. Recommendations name the
-    /// working weight so the advice is self-explanatory, and a single failed set blocks a
-    /// load increase even when the top set looked strong.
-    private static func fromWorkingSets(
-        workingSets: [WorkingSetAnalysis.AnalyzedSet],
-        workingWeight: Double,
-        repRange: RepRange,
-        exerciseName: String
-    ) -> ProgressionSuggestion {
-        let reps = workingSets.map(\.reps)
-        let minReps = reps.min() ?? repRange.low
-        let atCeiling = reps.filter { $0 >= repRange.high }.count
-        let total = workingSets.count
-        let majority = max(1, Int(ceil(Double(total) * 0.67)))
-        let weightText = formatWeight(workingWeight)
-        let nextText = formatWeight(nextLoad(from: workingWeight, exerciseName: exerciseName))
-
-        // Every working set reached the rep ceiling — unambiguous green light to add load.
-        if minReps >= repRange.high {
+        case .addRepsInRange:
+            if decision.ceilingSetCount > 0 && decision.workingSetCount > 0 {
+                let majority = max(1, Int(ceil(Double(decision.workingSetCount) * 0.67)))
+                if decision.ceilingSetCount < majority {
+                    let needed = majority - decision.ceilingSetCount
+                    return ProgressionSuggestion(
+                        icon: "flame.fill",
+                        text: "Strong top set at \(weightText) lb — hit \(repRange.high) on \(needed) more set\(needed == 1 ? "" : "s") before adding",
+                        color: TFColor.accent
+                    )
+                }
+            }
+            let reps = decision.minimumWorkingReps ?? repRange.low
+            let text = decision.workingSetCount > 0
+                ? "On track at \(weightText) lb — build all sets to \(repRange.high) reps (lowest was \(reps))"
+                : "On track — aim for \(reps + 1)-\(repRange.high) reps next session"
             return ProgressionSuggestion(
-                icon: "arrow.up.circle.fill",
-                text: "Add load — \(weightText) lb felt complete. Try \(nextText) lb next session",
-                color: TFColor.success
+                icon: "arrow.right.circle.fill",
+                text: text,
+                color: .blue
             )
         }
-
-        // A working set fell below the target floor. Hold and even the sets out before
-        // adding weight, even if another set hit the top (this is the Romanian Deadlift
-        // case: 90 lb sets of 10 / 5 / 10 should not read as "stay at 180").
-        if minReps < repRange.low {
-            return ProgressionSuggestion(
-                icon: "arrow.down.circle.fill",
-                text: "Hold \(weightText) lb — a working set dropped to \(minReps) (target \(repRange.low)-\(repRange.high)); even your sets out before adding",
-                color: TFColor.warning
-            )
-        }
-
-        // All working sets in range, and the majority maxed the ceiling — ready to add.
-        if atCeiling >= majority {
-            return ProgressionSuggestion(
-                icon: "arrow.up.circle.fill",
-                text: "Add load — \(atCeiling) of \(total) sets hit \(repRange.high) at \(weightText) lb. Try \(nextText) lb next session",
-                color: TFColor.success
-            )
-        }
-
-        // In range with a strong top set, but not yet consistent — build the rest up first.
-        if atCeiling > 0 {
-            let needed = majority - atCeiling
-            return ProgressionSuggestion(
-                icon: "flame.fill",
-                text: "Strong top set at \(weightText) lb — hit \(repRange.high) on \(needed) more set\(needed == 1 ? "" : "s") before adding",
-                color: TFColor.accent
-            )
-        }
-
-        // All sets in range, none at the ceiling — keep the load and chase the top rep.
-        return ProgressionSuggestion(
-            icon: "arrow.right.circle.fill",
-            text: "On track at \(weightText) lb — build all sets to \(repRange.high) reps (lowest was \(minReps))",
-            color: TFColor.info
-        )
     }
-
 }
 
 struct ProgressionSuggestionBadge: View {
