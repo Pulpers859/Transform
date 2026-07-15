@@ -20,14 +20,14 @@ validator.
 |---|---|
 | **Roadmap #2 — headless test harness** | ✅ Built, green on CI, ~10s runtime. The generator now has automated regression coverage for the first time. |
 | **Slowness bug** (harness caught it) | ✅ Fixed & CI-verified. Menu phase **~195,000 ms → ~2,000 ms in debug (~95×)**, output numerically identical. |
-| **Over-generation bug** (harness caught it) | 🔲 **Diagnosed, NOT fixed.** This is the next build. Design already agreed with owner (see §6.1). |
-| **Roadmap #1 — unify credit ledger + generation-time invariant** | 🔲 Not started. Now unblocked (fast green net exists). |
-| **Roadmap #3 — effort governance + autoregulation loop** | 🔲 Not started. Blocked on #1. |
+| **Over-generation bug** (harness caught it) | ✅ Fixed and CI-verified with a sub-region-aware variation policy. All five original legacy combinations run instead of being skipped. |
+| **Roadmap #1 — unify credit ledger + generation-time invariant** | ✅ Fixed and CI-verified. Direct sets require primary metadata, each exercise counts once per priority, and allocation asserts equality with validator recomputation. |
+| **Roadmap #3 — effort governance + autoregulation loop** | 🔲 Not started. This is now the next roadmap build. |
 
-**Last commits on `main`:** `6e11e9c` (cleanup), `afde434` (the perf fix).
-Working tree clean, `origin/main` == local `main`.
+**Current implementation checkpoint:** `1f412b6` on `main`; both the full Swift build
+and Generator Tests workflows passed.
 
-**If you do one thing next:** build the over-generation cap in §6.1.
+**If you do one thing next:** design roadmap #3 in §6.3 without assuming completed reps reveal RIR.
 
 ---
 
@@ -53,7 +53,7 @@ survived, in the owner's chosen build order:
    (did you hit the prescribed reps/weight?) to drive progression via
    double-progression. **(#3)**
 
-**Owner's build order:** #2 first, then #1, then #3. #2 is done. The harness then
+**Owner's build order:** #2 first, then #1, then #3. #2 and #1 are done. The harness then
 *immediately* caught two real bugs (slowness + over-generation), so we detoured to
 fix those before #1 — which is correct: a harness that surfaces a bug you then
 ignore is theater.
@@ -242,20 +242,20 @@ The generator is driven two ways and they behave **very differently**:
   works. This is the path that matters for shipping quality.
 - **LEGACY path** — the analysis carries only `priorityMuscles` strings, no
   structured intent. `trainingIntentPlan(from:)` falls back to a weaker builder. This
-  path over-generates and is slow for concentrated priorities.
+  path historically over-generated and was slow for concentrated priorities; both
+  failure classes now have active regressions.
 
-The current tests target the **structured** path (correctly — it's the real one).
-The legacy over-generation is quarantined in the **skipped** test
-`testLegacyPriorityMusclesPathRobustness` so it documents the gap without walling CI
-red for 13 minutes. **Do not "fix" a failure by switching a test to the legacy path
+The tests cover both the production **structured** path and the concentrated **legacy** path.
+`testLegacyPriorityMusclesPathRobustness` runs all five original combinations and is no longer
+skipped. **Do not "fix" a failure by switching a test to the legacy path
 or vice-versa without knowing which path you're on** — they are genuinely different
 code and a green light on one says nothing about the other.
 
 ---
 
-## 6. The remaining work, in build order, with concrete starting points
+## 6. Roadmap status and the next build
 
-### 6.1 NEXT: over-generation cap (task #9) — design already agreed with owner
+### 6.1 DONE: over-generation cap (task #9)
 
 **The bug:** concentrated priorities produce far too many *distinct* exercises for a
 single muscle in a single week (Arms **21 vs validator cap 4**, Back 11 vs 4). It
@@ -287,29 +287,24 @@ allowance (e.g. 4 for lats *and* 4 for upper back) rather than one flat number t
 either starves a big group or bloats a small one. For a truly single-target muscle
 (biceps, lateral delts) a low flat cap (~3–4/week) is right.
 
-**Where to start reading:** `WorkoutGeneratorService+ExerciseSelection.swift` —
-`enforceBaselineMuscleCoverage` and `enforcePriorityDirectSetFeasibility`
-(the latter around line ~1553; note its existing bounded
-`guardRail = neededSlots + candidateDays.count + 2`). The cap should apply as
-distinct exercises are added per (area / sub-region) across the week, and should
-prefer **adding sets to an already-chosen exercise** over introducing a new movement
-once the per-sub-region variation ceiling is hit. Re-enable
-`testLegacyPriorityMusclesPathRobustness` (remove the `XCTSkip`) once fixed, and add
-a structured-path assertion that no single area exceeds its weekly variation ceiling.
+**Implemented outcome:** menu selection and feasibility share a primary-target,
+sub-region-aware variation budget. Back width and upper/mid-back are separate buckets;
+small single-target areas use tighter caps. Once a bucket is full, compatible established
+movements can recur across days (including `Lower`/`Legs` label boundaries) instead of
+creating more identities or emitting a short menu. The legacy matrix and structured-path
+variation assertions both run in CI.
 
-### 6.2 THEN: roadmap #1 — unify credit ledger + generation-time invariant
+### 6.2 DONE: roadmap #1 — unify credit ledger + generation-time invariant
 
-There are ~5 divergent "direct set" counters. Collapse them to the **one** canonical
-`stimulusCredit`/`directSetCredit` path (the precompute in §3.4 already leans on its
-linearity — good foundation). Then add a **generation-time assertion**: after
-allocation, the allocator's per-muscle coverage must equal the validator's
-recomputed report; if they diverge, that's a bug caught at generation instead of on
-the owner's phone. Put the same check in the harness as a test. This is where
-"faithfully working every time" gets *proven* rather than hoped. It was #1 for a
-reason — it's the deepest fix — but it's sequenced after the harness so you have a
-fast green net to refactor against. **You now have that net.**
+The former counters now delegate to one rule: direct sets require an intersection
+between the requested priority aliases and the exercise's declared **primary** metadata.
+Focus heuristics and secondary metadata can add weighted stimulus but never direct sets.
+`WeekStimulusReport` retains per-exercise entries so broad areas count each exercise once
+instead of summing duplicate metadata buckets. After allocation,
+`allocationLedgerConsistencyIssues` compares allocator totals with validator recomputation;
+a runtime assertion and dedicated harness test fail on any divergence.
 
-### 6.3 THEN: roadmap #3 — effort governance + autoregulation loop
+### 6.3 NEXT: roadmap #3 — effort governance + autoregulation loop
 
 Close the performance→prescription loop using logged performance (hit prescribed
 reps/weight → double-progression advance). Add explicit effort/RIR as a *secondary*
@@ -353,29 +348,29 @@ signal later (see §1 note — logged reps alone can't see proximity-to-failure)
 | File | Role |
 |---|---|
 | `Package.swift` | SPM harness manifest (target `Transform`, explicit `sources`). |
-| `Tests/TransformGeneratorCoreTests/DeterministicGenerationTests.swift` | The tests (structured path asserted; legacy gap skipped). |
+| `Tests/TransformGeneratorCoreTests/DeterministicGenerationTests.swift` | Structured and legacy generation regressions, variation policy, canonical credit semantics, complete-menu checks, and allocator/validator consistency. |
 | `.github/workflows/generator-tests.yml` | `swift test --parallel` on macOS, 12-min cap. |
 | `docs/generator-test-harness.md` | Harness design/usage (living doc). |
 | `Transform/Transform/HarnessShims.swift` | `formatWeight` shim, `#if !canImport(UIKit)` only. |
 | `Transform/Transform/ClaudeService.swift` | 3 `#if canImport(UIKit)` guards (photo path). Inert on device. |
 | `Transform/Transform/WorkoutGeneratorService.swift` | `availableMemoryMB()` platform-guarded off macOS. |
-| `Transform/Transform/WorkoutGeneratorService+ExerciseSelection.swift` | **The perf fix** — precomputed credit ledger in `allocateWeeklySetPrescription`. **Also the site of the next fix (§6.1).** |
+| `Transform/Transform/WorkoutGeneratorService+ExerciseSelection.swift` | Precomputed allocation ledger, weekly variation enforcement, compatible established-exercise reuse, and the allocation/validator consistency assertion. |
+| `Transform/Transform/WorkoutGeneratorService+PriorityIntent.swift` | Canonical direct/weighted credit semantics and per-exercise validator coverage recomputation. |
 
-**Key commits:** `afde434` (perf fix), `6e11e9c` (cleanup). Both on `main`, pushed,
-CI-green.
+**Key commits:** `afde434` (perf fix), `c686eac` through `fc4749c` (variation policy,
+feasibility fixes, diagnostics), and `1f412b6` (canonical ledger and cross-style reuse).
+All are on `main`; the final implementation checkpoint passed both workflows.
 
 ---
 
 ## 9. One-paragraph orientation for a cold-start agent
 
 Read `CLAUDE.md` (root) first, then this file, then
-`docs/generator-test-harness.md`. The generator's deterministic core is now covered
-by a headless macOS `swift test` harness (roadmap #2, done) that already caught and
-let me fix a ~95× slowness bug. The next build is a **sub-region-aware per-area
-weekly exercise-variation cap** in the menu-build passes of
-`WorkoutGeneratorService+ExerciseSelection.swift` (§6.1) — *wide catalog, narrow
-weekly prescription*. After that, unify the five divergent direct-set credit
-counters and add a generation-time self-consistency invariant (roadmap #1, §6.2),
-then close the performance→prescription autoregulation loop (roadmap #3, §6.3).
+`docs/generator-test-harness.md`. The generator's deterministic core is covered by a
+headless macOS `swift test` harness (roadmap #2, done). It caught a ~95× slowness bug,
+legacy over-generation, short late-week menus, and disagreement between allocation and
+validation. The variation policy and canonical direct-set ledger are now implemented and
+CI-green (roadmap #1, done). The next build is the performance→prescription autoregulation
+loop with effort/RIR treated as an explicit secondary signal (roadmap #3, §6.3).
 Commit to `main`, fast-forward only, never force-push, never suggest the simulator,
 and be brutally honest with the owner — that's the job.

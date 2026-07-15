@@ -82,6 +82,15 @@ variation count, while menu selection and feasibility passes preferred or requir
 movements across days. The regression now has a shared primary-target, sub-region-aware weekly
 variation policy and `testLegacyPriorityMusclesPathRobustness` runs instead of being skipped.
 
+The re-enabled legacy matrix then exposed a deeper accounting defect: allocation treated
+secondary/focus matches as fractional direct sets, while validation counted declared primary
+metadata. Broad multi-primary areas could also be double-counted. Direct volume now has one rule:
+an exercise's declared primary metadata must intersect the requested priority aliases, and each
+exercise is counted once per priority. Secondary work remains weighted stimulus. A planning-time
+assertion and harness test require allocator totals to equal validator recomputation. Compatible
+established exercises can also repeat across labels such as `Lower` and `Legs`, avoiding short
+late-week menus without inflating exercise variation.
+
 ## What the current tests cover
 
 `DeterministicGenerationTests` runs the full network-free chain
@@ -99,7 +108,12 @@ validatedProceduralWeekOneProgram`) and asserts:
 5. **`testBroadBackVariationBudgetIsSubregionAware`** — four lat and four upper/mid-back
    movements fit separate buckets, while a fifth lat movement is rejected.
 6. **`testLegacyPriorityMusclesPathRobustness`** — the concentrated legacy combinations from
-   the original failing sweep must generate without exceeding variation budgets.
+   the original failing sweep must produce complete locked menus, generate, and remain inside
+   variation budgets.
+7. **`testDirectSetCreditRequiresPrimaryMetadataMatch`** — secondary/focus heuristics can add
+   weighted stimulus but cannot masquerade as direct priority volume.
+8. **`testAllocatedMenusMatchValidatorStimulusLedger`** — allocator and validator totals must
+   remain identical for the historically failing concentrated priorities.
 
 The CI job has a 12-minute timeout so a future runaway cannot wall the pipeline.
 
@@ -108,6 +122,6 @@ The CI job has a 12-minute timeout so a future runaway cannot wall the pipeline.
 - **Golden fixtures** — freeze `(analysis, blueprint) → allocated menu + validator verdict`
   snapshots for the cases that have bitten us (recovery-tight, zero-hamstring, multi-primary
   lower body) so silent output drift fails CI.
-- **Self-consistency assertion (roadmap #1)** — once the credit ledger is unified, assert at
-  generation time that the allocator's coverage equals the validator's recomputed report.
-  That invariant belongs here as a test and in the generator as a runtime check.
+- **Effort governance and autoregulation (roadmap #3)** — connect logged performance to the
+  next prescription through double progression, with explicit RIR as a separate signal rather
+  than inferring proximity to failure from completed reps alone.
