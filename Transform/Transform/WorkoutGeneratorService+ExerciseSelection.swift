@@ -1542,6 +1542,10 @@ extension ClaudeService {
                 where !plan.isRestDay && dayOffset < updated.count && !updated[dayOffset].isEmpty {
                     guard exerciseMatchesDayStyle(probe, style: canonicalTrainingStyle(plan.style)) else { continue }
 
+                    if group.seed == "quads" || group.seed == "calf" {
+                        print("[BASELINE TRACE] group=\(group.seed) candidate=\(candidate.name) day=\(dayOffset + 1) count=\(updated[dayOffset].count) style=\(plan.style)")
+                    }
+
                     let focusIntent = focusIntentForArea(plan.focusArea, within: trainingIntent)
                     let supportIntents = plan.supportAreas.compactMap { focusIntentForArea($0, within: trainingIntent) }
                     let candidateMenu = PreSelectedExercise(
