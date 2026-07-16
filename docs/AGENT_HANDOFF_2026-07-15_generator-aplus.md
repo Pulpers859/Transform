@@ -23,9 +23,9 @@ validator.
 | **Over-generation bug** (harness caught it) | ✅ Fixed and CI-verified with a sub-region-aware variation policy. All five original legacy combinations run instead of being skipped. |
 | **Roadmap #1 — unify credit ledger + generation-time invariant** | ✅ Fixed and CI-verified. Direct sets require primary metadata, each exercise counts once per priority, and allocation asserts equality with validator recomputation. |
 | **Phone-free troubleshooting workflow** | ✅ Added and CI-verified. A versioned failure-class fixture pins the allocated menu and validator verdict; a manual live Anthropic contract check is bounded to one HTTP attempt; Claude Code can independently review credential-scanned diffs with no tools. |
-| **Roadmap #3 — effort governance + autoregulation loop** | 🟡 Implemented in code, pending macOS CI and physical-device confirmation. Set records now preserve optional RIR, and two corroborating exercise-specific sessions can conservatively override a rep-ceiling load increase to protect recovery. |
+| **Roadmap #3 — effort governance + autoregulation loop** | 🟢 Implemented and macOS-CI green; physical-device confirmation remains. Set records now preserve optional RIR, and two corroborating exercise-specific sessions can conservatively override a rep-ceiling load increase to protect recovery. |
 
-**Current troubleshooting checkpoint:** `b0e0d33` on `main`; the progression-cue sanitization repair, shared per-set progression decision, latest-performance-log coverage, Generator Tests, and full Xcode build are green. The latest billed live contract check also passed on `9d837e5`; that headless fixture does not execute the SwiftData-backed `WorkoutView` wiring.
+**Current troubleshooting checkpoint:** `a768604` on `main`; the shared per-set progression decision, latest-performance-log coverage, optional per-set RIR capture, exercise-specific effort governance, Generator Tests, and full Xcode build are green. The latest billed live contract check passed on `015c3e0`; that headless fixture does not execute the SwiftData-backed `WorkoutView` wiring.
 
 **If you do one thing next:** verify the RIR field and the resulting exercise-specific recovery verdict on the physical device; do not assume completed reps reveal RIR when the field is blank.
 
