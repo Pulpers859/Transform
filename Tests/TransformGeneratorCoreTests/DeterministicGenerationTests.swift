@@ -438,7 +438,6 @@ final class DeterministicGenerationTests: XCTestCase {
         )
         let result = analysis(structured: structured, priorityMuscles: ["Upper Chest", "Lateral Deltoids"])
         let inputs = planningInputs(from: result)
-        print("BASELINE DEBUG structural: " + planningDescription(blueprint: inputs.blueprint, menus: inputs.menus))
         let program = try service.validatedProceduralWeekOneProgram(
             from: result,
             trainingIntent: inputs.intent,

@@ -1501,7 +1501,6 @@ extension ClaudeService {
         avoidedExercises: Set<String>
     ) -> [[PreSelectedExercise]] {
         var updated = menus
-        var usedKeys = Set(menus.joined().map { normalizeExerciseName($0.exerciseName) })
         for group in majorMuscleGroups {
             let aliases = normalizedGroupAliases(forSeed: group.seed)
             guard !isMajorMuscleGroupPrioritized(seed: group.seed, blueprint: blueprint) else { continue }
@@ -1517,7 +1516,11 @@ extension ClaudeService {
 
             candidateSearch: for candidate in metadataFocusExerciseCatalog(for: group.seed) {
                 let key = normalizeExerciseName(candidate.name)
-                guard !usedKeys.contains(key) else { continue }
+                // Coverage swaps mutate `updated`. Recompute this guard from the current
+                // menus instead of retaining an initial snapshot: an earlier group may have
+                // evicted this same movement, making it valid and necessary for a later floor.
+                let currentUsedKeys = Set(updated.joined().map { normalizeExerciseName($0.exerciseName) })
+                guard !currentUsedKeys.contains(key) else { continue }
                 guard !avoidedExercises.contains(ExerciseWeightEntry.canonicalLookupKey(candidate.name)) else { continue }
                 guard exerciseDirectlyTargets(
                     groupAliases: aliases,
@@ -1585,7 +1588,6 @@ extension ClaudeService {
                     ) || baselineFloorPreserved else { continue }
 
                     updated = menusWithoutReplacedSlot
-                    usedKeys.insert(key)
                     break candidateSearch
                 }
             }
