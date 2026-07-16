@@ -1472,16 +1472,20 @@ extension ClaudeService {
             trainingIntent: trainingIntent,
             avoidedExercises: avoidedExercises
         )
-        print("[BASELINE LEDGER DEBUG] afterCoverage=\(baselineCoverageGaps(in: coverageCompleteMenus, blueprint: blueprint).map { $0.seed })")
         let feasibilityCompleteMenus = enforcePriorityDirectSetFeasibility(
             coverageCompleteMenus,
             blueprint: blueprint,
             trainingIntent: trainingIntent,
             avoidedExercises: avoidedExercises
         )
-        print("[BASELINE LEDGER DEBUG] afterPriority=\(baselineCoverageGaps(in: feasibilityCompleteMenus, blueprint: blueprint).map { $0.seed })")
-        return allocateWeeklySetPrescription(
+        let finalCoverageMenus = enforceBaselineMuscleCoverage(
             feasibilityCompleteMenus,
+            blueprint: blueprint,
+            trainingIntent: trainingIntent,
+            avoidedExercises: avoidedExercises
+        )
+        return allocateWeeklySetPrescription(
+            finalCoverageMenus,
             blueprint: blueprint,
             weekNumber: weekNumber
         )
@@ -1507,10 +1511,6 @@ extension ClaudeService {
             let aliases = normalizedGroupAliases(forSeed: group.seed)
             guard !isMajorMuscleGroupPrioritized(seed: group.seed, blueprint: blueprint) else { continue }
 
-            if group.seed == "quads" || group.seed == "calf" {
-                print("[BASELINE GROUP DEBUG] seed=\(group.seed) catalog=\(metadataFocusExerciseCatalog(for: group.seed).map { $0.name }) used=\(Set(updated.joined().map { normalizeExerciseName($0.exerciseName) }))")
-            }
-
             let covered = updated.joined().contains { exercise in
                 exerciseDirectlyTargets(
                     groupAliases: aliases,
@@ -1521,12 +1521,6 @@ extension ClaudeService {
             guard !covered else { continue }
 
             candidateSearch: for candidate in metadataFocusExerciseCatalog(for: group.seed) {
-                let key = normalizeExerciseName(candidate.name)
-                // Coverage swaps mutate `updated`. Recompute this guard from the current
-                // menus instead of retaining an initial snapshot: an earlier group may have
-                // evicted this same movement, making it valid and necessary for a later floor.
-                let currentUsedKeys = Set(updated.joined().map { normalizeExerciseName($0.exerciseName) })
-                guard !currentUsedKeys.contains(key) else { continue }
                 guard !avoidedExercises.contains(ExerciseWeightEntry.canonicalLookupKey(candidate.name)) else { continue }
                 guard exerciseDirectlyTargets(
                     groupAliases: aliases,
@@ -1547,10 +1541,6 @@ extension ClaudeService {
                 for (dayOffset, plan) in blueprint.dayPlans.enumerated()
                 where !plan.isRestDay && dayOffset < updated.count && !updated[dayOffset].isEmpty {
                     guard exerciseMatchesDayStyle(probe, style: canonicalTrainingStyle(plan.style)) else { continue }
-
-                    if group.seed == "quads" || group.seed == "calf" {
-                        print("[BASELINE TRACE] group=\(group.seed) candidate=\(candidate.name) day=\(dayOffset + 1) count=\(updated[dayOffset].count) style=\(plan.style)")
-                    }
 
                     let focusIntent = focusIntentForArea(plan.focusArea, within: trainingIntent)
                     let supportIntents = plan.supportAreas.compactMap { focusIntentForArea($0, within: trainingIntent) }
