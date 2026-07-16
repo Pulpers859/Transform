@@ -255,4 +255,16 @@ final class NutritionGeneratorStressTests: XCTestCase {
             issues.isEmpty ? "- None" : issues.enumerated().map { "- \($0.offset + 1): \($0.element)" }.joined(separator: "\n")
         ].joined(separator: "\n") + "\n"
     }
+
+    private func writeArtifactIfRequested(_ contents: String, environmentKey: String) throws {
+        guard let path = ProcessInfo.processInfo.environment[environmentKey], !path.isEmpty else {
+            return
+        }
+        let url = URL(fileURLWithPath: path)
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try contents.write(to: url, atomically: true, encoding: .utf8)
+    }
 }
