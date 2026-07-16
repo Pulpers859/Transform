@@ -436,8 +436,14 @@ final class DeterministicGenerationTests: XCTestCase {
             ],
             programmingNotes: ["Upper-body emphasis."]
         )
-        let program = try generateWeekOne(
-            from: analysis(structured: structured, priorityMuscles: ["Upper Chest", "Lateral Deltoids"])
+        let result = analysis(structured: structured, priorityMuscles: ["Upper Chest", "Lateral Deltoids"])
+        let inputs = planningInputs(from: result)
+        print("BASELINE DEBUG structural: " + planningDescription(blueprint: inputs.blueprint, menus: inputs.menus))
+        let program = try service.validatedProceduralWeekOneProgram(
+            from: result,
+            trainingIntent: inputs.intent,
+            blueprint: inputs.blueprint,
+            exerciseMenus: inputs.menus
         )
 
         XCTAssertEqual(program.days.count, 7, "A week must describe all 7 calendar days")
