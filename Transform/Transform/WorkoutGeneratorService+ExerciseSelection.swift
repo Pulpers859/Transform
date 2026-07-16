@@ -1478,12 +1478,25 @@ extension ClaudeService {
             trainingIntent: trainingIntent,
             avoidedExercises: avoidedExercises
         )
-        let finalCoverageMenus = enforceBaselineMuscleCoverage(
-            feasibilityCompleteMenus,
-            blueprint: blueprint,
-            trainingIntent: trainingIntent,
-            avoidedExercises: avoidedExercises
-        )
+        var finalCoverageMenus = feasibilityCompleteMenus
+        for _ in 0..<majorMuscleGroups.count {
+            let gapsBefore = Set(
+                baselineCoverageGaps(in: finalCoverageMenus, blueprint: blueprint).map { $0.seed }
+            )
+            guard !gapsBefore.isEmpty else { break }
+
+            let repairedMenus = enforceBaselineMuscleCoverage(
+                finalCoverageMenus,
+                blueprint: blueprint,
+                trainingIntent: trainingIntent,
+                avoidedExercises: avoidedExercises
+            )
+            let gapsAfter = Set(
+                baselineCoverageGaps(in: repairedMenus, blueprint: blueprint).map { $0.seed }
+            )
+            finalCoverageMenus = repairedMenus
+            guard gapsAfter != gapsBefore else { break }
+        }
         return allocateWeeklySetPrescription(
             finalCoverageMenus,
             blueprint: blueprint,
@@ -1528,11 +1541,6 @@ extension ClaudeService {
                     muscleTarget: candidate.target
                 ) else { continue }
 
-                let traceBaselineCandidate = group.seed == "quads" || group.seed == "calf"
-                if traceBaselineCandidate {
-                    print("[BASELINE CANDIDATE DEBUG] group=\(group.seed) candidate=\(candidate.name)")
-                }
-
                 let probe = WorkoutExerciseResponse(
                     exerciseName: candidate.name,
                     sets: 3,
@@ -1545,11 +1553,7 @@ extension ClaudeService {
 
                 for (dayOffset, plan) in blueprint.dayPlans.enumerated()
                 where !plan.isRestDay && dayOffset < updated.count && !updated[dayOffset].isEmpty {
-                    let styleMatches = exerciseMatchesDayStyle(probe, style: canonicalTrainingStyle(plan.style))
-                    if traceBaselineCandidate {
-                        print("[BASELINE STYLE DEBUG] group=\(group.seed) candidate=\(candidate.name) day=\(dayOffset + 1) style=\(plan.style) matches=\(styleMatches)")
-                    }
-                    guard styleMatches else { continue }
+                    guard exerciseMatchesDayStyle(probe, style: canonicalTrainingStyle(plan.style)) else { continue }
 
                     let focusIntent = focusIntentForArea(plan.focusArea, within: trainingIntent)
                     let supportIntents = plan.supportAreas.compactMap { focusIntentForArea($0, within: trainingIntent) }
@@ -1599,9 +1603,6 @@ extension ClaudeService {
                             blueprint: blueprint
                         ) || baselineFloorPreserved else { continue }
 
-                        if traceBaselineCandidate {
-                            print("[BASELINE REPAIR DEBUG] group=\(group.seed) candidate=\(candidate.name) day=\(dayOffset + 1) action=replace")
-                        }
                         updated = menusWithoutReplacedSlot
                         replaced = true
                         break
@@ -1633,9 +1634,6 @@ extension ClaudeService {
                             selectedToday: [],
                             blueprint: blueprint
                         ) || baselineFloorPreserved else { continue }
-                        if traceBaselineCandidate {
-                            print("[BASELINE REPAIR DEBUG] group=\(group.seed) candidate=\(candidate.name) day=\(dayOffset + 1) action=append")
-                        }
                         updated = expandedMenus
                         break candidateSearch
                     }
