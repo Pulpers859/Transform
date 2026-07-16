@@ -1544,6 +1544,43 @@ extension ClaudeService {
 
                     let focusIntent = focusIntentForArea(plan.focusArea, within: trainingIntent)
                     let supportIntents = plan.supportAreas.compactMap { focusIntentForArea($0, within: trainingIntent) }
+                    let candidateMenu = PreSelectedExercise(
+                        exerciseName: candidate.name,
+                        muscleTarget: candidate.target,
+                        movementPattern: exerciseMetadata(
+                            forExerciseName: candidate.name,
+                            muscleTarget: candidate.target
+                        ).movementPattern,
+                        role: proceduralExerciseRole(for: candidate.name, muscleTarget: candidate.target),
+                        prescribedSets: 1
+                    )
+
+                    // The validator permits 5-8 movements per training day. A six-movement
+                    // menu can already contain the only direct exposure for several other
+                    // maintenance groups, so swapping one of them would simply move BASE-001's
+                    // zero to a different muscle. Use the available capacity before replacing.
+                    if updated[dayOffset].count < 8 {
+                        var expandedMenus = updated
+                        expandedMenus[dayOffset].append(candidateMenu)
+                        let gapsBefore = Set(
+                            baselineCoverageGaps(in: updated, blueprint: blueprint).map { $0.seed }
+                        )
+                        let gapsAfter = Set(
+                            baselineCoverageGaps(in: expandedMenus, blueprint: blueprint).map { $0.seed }
+                        )
+                        let baselineFloorPreserved = !gapsAfter.contains(group.seed)
+                            && gapsAfter.isSubset(of: gapsBefore)
+                        guard menuPlanningBudgetAllows(
+                            candidateName: candidate.name,
+                            candidateTarget: candidate.target,
+                            existingMenus: updated,
+                            selectedToday: [],
+                            blueprint: blueprint
+                        ) || baselineFloorPreserved else { continue }
+                        updated = expandedMenus
+                        break candidateSearch
+                    }
+
                     let replacementIndices = baselineCoverageReplacementIndices(
                         in: updated[dayOffset],
                         focusIntent: focusIntent,
@@ -1552,16 +1589,6 @@ extension ClaudeService {
                     for replaceIndex in replacementIndices {
                         var menusWithoutReplacedSlot = updated
                         menusWithoutReplacedSlot[dayOffset].remove(at: replaceIndex)
-                        let candidateMenu = PreSelectedExercise(
-                            exerciseName: candidate.name,
-                            muscleTarget: candidate.target,
-                            movementPattern: exerciseMetadata(
-                                forExerciseName: candidate.name,
-                                muscleTarget: candidate.target
-                            ).movementPattern,
-                            role: proceduralExerciseRole(for: candidate.name, muscleTarget: candidate.target),
-                            prescribedSets: 1
-                        )
                         menusWithoutReplacedSlot[dayOffset].insert(candidateMenu, at: replaceIndex)
 
                         // The general menu-budget gate also checks unrelated variation ledgers.
@@ -1747,6 +1774,38 @@ extension ClaudeService {
                             focusIntent: focusIntent,
                             supportIntents: supportIntents
                         )
+
+                        // Priority coverage has the same capacity rule as BASE-001. Use an
+                        // available validator-approved slot before asking a later fallback to
+                        // trade away a baseline movement for another priority touch.
+                        if updated[dayIndex].count < 8,
+                           !updated[dayIndex].contains(where: {
+                               normalizeExerciseName($0.exerciseName) == key
+                           }),
+                           dayPatternCapAllows(
+                               candidateName: candidate.name,
+                               candidateTarget: candidate.target,
+                               in: updated[dayIndex].map { ($0.exerciseName, $0.muscleTarget) }
+                           ),
+                           menuPlanningBudgetAllows(
+                               candidateName: candidate.name,
+                               candidateTarget: candidate.target,
+                               existingMenus: updated,
+                               selectedToday: [],
+                               blueprint: blueprint
+                           ) {
+                            let metadata = exerciseMetadata(forExerciseName: candidate.name, muscleTarget: candidate.target)
+                            updated[dayIndex].append(PreSelectedExercise(
+                                exerciseName: candidate.name,
+                                muscleTarget: candidate.target,
+                                movementPattern: metadata.movementPattern,
+                                role: proceduralExerciseRole(for: candidate.name, muscleTarget: candidate.target),
+                                prescribedSets: 1
+                            ))
+                            placed = true
+                            break dayLoop
+                        }
+
                         for replaceIndex in replacementIndices {
                             // Do not evict a slot that already credits this same priority (net-zero swap).
                             let evicted = updated[dayIndex][replaceIndex]
