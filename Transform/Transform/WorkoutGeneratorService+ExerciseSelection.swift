@@ -1577,6 +1577,7 @@ extension ClaudeService {
                             selectedToday: [],
                             blueprint: blueprint
                         ) || baselineFloorPreserved else { continue }
+                        print("[BASELINE APPEND DEBUG] group=\(group.seed) candidate=\(candidate.name) day=\(dayOffset + 1) gapsBefore=\(gapsBefore.sorted())")
                         updated = expandedMenus
                         break candidateSearch
                     }
