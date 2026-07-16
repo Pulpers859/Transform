@@ -25,6 +25,9 @@ extension ClaudeService {
         let hasHardFailure = issues.contains {
             validationDisposition(for: $0, menuLocked: exerciseMenus != nil) == .hardFailure
         }
+        if hasHardFailure, let exerciseMenus {
+            print("[MENU VALIDATION DEBUG] baselineGaps=\(baselineCoverageGaps(in: exerciseMenus, blueprint: blueprint).map { $0.seed }) issues=\(issues)")
+        }
         guard issues.isEmpty || !hasHardFailure else {
             throw ClaudeError.parseError(
                 "Procedural fallback generated an invalid Week 1 program: \(issues.joined(separator: " | "))"
