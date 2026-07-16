@@ -161,6 +161,50 @@ final class NutritionGeneratorStressTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(issues.filter { $0.contains("must include 2-3 practical substitutions") }.count, 4)
     }
 
+    func testLiveNutritionWeekOneStructuredContract() async throws {
+        let environment = ProcessInfo.processInfo.environment
+        guard environment["TRANSFORM_RUN_LIVE_ANTHROPIC_SMOKE"] == "1" else {
+            throw XCTSkip("Live Anthropic smoke test is manual and API-billed.")
+        }
+        guard let rawKey = environment["TRANSFORM_HEADLESS_ANTHROPIC_API_KEY"],
+              !rawKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            XCTFail("TRANSFORM_HEADLESS_ANTHROPIC_API_KEY is required when the live smoke test is enabled.")
+            return
+        }
+
+        let analysis = nutritionAnalysis(
+            macros: AnalysisMacroTargets(calories: 2200, proteinG: 190, carbsG: 220, fatG: 65)
+        )
+        let targets = service.effectiveNutritionTargets(from: analysis)
+
+        do {
+            let program = try await service.generateNutritionWeekOne(
+                from: analysis,
+                shiftWorkMode: .normal,
+                allowsRecoveryFallback: false
+            )
+            let issues = service.validateNutritionWeek(
+                program.weekOne,
+                expectedWeek: 1,
+                macroTargets: targets
+            )
+            try writeArtifactIfRequested(
+                nutritionLiveSummary(program: program, issues: issues),
+                environmentKey: "TRANSFORM_NUTRITION_LIVE_SMOKE_OUTPUT"
+            )
+
+            XCTAssertEqual(program.weekOne.source.rawValue, GeneratedContentSource.aiCoach.rawValue)
+            XCTAssertEqual(program.weekOne.weekNumber, 1)
+            XCTAssertTrue(issues.isEmpty, "Live nutrition output failed the production validator: (issues)")
+        } catch {
+            try? writeArtifactIfRequested(
+                "Live nutrition structured-contract smoke test failed: \(error.localizedDescription)\n",
+                environmentKey: "TRANSFORM_NUTRITION_LIVE_SMOKE_OUTPUT"
+            )
+            throw error
+        }
+    }
+
     private func assertTemplateArithmetic(_ template: DailyNutritionTemplate, label: String) {
         XCTAssertEqual(template.meals.reduce(0) { $0 + $1.approxCalories }, template.totalCalories, label)
         XCTAssertEqual(template.meals.reduce(0) { $0 + $1.approxProteinG }, template.totalProteinG, label)
@@ -190,5 +234,25 @@ final class NutritionGeneratorStressTests: XCTestCase {
             macroTargets: macros,
             structuredTrainingIntent: nil
         )
+    }
+
+    private func nutritionLiveSummary(
+        program: NutritionProgramResponse,
+        issues: [String]
+    ) -> String {
+        let week = program.weekOne
+        return [
+            "Source: \(week.source.rawValue)",
+            "Week: \(week.weekNumber)",
+            "Training calories: \(week.dailyCaloriesTraining)",
+            "Rest calories: \(week.dailyCaloriesRest)",
+            "Protein: \(week.dailyProteinG)g",
+            "Training carbs: \(week.dailyCarbsGTraining)g",
+            "Rest carbs: \(week.dailyCarbsGRest)g",
+            "Fat: \(week.dailyFatG)g",
+            "Validator issues: \(issues.count)",
+            "Issues:",
+            issues.isEmpty ? "- None" : issues.enumerated().map { "- \($0.offset + 1): \($0.element)" }.joined(separator: "\n")
+        ].joined(separator: "\n") + "\n"
     }
 }
