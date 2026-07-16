@@ -1578,33 +1578,33 @@ extension ClaudeService {
                             supportIntents: supportIntents
                         )
                         for replaceIndex in replacementIndices {
-                        var menusWithoutReplacedSlot = updated
-                        menusWithoutReplacedSlot[dayOffset].remove(at: replaceIndex)
-                        menusWithoutReplacedSlot[dayOffset].insert(candidateMenu, at: replaceIndex)
+                            var menusWithoutReplacedSlot = updated
+                            menusWithoutReplacedSlot[dayOffset].remove(at: replaceIndex)
+                            menusWithoutReplacedSlot[dayOffset].insert(candidateMenu, at: replaceIndex)
 
-                        // The general menu-budget gate also checks unrelated variation ledgers.
-                        // Do not let one of those soft identity heuristics defeat BASE-001: this
-                        // proposed swap is allowed when it preserves every baseline floor. It still
-                        // goes through the normal gate whenever that gate can evaluate it cleanly.
-                        let gapsBefore = Set(
-                            baselineCoverageGaps(in: updated, blueprint: blueprint).map { $0.seed }
-                        )
-                        let gapsAfter = Set(
-                            baselineCoverageGaps(in: menusWithoutReplacedSlot, blueprint: blueprint).map { $0.seed }
-                        )
-                        let baselineFloorPreserved = !gapsAfter.contains(group.seed)
-                            && gapsAfter.isSubset(of: gapsBefore)
-                        guard menuPlanningBudgetAllows(
-                            candidateName: candidate.name,
-                            candidateTarget: candidate.target,
-                            existingMenus: {
-                                var menus = menusWithoutReplacedSlot
-                                menus[dayOffset].remove(at: replaceIndex)
-                                return menus
-                            }(),
-                            selectedToday: [],
-                            blueprint: blueprint
-                        ) || baselineFloorPreserved else { continue }
+                            // The general menu-budget gate also checks unrelated variation ledgers.
+                            // Do not let one of those soft identity heuristics defeat BASE-001: this
+                            // proposed swap is allowed when it preserves every baseline floor. It still
+                            // goes through the normal gate whenever that gate can evaluate it cleanly.
+                            let gapsBefore = Set(
+                                baselineCoverageGaps(in: updated, blueprint: blueprint).map { $0.seed }
+                            )
+                            let gapsAfter = Set(
+                                baselineCoverageGaps(in: menusWithoutReplacedSlot, blueprint: blueprint).map { $0.seed }
+                            )
+                            let baselineFloorPreserved = !gapsAfter.contains(group.seed)
+                                && gapsAfter.isSubset(of: gapsBefore)
+                            guard menuPlanningBudgetAllows(
+                                candidateName: candidate.name,
+                                candidateTarget: candidate.target,
+                                existingMenus: {
+                                    var menus = menusWithoutReplacedSlot
+                                    menus[dayOffset].remove(at: replaceIndex)
+                                    return menus
+                                }(),
+                                selectedToday: [],
+                                blueprint: blueprint
+                            ) || baselineFloorPreserved else { continue }
 
                             updated = menusWithoutReplacedSlot
                             replaced = true
