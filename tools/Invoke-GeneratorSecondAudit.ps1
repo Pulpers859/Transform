@@ -97,7 +97,9 @@ if ($ValidateOnly) {
 }
 
 $prompt = @"
-Perform a second, adversarial review of the current Transform generator changes.
+Perform a second, adversarial review of the current Transform generator changes. The change
+may affect the workout generator, the nutrition generator, or both; audit the surfaces that
+actually appear in the packet rather than assuming this is a workout-only change.
 
 Repository: $repoRoot
 You have no tools and cannot inspect any file beyond the sanitized review packet included below.
@@ -109,9 +111,17 @@ Fix root causes instead of trimming output or weakening validator findings.
 
 Assume the first implementation is incomplete. Findings must lead, ordered by severity,
 with exact file and line references. Audit these independently:
-- whether deterministic fixture replay genuinely covers the historical five maintenance-volume errors;
-- whether the optional live smoke test exercises the production request, parsing, sanitization,
-  set-prescription, validator, and fallback behavior without overstating equivalence;
+- for workout changes, whether deterministic fixture replay genuinely covers the reported failure
+  class and whether the production request, parsing, sanitization, menu/blueprint prescription,
+  validator, and fallback behavior remain aligned;
+- for nutrition changes, whether effective macro targets have one safety-resolved source of truth,
+  meal/template macro arithmetic agrees across calories, protein, carbohydrates, and fat, meal
+  identity/order and grocery content are genuinely usable, and fallback output is coherent for
+  low, high, missing, and internally inconsistent targets;
+- whether any live smoke test exercises the production request, parsing, sanitization, validator,
+  persistence/orchestration, and fallback behavior without overstating equivalence;
+- whether partial generation, fallback transitions, and retry decisions avoid mixed-source output
+  and unnecessary paid calls;
 - whether any credential can leak into logs, artifacts, tracked files, or the iPhone build;
 - whether API spend is explicitly gated and bounded;
 - whether a green result proves workout quality, not merely schema or validator cleanliness;
@@ -134,6 +144,10 @@ if ($LASTEXITCODE -ne 0) {
 }
 if (-not $review -or [string]::IsNullOrWhiteSpace(($review -join "`n"))) {
     throw "Claude Code returned an empty review."
+}
+$reviewText = $review -join "`n"
+if ($reviewText.Length -lt 300 -or $reviewText -notmatch '(?i)(finding|verdict|approve|request changes|follow-up)') {
+    throw "Claude Code returned an incomplete review; refusing to treat it as an audit."
 }
 
 Set-Content -LiteralPath $outputFile -Value ($review -join "`n") -Encoding utf8

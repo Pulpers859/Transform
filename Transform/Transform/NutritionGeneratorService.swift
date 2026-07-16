@@ -56,8 +56,84 @@ nonisolated struct NutritionWeekResponse: Codable, Identifiable {
     let trainingDay: DailyNutritionTemplate
     let restDay: DailyNutritionTemplate
     let weeklyGrocery: [NutritionGroceryCategory]
+    let source: GeneratedContentSource
 
     var id: Int { weekNumber }
+
+    init(
+        weekNumber: Int,
+        weekSummary: String,
+        phaseFocus: String,
+        coachNotes: String,
+        dailyCaloriesTraining: Int,
+        dailyCaloriesRest: Int,
+        dailyProteinG: Int,
+        dailyCarbsGTraining: Int,
+        dailyCarbsGRest: Int,
+        dailyFatG: Int,
+        trainingDay: DailyNutritionTemplate,
+        restDay: DailyNutritionTemplate,
+        weeklyGrocery: [NutritionGroceryCategory],
+        source: GeneratedContentSource = .aiCoach
+    ) {
+        self.weekNumber = weekNumber
+        self.weekSummary = weekSummary
+        self.phaseFocus = phaseFocus
+        self.coachNotes = coachNotes
+        self.dailyCaloriesTraining = dailyCaloriesTraining
+        self.dailyCaloriesRest = dailyCaloriesRest
+        self.dailyProteinG = dailyProteinG
+        self.dailyCarbsGTraining = dailyCarbsGTraining
+        self.dailyCarbsGRest = dailyCarbsGRest
+        self.dailyFatG = dailyFatG
+        self.trainingDay = trainingDay
+        self.restDay = restDay
+        self.weeklyGrocery = weeklyGrocery
+        self.source = source
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        weekNumber = try container.decode(Int.self, forKey: .weekNumber)
+        weekSummary = try container.decode(String.self, forKey: .weekSummary)
+        phaseFocus = try container.decode(String.self, forKey: .phaseFocus)
+        coachNotes = try container.decode(String.self, forKey: .coachNotes)
+        dailyCaloriesTraining = try container.decode(Int.self, forKey: .dailyCaloriesTraining)
+        dailyCaloriesRest = try container.decode(Int.self, forKey: .dailyCaloriesRest)
+        dailyProteinG = try container.decode(Int.self, forKey: .dailyProteinG)
+        dailyCarbsGTraining = try container.decode(Int.self, forKey: .dailyCarbsGTraining)
+        dailyCarbsGRest = try container.decode(Int.self, forKey: .dailyCarbsGRest)
+        dailyFatG = try container.decode(Int.self, forKey: .dailyFatG)
+        trainingDay = try container.decode(DailyNutritionTemplate.self, forKey: .trainingDay)
+        restDay = try container.decode(DailyNutritionTemplate.self, forKey: .restDay)
+        weeklyGrocery = try container.decode([NutritionGroceryCategory].self, forKey: .weeklyGrocery)
+        source = (try? container.decode(GeneratedContentSource.self, forKey: .source)) ?? .aiCoach
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(weekNumber, forKey: .weekNumber)
+        try container.encode(weekSummary, forKey: .weekSummary)
+        try container.encode(phaseFocus, forKey: .phaseFocus)
+        try container.encode(coachNotes, forKey: .coachNotes)
+        try container.encode(dailyCaloriesTraining, forKey: .dailyCaloriesTraining)
+        try container.encode(dailyCaloriesRest, forKey: .dailyCaloriesRest)
+        try container.encode(dailyProteinG, forKey: .dailyProteinG)
+        try container.encode(dailyCarbsGTraining, forKey: .dailyCarbsGTraining)
+        try container.encode(dailyCarbsGRest, forKey: .dailyCarbsGRest)
+        try container.encode(dailyFatG, forKey: .dailyFatG)
+        try container.encode(trainingDay, forKey: .trainingDay)
+        try container.encode(restDay, forKey: .restDay)
+        try container.encode(weeklyGrocery, forKey: .weeklyGrocery)
+        try container.encode(source, forKey: .source)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case weekNumber, weekSummary, phaseFocus, coachNotes
+        case dailyCaloriesTraining, dailyCaloriesRest, dailyProteinG
+        case dailyCarbsGTraining, dailyCarbsGRest, dailyFatG
+        case trainingDay, restDay, weeklyGrocery, source
+    }
 }
 
 nonisolated struct DailyNutritionTemplate: Codable {
@@ -227,7 +303,8 @@ extension ClaudeService {
         allowsRecoveryFallback: Bool = true
     ) async throws -> NutritionProgramResponse {
         let context = nutritionAnalysisContext(from: analysisResult)
-        let macroLine = macroTargetLine(from: analysisResult.macroTargets)
+        let macroTargets = effectiveNutritionTargets(from: analysisResult)
+        let macroLine = macroTargetLine(from: macroTargets)
         let config = nutritionGenerationConfig
         let toolSchema = nutritionProgramToolSchema()
 
@@ -261,7 +338,7 @@ extension ClaudeService {
                 )
                 let decoded = try decodeNutritionPayload(NutritionProgramResponse.self, from: jsonString)
                 let cleaned = sanitizeNutritionProgram(decoded)
-                let issues = validateNutritionProgram(cleaned, macroTargets: analysisResult.macroTargets)
+                let issues = validateNutritionProgram(cleaned, macroTargets: macroTargets)
                 if issues.isEmpty {
                     return labeledNutritionProgram(cleaned, sourceLabel: nutritionAISourceLabel)
                 }
@@ -326,7 +403,8 @@ extension ClaudeService {
         allowsRecoveryFallback: Bool = true
     ) async throws -> NutritionWeekResponse {
         let context = nutritionAnalysisContext(from: analysisResult)
-        let macroLine = macroTargetLine(from: analysisResult.macroTargets)
+        let macroTargets = effectiveNutritionTargets(from: analysisResult)
+        let macroLine = macroTargetLine(from: macroTargets)
         let config = nutritionGenerationConfig
         let toolSchema = nutritionWeekToolSchema(weekNumber: weekNumber)
         let systemPrompt = nutritionNextWeekSystemPrompt(weekNumber: weekNumber)
@@ -361,7 +439,7 @@ extension ClaudeService {
                 )
                 let decoded = try decodeNutritionPayload(NutritionWeekResponse.self, from: jsonString)
                 let cleaned = sanitizeNutritionWeek(decoded, expectedWeek: weekNumber)
-                let issues = validateNutritionWeek(cleaned, expectedWeek: weekNumber, macroTargets: analysisResult.macroTargets)
+                let issues = validateNutritionWeek(cleaned, expectedWeek: weekNumber, macroTargets: macroTargets)
                 if issues.isEmpty {
                     return labeledNutritionWeek(cleaned, sourceLabel: nutritionAISourceLabel)
                 }
@@ -583,7 +661,7 @@ extension ClaudeService {
         \(context)
         --- end Body Analysis ---
 
-        Daily macro targets from analysis: \(macroLine)
+        Daily macro targets for this generator (safety-resolved from analysis/settings): \(macroLine)
         \(adherenceBlock)
         \(shiftBlock)
 
@@ -652,7 +730,7 @@ extension ClaudeService {
         \(analysisContext)
         --- end Body Analysis ---
 
-        Daily macro targets from analysis: \(macroLine)
+        Daily macro targets for this generator (safety-resolved from analysis/settings): \(macroLine)
         \(adherenceBlock)
         \(shiftBlock)
 
@@ -772,7 +850,7 @@ extension ClaudeService {
         \(context)
         --- end Body Analysis ---
 
-        Daily macro targets from analysis: \(macroLine)
+        Daily macro targets for this generator (safety-resolved from analysis/settings): \(macroLine)
         \(adherenceBlock)
         \(shiftBlock)
 
@@ -1013,34 +1091,35 @@ extension ClaudeService {
             weekSummary: week.weekSummary.nTrimmedOr("Week \(expectedWeek) nutrition plan."),
             phaseFocus: week.phaseFocus.nTrimmedOr("Week \(expectedWeek) — phase progression."),
             coachNotes: week.coachNotes.nTrimmedOr("Expert panel notes for this week."),
-            dailyCaloriesTraining: max(1000, week.dailyCaloriesTraining),
-            dailyCaloriesRest: max(1000, week.dailyCaloriesRest),
-            dailyProteinG: max(60, week.dailyProteinG),
-            dailyCarbsGTraining: max(30, week.dailyCarbsGTraining),
-            dailyCarbsGRest: max(30, week.dailyCarbsGRest),
-            dailyFatG: max(20, week.dailyFatG),
+            dailyCaloriesTraining: min(5000, max(1000, week.dailyCaloriesTraining)),
+            dailyCaloriesRest: min(5000, max(1000, week.dailyCaloriesRest)),
+            dailyProteinG: min(400, max(60, week.dailyProteinG)),
+            dailyCarbsGTraining: min(600, max(30, week.dailyCarbsGTraining)),
+            dailyCarbsGRest: min(600, max(30, week.dailyCarbsGRest)),
+            dailyFatG: min(250, max(20, week.dailyFatG)),
             trainingDay: sanitizeTemplate(week.trainingDay, defaultLabel: "Training Day"),
             restDay: sanitizeTemplate(week.restDay, defaultLabel: "Rest Day"),
-            weeklyGrocery: week.weeklyGrocery.map { sanitizeCategory($0) }
+            weeklyGrocery: week.weeklyGrocery.map { sanitizeCategory($0) },
+            source: week.source
         )
     }
 
     private func sanitizeTemplate(_ template: DailyNutritionTemplate, defaultLabel: String) -> DailyNutritionTemplate {
         DailyNutritionTemplate(
             label: template.label.nTrimmedOr(defaultLabel),
-            totalCalories: max(800, template.totalCalories),
-            totalProteinG: max(50, template.totalProteinG),
-            totalCarbsG: max(20, template.totalCarbsG),
-            totalFatG: max(15, template.totalFatG),
+            totalCalories: min(5000, max(800, template.totalCalories)),
+            totalProteinG: min(400, max(50, template.totalProteinG)),
+            totalCarbsG: min(600, max(20, template.totalCarbsG)),
+            totalFatG: min(250, max(15, template.totalFatG)),
             meals: template.meals.map { meal in
                 MealSlotResponse(
                     mealName: meal.mealName.nTrimmedOr("Meal"),
                     primaryOption: meal.primaryOption.nTrimmedOr("Primary meal option pending."),
                     substitutions: meal.substitutions.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty },
-                    approxCalories: max(0, meal.approxCalories),
-                    approxProteinG: max(0, meal.approxProteinG),
-                    approxCarbsG: max(0, meal.approxCarbsG),
-                    approxFatG: max(0, meal.approxFatG),
+                    approxCalories: min(2000, max(0, meal.approxCalories)),
+                    approxProteinG: min(150, max(0, meal.approxProteinG)),
+                    approxCarbsG: min(300, max(0, meal.approxCarbsG)),
+                    approxFatG: min(120, max(0, meal.approxFatG)),
                     timingNote: meal.timingNote.nTrimmedOr("Timing note pending.")
                 )
             }
@@ -1063,22 +1142,46 @@ extension ClaudeService {
 
     // MARK: - Validation
 
-    private func validateNutritionProgram(_ program: NutritionProgramResponse, macroTargets: AnalysisMacroTargets?) -> [String] {
+    func validateNutritionProgram(_ program: NutritionProgramResponse, macroTargets: DailyMacroTargets) -> [String] {
         var issues: [String] = []
-        if program.programName.count < 3 {
+        if program.programName.count < 3 || nLooksLikePlaceholder(program.programName) {
             issues.append("programName is too short.")
         }
-        if program.programSummary.count < 20 {
+        if program.programSummary.count < 20 || nLooksLikePlaceholder(program.programSummary) {
             issues.append("programSummary should be at least one full sentence.")
+        }
+        if program.proteinCoverageNote.count < 20 || nLooksLikePlaceholder(program.proteinCoverageNote) {
+            issues.append("proteinCoverageNote should explain the protein architecture in a full sentence.")
         }
         issues.append(contentsOf: validateNutritionWeek(program.weekOne, expectedWeek: 1, macroTargets: macroTargets))
         return issues
     }
 
-    private func validateNutritionWeek(_ week: NutritionWeekResponse, expectedWeek: Int, macroTargets: AnalysisMacroTargets?) -> [String] {
+    func validateNutritionWeek(_ week: NutritionWeekResponse, expectedWeek: Int, macroTargets: DailyMacroTargets) -> [String] {
         var issues: [String] = []
         if week.weekNumber != expectedWeek {
             issues.append("weekNumber must be \(expectedWeek).")
+        }
+        if week.weekSummary.count < 20 || nLooksLikePlaceholder(week.weekSummary) {
+            issues.append("weekSummary should be a meaningful, non-placeholder sentence.")
+        }
+        if week.phaseFocus.count < 8 || nLooksLikePlaceholder(week.phaseFocus) {
+            issues.append("phaseFocus should describe this week's nutrition intent.")
+        }
+        if !(1000...5000).contains(week.dailyCaloriesTraining) {
+            issues.append("Training-day calories must stay between 1000 and 5000 kcal.")
+        }
+        if !(1000...5000).contains(week.dailyCaloriesRest) {
+            issues.append("Rest-day calories must stay between 1000 and 5000 kcal.")
+        }
+        if !(60...400).contains(week.dailyProteinG) {
+            issues.append("Daily protein must stay between 60g and 400g.")
+        }
+        if !(30...600).contains(week.dailyCarbsGTraining) || !(30...600).contains(week.dailyCarbsGRest) {
+            issues.append("Daily carbohydrates must stay between 30g and 600g.")
+        }
+        if !(20...250).contains(week.dailyFatG) {
+            issues.append("Daily fat must stay between 20g and 250g.")
         }
         if week.coachNotes.count < 30 {
             issues.append("coachNotes too short — at least 2 sentences from the expert panel required.")
@@ -1094,48 +1197,68 @@ extension ClaudeService {
         if groceryItemCount < 8 {
             issues.append("weeklyGrocery has too few items to cover 7 days of meals.")
         }
-
-        // Nutrition-specific validators
-        if let targets = macroTargets {
-            let calTarget = targets.calories
-            let proTarget = Int(targets.proteinG.rounded())
-            let fatTarget = Int(targets.fatG.rounded())
-
-            let trainCalDrift = abs(week.dailyCaloriesTraining - calTarget)
-            if trainCalDrift > Int(Double(calTarget) * 0.20) {
-                issues.append("Training-day calories (\(week.dailyCaloriesTraining)) are >20% off target (\(calTarget)).")
+        for category in week.weeklyGrocery {
+            if category.category.count < 3 || nLooksLikePlaceholder(category.category) {
+                issues.append("weeklyGrocery contains an empty or placeholder category.")
             }
-
-            let restCalDrift = abs(week.dailyCaloriesRest - calTarget)
-            if restCalDrift > Int(Double(calTarget) * 0.25) {
-                issues.append("Rest-day calories (\(week.dailyCaloriesRest)) are >25% off target (\(calTarget)).")
+            if category.items.isEmpty {
+                issues.append("weeklyGrocery category '\(category.category)' must contain at least one item.")
             }
-
-            let proDrift = abs(week.dailyProteinG - proTarget)
-            if proDrift > Int(Double(proTarget) * 0.15) {
-                issues.append("Daily protein (\(week.dailyProteinG)g) is >15% off target (\(proTarget)g).")
-            }
-
-            let fatFloor = max(40, Int(Double(fatTarget) * 0.60))
-            if week.dailyFatG < fatFloor {
-                issues.append("Daily fat (\(week.dailyFatG)g) is below safe floor (\(fatFloor)g) — hormonal and satiety concerns.")
-            }
-
-            if week.dailyCarbsGTraining <= week.dailyCarbsGRest {
-                issues.append("Training-day carbs (\(week.dailyCarbsGTraining)g) should be higher than rest-day carbs (\(week.dailyCarbsGRest)g).")
+            for item in category.items {
+                if item.name.count < 2 || item.quantity.count < 2 || item.rationale.count < 20 {
+                    issues.append("weeklyGrocery item '\(item.name)' is missing a usable name, quantity, or personalized rationale.")
+                }
+                if item.substitutions.count < 1 || item.substitutions.count > 3 {
+                    issues.append("weeklyGrocery item '\(item.name)' must include 1-3 practical substitutions.")
+                }
+                if nLooksLikePlaceholder(item.quantity) || nLooksLikePlaceholder(item.rationale) {
+                    issues.append("weeklyGrocery item '\(item.name)' contains placeholder guidance.")
+                }
             }
         }
 
-        issues.append(contentsOf: validateTemplateMacroConsistency(week.trainingDay, weekMacros: (cal: week.dailyCaloriesTraining, pro: week.dailyProteinG), label: "Training"))
-        issues.append(contentsOf: validateTemplateMacroConsistency(week.restDay, weekMacros: (cal: week.dailyCaloriesRest, pro: week.dailyProteinG), label: "Rest"))
+        // Nutrition-specific validators. The resolved target is shared by prompts,
+        // validation, and fallback so unsafe analysis values cannot create three
+        // different interpretations of the same client target.
+        let calTarget = macroTargets.calories
+        let proTarget = Int(macroTargets.proteinG.rounded())
+        let fatFloor = max(40, Int((macroTargets.fatG * 0.60).rounded()))
+
+        let trainCalDrift = abs(week.dailyCaloriesTraining - calTarget)
+        if trainCalDrift > Int(Double(calTarget) * 0.12) {
+            issues.append("Training-day calories (\(week.dailyCaloriesTraining)) are >12% off target (\(calTarget)).")
+        }
+
+        let restCalDrift = abs(week.dailyCaloriesRest - calTarget)
+        if restCalDrift > Int(Double(calTarget) * 0.15) {
+            issues.append("Rest-day calories (\(week.dailyCaloriesRest)) are >15% off target (\(calTarget)).")
+        }
+
+        let proDrift = abs(week.dailyProteinG - proTarget)
+        if proDrift > Int(Double(proTarget) * 0.10) {
+            issues.append("Daily protein (\(week.dailyProteinG)g) is >10% off target (\(proTarget)g).")
+        }
+
+        if week.dailyFatG < fatFloor {
+            issues.append("Daily fat (\(week.dailyFatG)g) is below safe floor (\(fatFloor)g) — hormonal and satiety concerns.")
+        }
+
+        if week.dailyCarbsGTraining <= week.dailyCarbsGRest {
+            issues.append("Training-day carbs (\(week.dailyCarbsGTraining)g) should be higher than rest-day carbs (\(week.dailyCarbsGRest)g).")
+        }
+
+        issues.append(contentsOf: validateTemplateMacroConsistency(week.trainingDay, weekMacros: (cal: week.dailyCaloriesTraining, pro: week.dailyProteinG, carbs: week.dailyCarbsGTraining, fat: week.dailyFatG), label: "Training"))
+        issues.append(contentsOf: validateTemplateMacroConsistency(week.restDay, weekMacros: (cal: week.dailyCaloriesRest, pro: week.dailyProteinG, carbs: week.dailyCarbsGRest, fat: week.dailyFatG), label: "Rest"))
 
         return issues
     }
 
-    private func validateTemplateMacroConsistency(_ template: DailyNutritionTemplate, weekMacros: (cal: Int, pro: Int), label: String) -> [String] {
+    private func validateTemplateMacroConsistency(_ template: DailyNutritionTemplate, weekMacros: (cal: Int, pro: Int, carbs: Int, fat: Int), label: String) -> [String] {
         var issues: [String] = []
         let mealCalTotal = template.meals.reduce(0) { $0 + $1.approxCalories }
         let mealProTotal = template.meals.reduce(0) { $0 + $1.approxProteinG }
+        let mealCarbTotal = template.meals.reduce(0) { $0 + $1.approxCarbsG }
+        let mealFatTotal = template.meals.reduce(0) { $0 + $1.approxFatG }
 
         if abs(mealCalTotal - template.totalCalories) > Int(Double(template.totalCalories) * 0.15) {
             issues.append("\(label) template: meal calorie sum (\(mealCalTotal)) doesn't match totalCalories (\(template.totalCalories)) within 15%.")
@@ -1143,6 +1266,32 @@ extension ClaudeService {
 
         if abs(mealProTotal - template.totalProteinG) > Int(Double(template.totalProteinG) * 0.15) {
             issues.append("\(label) template: meal protein sum (\(mealProTotal)g) doesn't match totalProteinG (\(template.totalProteinG)g) within 15%.")
+        }
+
+        if abs(mealCarbTotal - template.totalCarbsG) > Int(Double(template.totalCarbsG) * 0.15) {
+            issues.append("\(label) template: meal carb sum (\(mealCarbTotal)g) doesn't match totalCarbsG (\(template.totalCarbsG)g) within 15%.")
+        }
+
+        if abs(mealFatTotal - template.totalFatG) > Int(Double(template.totalFatG) * 0.15) {
+            issues.append("\(label) template: meal fat sum (\(mealFatTotal)g) doesn't match totalFatG (\(template.totalFatG)g) within 15%.")
+        }
+
+        if abs(template.totalCalories - weekMacros.cal) > Int(Double(weekMacros.cal) * 0.05) {
+            issues.append("\(label) template: totalCalories (\(template.totalCalories)) doesn't match the week-level value (\(weekMacros.cal)) within 5%.")
+        }
+        if abs(template.totalProteinG - weekMacros.pro) > Int(Double(weekMacros.pro) * 0.05) {
+            issues.append("\(label) template: totalProteinG (\(template.totalProteinG)g) doesn't match the week-level value (\(weekMacros.pro)g) within 5%.")
+        }
+        if abs(template.totalCarbsG - weekMacros.carbs) > Int(Double(weekMacros.carbs) * 0.05) {
+            issues.append("\(label) template: totalCarbsG (\(template.totalCarbsG)g) doesn't match the week-level value (\(weekMacros.carbs)g) within 5%.")
+        }
+        if abs(template.totalFatG - weekMacros.fat) > Int(Double(weekMacros.fat) * 0.05) {
+            issues.append("\(label) template: totalFatG (\(template.totalFatG)g) doesn't match the week-level value (\(weekMacros.fat)g) within 5%.")
+        }
+
+        let macroCalories = template.totalProteinG * 4 + template.totalCarbsG * 4 + template.totalFatG * 9
+        if abs(macroCalories - template.totalCalories) > Int(Double(template.totalCalories) * 0.15) {
+            issues.append("\(label) template: macro-derived calories (\(macroCalories)) don't match totalCalories (\(template.totalCalories)) within 15%.")
         }
 
         return issues
@@ -1158,18 +1307,46 @@ extension ClaudeService {
         }
         let expectedNames = ["Breakfast", "Lunch", "Dinner", "Snack"]
         let actualNames = template.meals.map { $0.mealName }
-        for name in expectedNames where !actualNames.contains(where: { $0.localizedCaseInsensitiveContains(name) }) {
-            issues.append("\(expectedLabel) template missing \(name).")
+        for (index, name) in expectedNames.enumerated() {
+            guard index < actualNames.count else { break }
+            if !actualNames[index].localizedCaseInsensitiveContains(name) {
+                issues.append("\(expectedLabel) template position \(index + 1) should be \(name), not '\(actualNames[index])'.")
+            }
         }
         for meal in template.meals {
             if meal.primaryOption.count < 10 {
                 issues.append("\(expectedLabel) \(meal.mealName) primaryOption is too short.")
             }
+            if meal.substitutions.count < 2 || meal.substitutions.count > 3 {
+                issues.append("\(expectedLabel) \(meal.mealName) must include 2-3 practical substitutions.")
+            }
             if meal.timingNote.count < 10 {
                 issues.append("\(expectedLabel) \(meal.mealName) timingNote is too short.")
             }
+            if !(50...2000).contains(meal.approxCalories)
+                || !(0...150).contains(meal.approxProteinG)
+                || !(0...300).contains(meal.approxCarbsG)
+                || !(0...120).contains(meal.approxFatG) {
+                issues.append("\(expectedLabel) \(meal.mealName) has a macro value outside the supported range.")
+            }
+            let macroCalories = meal.approxProteinG * 4 + meal.approxCarbsG * 4 + meal.approxFatG * 9
+            if abs(macroCalories - meal.approxCalories) > Int(Double(max(meal.approxCalories, 1)) * 0.20) {
+                issues.append("\(expectedLabel) \(meal.mealName) macro-derived calories (\(macroCalories)) don't match approxCalories (\(meal.approxCalories)) within 20%.")
+            }
         }
         return issues
+    }
+
+    private func nLooksLikePlaceholder(_ text: String) -> Bool {
+        let normalized = text
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        let words = normalized.split { !$0.isLetter && !$0.isNumber }
+        return normalized.isEmpty
+            || words.contains("pending")
+            || normalized == "as needed"
+            || normalized == "supports plan macros"
+            || normalized == "expert panel notes for this week."
     }
 
     // MARK: - Source Labels
@@ -1210,7 +1387,8 @@ extension ClaudeService {
             dailyFatG: week.dailyFatG,
             trainingDay: week.trainingDay,
             restDay: week.restDay,
-            weeklyGrocery: week.weeklyGrocery
+            weeklyGrocery: week.weeklyGrocery,
+            source: GeneratedContentSource.detect(in: sourceLabel) ?? week.source
         )
     }
 
@@ -1266,13 +1444,48 @@ extension ClaudeService {
         """
     }
 
-    private func macroTargetLine(from macros: AnalysisMacroTargets?) -> String {
-        guard let m = macros else {
-            // Fall back to the user's configured targets rather than fixed numbers.
-            let resolved = MacroTargetResolver.resolve(from: nil)
-            return "calories \(resolved.calories) kcal, protein \(Int(resolved.proteinG))g, carbs \(Int(resolved.carbsG))g, fat \(Int(resolved.fatG))g (from app settings — analysis did not provide macros)"
+    func effectiveNutritionTargets(from analysis: BodyAnalysisResult) -> DailyMacroTargets {
+        let resolved = MacroTargetResolver.resolve(from: analysis)
+        let protein = min(400.0, max(60.0, resolved.proteinG))
+        let fat = min(250.0, max(40.0, resolved.fatG))
+        let requestedCalories = min(5000, max(1200, resolved.calories))
+        let minimumCarbs = max(50, Int(ceil((1200.0 - protein * 4 - fat * 9) / 4.0)))
+        let maximumCarbs = min(600, Int(floor((5000.0 - protein * 4 - fat * 9) / 4.0)))
+        var calories = requestedCalories
+        var carbs = min(maximumCarbs, max(minimumCarbs, Int(resolved.carbsG.rounded())))
+
+        // Analysis targets can be internally inconsistent or below safety floors.
+        // Reconcile the generator's working target once so prompts, validation, and
+        // fallback all reason about the same safe macro set instead of retrying
+        // forever against an impossible calorie/macro combination. The exact
+        // validator bands are the ceiling here, so a compliant fallback always
+        // remains inside the same contract.
+        let calorieAnchoredCarbs = Int(floor((Double(requestedCalories) - protein * 4 - fat * 9) / 4.0))
+        if (minimumCarbs...maximumCarbs).contains(calorieAnchoredCarbs) {
+            carbs = calorieAnchoredCarbs
         }
-        return "calories \(m.calories) kcal, protein \(Int(m.proteinG))g, carbs \(Int(m.carbsG))g, fat \(Int(m.fatG))g"
+        calories = protein * 4 + carbs * 4 + Int((fat * 9).rounded())
+
+        let requestedMacroCalories = resolved.proteinG * 4 + resolved.carbsG * 4 + resolved.fatG * 9
+        let changed = calories != resolved.calories
+            || Int(protein.rounded()) != Int(resolved.proteinG.rounded())
+            || Int(carbs.rounded()) != Int(resolved.carbsG.rounded())
+            || Int(fat.rounded()) != Int(resolved.fatG.rounded())
+            || abs(requestedMacroCalories - Double(resolved.calories)) > Double(max(resolved.calories, 1)) * 0.15
+        let adjustments = resolved.floorAdjustments + (changed ? ["Nutrition generator reconciled macro calories with the safe target before generation."] : [])
+        return DailyMacroTargets(
+            calories: calories,
+            proteinG: protein,
+            carbsG: carbs,
+            fatG: fat,
+            source: resolved.source,
+            floorAdjustments: adjustments
+        )
+    }
+
+    private func macroTargetLine(from macros: DailyMacroTargets) -> String {
+        let adjustmentNote = macros.wasAdjustedBySafetyFloor ? " (safety-resolved generator target)" : ""
+        return "calories \(macros.calories) kcal, protein \(Int(macros.proteinG.rounded()))g, carbs \(Int(macros.carbsG.rounded()))g, fat \(Int(macros.fatG.rounded()))g\(adjustmentNote)"
     }
 
     // MARK: - Fallback
@@ -1289,38 +1502,41 @@ extension ClaudeService {
                 "Fallback protocol — the AI call did not complete cleanly.\(diagnosticLine)",
                 sourceLabel: nutritionFallbackSourceLabel
             ),
-            proteinCoverageNote: "Protein floor set to ~1g per lb bodyweight as a safe default.",
+            proteinCoverageNote: "Protein is held at the resolved safety target while the AI protocol is unavailable.",
             weekOne: weekOne
         )
     }
 
-    private func buildFallbackNutritionWeek(
+    func buildFallbackNutritionWeek(
         weekNumber: Int,
         from analysis: BodyAnalysisResult,
         diagnostic: String
     ) -> NutritionWeekResponse {
-        let macros = analysis.macroTargets
-        let calories = macros?.calories ?? 2300
-        let protein = Int(macros?.proteinG ?? 200)
-        let carbsTrain = Int(macros?.carbsG ?? 220)
-        let carbsRest = max(80, Int((macros?.carbsG ?? 220) * 0.7))
-        let fat = Int(macros?.fatG ?? 70)
+        let targets = effectiveNutritionTargets(from: analysis)
+        let protein = Int(targets.proteinG.rounded())
+        let carbsTrain = Int(targets.carbsG.rounded())
+        let carbsRest = max(30, min(carbsTrain - 1, Int((targets.carbsG * 0.75).rounded())))
+        let fat = Int(targets.fatG.rounded())
+        let trainingMeals = fallbackMeals(protein: protein, carbs: carbsTrain, fat: fat, carbsHigh: true)
+        let restMeals = fallbackMeals(protein: protein, carbs: carbsRest, fat: fat, carbsHigh: false)
+        let trainingCalories = macroCalories(protein: protein, carbs: carbsTrain, fat: fat)
+        let restCalories = macroCalories(protein: protein, carbs: carbsRest, fat: fat)
 
         let training = DailyNutritionTemplate(
             label: "Training Day",
-            totalCalories: calories,
+            totalCalories: trainingCalories,
             totalProteinG: protein,
             totalCarbsG: carbsTrain,
             totalFatG: fat,
-            meals: fallbackMeals(carbsHigh: true)
+            meals: trainingMeals
         )
         let rest = DailyNutritionTemplate(
             label: "Rest Day",
-            totalCalories: max(1600, calories - 200),
+            totalCalories: restCalories,
             totalProteinG: protein,
             totalCarbsG: carbsRest,
-            totalFatG: fat + 10,
-            meals: fallbackMeals(carbsHigh: false)
+            totalFatG: fat,
+            meals: restMeals
         )
         let grocery = fallbackGrocery()
         let diagnosticLine = diagnostic.isEmpty ? "" : "\n\nWhy fallback fired: \(nTruncate(diagnostic))"
@@ -1333,50 +1549,72 @@ extension ClaudeService {
             ),
             phaseFocus: "Week \(weekNumber) — Fallback defaults",
             coachNotes: "This week is a safe default protocol. The AI generation did not complete — regenerate once you've resolved the issue shown in the week summary.",
-            dailyCaloriesTraining: calories,
-            dailyCaloriesRest: max(1600, calories - 200),
+            dailyCaloriesTraining: trainingCalories,
+            dailyCaloriesRest: restCalories,
             dailyProteinG: protein,
             dailyCarbsGTraining: carbsTrain,
             dailyCarbsGRest: carbsRest,
             dailyFatG: fat,
             trainingDay: training,
             restDay: rest,
-            weeklyGrocery: grocery
+            weeklyGrocery: grocery,
+            source: .recoveryEngine
         )
     }
 
-    private func fallbackMeals(carbsHigh: Bool) -> [MealSlotResponse] {
+    private func fallbackMeals(protein: Int, carbs: Int, fat: Int, carbsHigh: Bool) -> [MealSlotResponse] {
         let carbLabel = carbsHigh ? "1 cup cooked rice / 1 medium potato" : "1/2 cup cooked rice / small potato"
-        return [
-            MealSlotResponse(
-                mealName: "Breakfast",
-                primaryOption: "3 whole eggs + 3 egg whites + 1 cup oats + berries",
-                substitutions: ["Greek yogurt + oats + whey", "Protein smoothie + banana + PB"],
-                approxCalories: 550, approxProteinG: 45, approxCarbsG: 60, approxFatG: 15,
-                timingNote: "Within 60 min of waking. Anchors protein + carbs for the day."
-            ),
-            MealSlotResponse(
-                mealName: "Lunch",
-                primaryOption: "6 oz grilled chicken breast + \(carbLabel) + mixed vegetables",
-                substitutions: ["Ground turkey bowl", "Tuna + pita + salad"],
-                approxCalories: 600, approxProteinG: 55, approxCarbsG: carbsHigh ? 65 : 40, approxFatG: 12,
-                timingNote: carbsHigh ? "4-5 hrs before training." : "Mid-day anchor — leaner carbs."
-            ),
-            MealSlotResponse(
-                mealName: "Dinner",
-                primaryOption: "6 oz lean beef or salmon + \(carbLabel) + vegetables + olive oil",
-                substitutions: ["Shrimp stir fry", "Turkey chili"],
-                approxCalories: 650, approxProteinG: 50, approxCarbsG: carbsHigh ? 55 : 35, approxFatG: 22,
-                timingNote: "3-4 hrs before sleep. Favor slower carbs on rest days."
-            ),
-            MealSlotResponse(
-                mealName: "Snack",
-                primaryOption: "Greek yogurt + whey + handful of nuts",
-                substitutions: ["Cottage cheese + fruit", "Protein shake + almonds"],
-                approxCalories: 350, approxProteinG: 40, approxCarbsG: carbsHigh ? 25 : 15, approxFatG: 12,
-                timingNote: carbsHigh ? "Post-workout or late evening." : "Before sleep — slow protein."
-            )
+        let ratios = [0.25, 0.25, 0.30, 0.20]
+        func distribute(_ total: Int) -> [Int] {
+            let first = ratios.dropLast().map { Int((Double(total) * $0).rounded()) }
+            return first + [total - first.reduce(0, +)]
+        }
+        let mealProtein = distribute(protein)
+        let mealCarbs = distribute(carbs)
+        let mealFat = distribute(fat)
+        let names = ["Breakfast", "Lunch", "Dinner", "Snack"]
+        let options = [
+            "3 whole eggs + egg whites + oats + berries",
+            "6 oz grilled chicken breast + \(carbLabel) + mixed vegetables",
+            "6 oz lean beef or salmon + \(carbLabel) + vegetables + olive oil",
+            "Greek yogurt + whey + a small portion of nuts"
         ]
+        let substitutions = [
+            ["Greek yogurt + oats + whey", "Protein smoothie + banana + nut butter"],
+            ["Ground turkey bowl", "Tuna + pita + salad"],
+            ["Shrimp stir fry", "Turkey chili"],
+            ["Cottage cheese + fruit", "Protein shake + almonds"]
+        ]
+        let timingNotes = carbsHigh
+            ? [
+                "Within 60 min of waking. Anchors protein and carbs for the day.",
+                "4-5 hours before training when possible. Keeps the main carb meal practical.",
+                "After training or 3-4 hours before sleep. Rebuilds glycogen without a complicated recipe.",
+                "Post-workout or late evening. Finishes the protein target with minimal prep."
+            ]
+            : [
+                "Within 60 min of waking. Starts the rest day with a steady protein anchor.",
+                "Mid-day anchor. Keeps portions consistent while trimming training-day carbs.",
+                "3-4 hours before sleep. Uses a slower, predictable rest-day meal.",
+                "Before sleep when useful. Provides a simple final protein feeding."
+            ]
+
+        return (0..<4).map { index in
+            MealSlotResponse(
+                mealName: names[index],
+                primaryOption: options[index],
+                substitutions: substitutions[index],
+                approxCalories: macroCalories(protein: mealProtein[index], carbs: mealCarbs[index], fat: mealFat[index]),
+                approxProteinG: mealProtein[index],
+                approxCarbsG: mealCarbs[index],
+                approxFatG: mealFat[index],
+                timingNote: timingNotes[index]
+            )
+        }
+    }
+
+    private func macroCalories(protein: Int, carbs: Int, fat: Int) -> Int {
+        protein * 4 + carbs * 4 + fat * 9
     }
 
     private func fallbackGrocery() -> [NutritionGroceryCategory] {
@@ -1395,24 +1633,24 @@ extension ClaudeService {
                 category: "Carbs & Grains",
                 items: [
                     NutritionGroceryItem(name: "Jasmine or basmati rice", quantity: "6 cups dry", substitutions: ["Potatoes", "Quinoa"], rationale: "Training-day carb anchor."),
-                    NutritionGroceryItem(name: "Rolled oats", quantity: "4 cups dry", substitutions: ["Whole-grain cereal"], rationale: "Breakfast base."),
-                    NutritionGroceryItem(name: "Potatoes", quantity: "3 lb", substitutions: ["Sweet potatoes"], rationale: "Rotate with rice.")
+                    NutritionGroceryItem(name: "Rolled oats", quantity: "4 cups dry", substitutions: ["Whole-grain cereal"], rationale: "Practical breakfast carbohydrate base."),
+                    NutritionGroceryItem(name: "Potatoes", quantity: "3 lb", substitutions: ["Sweet potatoes"], rationale: "Simple carbohydrate rotation for rest days.")
                 ]
             ),
             NutritionGroceryCategory(
                 category: "Produce",
                 items: [
-                    NutritionGroceryItem(name: "Frozen mixed vegetables", quantity: "3 large bags", substitutions: ["Fresh broccoli / spinach"], rationale: "Fiber + micronutrients."),
-                    NutritionGroceryItem(name: "Berries", quantity: "3 bags frozen", substitutions: ["Fresh berries"], rationale: "Antioxidants + breakfast topping."),
-                    NutritionGroceryItem(name: "Bananas", quantity: "1 bunch", substitutions: ["Apples"], rationale: "Fast carbs pre/post training.")
+                    NutritionGroceryItem(name: "Frozen mixed vegetables", quantity: "3 large bags", substitutions: ["Fresh broccoli / spinach"], rationale: "Supports fiber and micronutrient coverage."),
+                    NutritionGroceryItem(name: "Berries", quantity: "3 bags frozen", substitutions: ["Fresh berries"], rationale: "Convenient antioxidant-rich breakfast topping."),
+                    NutritionGroceryItem(name: "Bananas", quantity: "1 bunch", substitutions: ["Apples"], rationale: "Fast carbohydrate option around training.")
                 ]
             ),
             NutritionGroceryCategory(
                 category: "Fats & Extras",
                 items: [
-                    NutritionGroceryItem(name: "Olive oil", quantity: "1 bottle", substitutions: ["Avocado oil"], rationale: "Cooking + drizzle fat."),
-                    NutritionGroceryItem(name: "Nuts (almonds / walnuts)", quantity: "1 lb", substitutions: ["Nut butter"], rationale: "Snack fat + micronutrients."),
-                    NutritionGroceryItem(name: "Avocados", quantity: "4-6", substitutions: ["Nut butter"], rationale: "Healthy fat rotation.")
+                    NutritionGroceryItem(name: "Olive oil", quantity: "1 bottle", substitutions: ["Avocado oil"], rationale: "Cooking and drizzle fat for meal prep."),
+                    NutritionGroceryItem(name: "Nuts (almonds / walnuts)", quantity: "1 lb", substitutions: ["Nut butter"], rationale: "Portable snack fat with useful micronutrients."),
+                    NutritionGroceryItem(name: "Avocados", quantity: "4-6", substitutions: ["Nut butter"], rationale: "Simple healthy-fat rotation for satiety.")
                 ]
             )
         ]

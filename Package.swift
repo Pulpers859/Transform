@@ -51,6 +51,7 @@ let package = Package(
                 // AdaptiveMacroOverride (Config macro-target calc). Both Foundation-safe.
                 "AppLifecycleMonitor.swift",
                 "AdaptiveInsights.swift",
+                "NutritionGeneratorService.swift",
 
                 // Shared model layer. (Models.swift — the sleep/nutrition/weight
                 // persistence models — is intentionally NOT here: nothing in the

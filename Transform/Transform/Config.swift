@@ -1236,7 +1236,7 @@ enum APIKeyProvider {
     }
 }
 
-enum GeneratedContentSource: String, CaseIterable {
+enum GeneratedContentSource: String, CaseIterable, Codable {
     case aiCoach = "[AI Coach]"
     case recoveryEngine = "[Recovery Engine]"
 

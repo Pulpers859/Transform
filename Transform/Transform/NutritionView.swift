@@ -984,6 +984,18 @@ struct NutritionView: View {
                 partialGenerationWarning: "Week 1 generated, but its saved JSON context could not be encoded, so weeks 2-4 were skipped."
             )
         }
+
+        // A recovery-engine Week 1 has no trustworthy AI progression anchor.
+        // Stop here instead of spending three more paid calls to build mixed-source
+        // follow-up weeks from a generic fallback context.
+        if program.weekOne.source == .recoveryEngine {
+            return NutritionProtocolBuildResult(
+                program: program,
+                followupWeeks: [],
+                partialGenerationWarning: "Week 1 used the Recovery Engine, so later AI weeks were skipped until a complete AI anchor is available."
+            )
+        }
+
         var previousWeekJSON = initialWeekJSON
 
         for week in 2...4 {
@@ -1002,6 +1014,10 @@ struct NutritionView: View {
                 )
                 try Task.checkCancellation()
                 followupWeeks.append(nextWeek)
+                if nextWeek.source == .recoveryEngine {
+                    warningMessage = "Week \(week) used the Recovery Engine, so later weeks were skipped to avoid mixing an emergency week into the progression chain."
+                    break
+                }
                 guard let encodedWeek = encodeWeekToJSON(nextWeek) else {
                     warningMessage = "Week \(week) generated, but its saved JSON context could not be encoded, so later weeks were skipped."
                     break
@@ -1135,9 +1151,8 @@ struct NutritionProtocolBuildResult {
     let partialGenerationWarning: String?
 
     var usesRecoveryEngineFallback: Bool {
-        GeneratedContentSource.detect(in: program.programSummary) == .recoveryEngine
-            || GeneratedContentSource.detect(in: program.weekOne.weekSummary) == .recoveryEngine
-            || followupWeeks.contains { GeneratedContentSource.detect(in: $0.weekSummary) == .recoveryEngine }
+        program.weekOne.source == .recoveryEngine
+            || followupWeeks.contains { $0.source == .recoveryEngine }
     }
 }
 
