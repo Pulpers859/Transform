@@ -220,6 +220,7 @@ struct WorkoutDayDetailView: View {
                     weightSummary: weightSummary(for: exercise),
                     latestSetLogs: latestSetLogs(for: exercise),
                     todaysSetLogs: todaysSetLogs(for: exercise),
+                    performanceHistory: performanceLogSnapshots,
                     onToggle: { toggleExercise(exercise) },
                     onLogWeight: { exerciseForWeightLogging = exercise }
                 )
@@ -334,6 +335,16 @@ struct WorkoutDayDetailView: View {
     func todaysSetLogs(for exercise: WorkoutExercise) -> [SetLogEntry] {
         SetLoggingService.todaysSets(for: exercise, in: allPerformanceLogs)
     }
+
+    var performanceLogSnapshots: [WorkoutPerformanceLogSnapshot] {
+        allPerformanceLogs.map {
+            WorkoutPerformanceLogSnapshot(
+                canonicalExerciseKey: $0.canonicalExerciseKey,
+                loggedAt: $0.loggedAt,
+                setLogs: $0.decodedSetLogs
+            )
+        }
+    }
 }
 
 // MARK: - Exercise Card
@@ -347,6 +358,8 @@ struct ExerciseCard: View {
     let latestSetLogs: [SetLogEntry]
     /// Sets already logged for today's in-progress session — drives the inline logger.
     let todaysSetLogs: [SetLogEntry]
+    /// All decoded performance sessions, used for the exercise-specific effort signal.
+    let performanceHistory: [WorkoutPerformanceLogSnapshot]
     let onToggle: () -> Void
     let onLogWeight: () -> Void
     @State private var showDetails = false
@@ -533,13 +546,7 @@ struct ExerciseCard: View {
             repRange: repRange,
             lastWeight: log.weightLbs,
             exerciseName: exercise.exerciseName,
-            performanceHistory: allPerformanceLogs.map {
-                WorkoutPerformanceLogSnapshot(
-                    canonicalExerciseKey: $0.canonicalExerciseKey,
-                    loggedAt: $0.loggedAt,
-                    setLogs: $0.decodedSetLogs
-                )
-            }
+            performanceHistory: performanceHistory
         )
         // Safety net for already-generated workouts where the note still prescribes more
         // sets than the (trimmed) structured count: don't let the generic heuristic
