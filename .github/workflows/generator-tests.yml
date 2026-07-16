@@ -32,7 +32,27 @@ jobs:
           xcodebuild -version
 
       - name: Run headless generator tests
-        run: swift test --parallel
+        shell: bash
+        run: |
+          set -euo pipefail
+          swift test --enable-xctest --parallel 2>&1 | tee "$RUNNER_TEMP/transform-generator-tests.log"
+          if ! grep -Eq "Executed [1-9][0-9]* tests?, with 0 failures" "$RUNNER_TEMP/transform-generator-tests.log"; then
+            echo "swift test did not report a nonzero XCTest count with zero failures."
+            exit 1
+          fi
+          if ! grep -q "NutritionGeneratorStressTests" "$RUNNER_TEMP/transform-generator-tests.log"; then
+            echo "NutritionGeneratorStressTests was not discovered by swift test."
+            exit 1
+          fi
+
+      - name: Upload generator test log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: generator-test-log
+          path: ${{ runner.temp }}/transform-generator-tests.log
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Upload generator fixture snapshot
         if: always()

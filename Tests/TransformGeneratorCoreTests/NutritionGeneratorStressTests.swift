@@ -6,7 +6,6 @@ import XCTest
 /// These tests intentionally exercise malformed, low, high, and internally inconsistent
 /// macro targets. A nutrition response that merely decodes is not good enough: meal math,
 /// day-level totals, safety floors, meal identity, and grocery usability must agree.
-@MainActor
 final class NutritionGeneratorStressTests: XCTestCase {
     private let service = ClaudeService.shared
 
