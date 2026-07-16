@@ -1544,51 +1544,53 @@ extension ClaudeService {
 
                     let focusIntent = focusIntentForArea(plan.focusArea, within: trainingIntent)
                     let supportIntents = plan.supportAreas.compactMap { focusIntentForArea($0, within: trainingIntent) }
-                    guard let replaceIndex = baselineCoverageReplacementIndex(
+                    let replacementIndices = baselineCoverageReplacementIndices(
                         in: updated[dayOffset],
                         focusIntent: focusIntent,
                         supportIntents: supportIntents
-                    ) else { continue }
-                    var menusWithoutReplacedSlot = updated
-                    menusWithoutReplacedSlot[dayOffset].remove(at: replaceIndex)
-                    let candidateMenu = PreSelectedExercise(
-                        exerciseName: candidate.name,
-                        muscleTarget: candidate.target,
-                        movementPattern: exerciseMetadata(
-                            forExerciseName: candidate.name,
-                            muscleTarget: candidate.target
-                        ).movementPattern,
-                        role: proceduralExerciseRole(for: candidate.name, muscleTarget: candidate.target),
-                        prescribedSets: 1
                     )
-                    menusWithoutReplacedSlot[dayOffset].insert(candidateMenu, at: replaceIndex)
+                    for replaceIndex in replacementIndices {
+                        var menusWithoutReplacedSlot = updated
+                        menusWithoutReplacedSlot[dayOffset].remove(at: replaceIndex)
+                        let candidateMenu = PreSelectedExercise(
+                            exerciseName: candidate.name,
+                            muscleTarget: candidate.target,
+                            movementPattern: exerciseMetadata(
+                                forExerciseName: candidate.name,
+                                muscleTarget: candidate.target
+                            ).movementPattern,
+                            role: proceduralExerciseRole(for: candidate.name, muscleTarget: candidate.target),
+                            prescribedSets: 1
+                        )
+                        menusWithoutReplacedSlot[dayOffset].insert(candidateMenu, at: replaceIndex)
 
-                    // The general menu-budget gate also checks unrelated variation ledgers.
-                    // Do not let one of those soft identity heuristics defeat BASE-001: this
-                    // proposed swap is allowed when it preserves every baseline floor. It still
-                    // goes through the normal gate whenever that gate can evaluate it cleanly.
-                    let gapsBefore = Set(
-                        baselineCoverageGaps(in: updated, blueprint: blueprint).map { $0.seed }
-                    )
-                    let gapsAfter = Set(
-                        baselineCoverageGaps(in: menusWithoutReplacedSlot, blueprint: blueprint).map { $0.seed }
-                    )
-                    let baselineFloorPreserved = !gapsAfter.contains(group.seed)
-                        && gapsAfter.isSubset(of: gapsBefore)
-                    guard menuPlanningBudgetAllows(
-                        candidateName: candidate.name,
-                        candidateTarget: candidate.target,
-                        existingMenus: {
-                            var menus = menusWithoutReplacedSlot
-                            menus[dayOffset].remove(at: replaceIndex)
-                            return menus
-                        }(),
-                        selectedToday: [],
-                        blueprint: blueprint
-                    ) || baselineFloorPreserved else { continue }
+                        // The general menu-budget gate also checks unrelated variation ledgers.
+                        // Do not let one of those soft identity heuristics defeat BASE-001: this
+                        // proposed swap is allowed when it preserves every baseline floor. It still
+                        // goes through the normal gate whenever that gate can evaluate it cleanly.
+                        let gapsBefore = Set(
+                            baselineCoverageGaps(in: updated, blueprint: blueprint).map { $0.seed }
+                        )
+                        let gapsAfter = Set(
+                            baselineCoverageGaps(in: menusWithoutReplacedSlot, blueprint: blueprint).map { $0.seed }
+                        )
+                        let baselineFloorPreserved = !gapsAfter.contains(group.seed)
+                            && gapsAfter.isSubset(of: gapsBefore)
+                        guard menuPlanningBudgetAllows(
+                            candidateName: candidate.name,
+                            candidateTarget: candidate.target,
+                            existingMenus: {
+                                var menus = menusWithoutReplacedSlot
+                                menus[dayOffset].remove(at: replaceIndex)
+                                return menus
+                            }(),
+                            selectedToday: [],
+                            blueprint: blueprint
+                        ) || baselineFloorPreserved else { continue }
 
-                    updated = menusWithoutReplacedSlot
-                    break candidateSearch
+                        updated = menusWithoutReplacedSlot
+                        break candidateSearch
+                    }
                 }
             }
         }
@@ -1740,46 +1742,47 @@ extension ClaudeService {
                             muscleTarget: candidate.target
                         )
                         guard exerciseMatchesDayStyle(probe, style: canonicalTrainingStyle(plan.style)) else { continue }
-                        guard let replaceIndex = baselineCoverageReplacementIndex(
+                        let replacementIndices = baselineCoverageReplacementIndices(
                             in: updated[dayIndex],
                             focusIntent: focusIntent,
                             supportIntents: supportIntents
-                        ) else { continue }
-
-                        // Do not evict a slot that already credits this same priority (net-zero swap).
-                        let evicted = updated[dayIndex][replaceIndex]
-                        guard !credits(evicted.exerciseName, evicted.muscleTarget, area: allocation.area) else { continue }
-
-                        // Priority feasibility is downstream of BASE-001. Never evict the
-                        // only direct movement for another non-priority major group while
-                        // trying to add a priority slot.
-                        let baselineGapsBefore = Set(
-                            baselineCoverageGaps(in: updated, blueprint: blueprint).map { $0.seed }
                         )
-                        var menusWithoutReplacedSlot = updated
-                        menusWithoutReplacedSlot[dayIndex].remove(at: replaceIndex)
-                        let baselineGapsAfter = Set(
-                            baselineCoverageGaps(in: menusWithoutReplacedSlot, blueprint: blueprint).map { $0.seed }
-                        )
-                        guard baselineGapsAfter.isSubset(of: baselineGapsBefore) else { continue }
-                        guard menuPlanningBudgetAllows(
-                            candidateName: candidate.name,
-                            candidateTarget: candidate.target,
-                            existingMenus: menusWithoutReplacedSlot,
-                            selectedToday: [],
-                            blueprint: blueprint
-                        ) else { continue }
+                        for replaceIndex in replacementIndices {
+                            // Do not evict a slot that already credits this same priority (net-zero swap).
+                            let evicted = updated[dayIndex][replaceIndex]
+                            guard !credits(evicted.exerciseName, evicted.muscleTarget, area: allocation.area) else { continue }
 
-                        let metadata = exerciseMetadata(forExerciseName: candidate.name, muscleTarget: candidate.target)
-                        updated[dayIndex][replaceIndex] = PreSelectedExercise(
-                            exerciseName: candidate.name,
-                            muscleTarget: candidate.target,
-                            movementPattern: metadata.movementPattern,
-                            role: proceduralExerciseRole(for: candidate.name, muscleTarget: candidate.target),
-                            prescribedSets: 1
-                        )
-                        placed = true
-                        break dayLoop
+                            // Priority feasibility is downstream of BASE-001. Never evict the
+                            // only direct movement for another non-priority major group while
+                            // trying to add a priority slot.
+                            let baselineGapsBefore = Set(
+                                baselineCoverageGaps(in: updated, blueprint: blueprint).map { $0.seed }
+                            )
+                            var menusWithoutReplacedSlot = updated
+                            menusWithoutReplacedSlot[dayIndex].remove(at: replaceIndex)
+                            let baselineGapsAfter = Set(
+                                baselineCoverageGaps(in: menusWithoutReplacedSlot, blueprint: blueprint).map { $0.seed }
+                            )
+                            guard baselineGapsAfter.isSubset(of: baselineGapsBefore) else { continue }
+                            guard menuPlanningBudgetAllows(
+                                candidateName: candidate.name,
+                                candidateTarget: candidate.target,
+                                existingMenus: menusWithoutReplacedSlot,
+                                selectedToday: [],
+                                blueprint: blueprint
+                            ) else { continue }
+
+                            let metadata = exerciseMetadata(forExerciseName: candidate.name, muscleTarget: candidate.target)
+                            updated[dayIndex][replaceIndex] = PreSelectedExercise(
+                                exerciseName: candidate.name,
+                                muscleTarget: candidate.target,
+                                movementPattern: metadata.movementPattern,
+                                role: proceduralExerciseRole(for: candidate.name, muscleTarget: candidate.target),
+                                prescribedSets: 1
+                            )
+                            placed = true
+                            break dayLoop
+                        }
                     }
                 }
                 if !placed { break }
@@ -2154,14 +2157,14 @@ extension ClaudeService {
         }
     }
 
-    /// Slot the coverage pass may sacrifice: prefer the last exercise whose movement
-    /// pattern is already duplicated in the session, never a focus/support match, never
-    /// an anchor. Returns nil when the day has nothing expendable.
-    func baselineCoverageReplacementIndex(
+    /// Slots the coverage pass may sacrifice, in preference order: first duplicated-pattern
+    /// movements, then other non-focus/support non-anchor movements. Returning all legal slots
+    /// matters because the first candidate can be the only exposure for another baseline group.
+    func baselineCoverageReplacementIndices(
         in menu: [PreSelectedExercise],
         focusIntent: MusclePriorityIntent?,
         supportIntents: [MusclePriorityIntent]
-    ) -> Int? {
+    ) -> [Int] {
         let patternCounts = Dictionary(grouping: menu.indices, by: { menu[$0].movementPattern })
             .mapValues(\.count)
 
@@ -2183,18 +2186,17 @@ extension ClaudeService {
             }
         }
 
-        if let redundantIndex = menu.indices.reversed().first(where: { index in
+        let redundantIndices = menu.indices.reversed().filter { index in
             patternCounts[menu[index].movementPattern, default: 0] > 1
                 && !matchesDayIntent(menu[index])
                 && menu[index].role != .anchor
-        }) {
-            return redundantIndex
         }
-
-        return menu.indices.reversed().first { index in
+        let otherEligibleIndices = menu.indices.reversed().filter { index in
             !matchesDayIntent(menu[index])
                 && menu[index].role != .anchor
+                && !redundantIndices.contains(index)
         }
+        return redundantIndices + otherEligibleIndices
     }
 
     // MARK: - Phase 2: Exercise History Filtering
