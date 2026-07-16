@@ -1555,38 +1555,12 @@ extension ClaudeService {
                         prescribedSets: 1
                     )
 
-                    // The validator permits 5-8 movements per training day. A six-movement
-                    // menu can already contain the only direct exposure for several other
-                    // maintenance groups, so swapping one of them would simply move BASE-001's
-                    // zero to a different muscle. Use the available capacity before replacing.
-                    if updated[dayOffset].count < 8 {
-                        var expandedMenus = updated
-                        expandedMenus[dayOffset].append(candidateMenu)
-                        let gapsBefore = Set(
-                            baselineCoverageGaps(in: updated, blueprint: blueprint).map { $0.seed }
-                        )
-                        let gapsAfter = Set(
-                            baselineCoverageGaps(in: expandedMenus, blueprint: blueprint).map { $0.seed }
-                        )
-                        let baselineFloorPreserved = !gapsAfter.contains(group.seed)
-                            && gapsAfter.isSubset(of: gapsBefore)
-                        guard menuPlanningBudgetAllows(
-                            candidateName: candidate.name,
-                            candidateTarget: candidate.target,
-                            existingMenus: updated,
-                            selectedToday: [],
-                            blueprint: blueprint
-                        ) || baselineFloorPreserved else { continue }
-                        print("[BASELINE APPEND DEBUG] group=\(group.seed) candidate=\(candidate.name) day=\(dayOffset + 1) gapsBefore=\(gapsBefore.sorted())")
-                        updated = expandedMenus
-                        break candidateSearch
-                    }
-
                     let replacementIndices = baselineCoverageReplacementIndices(
                         in: updated[dayOffset],
                         focusIntent: focusIntent,
                         supportIntents: supportIntents
                     )
+                    var replaced = false
                     for replaceIndex in replacementIndices {
                         var menusWithoutReplacedSlot = updated
                         menusWithoutReplacedSlot[dayOffset].remove(at: replaceIndex)
@@ -1617,6 +1591,37 @@ extension ClaudeService {
                         ) || baselineFloorPreserved else { continue }
 
                         updated = menusWithoutReplacedSlot
+                        replaced = true
+                        break
+                    }
+                    if replaced {
+                        break candidateSearch
+                    }
+
+                    // The validator permits 5-8 movements per training day. A six-movement
+                    // menu can already contain the only direct exposure for several other
+                    // maintenance groups, so swapping one of them would simply move BASE-001's
+                    // zero to a different muscle. Use the available capacity only after every
+                    // safe replacement has been rejected.
+                    if updated[dayOffset].count < 8 {
+                        var expandedMenus = updated
+                        expandedMenus[dayOffset].append(candidateMenu)
+                        let gapsBefore = Set(
+                            baselineCoverageGaps(in: updated, blueprint: blueprint).map { $0.seed }
+                        )
+                        let gapsAfter = Set(
+                            baselineCoverageGaps(in: expandedMenus, blueprint: blueprint).map { $0.seed }
+                        )
+                        let baselineFloorPreserved = !gapsAfter.contains(group.seed)
+                            && gapsAfter.isSubset(of: gapsBefore)
+                        guard menuPlanningBudgetAllows(
+                            candidateName: candidate.name,
+                            candidateTarget: candidate.target,
+                            existingMenus: updated,
+                            selectedToday: [],
+                            blueprint: blueprint
+                        ) || baselineFloorPreserved else { continue }
+                        updated = expandedMenus
                         break candidateSearch
                     }
                 }
