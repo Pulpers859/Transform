@@ -1527,6 +1527,9 @@ extension ClaudeService {
                     exerciseName: candidate.name,
                     muscleTarget: candidate.target
                 ) else { continue }
+                if group.seed == "core" {
+                    print("[BASELINE DEBUG] core candidate: \(candidate.name) [\(candidate.target)] current gaps=\(baselineCoverageGaps(in: updated, blueprint: blueprint).map { $0.seed })")
+                }
 
                 let probe = WorkoutExerciseResponse(
                     exerciseName: candidate.name,
@@ -1575,6 +1578,9 @@ extension ClaudeService {
                     )
                     let baselineFloorPreserved = !gapsAfter.contains(group.seed)
                         && gapsAfter.isSubset(of: gapsBefore)
+                    if group.seed == "core" {
+                        print("[BASELINE DEBUG] core placement day=\(dayOffset + 1) candidate=\(candidate.name) replace=\(replaceIndex) budget=\(menuPlanningBudgetAllows(candidateName: candidate.name, candidateTarget: candidate.target, existingMenus: { var menus = menusWithoutReplacedSlot; menus[dayOffset].remove(at: replaceIndex); return menus }(), selectedToday: [], blueprint: blueprint)) floor=\(baselineFloorPreserved) gapsAfter=\(gapsAfter)")
+                    }
                     guard menuPlanningBudgetAllows(
                         candidateName: candidate.name,
                         candidateTarget: candidate.target,
