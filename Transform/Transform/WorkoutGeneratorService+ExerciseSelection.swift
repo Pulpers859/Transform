@@ -1527,9 +1527,6 @@ extension ClaudeService {
                     exerciseName: candidate.name,
                     muscleTarget: candidate.target
                 ) else { continue }
-                if group.seed == "core" {
-                    print("[BASELINE DEBUG] core candidate: \(candidate.name) [\(candidate.target)] current gaps=\(baselineCoverageGaps(in: updated, blueprint: blueprint).map { $0.seed })")
-                }
 
                 let probe = WorkoutExerciseResponse(
                     exerciseName: candidate.name,
@@ -1578,9 +1575,6 @@ extension ClaudeService {
                     )
                     let baselineFloorPreserved = !gapsAfter.contains(group.seed)
                         && gapsAfter.isSubset(of: gapsBefore)
-                    if group.seed == "core" {
-                        print("[BASELINE DEBUG] core placement day=\(dayOffset + 1) candidate=\(candidate.name) replace=\(replaceIndex) budget=\(menuPlanningBudgetAllows(candidateName: candidate.name, candidateTarget: candidate.target, existingMenus: { var menus = menusWithoutReplacedSlot; menus[dayOffset].remove(at: replaceIndex); return menus }(), selectedToday: [], blueprint: blueprint)) floor=\(baselineFloorPreserved) gapsAfter=\(gapsAfter)")
-                    }
                     guard menuPlanningBudgetAllows(
                         candidateName: candidate.name,
                         candidateTarget: candidate.target,
@@ -1756,8 +1750,18 @@ extension ClaudeService {
                         let evicted = updated[dayIndex][replaceIndex]
                         guard !credits(evicted.exerciseName, evicted.muscleTarget, area: allocation.area) else { continue }
 
+                        // Priority feasibility is downstream of BASE-001. Never evict the
+                        // only direct movement for another non-priority major group while
+                        // trying to add a priority slot.
+                        let baselineGapsBefore = Set(
+                            baselineCoverageGaps(in: updated, blueprint: blueprint).map { $0.seed }
+                        )
                         var menusWithoutReplacedSlot = updated
                         menusWithoutReplacedSlot[dayIndex].remove(at: replaceIndex)
+                        let baselineGapsAfter = Set(
+                            baselineCoverageGaps(in: menusWithoutReplacedSlot, blueprint: blueprint).map { $0.seed }
+                        )
+                        guard baselineGapsAfter.isSubset(of: baselineGapsBefore) else { continue }
                         guard menuPlanningBudgetAllows(
                             candidateName: candidate.name,
                             candidateTarget: candidate.target,
