@@ -25,7 +25,7 @@ validator.
 | **Phone-free troubleshooting workflow** | ✅ Added and CI-verified. A versioned failure-class fixture pins the allocated menu and validator verdict; a manual live Anthropic contract check is bounded to one HTTP attempt; Claude Code can independently review credential-scanned diffs with no tools. |
 | **Roadmap #3 — effort governance + autoregulation loop** | 🟢 Implemented and macOS-CI green; physical-device confirmation remains. Set records now preserve optional RIR, and two corroborating exercise-specific sessions can conservatively override a rep-ceiling load increase to protect recovery. |
 
-**Current troubleshooting checkpoint:** `a768604` on `main`; the shared per-set progression decision, latest-performance-log coverage, optional per-set RIR capture, exercise-specific effort governance, Generator Tests, and full Xcode build are green. The latest billed live contract check passed on `015c3e0`; that headless fixture does not execute the SwiftData-backed `WorkoutView` wiring.
+**Current troubleshooting checkpoint:** `04d3003` on `main`; the shared per-set progression decision, latest-performance-log coverage, optional per-set RIR capture, exercise-specific effort governance, Generator Tests, full Xcode build, and the bounded live Anthropic contract check are green. Run `29464225672` used one logical request and one maximum HTTP attempt and reported zero validator issues; that headless fixture does not execute the SwiftData-backed `WorkoutView` wiring.
 
 **If you do one thing next:** verify the RIR field and the resulting exercise-specific recovery verdict on the physical device; do not assume completed reps reveal RIR when the field is blank.
 
