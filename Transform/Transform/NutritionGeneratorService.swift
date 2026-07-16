@@ -1452,7 +1452,11 @@ extension ClaudeService {
         let minimumCarbs = max(50, Int(ceil((1200.0 - protein * 4 - fat * 9) / 4.0)))
         let maximumCarbs = min(600, Int(floor((5000.0 - protein * 4 - fat * 9) / 4.0)))
         var calories = requestedCalories
-        var carbs = min(maximumCarbs, max(minimumCarbs, Int(resolved.carbsG.rounded())))
+        let boundedMaximumCarbs = max(minimumCarbs, maximumCarbs)
+        var carbs = min(
+            boundedMaximumCarbs,
+            max(minimumCarbs, Int(resolved.carbsG.rounded()))
+        )
 
         // Analysis targets can be internally inconsistent or below safety floors.
         // Reconcile the generator's working target once so prompts, validation, and
@@ -1461,22 +1465,25 @@ extension ClaudeService {
         // validator bands are the ceiling here, so a compliant fallback always
         // remains inside the same contract.
         let calorieAnchoredCarbs = Int(floor((Double(requestedCalories) - protein * 4 - fat * 9) / 4.0))
-        if (minimumCarbs...maximumCarbs).contains(calorieAnchoredCarbs) {
+        if (minimumCarbs...boundedMaximumCarbs).contains(calorieAnchoredCarbs) {
             carbs = calorieAnchoredCarbs
         }
-        calories = protein * 4 + carbs * 4 + Int((fat * 9).rounded())
+        let proteinCalories = protein * 4
+        let carbohydrateCalories = Double(carbs) * 4
+        let fatCalories = fat * 9
+        calories = Int((proteinCalories + carbohydrateCalories + fatCalories).rounded())
 
         let requestedMacroCalories = resolved.proteinG * 4 + resolved.carbsG * 4 + resolved.fatG * 9
         let changed = calories != resolved.calories
             || Int(protein.rounded()) != Int(resolved.proteinG.rounded())
-            || Int(carbs.rounded()) != Int(resolved.carbsG.rounded())
+            || carbs != Int(resolved.carbsG.rounded())
             || Int(fat.rounded()) != Int(resolved.fatG.rounded())
             || abs(requestedMacroCalories - Double(resolved.calories)) > Double(max(resolved.calories, 1)) * 0.15
         let adjustments = resolved.floorAdjustments + (changed ? ["Nutrition generator reconciled macro calories with the safe target before generation."] : [])
         return DailyMacroTargets(
             calories: calories,
             proteinG: protein,
-            carbsG: carbs,
+            carbsG: Double(carbs),
             fatG: fat,
             source: resolved.source,
             floorAdjustments: adjustments

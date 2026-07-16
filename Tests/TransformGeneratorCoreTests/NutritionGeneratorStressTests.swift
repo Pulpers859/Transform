@@ -16,19 +16,23 @@ final class NutritionGeneratorStressTests: XCTestCase {
             ("inconsistent", AnalysisMacroTargets(calories: 2000, proteinG: 300, carbsG: 400, fatG: 150)),
             ("standard", AnalysisMacroTargets(calories: 2200, proteinG: 190, carbsG: 220, fatG: 65)),
             ("high", AnalysisMacroTargets(calories: 3600, proteinG: 260, carbsG: 420, fatG: 110)),
-            ("upper-bound", AnalysisMacroTargets(calories: 5000, proteinG: 350, carbsG: 600, fatG: 150))
+            ("upper-bound", AnalysisMacroTargets(calories: 5000, proteinG: 350, carbsG: 600, fatG: 150)),
+            ("macro-ceiling", AnalysisMacroTargets(calories: 5000, proteinG: 400, carbsG: 600, fatG: 250))
         ]
 
         for (label, macros) in cases {
             let analysis = nutritionAnalysis(macros: macros)
             let week = service.buildFallbackNutritionWeek(weekNumber: 1, from: analysis, diagnostic: "stress \(label)")
             let targets = service.effectiveNutritionTargets(from: analysis)
+            let macroCalories = Int((targets.proteinG * 4 + targets.carbsG * 4 + targets.fatG * 9).rounded())
 
             XCTAssertTrue((1000...5000).contains(week.dailyCaloriesTraining), label)
             XCTAssertTrue((60...400).contains(week.dailyProteinG), label)
             XCTAssertTrue((20...250).contains(week.dailyFatG), label)
             XCTAssertTrue((30...600).contains(week.dailyCarbsGTraining), label)
             XCTAssertGreaterThan(week.dailyCarbsGTraining, week.dailyCarbsGRest, label)
+            XCTAssertEqual(targets.carbsG, targets.carbsG.rounded(), label)
+            XCTAssertEqual(targets.calories, macroCalories, label)
 
             assertTemplateArithmetic(week.trainingDay, label: "\(label) training")
             assertTemplateArithmetic(week.restDay, label: "\(label) rest")
