@@ -1472,12 +1472,14 @@ extension ClaudeService {
             trainingIntent: trainingIntent,
             avoidedExercises: avoidedExercises
         )
+        print("[BASELINE LEDGER DEBUG] afterCoverage=\(baselineCoverageGaps(in: coverageCompleteMenus, blueprint: blueprint).map { $0.seed })")
         let feasibilityCompleteMenus = enforcePriorityDirectSetFeasibility(
             coverageCompleteMenus,
             blueprint: blueprint,
             trainingIntent: trainingIntent,
             avoidedExercises: avoidedExercises
         )
+        print("[BASELINE LEDGER DEBUG] afterPriority=\(baselineCoverageGaps(in: feasibilityCompleteMenus, blueprint: blueprint).map { $0.seed })")
         return allocateWeeklySetPrescription(
             feasibilityCompleteMenus,
             blueprint: blueprint,
@@ -1504,6 +1506,10 @@ extension ClaudeService {
         for group in majorMuscleGroups {
             let aliases = normalizedGroupAliases(forSeed: group.seed)
             guard !isMajorMuscleGroupPrioritized(seed: group.seed, blueprint: blueprint) else { continue }
+
+            if group.seed == "quads" || group.seed == "calf" {
+                print("[BASELINE GROUP DEBUG] seed=\(group.seed) catalog=\(metadataFocusExerciseCatalog(for: group.seed).map { $0.name }) used=\(Set(updated.joined().map { normalizeExerciseName($0.exerciseName) }))")
+            }
 
             let covered = updated.joined().contains { exercise in
                 exerciseDirectlyTargets(
