@@ -1489,7 +1489,8 @@ extension ClaudeService {
                 finalCoverageMenus,
                 blueprint: blueprint,
                 trainingIntent: trainingIntent,
-                avoidedExercises: avoidedExercises
+                avoidedExercises: avoidedExercises,
+                allowReplacements: false
             )
             let gapsAfter = Set(
                 baselineCoverageGaps(in: repairedMenus, blueprint: blueprint).map { $0.seed }
@@ -1517,7 +1518,8 @@ extension ClaudeService {
         _ menus: [[PreSelectedExercise]],
         blueprint: ProgramBlueprint,
         trainingIntent: TrainingIntentPlan,
-        avoidedExercises: Set<String>
+        avoidedExercises: Set<String>,
+        allowReplacements: Bool = true
     ) -> [[PreSelectedExercise]] {
         var updated = menus
         for group in majorMuscleGroups {
@@ -1568,13 +1570,14 @@ extension ClaudeService {
                         prescribedSets: 1
                     )
 
-                    let replacementIndices = baselineCoverageReplacementIndices(
-                        in: updated[dayOffset],
-                        focusIntent: focusIntent,
-                        supportIntents: supportIntents
-                    )
                     var replaced = false
-                    for replaceIndex in replacementIndices {
+                    if allowReplacements {
+                        let replacementIndices = baselineCoverageReplacementIndices(
+                            in: updated[dayOffset],
+                            focusIntent: focusIntent,
+                            supportIntents: supportIntents
+                        )
+                        for replaceIndex in replacementIndices {
                         var menusWithoutReplacedSlot = updated
                         menusWithoutReplacedSlot[dayOffset].remove(at: replaceIndex)
                         menusWithoutReplacedSlot[dayOffset].insert(candidateMenu, at: replaceIndex)
@@ -1603,9 +1606,10 @@ extension ClaudeService {
                             blueprint: blueprint
                         ) || baselineFloorPreserved else { continue }
 
-                        updated = menusWithoutReplacedSlot
-                        replaced = true
-                        break
+                            updated = menusWithoutReplacedSlot
+                            replaced = true
+                            break
+                        }
                     }
                     if replaced {
                         break candidateSearch
@@ -1798,6 +1802,8 @@ extension ClaudeService {
                         // available validator-approved slot before asking a later fallback to
                         // trade away a baseline movement for another priority touch.
                         if updated[dayIndex].count < 8,
+                           !blueprint.calibration.recoveryConstrained,
+                           !blueprint.calibration.poorNutritionAdherence,
                            !updated[dayIndex].contains(where: {
                                normalizeExerciseName($0.exerciseName) == key
                            }),
