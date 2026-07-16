@@ -14,7 +14,7 @@ whole class of bugs (the "required vs achievable weekly volume" drift) could rec
 and only surface as a failed generation on device.
 
 This package compiles **only** that core plus its model dependencies and exercises it with
-plain `swift test` on any Mac or a GitHub `macos` runner.
+`swift test --enable-xctest` on any Mac or a GitHub `macos` runner.
 
 ## What it is
 
@@ -22,7 +22,7 @@ plain `swift test` on any Mac or a GitHub `macos` runner.
   `Transform`, that compiles the **real app source files in place** (no copies,
   single source of truth) and one test target, `TransformGeneratorCoreTests`.
 - **`Tests/TransformGeneratorCoreTests/`** — the tests.
-- **`.github/workflows/generator-tests.yml`** — runs `swift test` on `macos-latest`.
+- **`.github/workflows/generator-tests.yml`** — runs `swift test --enable-xctest --parallel` on `macos-latest` and fails if no XCTest cases or nutrition stress suite are discovered.
 
 The Xcode app target (`Transform/Transform.xcodeproj`) is **not touched**. The project uses
 Xcode 16 synchronized folders, so no `project.pbxproj` changes are involved.
@@ -40,7 +40,7 @@ the photo path compiles out and the generator core builds.
 
 ```sh
 # from the repo root
-swift test
+swift test --enable-xctest
 ```
 
 macOS 14+ is required (SwiftData `@Model` types).

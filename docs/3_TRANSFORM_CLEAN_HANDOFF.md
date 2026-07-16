@@ -13,11 +13,11 @@ This file is the Transform-specific workflow reference for the repo at `C:\Dev\T
 
 ## Current Standing Snapshot (last verified 2026-07-16)
 
-- **Repository:** `main` is synchronized with `origin/main` at `9fb4df0`; the local tracked Swift tree contains 56 files.
+- **Repository:** `main` is synchronized with `origin/main` at `786bbec`; the local tracked Swift tree contains 56 files.
 - **Generator:** the recent zero-direct-set incident was traced to the locked preselected-menu planner omitting a baseline muscle group. The fix is in menu planning: baseline coverage is enforced, feasible replacement passes protect the existing menu, and a repeated append-only final repair pass closes any remaining legal gap. This is a root-cause planning fix, not workout trimming or warning demotion.
-- **Automated proof:** the Generator Tests and Swift/Xcode build workflows passed after the semantic fix and again after the formatting-only `9fb4df0` commit.
-- **Live proof:** the bounded Anthropic workflow passed the historical five-error fixture with one logical request, one maximum HTTP attempt, and zero validator issues on `bcd76ed`.
-- **Still unproven:** the Windows agent cannot build the iOS app; CI does not prove SwiftData/UI behavior; one fixture does not prove every profile. The owner's physical-iPhone build and real generation remain the final runtime check.
+- **Automated proof:** Generator Tests run `29518627719` and Swift/Xcode run `29518627712` passed on `786bbec`; the generator target executed 26 XCTest cases, including four deterministic nutrition stress tests and the gated nutrition live-contract test (skipped without live authorization).
+- **Nutrition audit:** target safety resolution is shared by prompt, validator, and fallback; meal/template calories and all macro sums are checked; meal order, substitutions, grocery quality, source provenance, and fallback transitions are covered. A manual live nutrition contract is wired but was not dispatched in this checkpoint.
+- **Still unproven:** the Windows agent cannot build the iOS app; CI does not prove SwiftData/UI behavior; deterministic fixtures do not prove every profile; the latest Claude second audit was incomplete due session limits. The owner's physical-iPhone build and real generation remain the final runtime check.
 
 When this snapshot is used, verify the current commit and workflow runs first. Report evidence separately as code/tests, bounded live workflow, or physical-device validation.
 

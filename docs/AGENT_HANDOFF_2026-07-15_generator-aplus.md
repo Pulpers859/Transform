@@ -24,12 +24,13 @@ validator.
 | **Roadmap #1 — unify credit ledger + generation-time invariant** | ✅ Fixed and CI-verified. Direct sets require primary metadata, each exercise counts once per priority, and allocation asserts equality with validator recomputation. |
 | **Phone-free troubleshooting workflow** | ✅ Added and CI-verified. A versioned failure-class fixture pins the allocated menu and validator verdict; a manual live Anthropic contract check is bounded to one HTTP attempt; Claude Code can independently review credential-scanned diffs with no tools. |
 | **Roadmap #3 — effort governance + autoregulation loop** | ✅ Implemented in code and macOS-CI green; physical-device confirmation remains. Set records preserve optional RIR, and two corroborating exercise-specific sessions can conservatively override a rep-ceiling load increase to protect recovery. |
+| **Nutrition generator audit** | ✅ Root-cause target reconciliation, meal/grocery arithmetic validation, ordered meal/substitution checks, safe fallback allocation, source provenance, and fallback-transition controls are implemented. The stress matrix and production test target execute on macOS CI. |
 
-**Current troubleshooting checkpoint:** `9fb4df0` on `main`, synchronized with `origin/main`. The semantic generator repair is `bcd76ed`; `9fb4df0` only reformats that same block. Generator Tests and the full Swift/Xcode build passed after the semantic fix and again after the formatting-only commit. The bounded live Anthropic fixture run `29470358237` used one logical request and one maximum HTTP attempt and reported zero validator issues. It does not execute the SwiftData-backed `WorkoutView` wiring.
+**Current troubleshooting checkpoint:** `786bbec` on `main`, synchronized with `origin/main`. Generator Tests run `29518627719` and Swift/Xcode run `29518627712` both passed. The generator target executed 26 XCTest cases, including four deterministic nutrition stress tests and the manually gated nutrition live-contract test (skipped when live API authorization is absent). The live nutrition workflow is wired but has not been run in this checkpoint, so no Anthropic nutrition response is being claimed as validated.
 
-**If you do one thing next:** build the current `main` in Xcode and run a real generation on the physical iPhone, then verify the previously failing baseline muscle coverage and the RIR/recovery path. Do not call the generator universally resolved from CI or one fixture alone.
+**If you do one thing next:** dispatch the manual troubleshooting workflow with `run_live_ai=true` and `confirm_api_usage=RUN_LIVE_AI` when API spend is authorized, then build the current `main` in Xcode and run nutrition and workout generation on the physical iPhone. Do not call either generator universally resolved from CI or one live fixture alone.
 
-**Evidence boundary:** code inspection and CI prove compile/test behavior; the bounded live run proves the configured Anthropic contract for the historical fixture; only the owner's physical-device run proves the shipped SwiftData/UI path and the real user-profile experience.
+**Evidence boundary:** code inspection and CI prove compile/test behavior; the manual live workflow proves the configured Anthropic request/decode/sanitize/validate path only when it is actually dispatched; only the owner's physical-device run proves the shipped SwiftData/UI path and real user-profile experience. The latest Claude second audit was not completed because its session limit was reached; it must not be represented as approval.
 
 ---
 
@@ -92,7 +93,7 @@ without needing the device.**
   types require macOS 14+.
 - **`Tests/TransformGeneratorCoreTests/DeterministicGenerationTests.swift`** — the
   tests. `@MainActor` to tolerate actor isolation on the generator surface.
-- **`.github/workflows/generator-tests.yml`** — `swift test --parallel` on
+- **`.github/workflows/generator-tests.yml`** — `swift test --enable-xctest --parallel` on
   `macos-latest`, `timeout-minutes: 12` so a future runaway can't wall CI.
 - **`docs/generator-test-harness.md`** — the living design/usage doc for the harness.
 
@@ -155,7 +156,7 @@ I added temporary `PHASE-TIMING` prints around each of the four phases (commits
 validation, not the AI path (there is none in this path). Measuring first meant I
 fixed the right 5% of the code instead of "optimizing" the innocent 95%.
 
-> Aside: `swift test --parallel` swallows stdout of *passing* tests, so the timing
+> Aside: `swift test --enable-xctest --parallel` swallows stdout of *passing* tests, so the timing
 > prints were invisible until I temporarily ran sequential `swift test`. If you ever
 > need to see prints from green tests, run sequentially, then restore `--parallel`.
 
@@ -218,8 +219,8 @@ visible — which is the argument for #2 in one sentence.
 
 ```sh
 # from repo root, on macOS 14+ with Xcode/Swift toolchain
-swift test                 # sequential — shows prints from passing tests
-swift test --parallel      # what CI runs
+swift test --enable-xctest                 # run XCTest cases explicitly
+swift test --enable-xctest --parallel      # what CI runs
 ```
 
 CI: `.github/workflows/generator-tests.yml` runs on every push/PR to `main`. It is
@@ -376,7 +377,10 @@ Evidence at the current checkpoint:
 |---|---|
 | `Package.swift` | SPM harness manifest (target `Transform`, explicit `sources`). |
 | `Tests/TransformGeneratorCoreTests/DeterministicGenerationTests.swift` | Structured and legacy generation regressions, variation policy, canonical credit semantics, complete-menu checks, and allocator/validator consistency. |
-| `.github/workflows/generator-tests.yml` | `swift test --parallel` on macOS, 12-min cap. |
+| `.github/workflows/generator-tests.yml` | `swift test --enable-xctest --parallel` on macOS, 12-min cap; fails on zero-test or missing-nutrition discovery. |
+| `Transform/Transform/NutritionGeneratorService.swift` | Nutrition target resolution, production AI generation, validator, and safety-aligned recovery fallback. |
+| `Tests/TransformGeneratorCoreTests/NutritionGeneratorStressTests.swift` | Network-free nutrition stress matrix, validator positive controls, persistence/source check, and gated live contract. |
+| `.github/workflows/generator-troubleshooting.yml` | Manual, explicitly authorized workout and nutrition Anthropic contract checks. |
 | `docs/generator-test-harness.md` | Harness design/usage (living doc). |
 | `Transform/Transform/HarnessShims.swift` | `formatWeight` shim, `#if !canImport(UIKit)` only. |
 | `Transform/Transform/ClaudeService.swift` | 3 `#if canImport(UIKit)` guards (photo path). Inert on device. |
@@ -386,9 +390,11 @@ Evidence at the current checkpoint:
 
 **Key commits:** `afde434` (perf fix), `c686eac` through `fc4749c` (variation policy,
 feasibility fixes, diagnostics), `1f412b6` (canonical ledger and cross-style reuse),
-`bcd76ed` (append-only baseline repair), and `9fb4df0` (current formatting-only
-checkpoint). All are on `main`; the semantic and current checkpoints passed the automated
-workflows, and the semantic checkpoint passed the bounded live fixture.
+`bcd76ed` (append-only baseline repair), `6da0185` (nutrition audit implementation),
+`32371f3` (nutrition target type/root compile fix), `6874500` (real XCTest discovery
+guard), and `786bbec` (nutrition live-test reporting). All are on `main`; current
+automated proof is recorded at the top of this handoff. The nutrition live workflow
+is wired but has not been dispatched in the current checkpoint.
 
 ---
 
