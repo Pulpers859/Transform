@@ -268,6 +268,7 @@ extension ClaudeService {
         case addLoad
         case addRepsInRange
         case holdBelowRange
+        case holdForRecovery
     }
 
     struct ExerciseProgressionVerdict {

@@ -23,11 +23,13 @@ struct AddExerciseWeightSheet: View {
         var setNumber: Int
         var weightText: String
         var repsText: String
+        var rirText: String
     }
 
     enum EntryField: Hashable {
         case weight(Int)
         case reps(Int)
+        case rir(Int)
         case notes
     }
 
@@ -245,47 +247,65 @@ struct AddExerciseWeightSheet: View {
     }
 
     func setRow(index: Int, draft: SetLogDraft) -> some View {
-        HStack(spacing: 10) {
-            Text("Set \(draft.setNumber)")
-                .font(.caption.bold())
-                .foregroundStyle(TFColor.accent)
-                .frame(width: 44, alignment: .leading)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                Text("Set \(draft.setNumber)")
+                    .font(.caption.bold())
+                    .foregroundStyle(TFColor.accent)
+                    .frame(width: 44, alignment: .leading)
 
-            HStack(spacing: 4) {
-                TextField("0", text: $setLogs[index].weightText)
+                HStack(spacing: 4) {
+                    TextField("0", text: $setLogs[index].weightText)
+                        .keyboardType(.decimalPad)
+                        .focused($focusedField, equals: .weight(index))
+                        .font(.system(size: 20, weight: .black, design: .rounded))
+                        .frame(minWidth: 50)
+                    Text("lb")
+                        .font(.caption.bold())
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .background(Color(.systemBackground))
+                .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
+
+                quickAdjustButton(index: index)
+
+                Text("\u{00D7}")
+                    .font(.caption.bold())
+                    .foregroundStyle(.tertiary)
+
+                HStack(spacing: 4) {
+                    TextField("0", text: $setLogs[index].repsText)
+                        .keyboardType(.numberPad)
+                        .focused($focusedField, equals: .reps(index))
+                        .font(.system(size: 20, weight: .black, design: .rounded))
+                        .frame(minWidth: 30)
+                    Text("reps")
+                        .font(.caption.bold())
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .background(Color(.systemBackground))
+                .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
+            }
+
+            HStack(spacing: 8) {
+                Spacer()
+                Text("Optional RIR")
+                    .font(.caption2.bold())
+                    .foregroundStyle(.secondary)
+                TextField("—", text: $setLogs[index].rirText)
                     .keyboardType(.decimalPad)
-                    .focused($focusedField, equals: .weight(index))
-                    .font(.system(size: 20, weight: .black, design: .rounded))
-                    .frame(minWidth: 50)
-                Text("lb")
+                    .focused($focusedField, equals: .rir(index))
                     .font(.caption.bold())
-                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .frame(width: 48)
+                    .padding(.vertical, 7)
+                    .background(Color(.systemBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .background(Color(.systemBackground))
-            .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
-
-            quickAdjustButton(index: index)
-
-            Text("\u{00D7}")
-                .font(.caption.bold())
-                .foregroundStyle(.tertiary)
-
-            HStack(spacing: 4) {
-                TextField("0", text: $setLogs[index].repsText)
-                    .keyboardType(.numberPad)
-                    .focused($focusedField, equals: .reps(index))
-                    .font(.system(size: 20, weight: .black, design: .rounded))
-                    .frame(minWidth: 30)
-                Text("reps")
-                    .font(.caption.bold())
-                    .foregroundStyle(.secondary)
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .background(Color(.systemBackground))
-            .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
         }
     }
 
@@ -411,7 +431,14 @@ struct AddExerciseWeightSheet: View {
         if !todaysSetLogs.isEmpty {
             setLogs = todaysSetLogs
                 .sorted { $0.setNumber < $1.setNumber }
-                .map { SetLogDraft(setNumber: $0.setNumber, weightText: formatWeight($0.weightLbs), repsText: "\($0.repsCompleted)") }
+                .map {
+                    SetLogDraft(
+                        setNumber: $0.setNumber,
+                        weightText: formatWeight($0.weightLbs),
+                        repsText: "\($0.repsCompleted)",
+                        rirText: $0.rir.map(formatRIR) ?? ""
+                    )
+                }
             return
         }
 
@@ -426,7 +453,8 @@ struct AddExerciseWeightSheet: View {
             SetLogDraft(
                 setNumber: num,
                 weightText: prefillWeight.map { formatWeight($0) } ?? "",
-                repsText: prefillReps.map { String($0) } ?? ""
+                repsText: prefillReps.map { String($0) } ?? "",
+                rirText: ""
             )
         }
     }
@@ -435,7 +463,7 @@ struct AddExerciseWeightSheet: View {
         let nextNum = (setLogs.last?.setNumber ?? 0) + 1
         let lastWeight = setLogs.last?.weightText ?? ""
         let lastReps = setLogs.last?.repsText ?? ""
-        setLogs.append(SetLogDraft(setNumber: nextNum, weightText: lastWeight, repsText: lastReps))
+        setLogs.append(SetLogDraft(setNumber: nextNum, weightText: lastWeight, repsText: lastReps, rirText: ""))
     }
 
     func removeLastSet() {
@@ -448,6 +476,7 @@ struct AddExerciseWeightSheet: View {
         for i in setLogs.indices {
             setLogs[i].weightText = first.weightText
             setLogs[i].repsText = first.repsText
+            setLogs[i].rirText = first.rirText
         }
     }
 
@@ -469,7 +498,12 @@ struct AddExerciseWeightSheet: View {
         let validSets: [SetLogEntry] = setLogs.compactMap { draft in
             guard let w = parsedWeight(from: draft.weightText) else { return nil }
             let r = parsedReps(from: draft.repsText) ?? 0
-            return SetLogEntry(setNumber: draft.setNumber, weightLbs: w, repsCompleted: r)
+            return SetLogEntry(
+                setNumber: draft.setNumber,
+                weightLbs: w,
+                repsCompleted: r,
+                rir: parsedRIR(from: draft.rirText)
+            )
         }
         guard !validSets.isEmpty else { return }
         // Guard against a fast double-tap inserting duplicate logs before dismiss.
@@ -571,6 +605,18 @@ struct AddExerciseWeightSheet: View {
         let cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleaned.isEmpty, let reps = Int(cleaned), reps > 0 else { return nil }
         return reps
+    }
+
+    func parsedRIR(from text: String) -> Double? {
+        let cleaned = text
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: ",", with: ".")
+        guard let value = Double(cleaned), (0...6).contains(value) else { return nil }
+        return value
+    }
+
+    func formatRIR(_ value: Double) -> String {
+        value.rounded() == value ? String(Int(value)) : String(format: "%.1f", value)
     }
 
     func sectionLabel(_ text: String) -> some View {

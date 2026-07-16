@@ -718,6 +718,8 @@ extension ClaudeService {
                     expected = "ADD REPS before load (inside the rep range at \(weight) lb)"
                 case .holdBelowRange:
                     expected = "HOLD \(weight) lb and build reps (fell below the rep floor)"
+                case .holdForRecovery:
+                    expected = "HOLD \(weight) lb (repeated low RIR indicates recovery protection)"
                 }
                 issues.append(
                     "Day \(day.dayNumber) exercise \(exercise.exerciseName): the coaching cue '\(conflictSentence)' contradicts the app's logged progression verdict — \(expected). Rewrite the cue to agree with the logged history; if the program is deliberately overriding the progression ladder, the cue must say so explicitly."
@@ -774,6 +776,10 @@ extension ClaudeService {
                     return sentence
                 }
             case .holdBelowRange:
+                if matches(sentence, addLoadPatterns) {
+                    return sentence
+                }
+            case .holdForRecovery:
                 if matches(sentence, addLoadPatterns) {
                     return sentence
                 }

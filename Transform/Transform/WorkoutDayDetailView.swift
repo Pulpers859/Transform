@@ -532,7 +532,14 @@ struct ExerciseCard: View {
             summaryRepsCompleted: log.repsCompleted,
             repRange: repRange,
             lastWeight: log.weightLbs,
-            exerciseName: exercise.exerciseName
+            exerciseName: exercise.exerciseName,
+            performanceHistory: allPerformanceLogs.map {
+                WorkoutPerformanceLogSnapshot(
+                    canonicalExerciseKey: $0.canonicalExerciseKey,
+                    loggedAt: $0.loggedAt,
+                    setLogs: $0.decodedSetLogs
+                )
+            }
         )
         // Safety net for already-generated workouts where the note still prescribes more
         // sets than the (trimmed) structured count: don't let the generic heuristic
@@ -642,8 +649,8 @@ struct ExerciseCard: View {
                     loggedSets: todaysSetLogs,
                     suggestedWeight: workingSetAnalysis.workingWeight,
                     suggestedReps: workingSetAnalysis.topWorkingSet?.reps ?? RepRange.parse(exercise.reps)?.high,
-                    onLog: { setNumber, weight, reps in
-                        SetLoggingService.logSet(setNumber: setNumber, weightLbs: weight, reps: reps, for: exercise, modelContext: modelContext)
+                    onLog: { setNumber, weight, reps, rir in
+                        SetLoggingService.logSet(setNumber: setNumber, weightLbs: weight, reps: reps, rir: rir, for: exercise, modelContext: modelContext)
                     },
                     onClear: { setNumber in
                         SetLoggingService.clearSet(setNumber: setNumber, for: exercise, modelContext: modelContext)
@@ -1729,13 +1736,20 @@ struct ProgressionSuggestion {
         summaryRepsCompleted: Int?,
         repRange: RepRange,
         lastWeight: Double,
-        exerciseName: String
+        exerciseName: String,
+        performanceHistory: [WorkoutPerformanceLogSnapshot] = []
     ) -> ProgressionSuggestion? {
+        let key = ExerciseWeightEntry.canonicalLookupKey(exerciseName)
+        let effortSignal = WorkoutProgressionEngine.effortSignal(
+            for: key,
+            from: performanceHistory
+        )
         guard let decision = WorkoutProgressionEngine.evaluate(
             analysis: analysis,
             summaryWeight: lastWeight,
             summaryReps: summaryRepsCompleted,
-            repRange: repRange
+            repRange: repRange,
+            effortSignal: effortSignal
         ) else { return nil }
 
         let weightText = formatWeight(decision.workingWeight)
@@ -1766,6 +1780,12 @@ struct ProgressionSuggestion {
                 text: decision.usedPerSetEvidence
                     ? "Hold \(weightText) lb — a working set dropped to \(reps) (target \(repRange.low)-\(repRange.high)); even your sets out before adding"
                     : "Stay at \(weightText) lb, focus on form and full ROM",
+                color: TFColor.warning
+            )
+        case .holdForRecovery:
+            return ProgressionSuggestion(
+                icon: "arrow.down.right.circle.fill",
+                text: "Hold \(weightText) lb — repeated low RIR suggests protecting recovery before adding load",
                 color: TFColor.warning
             )
         case .addRepsInRange:
@@ -1891,6 +1911,7 @@ enum SetLoggingService {
         setNumber: Int,
         weightLbs: Double,
         reps: Int,
+        rir: Double? = nil,
         for exercise: WorkoutExercise,
         modelContext: ModelContext,
         on date: Date = .now
@@ -1898,7 +1919,7 @@ enum SetLoggingService {
         guard weightLbs > 0, reps > 0 else { return false }
         let log = todaysLogOrCreate(for: exercise, modelContext: modelContext, date: date)
         var sets = log.decodedSetLogs.filter { $0.setNumber != setNumber }
-        sets.append(SetLogEntry(setNumber: setNumber, weightLbs: weightLbs, repsCompleted: reps))
+        sets.append(SetLogEntry(setNumber: setNumber, weightLbs: weightLbs, repsCompleted: reps, rir: rir))
         return apply(sets.sorted { $0.setNumber < $1.setNumber }, to: log, exercise: exercise, modelContext: modelContext, date: date)
     }
 
@@ -2025,18 +2046,20 @@ struct InlineSetLogger: View {
     let loggedSets: [SetLogEntry]
     let suggestedWeight: Double?
     let suggestedReps: Int?
-    let onLog: (Int, Double, Int) -> Void
+    let onLog: (Int, Double, Int, Double?) -> Void
     let onClear: (Int) -> Void
 
     @State private var expanded = false
     @State private var editing: Set<Int> = []
     @State private var draftWeight: [Int: String] = [:]
     @State private var draftReps: [Int: String] = [:]
+    @State private var draftRIR: [Int: String] = [:]
     @FocusState private var focusedField: FieldKey?
 
     enum FieldKey: Hashable {
         case weight(Int)
         case reps(Int)
+        case rir(Int)
     }
 
     private var programmedCount: Int {
@@ -2120,10 +2143,14 @@ struct InlineSetLogger: View {
                 .font(.caption.bold())
             Text("\u{00D7}").font(.caption2).foregroundStyle(.tertiary)
             Text("\(set.repsCompleted) reps").font(.caption).foregroundStyle(.secondary)
+            if let rir = set.rir {
+                Text("RIR \(formatRIR(rir))").font(.caption2).foregroundStyle(.secondary)
+            }
             Spacer()
             Button {
                 draftWeight[n] = formatWeight(set.weightLbs)
                 draftReps[n] = "\(set.repsCompleted)"
+                draftRIR[n] = set.rir.map { formatRIR($0) } ?? ""
                 editing.insert(n)
             } label: {
                 Image(systemName: "pencil").font(.caption2).foregroundStyle(.secondary)
@@ -2147,22 +2174,31 @@ struct InlineSetLogger: View {
     }
 
     private func entryRow(_ n: Int) -> some View {
-        HStack(spacing: 8) {
-            setLabel(n)
-            field(text: weightBinding(n), placeholder: "lb", key: .weight(n), isReps: false, width: 54)
-            Text("\u{00D7}").font(.caption2).foregroundStyle(.tertiary)
-            field(text: repsBinding(n), placeholder: "reps", key: .reps(n), isReps: true, width: 44)
-            Spacer()
-            Button {
-                logRow(n)
-            } label: {
-                Image(systemName: "checkmark.circle")
-                    .font(.title3)
-                    .foregroundStyle(canLog(n) ? AnyShapeStyle(TFColor.accent) : AnyShapeStyle(.tertiary))
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                setLabel(n)
+                field(text: weightBinding(n), placeholder: "lb", key: .weight(n), isReps: false, width: 54)
+                Text("\u{00D7}").font(.caption2).foregroundStyle(.tertiary)
+                field(text: repsBinding(n), placeholder: "reps", key: .reps(n), isReps: true, width: 44)
+                Spacer()
+                Button {
+                    logRow(n)
+                } label: {
+                    Image(systemName: "checkmark.circle")
+                        .font(.title3)
+                        .foregroundStyle(canLog(n) ? AnyShapeStyle(TFColor.accent) : AnyShapeStyle(.tertiary))
+                }
+                .buttonStyle(.plain)
+                .disabled(!canLog(n))
+                .accessibilityLabel("Log set \(n)")
             }
-            .buttonStyle(.plain)
-            .disabled(!canLog(n))
-            .accessibilityLabel("Log set \(n)")
+            HStack(spacing: 6) {
+                Spacer()
+                Text("RIR")
+                    .font(.caption2.bold())
+                    .foregroundStyle(.secondary)
+                field(text: rirBinding(n), placeholder: "—", key: .rir(n), isReps: false, width: 42)
+            }
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
@@ -2209,6 +2245,10 @@ struct InlineSetLogger: View {
         Binding(get: { draftReps[n] ?? defaultRepsText() }, set: { draftReps[n] = $0 })
     }
 
+    private func rirBinding(_ n: Int) -> Binding<String> {
+        Binding(get: { draftRIR[n] ?? "" }, set: { draftRIR[n] = $0 })
+    }
+
     private func parsedWeight(_ n: Int) -> Double? {
         let t = (draftWeight[n] ?? defaultWeightText())
             .trimmingCharacters(in: .whitespaces)
@@ -2223,6 +2263,14 @@ struct InlineSetLogger: View {
         return v
     }
 
+    private func parsedRIR(_ n: Int) -> Double? {
+        let t = (draftRIR[n] ?? "")
+            .trimmingCharacters(in: .whitespaces)
+            .replacingOccurrences(of: ",", with: ".")
+        guard let v = Double(t), (0...6).contains(v) else { return nil }
+        return v
+    }
+
     private func canLog(_ n: Int) -> Bool {
         parsedWeight(n) != nil && parsedReps(n) != nil
     }
@@ -2232,13 +2280,18 @@ struct InlineSetLogger: View {
         focusedField = nil
         editing.remove(n)
         TFHaptics.impact(.light)
-        onLog(n, w, r)
+        onLog(n, w, r, parsedRIR(n))
     }
 
     private func resetDraft(_ n: Int) {
         draftWeight[n] = nil
         draftReps[n] = nil
+        draftRIR[n] = nil
         editing.remove(n)
+    }
+
+    private func formatRIR(_ value: Double) -> String {
+        value.rounded() == value ? String(Int(value)) : String(format: "%.1f", value)
     }
 
 }

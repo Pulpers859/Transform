@@ -407,6 +407,7 @@ struct EditPerformanceLogSheet: View {
         var setNumber: Int
         var weightText: String
         var repsText: String
+        var rirText: String
     }
 
     var canSave: Bool {
@@ -442,55 +443,72 @@ struct EditPerformanceLogSheet: View {
                         TFSectionLabel(text: "Sets")
 
                         ForEach(Array(editableSets.enumerated()), id: \.element.id) { index, _ in
-                            HStack(spacing: 10) {
-                                Text("Set \(editableSets[index].setNumber)")
-                                    .font(.caption.bold())
-                                    .foregroundStyle(TFColor.accent)
-                                    .frame(width: 44, alignment: .leading)
-
-                                HStack(spacing: 4) {
-                                    TextField("0", text: $editableSets[index].weightText)
-                                        .keyboardType(.decimalPad)
-                                        .font(.system(size: 18, weight: .bold, design: .rounded))
-                                        .frame(minWidth: 50)
-                                    Text("lb")
+                            VStack(alignment: .leading, spacing: 6) {
+                                HStack(spacing: 10) {
+                                    Text("Set \(editableSets[index].setNumber)")
                                         .font(.caption.bold())
-                                        .foregroundStyle(.secondary)
-                                }
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 10)
-                                .background(Color(.systemBackground))
-                                .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
+                                        .foregroundStyle(TFColor.accent)
+                                        .frame(width: 44, alignment: .leading)
 
-                                Text("\u{00D7}")
-                                    .font(.caption.bold())
-                                    .foregroundStyle(.tertiary)
-
-                                HStack(spacing: 4) {
-                                    TextField("0", text: $editableSets[index].repsText)
-                                        .keyboardType(.numberPad)
-                                        .font(.system(size: 18, weight: .bold, design: .rounded))
-                                        .frame(minWidth: 30)
-                                    Text("reps")
-                                        .font(.caption.bold())
-                                        .foregroundStyle(.secondary)
-                                }
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 10)
-                                .background(Color(.systemBackground))
-                                .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
-
-                                if editableSets.count > 1 {
-                                    Button {
-                                        editableSets.remove(at: index)
-                                        renumberSets()
-                                    } label: {
-                                        Image(systemName: "trash")
-                                            .font(.caption)
-                                            .foregroundStyle(TFColor.danger)
-                                            .padding(6)
+                                    HStack(spacing: 4) {
+                                        TextField("0", text: $editableSets[index].weightText)
+                                            .keyboardType(.decimalPad)
+                                            .font(.system(size: 18, weight: .bold, design: .rounded))
+                                            .frame(minWidth: 50)
+                                        Text("lb")
+                                            .font(.caption.bold())
+                                            .foregroundStyle(.secondary)
                                     }
-                                    .buttonStyle(.plain)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 10)
+                                    .background(Color(.systemBackground))
+                                    .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
+
+                                    Text("\u{00D7}")
+                                        .font(.caption.bold())
+                                        .foregroundStyle(.tertiary)
+
+                                    HStack(spacing: 4) {
+                                        TextField("0", text: $editableSets[index].repsText)
+                                            .keyboardType(.numberPad)
+                                            .font(.system(size: 18, weight: .bold, design: .rounded))
+                                            .frame(minWidth: 30)
+                                        Text("reps")
+                                            .font(.caption.bold())
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 10)
+                                    .background(Color(.systemBackground))
+                                    .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
+
+                                    if editableSets.count > 1 {
+                                        Button {
+                                            editableSets.remove(at: index)
+                                            renumberSets()
+                                        } label: {
+                                            Image(systemName: "trash")
+                                                .font(.caption)
+                                                .foregroundStyle(TFColor.danger)
+                                                .padding(6)
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                }
+
+                                HStack(spacing: 6) {
+                                    Spacer()
+                                    Text("Optional RIR")
+                                        .font(.caption2.bold())
+                                        .foregroundStyle(.secondary)
+                                    TextField("—", text: $editableSets[index].rirText)
+                                        .keyboardType(.decimalPad)
+                                        .font(.caption.bold())
+                                        .multilineTextAlignment(.center)
+                                        .frame(width: 48)
+                                        .padding(.vertical, 7)
+                                        .background(Color(.systemBackground))
+                                        .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
                                 }
                             }
                         }
@@ -559,14 +577,16 @@ struct EditPerformanceLogSheet: View {
             editableSets = [EditableSet(
                 setNumber: 1,
                 weightText: log.weightLbs > 0 ? formatWeight(log.weightLbs) : "",
-                repsText: log.repsCompleted.map(String.init) ?? ""
+                repsText: log.repsCompleted.map(String.init) ?? "",
+                rirText: ""
             )]
         } else {
             editableSets = sets.map { set in
                 EditableSet(
                     setNumber: set.setNumber,
                     weightText: formatWeight(set.weightLbs),
-                    repsText: "\(set.repsCompleted)"
+                    repsText: "\(set.repsCompleted)",
+                    rirText: set.rir.map { formatRIR($0) } ?? ""
                 )
             }
         }
@@ -577,7 +597,12 @@ struct EditPerformanceLogSheet: View {
         let validSets: [SetLogEntry] = editableSets.compactMap { draft in
             guard let w = parsedWeight(from: draft.weightText) else { return nil }
             let r = Int(draft.repsText.trimmingCharacters(in: .whitespaces)) ?? 0
-            return SetLogEntry(setNumber: draft.setNumber, weightLbs: w, repsCompleted: r)
+            return SetLogEntry(
+                setNumber: draft.setNumber,
+                weightLbs: w,
+                repsCompleted: r,
+                rir: parsedRIR(from: draft.rirText)
+            )
         }
         guard !validSets.isEmpty else { return }
 
@@ -612,6 +637,18 @@ struct EditPerformanceLogSheet: View {
         for i in editableSets.indices {
             editableSets[i].setNumber = i + 1
         }
+    }
+
+    func parsedRIR(from text: String) -> Double? {
+        let cleaned = text
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: ",", with: ".")
+        guard let value = Double(cleaned), (0...6).contains(value) else { return nil }
+        return value
+    }
+
+    func formatRIR(_ value: Double) -> String {
+        value.rounded() == value ? String(Int(value)) : String(format: "%.1f", value)
     }
 
 }

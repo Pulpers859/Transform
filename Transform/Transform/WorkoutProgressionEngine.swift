@@ -28,12 +28,20 @@ struct WorkoutProgressionDecision: Equatable {
     let workingSetCount: Int
     let ceilingSetCount: Int
     let usedPerSetEvidence: Bool
+    let effortSignal: WorkoutExerciseEffortSignal
 }
 
 struct WorkoutPerformanceLogSnapshot: Equatable {
     let canonicalExerciseKey: String
     let loggedAt: Date
     let setLogs: [SetLogEntry]
+}
+
+enum WorkoutExerciseEffortSignal: Equatable {
+    case protectRecovery
+    case progressionHeadroom
+    case neutral
+    case insufficientEvidence
 }
 
 enum WorkoutProgressionEngine {
@@ -52,7 +60,8 @@ enum WorkoutProgressionEngine {
         analysis: WorkingSetAnalysis,
         summaryWeight: Double?,
         summaryReps: Int?,
-        repRange: RepRange
+        repRange: RepRange,
+        effortSignal: WorkoutExerciseEffortSignal = .insufficientEvidence
     ) -> WorkoutProgressionDecision? {
         if let workingWeight = analysis.workingWeight, !analysis.workingSets.isEmpty {
             let reps = analysis.workingSets.map(\.reps)
@@ -61,14 +70,17 @@ enum WorkoutProgressionEngine {
             let workingCount = reps.count
             let majority = max(1, Int(ceil(Double(workingCount) * 0.67)))
 
-            let kind: ClaudeService.ProgressionVerdictKind
+            let repKind: ClaudeService.ProgressionVerdictKind
             if let minimumReps, minimumReps >= repRange.high {
-                kind = .addLoad
+                repKind = .addLoad
             } else if let minimumReps, minimumReps < repRange.low {
-                kind = .holdBelowRange
+                repKind = .holdBelowRange
             } else {
-                kind = ceilingCount >= majority ? .addLoad : .addRepsInRange
+                repKind = ceilingCount >= majority ? .addLoad : .addRepsInRange
             }
+            let kind = effortSignal == .protectRecovery && repKind != .holdBelowRange
+                ? ClaudeService.ProgressionVerdictKind.holdForRecovery
+                : repKind
 
             return WorkoutProgressionDecision(
                 kind: kind,
@@ -76,7 +88,8 @@ enum WorkoutProgressionEngine {
                 minimumWorkingReps: minimumReps,
                 workingSetCount: workingCount,
                 ceilingSetCount: ceilingCount,
-                usedPerSetEvidence: true
+                usedPerSetEvidence: true,
+                effortSignal: effortSignal
             )
         }
 
@@ -99,7 +112,8 @@ enum WorkoutProgressionEngine {
             minimumWorkingReps: summaryReps,
             workingSetCount: 0,
             ceilingSetCount: summaryReps >= repRange.high ? 1 : 0,
-            usedPerSetEvidence: false
+            usedPerSetEvidence: false,
+            effortSignal: .insufficientEvidence
         )
     }
 
@@ -107,14 +121,48 @@ enum WorkoutProgressionEngine {
         latestSetLogs: [SetLogEntry],
         summaryWeight: Double?,
         summaryReps: Int?,
-        repRange: RepRange
+        repRange: RepRange,
+        effortSignal: WorkoutExerciseEffortSignal = .insufficientEvidence
     ) -> WorkoutProgressionDecision? {
         evaluate(
             analysis: WorkingSetAnalysis.analyze(latestSetLogs),
             summaryWeight: summaryWeight,
             summaryReps: summaryReps,
-            repRange: repRange
+            repRange: repRange,
+            effortSignal: effortSignal
         )
+    }
+
+    /// Uses only explicit RIR captured on working sets. Reps and load prove whether a
+    /// double-progression step is mechanically available; they do not prove proximity to
+    /// failure. Two corroborating sessions are required before effort can override that step.
+    static func effortSignal(
+        for canonicalExerciseKey: String,
+        from snapshots: [WorkoutPerformanceLogSnapshot],
+        lookback: Int = 3
+    ) -> WorkoutExerciseEffortSignal {
+        let recent = snapshots
+            .filter { $0.canonicalExerciseKey == canonicalExerciseKey }
+            .sorted { $0.loggedAt > $1.loggedAt }
+            .prefix(max(1, lookback))
+
+        let sessionRIRs: [[Double]] = recent.compactMap { snapshot in
+            let workingSets = WorkingSetAnalysis.analyze(snapshot.setLogs).workingSets
+            let values = workingSets.compactMap { rir -> Double? in
+                guard let value = rir.rir, (0...6).contains(value) else { return nil }
+                return value
+            }
+            guard !workingSets.isEmpty,
+                  values.count == workingSets.count || (workingSets.count == 1 && values.count == 1)
+            else { return nil }
+            return values
+        }
+
+        guard sessionRIRs.count >= 2 else { return .insufficientEvidence }
+        let averages = sessionRIRs.map { $0.reduce(0, +) / Double($0.count) }
+        if averages.filter({ $0 <= 1 }).count >= 2 { return .protectRecovery }
+        if averages.filter({ $0 >= 3 }).count >= 2 { return .progressionHeadroom }
+        return .neutral
     }
 
     static func nextLoad(from weight: Double, exerciseName: String) -> Double {

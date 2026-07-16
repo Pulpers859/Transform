@@ -23,11 +23,11 @@ validator.
 | **Over-generation bug** (harness caught it) | ✅ Fixed and CI-verified with a sub-region-aware variation policy. All five original legacy combinations run instead of being skipped. |
 | **Roadmap #1 — unify credit ledger + generation-time invariant** | ✅ Fixed and CI-verified. Direct sets require primary metadata, each exercise counts once per priority, and allocation asserts equality with validator recomputation. |
 | **Phone-free troubleshooting workflow** | ✅ Added and CI-verified. A versioned failure-class fixture pins the allocated menu and validator verdict; a manual live Anthropic contract check is bounded to one HTTP attempt; Claude Code can independently review credential-scanned diffs with no tools. |
-| **Roadmap #3 — effort governance + autoregulation loop** | 🟡 In progress. The shared per-set decision path, latest-log coverage, and deterministic session-level effort governance are now in place. Explicit per-set RIR capture and exercise-specific multi-session autoregulation remain. |
+| **Roadmap #3 — effort governance + autoregulation loop** | 🟡 Implemented in code, pending macOS CI and physical-device confirmation. Set records now preserve optional RIR, and two corroborating exercise-specific sessions can conservatively override a rep-ceiling load increase to protect recovery. |
 
 **Current troubleshooting checkpoint:** `b0e0d33` on `main`; the progression-cue sanitization repair, shared per-set progression decision, latest-performance-log coverage, Generator Tests, and full Xcode build are green. The latest billed live contract check also passed on `9d837e5`; that headless fixture does not execute the SwiftData-backed `WorkoutView` wiring.
 
-**If you do one thing next:** finish roadmap #3 by keeping per-set double-progression decisions consistent across workout UI, generation prompts, and validation; do not assume completed reps reveal RIR.
+**If you do one thing next:** verify the RIR field and the resulting exercise-specific recovery verdict on the physical device; do not assume completed reps reveal RIR when the field is blank.
 
 ---
 
@@ -311,8 +311,10 @@ reps/weight → double-progression advance). The app now centralizes that decisi
 feeds the same per-set evidence to the generation verdict path; deterministic tests now
 cover mixed-set, failed-set, legacy-summary, latest-usable-log, and repeated-effort-signal
 cases. Existing session feedback now produces a conservative, deterministic governance
-signal for next-week generation. The remaining roadmap work is explicit per-set RIR
-capture and exercise-specific multi-session progression governance (see §1 note — logged
+signal for next-week generation. Explicit per-set RIR is now an optional, backward-compatible
+field on each logged set, and the shared progression engine uses two complete, exercise-specific
+RIR sessions before it can emit a recovery-protection verdict. Missing or partial RIR remains
+insufficient evidence, so legacy logs retain the rep/load-only behavior (see §1 note — logged
 reps alone can't see proximity-to-failure).
 
 ---
@@ -375,9 +377,9 @@ Read `CLAUDE.md` (root) first, then this file, then
 headless macOS `swift test` harness (roadmap #2, done). It caught a ~95× slowness bug,
 legacy over-generation, short late-week menus, and disagreement between allocation and
 validation. The variation policy and canonical direct-set ledger are now implemented and
-CI-green (roadmap #1, done). Roadmap #3 is in progress: the shared per-set
-performance→prescription decision path and conservative session-level effort governance
-are implemented and tested. Explicit per-set RIR capture remains a secondary signal to
-add when the logging UX can capture it honestly (roadmap #3, §6.3).
+CI-green (roadmap #1, done). Roadmap #3 is implemented in code: the shared per-set
+performance→prescription decision path, conservative session-level effort governance, optional
+per-set RIR capture, and exercise-specific multi-session effort signal are in place. The
+remaining proof is macOS CI plus the owner's physical-device persistence and generation run.
 Commit to `main`, fast-forward only, never force-push, never suggest the simulator,
 and be brutally honest with the owner — that's the job.

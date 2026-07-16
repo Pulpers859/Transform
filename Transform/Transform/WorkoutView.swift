@@ -1252,6 +1252,8 @@ struct WorkoutView: View {
             return "beat the \(range.low)-\(range.high) rep target at \(weight) lb — cue ADDING LOAD; next achievable step is \(next) lb"
         case .holdBelowRange:
             return "fell below the \(range.low)-\(range.high) rep target — cue HOLDING \(weight) lb and building reps"
+        case .holdForRecovery:
+            return "repeated low RIR at \(weight) lb — cue HOLDING LOAD to protect recovery before progressing"
         case .addRepsInRange:
             return "inside the \(range.low)-\(range.high) rep target at \(weight) lb — cue ADDING REPS before load"
         }
@@ -1276,11 +1278,16 @@ struct WorkoutView: View {
             for: key,
             from: snapshots
         )
+        let effortSignal = WorkoutProgressionEngine.effortSignal(
+            for: key,
+            from: snapshots
+        )
         return WorkoutProgressionEngine.evaluate(
             latestSetLogs: latestSetLogs,
             summaryWeight: entry.weightLbs,
             summaryReps: entry.repsCompleted,
-            repRange: range
+            repRange: range,
+            effortSignal: effortSignal
         )
     }
 

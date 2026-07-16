@@ -414,6 +414,9 @@ nonisolated struct SetLogEntry: Codable, Identifiable, Equatable {
     var weightLbs: Double
     var repsCompleted: Int
     var notes: String = ""
+    /// Optional reps-in-reserve captured after the set. This is intentionally optional so
+    /// older JSON logs remain valid and legacy sessions never acquire invented effort data.
+    var rir: Double? = nil
 }
 
 @Model
@@ -514,6 +517,7 @@ struct WorkingSetAnalysis {
         let setNumber: Int
         let weightLbs: Double
         let reps: Int
+        let rir: Double?
         let estimatedOneRepMax: Double
         let role: Role
     }
@@ -582,7 +586,7 @@ struct WorkingSetAnalysis {
                 role = .warmup
             }
             return AnalyzedSet(id: s.id, setNumber: s.setNumber, weightLbs: s.weightLbs,
-                               reps: s.repsCompleted, estimatedOneRepMax: e1rm, role: role)
+                               reps: s.repsCompleted, rir: s.rir, estimatedOneRepMax: e1rm, role: role)
         }
 
         let working = analyzed.filter { $0.role == .working }

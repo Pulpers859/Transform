@@ -263,6 +263,75 @@ final class GeneratorTroubleshootingTests: XCTestCase {
         )
     }
 
+    func testExerciseEffortSignalRequiresRepeatedCompleteRIRHistory() throws {
+        let key = "barbell-row"
+        let range = try XCTUnwrap(RepRange.parse("8-12"))
+        let closeSession = { (timestamp: TimeInterval) in
+            WorkoutPerformanceLogSnapshot(
+                canonicalExerciseKey: key,
+                loggedAt: Date(timeIntervalSince1970: timestamp),
+                setLogs: [
+                    SetLogEntry(setNumber: 1, weightLbs: 100, repsCompleted: 12, rir: 1),
+                    SetLogEntry(setNumber: 2, weightLbs: 100, repsCompleted: 12, rir: 0)
+                ]
+            )
+        }
+        let headroomSession = WorkoutPerformanceLogSnapshot(
+            canonicalExerciseKey: key,
+            loggedAt: Date(timeIntervalSince1970: 300),
+            setLogs: [
+                SetLogEntry(setNumber: 1, weightLbs: 100, repsCompleted: 12, rir: 4),
+                SetLogEntry(setNumber: 2, weightLbs: 100, repsCompleted: 12, rir: 3)
+            ]
+        )
+
+        XCTAssertEqual(
+            WorkoutProgressionEngine.effortSignal(for: key, from: [closeSession(100)]),
+            .insufficientEvidence
+        )
+        XCTAssertEqual(
+            WorkoutProgressionEngine.effortSignal(for: key, from: [closeSession(100), closeSession(200)]),
+            .protectRecovery
+        )
+        XCTAssertEqual(
+            WorkoutProgressionEngine.effortSignal(for: key, from: [headroomSession, closeSession(200), closeSession(100)]),
+            .protectRecovery
+        )
+
+        let decision = try XCTUnwrap(
+            WorkoutProgressionEngine.evaluate(
+                latestSetLogs: closeSession(200).setLogs,
+                summaryWeight: 100,
+                summaryReps: 12,
+                repRange: range,
+                effortSignal: .protectRecovery
+            )
+        )
+        XCTAssertEqual(decision.kind, .holdForRecovery)
+    }
+
+    func testExerciseEffortSignalRecognizesRepeatedHeadroomAndFiltersExerciseKey() {
+        let key = "barbell-row"
+        func snapshot(_ timestamp: TimeInterval, key: String, rir: Double) -> WorkoutPerformanceLogSnapshot {
+            WorkoutPerformanceLogSnapshot(
+                canonicalExerciseKey: key,
+                loggedAt: Date(timeIntervalSince1970: timestamp),
+                setLogs: [
+                    SetLogEntry(setNumber: 1, weightLbs: 100, repsCompleted: 10, rir: rir),
+                    SetLogEntry(setNumber: 2, weightLbs: 100, repsCompleted: 10, rir: rir)
+                ]
+            )
+        }
+
+        XCTAssertEqual(
+            WorkoutProgressionEngine.effortSignal(
+                for: key,
+                from: [snapshot(300, key: "bench-press", rir: 5), snapshot(200, key: key, rir: 4), snapshot(100, key: key, rir: 3)]
+            ),
+            .progressionHeadroom
+        )
+    }
+
     func testLiveWeekOneStructuredContract() async throws {
         let environment = ProcessInfo.processInfo.environment
         guard environment["TRANSFORM_RUN_LIVE_ANTHROPIC_SMOKE"] == "1" else {
