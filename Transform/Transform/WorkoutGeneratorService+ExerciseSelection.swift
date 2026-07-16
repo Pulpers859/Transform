@@ -1491,7 +1491,9 @@ extension ClaudeService {
     /// enforces focus/support coverage, so a whole week could ship with zero direct work
     /// for an unlisted muscle (seen live: no hamstring exposure all week while calves got
     /// 6 sets). For every non-priority major muscle group with zero direct coverage, swap
-    /// one redundant slot for the lowest-fatigue direct movement on a style-compatible day.
+    /// one expendable slot for the lowest-fatigue direct movement on a style-compatible day.
+    /// This pass owns a hard identity floor; the later set allocator cannot repair a missing
+    /// exercise, and the AI is explicitly forbidden from changing this menu.
     func enforceBaselineMuscleCoverage(
         _ menus: [[PreSelectedExercise]],
         blueprint: ProgramBlueprint,
@@ -1546,22 +1548,43 @@ extension ClaudeService {
                     ) else { continue }
                     var menusWithoutReplacedSlot = updated
                     menusWithoutReplacedSlot[dayOffset].remove(at: replaceIndex)
-                    guard menuPlanningBudgetAllows(
-                        candidateName: candidate.name,
-                        candidateTarget: candidate.target,
-                        existingMenus: menusWithoutReplacedSlot,
-                        selectedToday: [],
-                        blueprint: blueprint
-                    ) else { continue }
-
-                    let metadata = exerciseMetadata(forExerciseName: candidate.name, muscleTarget: candidate.target)
-                    updated[dayOffset][replaceIndex] = PreSelectedExercise(
+                    let candidateMenu = PreSelectedExercise(
                         exerciseName: candidate.name,
                         muscleTarget: candidate.target,
-                        movementPattern: metadata.movementPattern,
+                        movementPattern: exerciseMetadata(
+                            forExerciseName: candidate.name,
+                            muscleTarget: candidate.target
+                        ).movementPattern,
                         role: proceduralExerciseRole(for: candidate.name, muscleTarget: candidate.target),
                         prescribedSets: 1
                     )
+                    menusWithoutReplacedSlot[dayOffset].insert(candidateMenu, at: replaceIndex)
+
+                    // The general menu-budget gate also checks unrelated variation ledgers.
+                    // Do not let one of those soft identity heuristics defeat BASE-001: this
+                    // proposed swap is allowed when it preserves every baseline floor. It still
+                    // goes through the normal gate whenever that gate can evaluate it cleanly.
+                    let gapsBefore = Set(
+                        baselineCoverageGaps(in: updated, blueprint: blueprint).map { $0.seed }
+                    )
+                    let gapsAfter = Set(
+                        baselineCoverageGaps(in: menusWithoutReplacedSlot, blueprint: blueprint).map { $0.seed }
+                    )
+                    let baselineFloorPreserved = !gapsAfter.contains(group.seed)
+                        && gapsAfter.isSubset(of: gapsBefore)
+                    guard menuPlanningBudgetAllows(
+                        candidateName: candidate.name,
+                        candidateTarget: candidate.target,
+                        existingMenus: {
+                            var menus = menusWithoutReplacedSlot
+                            menus[dayOffset].remove(at: replaceIndex)
+                            return menus
+                        }(),
+                        selectedToday: [],
+                        blueprint: blueprint
+                    ) || baselineFloorPreserved else { continue }
+
+                    updated = menusWithoutReplacedSlot
                     usedKeys.insert(key)
                     break candidateSearch
                 }
@@ -1569,6 +1592,24 @@ extension ClaudeService {
         }
 
         return updated
+    }
+
+    func baselineCoverageGaps(
+        in menus: [[PreSelectedExercise]],
+        blueprint: ProgramBlueprint
+    ) -> [(label: String, seed: String)] {
+        majorMuscleGroups.compactMap { group in
+            guard !isMajorMuscleGroupPrioritized(seed: group.seed, blueprint: blueprint) else { return nil }
+            let aliases = normalizedGroupAliases(forSeed: group.seed)
+            let covered = menus.joined().contains { exercise in
+                exerciseDirectlyTargets(
+                    groupAliases: aliases,
+                    exerciseName: exercise.exerciseName,
+                    muscleTarget: exercise.muscleTarget
+                )
+            }
+            return covered ? nil : group
+        }
     }
 
     // MARK: - Priority Direct-Set Feasibility (the "fight")
@@ -2140,7 +2181,7 @@ extension ClaudeService {
 
         return menu.indices.reversed().first { index in
             !matchesDayIntent(menu[index])
-                && (menu[index].role == .accessory || menu[index].role == .core)
+                && menu[index].role != .anchor
         }
     }
 

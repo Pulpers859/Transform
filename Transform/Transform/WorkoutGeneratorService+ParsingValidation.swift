@@ -929,10 +929,6 @@ extension ClaudeService {
             "undershot its weighted stimulus target",
             "Too few anchor lifts carried over",
             "substitution significantly increases shoulder risk",
-            // BASE-001 floor: with a locked menu the AI cannot add a missing exercise,
-            // so this must never trigger a retry — the menu builder's coverage pass is
-            // the enforcement; this line is the observability net.
-            "receives zero direct sets this week"
         ]
     }
 

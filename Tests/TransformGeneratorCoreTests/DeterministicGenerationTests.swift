@@ -171,6 +171,98 @@ final class DeterministicGenerationTests: XCTestCase {
         )
     }
 
+    /// Reproduces the 2026-07-15 on-device report: a five-day recomp plan with Upper Chest,
+    /// Lateral Deltoids, and Core/Abs priorities produced a locked Lower menu with no direct
+    /// hamstring movement, then accepted the resulting BASE-001 warning. The menu builder must
+    /// own this floor before any AI call is made.
+    func testPhoneValidatorReportKeepsBaselineHamstringCoverage() throws {
+        let structured = StructuredTrainingIntent(
+            splitRecommendation: "Upper/Lower with a dedicated push emphasis",
+            weeklyTrainingDays: 5,
+            priorities: [
+                priority(
+                    "Upper Chest",
+                    level: "High",
+                    dayTarget: 2,
+                    exerciseTarget: 3,
+                    styles: ["Push", "Upper"],
+                    patterns: ["incline barbell press", "incline dumbbell press", "low incline fly", "upper chest", "clavicular", "incline press"]
+                ),
+                priority(
+                    "Lateral Deltoids",
+                    level: "High",
+                    dayTarget: 3,
+                    exerciseTarget: 3,
+                    styles: ["Push", "Upper", "Arms"],
+                    patterns: ["cable lateral raise", "dumbbell lateral raise", "lateral delt", "lateral raise"]
+                ),
+                priority(
+                    "Core/Abs",
+                    level: "Medium",
+                    dayTarget: 2,
+                    exerciseTarget: 2,
+                    styles: ["Upper", "Lower"],
+                    patterns: ["weighted cable crunch", "hanging leg raise", "oblique"],
+                    volumeBias: "Moderate",
+                    directWorkBias: "Maintenance"
+                )
+            ],
+            programmingNotes: [
+                "Keep total weekly volume recoverable given short sleep and a mild deficit.",
+                "Hold lower-body volume at maintenance while protecting baseline coverage."
+            ]
+        )
+        let result = BodyAnalysisResult(
+            overallAssessment: "Body recomposition with visible abs; adequate lower-body mass.",
+            trainingAssessment: "Prioritize upper chest and lateral deltoids while maintaining the lower body.",
+            nutritionAssessment: "No nutrition logs were recorded during the deficit.",
+            recoveryRiskAssessment: "Short sleep and shift work constrain recovery.",
+            adherenceAssessment: "Nutrition adherence could not be verified.",
+            analysisLimitations: "",
+            inputContext: nil,
+            regionBreakdown: [],
+            topLeverageChange: "Sustain the mild deficit.",
+            priorityMuscles: ["Upper Chest", "Lateral Deltoids", "Rectus Abdominis"],
+            workoutRecommendations: [],
+            dietRecommendations: [],
+            posturalNotes: "",
+            estimatedBodyFat: "19-21%",
+            metabolicHealthNotes: "",
+            psychologicalInsights: "",
+            injuryRiskNotes: "",
+            macroTargets: nil,
+            structuredTrainingIntent: structured
+        )
+
+        let inputs = planningInputs(from: result)
+        let hamstringAliases = service.normalizedGroupAliases(forSeed: "hamstrings")
+        let hasDirectHamstringMenu = inputs.menus.joined().contains {
+            service.exerciseDirectlyTargets(
+                groupAliases: hamstringAliases,
+                exerciseName: $0.exerciseName,
+                muscleTarget: $0.muscleTarget
+            )
+        }
+
+        XCTAssertTrue(
+            hasDirectHamstringMenu,
+            "Phone-shaped plan omitted direct hamstring coverage: "
+                + planningDescription(blueprint: inputs.blueprint, menus: inputs.menus)
+        )
+
+        let program = try service.validatedProceduralWeekOneProgram(
+            from: result,
+            trainingIntent: inputs.intent,
+            blueprint: inputs.blueprint,
+            exerciseMenus: inputs.menus
+        )
+        let issues = service.validateProgramResponse(program, blueprint: inputs.blueprint)
+        XCTAssertFalse(
+            issues.contains { $0.contains("Muscle group 'Hamstrings' receives zero direct sets this week") },
+            "Phone-shaped plan still reaches validation with zero hamstring sets: \(issues)"
+        )
+    }
+
     /// A handful of realistic structured intents across body regions must all generate.
     func testRealisticStructuredIntentsGenerate() throws {
         let cases: [(String, StructuredTrainingIntent)] = [
