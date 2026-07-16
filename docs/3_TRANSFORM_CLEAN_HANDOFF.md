@@ -11,6 +11,16 @@ This file is the Transform-specific workflow reference for the repo at `C:\Dev\T
 - Stable branch: `main`
 - Default working branch: `main`
 
+## Current Standing Snapshot (last verified 2026-07-16)
+
+- **Repository:** `main` is synchronized with `origin/main` at `9fb4df0`; the local tracked Swift tree contains 56 files.
+- **Generator:** the recent zero-direct-set incident was traced to the locked preselected-menu planner omitting a baseline muscle group. The fix is in menu planning: baseline coverage is enforced, feasible replacement passes protect the existing menu, and a repeated append-only final repair pass closes any remaining legal gap. This is a root-cause planning fix, not workout trimming or warning demotion.
+- **Automated proof:** the Generator Tests and Swift/Xcode build workflows passed after the semantic fix and again after the formatting-only `9fb4df0` commit.
+- **Live proof:** the bounded Anthropic workflow passed the historical five-error fixture with one logical request, one maximum HTTP attempt, and zero validator issues on `bcd76ed`.
+- **Still unproven:** the Windows agent cannot build the iOS app; CI does not prove SwiftData/UI behavior; one fixture does not prove every profile. The owner's physical-iPhone build and real generation remain the final runtime check.
+
+When this snapshot is used, verify the current commit and workflow runs first. Report evidence separately as code/tests, bounded live workflow, or physical-device validation.
+
 ## Why This Structure Matters
 This repo is not a flat app root.
 - The Git repo root is `Transform_clean`

@@ -35,7 +35,7 @@
   - `git rev-list --left-right --count origin/main...main` (expect `0   0`)
   - `git merge-base main origin/main` (EMPTY = unrelated histories = stale junk local `main`)
 - If stale/diverged/unrelated: `git checkout -B main origin/main`, confirm app source exists
-  (`Transform/Transform/WorkoutGeneratorService.swift`; `git ls-files "*.swift" | wc -l` currently 49), THEN edit.
+  (`Transform/Transform/WorkoutGeneratorService.swift`; `git ls-files "*.swift" | wc -l` currently 56), THEN edit.
 - NEVER force-push `origin/main`. Fast-forward pushes only; if rejected, stop and reconcile.
 
 ## Product priorities
@@ -77,3 +77,13 @@ When starting a Transform task, summarize:
 6. stale-copy warning
 7. likely risk areas for the task
 8. validation limits in the current environment
+
+## Current standing checkpoint
+
+Last verified 2026-07-16 at `9fb4df0`:
+
+- Local `main` matches `origin/main` with no ahead/behind drift.
+- The deterministic generator harness and full Swift/Xcode CI checks are green.
+- The bounded live Anthropic fixture passed with one logical request, one maximum HTTP attempt, and zero validator issues on the semantic checkpoint `bcd76ed`; `9fb4df0` only reformats that same repair block.
+- The latest generator repair addresses a planning-layer baseline-menu omission. It enforces baseline muscle coverage during menu planning and uses a repeated append-only final repair pass. It is not a post-generation trim or validator-only workaround.
+- Physical-iPhone build and real user-profile generation remain the final runtime proof. Do not call the generator universally resolved from CI or one fixture alone.

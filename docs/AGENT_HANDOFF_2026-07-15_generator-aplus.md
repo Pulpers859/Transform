@@ -1,4 +1,4 @@
-# Agent Handoff — Generator "A+" Work (2026-07-15)
+# Agent Handoff — Generator "A+" Work (living status; last verified 2026-07-16)
 
 **Audience:** the next AI agent (or future me) picking up the "make this generator
 A+, faithfully working every time" effort. Read this top to bottom before touching
@@ -23,11 +23,13 @@ validator.
 | **Over-generation bug** (harness caught it) | ✅ Fixed and CI-verified with a sub-region-aware variation policy. All five original legacy combinations run instead of being skipped. |
 | **Roadmap #1 — unify credit ledger + generation-time invariant** | ✅ Fixed and CI-verified. Direct sets require primary metadata, each exercise counts once per priority, and allocation asserts equality with validator recomputation. |
 | **Phone-free troubleshooting workflow** | ✅ Added and CI-verified. A versioned failure-class fixture pins the allocated menu and validator verdict; a manual live Anthropic contract check is bounded to one HTTP attempt; Claude Code can independently review credential-scanned diffs with no tools. |
-| **Roadmap #3 — effort governance + autoregulation loop** | 🟢 Implemented and macOS-CI green; physical-device confirmation remains. Set records now preserve optional RIR, and two corroborating exercise-specific sessions can conservatively override a rep-ceiling load increase to protect recovery. |
+| **Roadmap #3 — effort governance + autoregulation loop** | ✅ Implemented in code and macOS-CI green; physical-device confirmation remains. Set records preserve optional RIR, and two corroborating exercise-specific sessions can conservatively override a rep-ceiling load increase to protect recovery. |
 
-**Current troubleshooting checkpoint:** `04d3003` on `main`; the shared per-set progression decision, latest-performance-log coverage, optional per-set RIR capture, exercise-specific effort governance, Generator Tests, full Xcode build, and the bounded live Anthropic contract check are green. Run `29464225672` used one logical request and one maximum HTTP attempt and reported zero validator issues; that headless fixture does not execute the SwiftData-backed `WorkoutView` wiring.
+**Current troubleshooting checkpoint:** `9fb4df0` on `main`, synchronized with `origin/main`. The semantic generator repair is `bcd76ed`; `9fb4df0` only reformats that same block. Generator Tests and the full Swift/Xcode build passed after the semantic fix and again after the formatting-only commit. The bounded live Anthropic fixture run `29470358237` used one logical request and one maximum HTTP attempt and reported zero validator issues. It does not execute the SwiftData-backed `WorkoutView` wiring.
 
-**If you do one thing next:** verify the RIR field and the resulting exercise-specific recovery verdict on the physical device; do not assume completed reps reveal RIR when the field is blank.
+**If you do one thing next:** build the current `main` in Xcode and run a real generation on the physical iPhone, then verify the previously failing baseline muscle coverage and the RIR/recovery path. Do not call the generator universally resolved from CI or one fixture alone.
+
+**Evidence boundary:** code inspection and CI prove compile/test behavior; the bounded live run proves the configured Anthropic contract for the historical fixture; only the owner's physical-device run proves the shipped SwiftData/UI path and the real user-profile experience.
 
 ---
 
@@ -304,7 +306,7 @@ instead of summing duplicate metadata buckets. After allocation,
 `allocationLedgerConsistencyIssues` compares allocator totals with validator recomputation;
 a runtime assertion and dedicated harness test fail on any divergence.
 
-### 6.3 IN PROGRESS: roadmap #3 — effort governance + autoregulation loop
+### 6.3 IMPLEMENTED IN CODE: roadmap #3 — effort governance + autoregulation loop
 
 Close the performance→prescription loop using logged performance (hit prescribed
 reps/weight → double-progression advance). The app now centralizes that decision and
@@ -315,7 +317,25 @@ signal for next-week generation. Explicit per-set RIR is now an optional, backwa
 field on each logged set, and the shared progression engine uses two complete, exercise-specific
 RIR sessions before it can emit a recovery-protection verdict. Missing or partial RIR remains
 insufficient evidence, so legacy logs retain the rep/load-only behavior (see §1 note — logged
-reps alone can't see proximity-to-failure).
+reps alone can't see proximity-to-failure). This is implemented and CI-covered; physical-device
+persistence and runtime behavior remain unproven here.
+
+### 6.4 Current generator incident checkpoint — baseline coverage
+
+The owner's phone report showed a workout accepted with a zero-direct-set warning for
+hamstrings. The earliest deterministic cause was the locked preselected exercise menu:
+the menu could omit a baseline muscle group before allocation, leaving the validator to
+report the omission. The repair now enforces baseline coverage during menu planning,
+protects existing focus/support/anchor selections, repeats the repair until stable, and
+uses an append-only final pass when a legal compatible addition is required. It does not
+trim workouts after generation or weaken the validator's zero-direct-set rule.
+
+Evidence at the current checkpoint:
+
+- Generator Tests: green after the semantic fix and after the formatting-only current commit.
+- Full Swift/Xcode build: green after the semantic fix and after the formatting-only current commit.
+- Bounded live fixture: run `29470358237`, one logical request, one maximum HTTP attempt, zero validator issues.
+- Remaining uncertainty: one fixture does not cover every profile, and this Windows session cannot build or run the iOS app.
 
 ---
 
@@ -328,7 +348,7 @@ reps alone can't see proximity-to-failure).
   merge-base means you're on a **stale/unrelated local `main`** (a documented past
   incident that "gets my data lost"). Re-point with
   `git checkout -B main origin/main` before doing anything. Sanity-check the tree
-  exists (e.g. `Transform/Transform/WorkoutGeneratorService.swift`; ~49 tracked
+  exists (e.g. `Transform/Transform/WorkoutGeneratorService.swift`; ~56 tracked
   `.swift` files).
 - **Never suggest the iOS Simulator.** Owner validates on a physical iPhone by
   choice (haptics, camera/body-analysis, true on-device feel). When you can't build,
@@ -365,14 +385,16 @@ reps alone can't see proximity-to-failure).
 | `Transform/Transform/WorkoutGeneratorService+PriorityIntent.swift` | Canonical direct/weighted credit semantics and per-exercise validator coverage recomputation. |
 
 **Key commits:** `afde434` (perf fix), `c686eac` through `fc4749c` (variation policy,
-feasibility fixes, diagnostics), and `1f412b6` (canonical ledger and cross-style reuse).
-All are on `main`; the final implementation checkpoint passed both workflows.
+feasibility fixes, diagnostics), `1f412b6` (canonical ledger and cross-style reuse),
+`bcd76ed` (append-only baseline repair), and `9fb4df0` (current formatting-only
+checkpoint). All are on `main`; the semantic and current checkpoints passed the automated
+workflows, and the semantic checkpoint passed the bounded live fixture.
 
 ---
 
 ## 9. One-paragraph orientation for a cold-start agent
 
-Read `CLAUDE.md` (root) first, then this file, then
+Read `AGENTS.md` first, then this file, then
 `docs/generator-test-harness.md`. The generator's deterministic core is covered by a
 headless macOS `swift test` harness (roadmap #2, done). It caught a ~95× slowness bug,
 legacy over-generation, short late-week menus, and disagreement between allocation and
@@ -380,6 +402,6 @@ validation. The variation policy and canonical direct-set ledger are now impleme
 CI-green (roadmap #1, done). Roadmap #3 is implemented in code: the shared per-set
 performance→prescription decision path, conservative session-level effort governance, optional
 per-set RIR capture, and exercise-specific multi-session effort signal are in place. The
-remaining proof is macOS CI plus the owner's physical-device persistence and generation run.
+remaining proof is the owner's physical-device persistence and real generation run.
 Commit to `main`, fast-forward only, never force-push, never suggest the simulator,
 and be brutally honest with the owner — that's the job.

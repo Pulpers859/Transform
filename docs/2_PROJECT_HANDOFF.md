@@ -19,6 +19,13 @@
 - Expected default branch for normal work: `main`
 - Sync-first rule: `Before normal work, fetch from the remote first. If the working tree is clean and the active branch tracks the expected upstream, pull with --ff-only before editing. If local changes exist, fetch and reconcile instead of blindly pulling.`
 
+## Current Standing Snapshot (last verified 2026-07-16)
+- The canonical tree is `main` at `9fb4df0`, synchronized with `origin/main`.
+- The deterministic generator harness and full Swift/Xcode CI checks are green.
+- The bounded live Anthropic fixture passed with one logical request, one maximum HTTP attempt, and zero validator issues on semantic checkpoint `bcd76ed`; the current commit only reformats that repair block.
+- The latest generator work fixes the planning-layer baseline-menu omission that caused the reported zero-direct-set failure. It does not claim universal generation quality: physical-iPhone build/runtime behavior and broader profile coverage remain owner validation.
+- Keep every future status update explicit about what is proven by tests, what is proven by live workflow, and what is still unproven on device.
+
 ## PowerShell / Terminal Standard
 - Do not globally pin every PowerShell session to this project.
 - A dedicated shortcut should exist:
@@ -146,8 +153,11 @@ Order matters:
 - Procedural fallback now trims to both fatigue and session-time budgets instead of only exercise count or coarse fatigue caps.
 - Workout exercise metadata is richer and now includes selection-relevant context like equipment, exercise class, systemic fatigue, stability demand, shoulder risk, and preferred/avoid contexts.
 - Procedural exercise ordering and selection now use more context-aware scoring for recovery constraints, low data quality, shoulder-risk cases, short sessions, and arms-day context.
+- Baseline muscle coverage is now enforced in the preselected-menu planning layer, with repeated append-only final repair to close legal gaps without trimming the generated workout.
 
 ## Recent Commits Worth Knowing
+- `9fb4df0` - `Format baseline repair block`; current `main`/`origin/main` checkpoint.
+- `bcd76ed` - `Use append-only final baseline repair`; semantic checkpoint validated by Generator Tests, full Swift/Xcode build, and bounded live fixture.
 - `38ae571` - `Enrich workout exercise metadata and selection`
 - `1e5568d` - `Add workout generator calibration and budget guards`
 - `5c3bf1d` - `Remove deprecated temperature from structured requests`

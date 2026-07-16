@@ -25,6 +25,7 @@ Use this skill to rebuild the minimum correct context for Transform before codin
    - validator correctness
    - API waste
    - maintainability
+6. Read the current-standing snapshot in `docs/3_TRANSFORM_CLEAN_HANDOFF.md` or the linked dated generator handoff. Treat it as dated evidence: verify the commit and workflow status before repeating it as current.
 
 ## Handoff Format
 
@@ -46,6 +47,7 @@ When preparing a handoff or orientation note, include:
 - Do not collapse the split workout-generator architecture back into one file.
 - Preserve the personal-use baseline context without smuggling it into generic hardcoded prompt defaults.
 - Be explicit about evidence-backed logic versus heuristic choices.
+- When preparing a status update, separate three claims: proven by code/tests, proven by a bounded live workflow, and still requiring the owner's physical-iPhone validation.
 
 ## When NOT to use
 
@@ -60,5 +62,5 @@ When preparing a handoff or orientation note, include:
 
 ## Provenance
 
-- Last verified: 2026-07-05 against commit `0a68ce9` (paths, remote, Swift file count, workflow files all checked).
+- Last verified: 2026-07-16 against commit `9fb4df0` (paths, remote, branch sync, Swift file count, and current generator evidence checked).
 - Re-verify: `git ls-files "*.swift" | wc -l`, `git remote -v`, and existence of `Transform/Transform/WorkoutGeneratorService.swift`.

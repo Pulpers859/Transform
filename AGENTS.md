@@ -8,6 +8,14 @@
   - `C:\Dev\Transform`
   - `C:\Users\Patrick's Computer\OneDrive - WV School of Osteopathic Medicine\Desktop\Transform`
 
+## Current Standing Snapshot (last verified 2026-07-16)
+- `origin/main` and local `main` are synchronized at `9fb4df0` (`0 0` ahead/behind).
+- The deterministic workout-generator test harness and full Swift/Xcode CI checks are green.
+- The bounded live Anthropic workflow passed the historical five-error fixture with one logical request, one maximum HTTP attempt, and zero validator issues on `bcd76ed`; `9fb4df0` is formatting-only afterward.
+- The latest generator fix addresses the root cause of the reported zero-direct-set failure: locked preselected menus could omit a baseline muscle group. Coverage is now enforced during menu planning and repeated with an append-only final repair pass, rather than trimming workouts or merely weakening validation.
+- The remaining product-level proof is the owner's physical-iPhone build and real generation. CI and headless/live fixtures do not prove SwiftData/UI wiring or every arbitrary user profile.
+- Treat this snapshot as dated evidence, not a permanent claim. At session start, verify the current commit, workflows, and any newer owner/device report before relying on it.
+
 ## Branch Policy
 - Use `main` as the only working branch for this repository.
 - Commit directly to `main` and push directly to `origin/main`.
@@ -24,7 +32,7 @@
   - `git fetch --prune`
   - `git rev-list --left-right --count origin/main...main` — expect `0   0`; any large "behind" count or divergence is a red flag.
   - `git merge-base main origin/main` — EMPTY output means UNRELATED histories = the local `main` is a stale/junk snapshot, NOT your real tree.
-  - Sanity-check the tree: the app source must exist (e.g. `Transform/Transform/WorkoutGeneratorService.swift`) and the tracked Swift file count should look right (`git ls-files "*.swift" | wc -l` — currently 49), not a smaller different layout.
+  - Sanity-check the tree: the app source must exist (e.g. `Transform/Transform/WorkoutGeneratorService.swift`) and the tracked Swift file count should look right (`git ls-files "*.swift" | wc -l` — currently 56), not a smaller different layout.
 - If local `main` is behind, diverged, or unrelated: do NOT commit on it. Re-point onto the real tree first with `git checkout -B main origin/main`, re-verify the source is present, THEN make changes.
 - NEVER `git push --force` / `--force-with-lease` to `origin/main`. Push clean fast-forwards only. If a push is non-fast-forward, STOP and reconcile — never overwrite the remote.
 - After pushing, confirm it was a fast-forward (`old..new`), not a forced replacement, and that the prior `origin/main` commits are still ancestors.
