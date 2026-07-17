@@ -519,14 +519,14 @@ struct NutritionView: View {
     }
 
     var generateButtonTitle: String {
-        if nutritionProgram == nil { return "Generate 4-Week Nutrition Protocol" }
-        return "Regenerate 4-Week Protocol"
+        if nutritionProgram == nil { return "Generate 7-Day Nutrition Plan" }
+        return "Regenerate 7-Day Plan"
     }
 
     var groceryPlannerCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .center) {
-                Label("AI 4-Week Nutrition Protocol", systemImage: "cart.fill")
+                Label("AI 7-Day Nutrition Plan", systemImage: "cart.fill")
                     .font(.headline)
                     .foregroundStyle(TFColor.accent)
                 Spacer()
@@ -539,7 +539,7 @@ struct NutritionView: View {
                     .clipShape(Capsule())
             }
 
-            Text("A full 4-week nutrition protocol built from your latest Body Analysis. Includes Training Day + Rest Day templates (5 training / 2 rest assumed), 4 meals each, and a weekly grocery list. Mesocycle-aware progression across weeks.")
+            Text("A 7-day nutrition plan built from your latest Body Analysis. Includes Training Day + Rest Day templates (5 training / 2 rest assumed), 4 meals each, and a weekly grocery list. Reassess adherence and results before generating the next week.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
@@ -620,7 +620,7 @@ struct NutritionView: View {
                     )
                 }
             } else {
-                Text("Generate once. The plan is built from your Body Analysis — week 1 on Opus, weeks 2-4 on Sonnet for progression.")
+                Text("Generate a 7-day plan from your latest Body Analysis, then reassess adherence and results before planning another week.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -916,7 +916,7 @@ struct NutritionView: View {
         guard !Task.isCancelled else { return }
         isGeneratingNutrition = true
         nutritionErrorMessage = ""
-        generationProgress = "Generating Week 1 (Sonnet)…"
+        generationProgress = "Generating 7-Day Plan (Sonnet)…"
         defer {
             if !Task.isCancelled {
                 isGeneratingNutrition = false
@@ -975,66 +975,10 @@ struct NutritionView: View {
             shiftWorkMode: shiftMode,
             allowsRecoveryFallback: allowsRecoveryFallback
         )
-        var followupWeeks: [NutritionWeekResponse] = []
-        var warningMessage: String?
-        guard let initialWeekJSON = encodeWeekToJSON(program.weekOne) else {
-            return NutritionProtocolBuildResult(
-                program: program,
-                followupWeeks: [],
-                partialGenerationWarning: "Week 1 generated, but its saved JSON context could not be encoded, so weeks 2-4 were skipped."
-            )
-        }
-
-        // A recovery-engine Week 1 has no trustworthy AI progression anchor.
-        // Stop here instead of spending three more paid calls to build mixed-source
-        // follow-up weeks from a generic fallback context.
-        if program.weekOne.source == .recoveryEngine {
-            return NutritionProtocolBuildResult(
-                program: program,
-                followupWeeks: [],
-                partialGenerationWarning: "Week 1 used the Recovery Engine, so later AI weeks were skipped until a complete AI anchor is available."
-            )
-        }
-
-        var previousWeekJSON = initialWeekJSON
-
-        for week in 2...4 {
-            await MainActor.run {
-                generationProgress = "Generating Week \(week) (Sonnet)…"
-            }
-
-            do {
-                let nextWeek = try await ClaudeService.shared.generateNutritionNextWeek(
-                    weekNumber: week,
-                    previousWeekJSON: previousWeekJSON,
-                    analysisResult: analysis,
-                    adherenceMetrics: metrics,
-                    shiftWorkMode: shiftMode,
-                    allowsRecoveryFallback: allowsRecoveryFallback
-                )
-                try Task.checkCancellation()
-                followupWeeks.append(nextWeek)
-                if nextWeek.source == .recoveryEngine {
-                    warningMessage = "Week \(week) used the Recovery Engine, so later weeks were skipped to avoid mixing an emergency week into the progression chain."
-                    break
-                }
-                guard let encodedWeek = encodeWeekToJSON(nextWeek) else {
-                    warningMessage = "Week \(week) generated, but its saved JSON context could not be encoded, so later weeks were skipped."
-                    break
-                }
-                previousWeekJSON = encodedWeek
-            } catch is CancellationError {
-                throw CancellationError()
-            } catch {
-                warningMessage = "Week \(week) did not generate: \(error.localizedDescription). Earlier weeks are still available."
-                break
-            }
-        }
-
         return NutritionProtocolBuildResult(
             program: program,
-            followupWeeks: followupWeeks,
-            partialGenerationWarning: warningMessage
+            followupWeeks: [],
+            partialGenerationWarning: nil
         )
     }
 

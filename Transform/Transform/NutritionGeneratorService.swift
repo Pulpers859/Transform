@@ -592,13 +592,13 @@ extension ClaudeService {
 
     private func nutritionWeekOneSystemPrompt() -> String {
         """
-        You are a multi-disciplinary nutrition panel designing Week 1 of a personalized 4-week
-        nutrition protocol for a specific individual. The panel includes:
+        You are a multi-disciplinary nutrition panel designing a personalized 7-day nutrition
+        plan for a specific individual. The panel includes:
         - a sports dietitian (Helms / McDonald school) who sets macros and meal architecture,
         - a metabolic-health specialist who handles shift-work circadian concerns,
         - a behavioral coach who makes the plan realistic and sustainable.
 
-        The user's Body Analysis is the north star of this entire 4-week protocol. Every choice
+        The user's Body Analysis is the north star of this entire 7-day plan. Every choice
         you make — meal composition, protein allocation, carb timing, grocery items, rationales —
         must be directly traceable to something in the analysis (macro targets, priority muscles,
         top leverage change, metabolic health notes, diet recommendations, psychological insights).
@@ -654,7 +654,7 @@ extension ClaudeService {
 
     private func nutritionWeekOneUserPrompt(context: String, macroLine: String, adherenceBlock: String, shiftBlock: String) -> String {
         """
-        Build Week 1 of this individual's 4-week nutrition protocol. Treat the analysis below as the
+        Build a 7-day nutrition plan for this individual. Treat the analysis below as the
         north star — every meal, every grocery item, every rationale should be traceable back to it.
 
         --- Body Analysis ---
@@ -667,7 +667,7 @@ extension ClaudeService {
 
         Requirements:
         - Name the program meaningfully (reference the analysis, not a generic label).
-        - programSummary: ONE sentence on what this 4-week arc is designed to accomplish for THIS
+        - programSummary: ONE sentence on what this 7-day plan is designed to accomplish for THIS
           person, referencing the analysis.
         - proteinCoverageNote: ONE sentence on how the protein architecture supports the priority
           muscles and goals from the analysis.
@@ -683,8 +683,9 @@ extension ClaudeService {
 
     private func nutritionNextWeekSystemPrompt(weekNumber: Int) -> String {
         """
-        You are the same multi-disciplinary nutrition panel that designed Week 1. You are now
-        writing Week \(weekNumber) of the same 4-week nutrition protocol.
+        You are the same multi-disciplinary nutrition panel that designed the prior week. You are
+        now writing the next 7-day nutrition plan, recorded as Week \(weekNumber) of the ongoing
+        progression.
 
         CRITICAL: The Body Analysis is still the north star. The previous week is only a
         PROGRESSION REFERENCE — do not copy meals forward as templates. Use it to know what was
@@ -724,7 +725,7 @@ extension ClaudeService {
         shiftBlock: String
     ) -> String {
         """
-        Generate Week \(weekNumber) of the 4-week nutrition protocol.
+        Generate the next 7-day nutrition plan as Week \(weekNumber) of the ongoing progression.
 
         --- Body Analysis (north star — drives nutrition intent) ---
         \(analysisContext)
@@ -783,8 +784,8 @@ extension ClaudeService {
 
     private func nutritionAdherenceFocusedSystemPrompt() -> String {
         """
-        You are a multi-disciplinary nutrition panel designing Week 1 of a personalized 4-week
-        nutrition protocol for a specific individual whose nutrition LOGGING IS POOR. The panel includes:
+        You are a multi-disciplinary nutrition panel designing a personalized 7-day nutrition plan
+        for a specific individual whose nutrition LOGGING IS POOR. The panel includes:
         - a sports dietitian (Helms / McDonald school) who sets macros and meal architecture,
         - a metabolic-health specialist who handles shift-work circadian concerns,
         - a behavioral coach who makes the plan realistic and sustainable.
@@ -843,7 +844,7 @@ extension ClaudeService {
 
     private func nutritionAdherenceFocusedUserPrompt(context: String, macroLine: String, adherenceBlock: String, shiftBlock: String) -> String {
         """
-        Build Week 1 of this individual's 4-week nutrition protocol. This person's nutrition logging
+        Build a 7-day nutrition plan for this individual. This person's nutrition logging
         is very limited, so this must be an ADHERENCE-FIRST plan — simple, repeatable, easy to log.
 
         --- Body Analysis ---
@@ -1043,7 +1044,7 @@ extension ClaudeService {
     private func nutritionProgramToolSchema() -> [String: Any] {
         let properties: [String: Any] = [
             "programName": nStringProp("Meaningful program name tied to the analysis."),
-            "programSummary": nStringProp("ONE sentence on what this 4-week arc is designed to accomplish for THIS person."),
+            "programSummary": nStringProp("ONE sentence on what this 7-day plan is designed to accomplish for THIS person."),
             "proteinCoverageNote": nStringProp("ONE sentence on how the protein architecture supports priority muscles / goals."),
             "weekOne": weekSchema(weekNumber: 1)
         ]
@@ -1078,8 +1079,8 @@ extension ClaudeService {
 
     private func sanitizeNutritionProgram(_ program: NutritionProgramResponse) -> NutritionProgramResponse {
         NutritionProgramResponse(
-            programName: program.programName.nTrimmedOr("4-Week Nutrition Protocol"),
-            programSummary: program.programSummary.nTrimmedOr("A 4-week nutrition protocol tied to your body analysis."),
+            programName: program.programName.nTrimmedOr("7-Day Nutrition Plan"),
+            programSummary: program.programSummary.nTrimmedOr("A 7-day nutrition plan tied to your body analysis."),
             proteinCoverageNote: program.proteinCoverageNote.nTrimmedOr("Protein architecture supports your priority muscles."),
             weekOne: sanitizeNutritionWeek(program.weekOne, expectedWeek: 1)
         )
