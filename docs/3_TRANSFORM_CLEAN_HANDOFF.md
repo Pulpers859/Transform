@@ -11,12 +11,12 @@ This file is the Transform-specific workflow reference for the repo at `C:\Dev\T
 - Stable branch: `main`
 - Default working branch: `main`
 
-## Current Standing Snapshot (last verified 2026-07-16)
+## Current Standing Snapshot (last verified 2026-07-17)
 
-- **Repository:** `main` is synchronized with `origin/main` at `323db60`; the local tracked Swift tree contains 56 files.
+- **Repository:** `main` is synchronized with `origin/main` at `5a77c06`; the local tracked Swift tree contains 56 files.
 - **Generator:** the recent zero-direct-set incident was traced to the locked preselected-menu planner omitting a baseline muscle group. The fix is in menu planning: baseline coverage is enforced, feasible replacement passes protect the existing menu, and a repeated append-only final repair pass closes any remaining legal gap. This is a root-cause planning fix, not workout trimming or warning demotion.
-- **Automated proof:** Generator Tests run `29554596647` and Swift/Xcode run `29554596672` passed on `323db60`; the generator target executed 26 XCTest cases, including four deterministic nutrition stress tests and the gated nutrition live-contract test (skipped without live authorization).
-- **Nutrition audit:** target safety resolution is shared by prompt, validator, and fallback; meal/template calories and all macro sums are checked; meal order, substitutions, grocery quality, source provenance, and fallback transitions are covered. New generation makes one 7-day request and does not automatically generate Weeks 2–4. A manual live nutrition contract is wired but was not dispatched in this checkpoint.
+- **Automated proof:** Generator Tests run `29554714005` and Swift/Xcode run `29554714003` passed on `5a77c06`; the generator target executed 26 XCTest cases, including four deterministic nutrition stress tests. Live workflow run `29555834641` passed both selected live contracts, with workout and nutrition each succeeding on the first Anthropic attempt.
+- **Nutrition audit:** target safety resolution is shared by prompt, validator, and fallback; meal/template calories and all macro sums are checked; meal order, substitutions, grocery quality, source provenance, and fallback transitions are covered. New generation makes one 7-day request and does not automatically generate Weeks 2–4. The live troubleshooting workflow now has independent workout and nutrition switches, so nutrition-only validation does not invoke the workout generator.
 - **Still unproven:** the Windows agent cannot build the iOS app; CI does not prove SwiftData/UI behavior; deterministic fixtures do not prove every profile; the latest Claude second audit was incomplete due session limits. The owner's physical-iPhone build and real generation remain the final runtime check.
 
 When this snapshot is used, verify the current commit and workflow runs first. Report evidence separately as code/tests, bounded live workflow, or physical-device validation.

@@ -3,13 +3,18 @@ name: Generator Troubleshooting
 on:
   workflow_dispatch:
     inputs:
-      run_live_ai:
-        description: "Run the bounded workout and nutrition Anthropic checks (API-billed)"
+      run_live_workout:
+        description: "Run the bounded workout Anthropic check (API-billed)"
+        type: boolean
+        required: true
+        default: false
+      run_live_nutrition:
+        description: "Run the bounded one-week nutrition Anthropic check (API-billed)"
         type: boolean
         required: true
         default: false
       confirm_api_usage:
-        description: "Type RUN_LIVE_AI to authorize the live job"
+        description: "Type RUN_LIVE_AI to authorize any selected live job"
         type: string
         required: false
         default: ""
@@ -46,8 +51,8 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-  live-structured-contract:
-    if: ${{ inputs.run_live_ai && inputs.confirm_api_usage == 'RUN_LIVE_AI' }}
+  live-workout-contract:
+    if: ${{ inputs.run_live_workout && inputs.confirm_api_usage == 'RUN_LIVE_AI' }}
     needs: deterministic-replay
     runs-on: macos-latest
     timeout-minutes: 12
@@ -55,7 +60,6 @@ jobs:
       TRANSFORM_RUN_LIVE_ANTHROPIC_SMOKE: "1"
       TRANSFORM_HEADLESS_ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       TRANSFORM_LIVE_SMOKE_OUTPUT: ${{ github.workspace }}/live-generator-report.txt
-      TRANSFORM_NUTRITION_LIVE_SMOKE_OUTPUT: ${{ github.workspace }}/live-nutrition-generator-report.txt
 
     steps:
       - uses: actions/checkout@v5
@@ -74,6 +78,19 @@ jobs:
           path: live-generator-report.txt
           if-no-files-found: error
           retention-days: 7
+
+  live-nutrition-contract:
+    if: ${{ inputs.run_live_nutrition && inputs.confirm_api_usage == 'RUN_LIVE_AI' }}
+    needs: deterministic-replay
+    runs-on: macos-latest
+    timeout-minutes: 12
+    env:
+      TRANSFORM_RUN_LIVE_ANTHROPIC_SMOKE: "1"
+      TRANSFORM_HEADLESS_ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      TRANSFORM_NUTRITION_LIVE_SMOKE_OUTPUT: ${{ github.workspace }}/live-nutrition-generator-report.txt
+
+    steps:
+      - uses: actions/checkout@v5
 
       - name: Run one bounded live nutrition generation
         run: swift test --enable-xctest --filter TransformGeneratorCoreTests.NutritionGeneratorStressTests/testLiveNutritionWeekOneStructuredContract

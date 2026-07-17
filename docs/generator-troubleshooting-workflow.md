@@ -18,22 +18,28 @@ keeping the limits honest. It does not add OpenAI or ChatGPT to the app.
 
 ## Optional live Anthropic smoke test
 
-The manual workflow also has an API-billed job. It runs only when both controls are supplied:
+The manual workflow also has independently selectable API-billed jobs. Each runs only when
+the selected job's switch and the authorization control are supplied:
 
-- `run_live_ai` is enabled.
+- `run_live_workout` enables only the workout contract check.
+- `run_live_nutrition` enables only the one-week nutrition contract check.
 - `confirm_api_usage` is exactly `RUN_LIVE_AI`.
+
+Leave the other generator switch disabled. Selecting nutrition does not invoke the workout
+generator, and selecting workout does not invoke nutrition.
 
 The job maps the repository's `ANTHROPIC_API_KEY` GitHub secret to the headless-only
 `TRANSFORM_HEADLESS_ANTHROPIC_API_KEY` process variable. That variable is read only when UIKit
 is unavailable, so the credential path is compiled out of the iPhone app. The key is never
 written to a fixture or artifact.
 
-The live test composes the same production request construction, structured tool call, parsing,
+Each live test composes the same production request construction, structured tool call, parsing,
 sanitization, locked-menu set prescription, and validator functions used by `generateWeekOne`.
-It deliberately sends exactly one logical request with one permitted HTTP attempt. It does not
-run parallel candidate scoring, correction, or fallback orchestration. This narrower seam proves
-the live contract without allowing a smoke test to expand into as many as nine paid HTTP attempts.
-It uses the configured lightweight generation model, so it is not a claim about the production
+The workout check deliberately sends exactly one logical request with one permitted HTTP attempt.
+The nutrition check exercises the production one-week path and its response validation. Neither
+check runs the other generator, parallel candidate scoring, or correction orchestration. These
+narrow seams prove the selected live contract without accidentally billing an unrelated generator.
+They use the configured lightweight generation model, so they are not claims about the production
 Week 1 model's output distribution.
 
 The uploaded report uses a synthetic analysis fixture with no personal, photo, medical, or
