@@ -8,13 +8,17 @@
   - `C:\Dev\Transform`
   - `C:\Users\Patrick's Computer\OneDrive - WV School of Osteopathic Medicine\Desktop\Transform`
 
-## Current Standing Snapshot (last verified 2026-07-16)
-- `origin/main` and local `main` are synchronized at `9fb4df0` (`0 0` ahead/behind).
-- The deterministic workout-generator test harness and full Swift/Xcode CI checks are green.
-- The bounded live Anthropic workflow passed the historical five-error fixture with one logical request, one maximum HTTP attempt, and zero validator issues on `bcd76ed`; `9fb4df0` is formatting-only afterward.
-- The latest generator fix addresses the root cause of the reported zero-direct-set failure: locked preselected menus could omit a baseline muscle group. Coverage is now enforced during menu planning and repeated with an append-only final repair pass, rather than trimming workouts or merely weakening validation.
-- The remaining product-level proof is the owner's physical-iPhone build and real generation. CI and headless/live fixtures do not prove SwiftData/UI wiring or every arbitrary user profile.
-- Treat this snapshot as dated evidence, not a permanent claim. At session start, verify the current commit, workflows, and any newer owner/device report before relying on it.
+## Current Standing Snapshot (refreshed 2026-07-17)
+- The deterministic workout-generator harness and full Swift/Xcode CI are green at the latest verified workflow checkpoint. Always inspect the current commit and runs; this file must not become a stale release dashboard.
+- The historical zero-direct-set workout failure was fixed in locked-menu planning: baseline coverage is enforced before allocation and repaired append-only when legal. This is a root-cause planning fix, not post-generation trimming or validator weakening.
+- Nutrition now generates one seven-day plan at a time and does not automatically create Weeks 2-4. Its live contract can use the production correction path, so one logical nutrition generation can make up to three HTTP calls.
+- The manual troubleshooting workflow has independent `run_live_workout` and `run_live_nutrition` selectors. A nutrition-only run must leave workout disabled. Body analysis has no live GitHub Actions job yet because its UIKit photo path lacks a privacy-safe headless contract.
+- The remaining product-level proof is the owner's physical-iPhone build and deliberate real generation. CI and headless/live fixtures do not prove SwiftData/UI wiring, real-photo analysis quality, or every arbitrary profile.
+
+## Handoff Authority
+- `docs/3_TRANSFORM_CLEAN_HANDOFF.md` is the canonical long-form operational handoff for current status, automation, evidence boundaries, and body-analysis readiness.
+- `docs/AGENT_HANDOFF_2026-07-15_generator-aplus.md` remains a specialist workout/nutrition generator architecture and incident-history reference. Do not use it as the sole current-status document.
+- Before relying on any status claim, verify the current commit, `origin/main` sync, workflow runs, and newer owner/device reports.
 
 ## Branch Policy
 - Use `main` as the only working branch for this repository.
@@ -125,8 +129,9 @@
 - Full index, trigger matrix, and maintenance protocol: `.claude/skills/README.md`.
 
 ## Read Deeper Only When Needed
-- `docs/2_PROJECT_HANDOFF.md`
 - `docs/3_TRANSFORM_CLEAN_HANDOFF.md`
+- `docs/AGENT_HANDOFF_2026-07-15_generator-aplus.md` for workout/nutrition generator work
+- `docs/2_PROJECT_HANDOFF.md`
 - `docs/EXTERNAL_AGENT_RECONCILIATION.md`
 - `Transform/Transform/CLAUDE.md`
 - `Transform/Transform/EvidenceProfile.md`

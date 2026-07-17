@@ -125,9 +125,13 @@ The CI job has a 12-minute timeout so a future runaway cannot wall the pipeline.
   Workshop bundle. Add recovery-tight, zero-hamstring, and multi-primary lower-body fixtures
   using the same versioned pattern.
 - **Optional live smoke** — `.github/workflows/generator-troubleshooting.yml` can manually run
-  one bounded Anthropic request through the production request/parser/validator contract with
-  explicit API-spend confirmation. See
-  `docs/generator-troubleshooting-workflow.md` for its guarantees and limits.
+  independently selected workout or nutrition contracts after explicit API-spend confirmation.
+  Workout permits one HTTP attempt; nutrition remains one seven-day plan but may use its
+  production correction/retry path. See `docs/generator-troubleshooting-workflow.md` for exact
+  guarantees, cost boundaries, and redaction limits.
+- **Body analysis is deliberately excluded** — its UIKit image path needs a Foundation-safe seam,
+  deterministic validator fixtures, and a non-personal rights-cleared image before a separate
+  live body-analysis job would be meaningful. Do not add a placeholder workflow toggle.
 - **Effort governance and autoregulation (roadmap #3)** — connect logged performance to the
   next prescription through double progression, with explicit RIR as a separate signal rather
   than inferring proximity to failure from completed reps alone.

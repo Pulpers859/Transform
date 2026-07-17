@@ -1,9 +1,11 @@
-# Agent Handoff — Generator "A+" Work (living status; last verified 2026-07-16)
+# Generator "A+" Specialist Reference
 
-**Audience:** the next AI agent (or future me) picking up the "make this generator
-A+, faithfully working every time" effort. Read this top to bottom before touching
-the generator. It is written to hand you the *what*, the *why*, and the *judgment*,
-so you can continue with the same success instead of re-deriving everything.
+**Audience:** the next AI agent (or future me) changing workout or nutrition generation,
+validation, fallback, retry behavior, or the headless generator harness. This is a specialist
+architecture and incident-history reference, not the canonical whole-app status document.
+Read `AGENTS.md` and `docs/3_TRANSFORM_CLEAN_HANDOFF.md` first, then read this document before
+changing the generator. It preserves the *what*, the *why*, and the judgment behind prior fixes
+so a future agent does not reintroduce an old failure mode.
 
 **Owner's standing instruction:** *"I want this generator to be A+, faithfully
 working every time. Be completely and brutally honest with me all the time."*
@@ -22,13 +24,20 @@ validator.
 | **Slowness bug** (harness caught it) | ✅ Fixed & CI-verified. Menu phase **~195,000 ms → ~2,000 ms in debug (~95×)**, output numerically identical. |
 | **Over-generation bug** (harness caught it) | ✅ Fixed and CI-verified with a sub-region-aware variation policy. All five original legacy combinations run instead of being skipped. |
 | **Roadmap #1 — unify credit ledger + generation-time invariant** | ✅ Fixed and CI-verified. Direct sets require primary metadata, each exercise counts once per priority, and allocation asserts equality with validator recomputation. |
-| **Phone-free troubleshooting workflow** | ✅ Added and CI-verified. A versioned failure-class fixture pins the allocated menu and validator verdict; a manual live Anthropic contract check is bounded to one HTTP attempt; Claude Code can independently review credential-scanned diffs with no tools. |
+| **Phone-free troubleshooting workflow** | ✅ Added and CI-verified. A versioned failure-class fixture pins the allocated menu and validator verdict. Manual live workout and nutrition contracts are independently selectable; workout has one permitted HTTP attempt, while nutrition can use its production correction/retry path. Claude Code can independently review credential-scanned diffs with no tools. |
 | **Roadmap #3 — effort governance + autoregulation loop** | ✅ Implemented in code and macOS-CI green; physical-device confirmation remains. Set records preserve optional RIR, and two corroborating exercise-specific sessions can conservatively override a rep-ceiling load increase to protect recovery. |
 | **Nutrition generator audit** | ✅ Root-cause target reconciliation, meal/grocery arithmetic validation, ordered meal/substitution checks, safe fallback allocation, source provenance, and fallback-transition controls are implemented. New generation now makes one 7-day request; the stress matrix and production test target execute on macOS CI. |
 
-**Current troubleshooting checkpoint:** `1353584` on `main`, synchronized with `origin/main`. Generator Tests run `29556308199` and Swift/Xcode run `29556308102` both passed. Nutrition-only live workflow run `29556415049` passed with `live-workout-contract` explicitly skipped. The one-week nutrition test made two successful Anthropic calls because the first response needed a production correction and the second passed validation; it did not generate Weeks 2–4. New nutrition generation still makes one seven-day plan at a time. The live workflow is split into independent workout and nutrition jobs so nutrition-only validation cannot spend workout credits.
+**Active-status source:** use `docs/3_TRANSFORM_CLEAN_HANDOFF.md` for the current commit,
+workflow evidence, automation details, and body-analysis readiness. At the 2026-07-17 checkpoint,
+the nutrition-only live run (`29556415049`) skipped workout and passed after two successful
+Anthropic calls: the first response used the production correction path and the second validated.
+That was one seven-day nutrition plan, not a Weeks 2–4 loop.
 
-**If you do one thing next:** for nutrition-only validation, dispatch the manual troubleshooting workflow with `run_live_workout=false`, `run_live_nutrition=true`, and `confirm_api_usage=RUN_LIVE_AI`. Then build the current `main` in Xcode and run nutrition and workout generation on the physical iPhone. Do not call either generator universally resolved from CI or one live fixture alone.
+**Current live-workflow rule:** select only the requested surface. For nutrition-only validation,
+dispatch with `run_live_workout=false`, `run_live_nutrition=true`, and
+`confirm_api_usage=RUN_LIVE_AI`. Do not call either generator universally resolved from CI or one
+live fixture alone.
 
 **Evidence boundary:** code inspection and CI prove compile/test behavior; the manual live workflow proves the configured Anthropic request/decode/sanitize/validate path only when it is actually dispatched; only the owner's physical-device run proves the shipped SwiftData/UI path and real user-profile experience. The latest Claude second audit was not completed because its session limit was reached; it must not be represented as approval.
 
@@ -380,7 +389,7 @@ Evidence at the current checkpoint:
 | `.github/workflows/generator-tests.yml` | `swift test --enable-xctest --parallel` on macOS, 12-min cap; fails on zero-test or missing-nutrition discovery. |
 | `Transform/Transform/NutritionGeneratorService.swift` | Nutrition target resolution, production AI generation, validator, and safety-aligned recovery fallback. |
 | `Tests/TransformGeneratorCoreTests/NutritionGeneratorStressTests.swift` | Network-free nutrition stress matrix, validator positive controls, persistence/source check, and gated live contract. |
-| `.github/workflows/generator-troubleshooting.yml` | Manual, explicitly authorized workout and nutrition Anthropic contract checks. |
+| `.github/workflows/generator-troubleshooting.yml` | Manual deterministic replay plus independently authorized workout and nutrition Anthropic contract jobs. Do not bundle live costs. |
 | `docs/generator-test-harness.md` | Harness design/usage (living doc). |
 | `Transform/Transform/HarnessShims.swift` | `formatWeight` shim, `#if !canImport(UIKit)` only. |
 | `Transform/Transform/ClaudeService.swift` | 3 `#if canImport(UIKit)` guards (photo path). Inert on device. |
@@ -392,16 +401,15 @@ Evidence at the current checkpoint:
 feasibility fixes, diagnostics), `1f412b6` (canonical ledger and cross-style reuse),
 `bcd76ed` (append-only baseline repair), `6da0185` (nutrition audit implementation),
 `32371f3` (nutrition target type/root compile fix), `6874500` (real XCTest discovery
-guard), `786bbec` (nutrition live-test reporting), and `323db60` (one-week
-orchestration). All are on `main`; current automated proof is recorded at the top of
-this handoff. The nutrition live workflow is wired but has not been dispatched in the
-current checkpoint.
+guard), `786bbec` (nutrition live-test reporting), `323db60` (one-week orchestration), and
+`1353584` (separated live workout and nutrition workflow jobs). All are on `main`; current
+automated proof belongs in `docs/3_TRANSFORM_CLEAN_HANDOFF.md`, not this historical map.
 
 ---
 
 ## 9. One-paragraph orientation for a cold-start agent
 
-Read `AGENTS.md` first, then this file, then
+Read `AGENTS.md` first, then `docs/3_TRANSFORM_CLEAN_HANDOFF.md`, then this file and
 `docs/generator-test-harness.md`. The generator's deterministic core is covered by a
 headless macOS `swift test` harness (roadmap #2, done). It caught a ~95× slowness bug,
 legacy over-generation, short late-week menus, and disagreement between allocation and

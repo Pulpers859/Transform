@@ -19,12 +19,13 @@
 - Expected default branch for normal work: `main`
 - Sync-first rule: `Before normal work, fetch from the remote first. If the working tree is clean and the active branch tracks the expected upstream, pull with --ff-only before editing. If local changes exist, fetch and reconcile instead of blindly pulling.`
 
-## Current Standing Snapshot (last verified 2026-07-16)
-- The canonical tree is `main` at `9fb4df0`, synchronized with `origin/main`.
-- The deterministic generator harness and full Swift/Xcode CI checks are green.
-- The bounded live Anthropic fixture passed with one logical request, one maximum HTTP attempt, and zero validator issues on semantic checkpoint `bcd76ed`; the current commit only reformats that repair block.
-- The latest generator work fixes the planning-layer baseline-menu omission that caused the reported zero-direct-set failure. It does not claim universal generation quality: physical-iPhone build/runtime behavior and broader profile coverage remain owner validation.
-- Keep every future status update explicit about what is proven by tests, what is proven by live workflow, and what is still unproven on device.
+## Current Standing Snapshot (refreshed 2026-07-17)
+- Current operational status is maintained in `docs/3_TRANSFORM_CLEAN_HANDOFF.md`. Read that file rather than treating a commit hash here as permanent truth.
+- The deterministic generator harness and full Swift/Xcode CI are green at the latest verified checkpoint.
+- The troubleshooting workflow now has independent workout and nutrition live selectors. Nutrition-only validation does not call workout; nutrition remains one seven-day plan but can make production correction/retry calls.
+- The baseline-menu omission that caused zero direct sets was fixed in planning, not by trimming output or weakening validation.
+- Body analysis is intentionally not part of the live GitHub Actions workflow yet: its UIKit photo path requires a privacy-safe headless contract before automation is credible.
+- Keep every future status update explicit about what is proven by tests, bounded live workflow, and physical-device validation.
 
 ## PowerShell / Terminal Standard
 - Do not globally pin every PowerShell session to this project.
@@ -156,8 +157,9 @@ Order matters:
 - Baseline muscle coverage is now enforced in the preselected-menu planning layer, with repeated append-only final repair to close legal gaps without trimming the generated workout.
 
 ## Recent Commits Worth Knowing
-- `9fb4df0` - `Format baseline repair block`; current `main`/`origin/main` checkpoint.
+- `9fb4df0` - `Format baseline repair block`; historical post-repair checkpoint, not a durable current-main marker.
 - `bcd76ed` - `Use append-only final baseline repair`; semantic checkpoint validated by Generator Tests, full Swift/Xcode build, and bounded live fixture.
+- `1353584` - `Separate live generator workflow checks`; workout and nutrition live contracts no longer share an accidental billable job.
 - `38ae571` - `Enrich workout exercise metadata and selection`
 - `1e5568d` - `Add workout generator calibration and budget guards`
 - `5c3bf1d` - `Remove deprecated temperature from structured requests`

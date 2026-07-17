@@ -1,6 +1,8 @@
-# Transform_clean Project Workflow
+# Transform Operating Handoff
 
-This file is the Transform-specific workflow reference for the repo at `C:\Dev\Transform_clean`.
+This is the canonical operating handoff for the repo at `C:\Dev\Transform_clean`. It is the
+first long-form document a new agent should read after `AGENTS.md` when the task touches more
+than one known file.
 
 ## Identity
 - Repo root: `C:\Dev\Transform_clean`
@@ -11,15 +13,90 @@ This file is the Transform-specific workflow reference for the repo at `C:\Dev\T
 - Stable branch: `main`
 - Default working branch: `main`
 
-## Current Standing Snapshot (last verified 2026-07-17)
+## Current Standing Snapshot (refreshed 2026-07-17)
 
-- **Repository:** `main` is synchronized with `origin/main` at `1353584`; the local tracked Swift tree contains 56 files.
-- **Generator:** the recent zero-direct-set incident was traced to the locked preselected-menu planner omitting a baseline muscle group. The fix is in menu planning: baseline coverage is enforced, feasible replacement passes protect the existing menu, and a repeated append-only final repair pass closes any remaining legal gap. This is a root-cause planning fix, not workout trimming or warning demotion.
-- **Automated proof:** Generator Tests run `29556308199` and Swift/Xcode run `29556308102` passed on `1353584`; the generator target executed 26 XCTest cases, including four deterministic nutrition stress tests. Nutrition-only live workflow run `29556415049` passed with the workout job skipped. The nutrition path used two successful Anthropic calls because the first response required production correction before validation passed.
-- **Nutrition audit:** target safety resolution is shared by prompt, validator, and fallback; meal/template calories and all macro sums are checked; meal order, substitutions, grocery quality, source provenance, and fallback transitions are covered. New generation makes one seven-day plan and does not automatically generate Weeks 2–4. The live troubleshooting workflow now has independent workout and nutrition switches, so nutrition-only validation does not invoke the workout generator; nutrition may still use correction retries within that one-week generation.
-- **Still unproven:** the Windows agent cannot build the iOS app; CI does not prove SwiftData/UI behavior; deterministic fixtures do not prove every profile; the latest Claude second audit was incomplete due session limits. The owner's physical-iPhone build and real generation remain the final runtime check.
+- **Repository:** before this documentation refresh, local `main` and `origin/main` matched at `2711192`, with 57 tracked Swift files. The commit containing this handoff is necessarily newer, so always run the sync checks below instead of treating a hash in prose as permanent truth.
+- **Workout generator:** the reported zero-direct-set failure was traced to the locked preselected-menu planner omitting baseline muscle coverage. Coverage is now enforced during menu planning, with a feasible replacement pass and append-only final repair. This is a planning-layer fix, not post-generation trimming or validator weakening.
+- **Nutrition generator:** one production run creates one seven-day plan only. It no longer automatically creates Weeks 2-4. Target resolution is shared by prompt, validator, fallback, and source provenance; meal/template macro arithmetic, meal ordering, substitutions, and grocery quality are validated.
+- **Automation evidence:** Generator Tests and Swift/Xcode passed on `1353584` (`29556308199`, `29556308102`). Nutrition-only live workflow run `29556415049` passed with `live-workout-contract` explicitly skipped. It made two successful Anthropic calls because the first response required the production correction path before the final response validated.
+- **Still unproven:** macOS CI and redacted live fixtures do not prove arbitrary user profiles, iOS Keychain, SwiftData/UI wiring, or coaching quality on a user's real photos. The physical-iPhone build and deliberate owner review remain the release-level proof.
 
-When this snapshot is used, verify the current commit and workflow runs first. Report evidence separately as code/tests, bounded live workflow, or physical-device validation.
+Keep evidence labels separate: deterministic test, bounded live contract, and physical-device
+validation are different claims.
+
+## Documentation Hierarchy
+
+Use each document for its actual role so status does not drift across several “current” files.
+
+| Document | Role | When to read it |
+|---|---|---|
+| `AGENTS.md` | Mandatory repo rules, source-of-truth safeguards, branch policy, and validation limits. | Every session, before edits. |
+| `docs/3_TRANSFORM_CLEAN_HANDOFF.md` | Canonical current operating handoff: app map, automation, evidence boundaries, and active risks. | Any cross-cutting task or resumed work. |
+| `docs/AGENT_HANDOFF_2026-07-15_generator-aplus.md` | Specialist generator architecture, failure archaeology, and rationale for prior decisions. It is not the canonical current-status document. | Before changing workout or nutrition generation, validation, fallback, or retry behavior. |
+| `docs/2_PROJECT_HANDOFF.md` | Broader project background and historical reference. | When additional product or history context is needed. |
+| `docs/generator-troubleshooting-workflow.md` | Exact live-workflow inputs, cost limits, and redaction guarantees. | Before dispatching a billed GitHub Actions run. |
+
+## App and Validation Map
+
+| Surface | Shipping path | What can be tested headlessly | What still needs the iPhone |
+|---|---|---|---|
+| Body analysis | `BodyAnalysisView` -> `BodyAnalysisRunStore` -> UIKit photo preparation -> `ClaudeService.analyzeBody` -> `BodyAnalysisValidator` -> SwiftData session. | Deterministic model/validator fixtures can be added; no meaningful live image contract exists yet. | Camera/photo selection, JPEG preparation, private user-photo handling, result presentation, and session persistence. |
+| Workout generation | Analysis -> intent -> blueprint -> locked menu -> allocation -> sanitization/validation -> fallback -> workout persistence. | The Foundation-safe planning core, captured fixture, and gated live structured contract. | SwiftUI flow, SwiftData save/load, real profile quality, and exercise-history continuity. |
+| Nutrition generation | Analysis -> reconciled macro targets -> seven-day request -> sanitization/validation -> safe fallback -> nutrition persistence. | Stress matrix plus gated live one-week contract. | SwiftUI flow, persisted plan presentation, and owner judgment of food practicality. |
+| App data and UI | SwiftUI, SwiftData, Keychain, backup/rollback, photo and camera integrations. | Narrow framework-free helpers only. | Xcode build and physical-iPhone runtime. |
+
+## GitHub Actions and AI Credential Wiring
+
+`Generator Tests` runs on pushes to `main` and exercises the deterministic Foundation-safe
+generator harness. `Swift` builds the actual iOS target on macOS. Neither workflow spends
+Anthropic credits.
+
+`Generator Troubleshooting` is manual and starts with a deterministic replay. It then has two
+independent optional live jobs:
+
+| Input | Job | Scope and cost boundary |
+|---|---|---|
+| `run_live_workout=true` | `live-workout-contract` | Workout only. One logical request with one permitted HTTP attempt. |
+| `run_live_nutrition=true` | `live-nutrition-contract` | Nutrition only. One seven-day plan; production correction/retry behavior may make up to three HTTP calls. |
+| `confirm_api_usage=RUN_LIVE_AI` | Authorizes selected live jobs only. | Never turn on an unrelated generator “for completeness.” |
+
+The repository secret `ANTHROPIC_API_KEY` stays in GitHub and is injected only into the selected
+macOS runner as `TRANSFORM_HEADLESS_ANTHROPIC_API_KEY`. It is not an iPhone key and must never be
+printed, committed, or pasted into chat. The local `GH_TOKEN` is a separate, repository-scoped
+GitHub Actions write token in the owner's Windows user environment. It lets Codex dispatch and
+inspect workflows; it does not reveal or replace the Anthropic key.
+
+Live artifacts are intentionally redacted. A green contract proves request/decode/validation
+behavior for its synthetic fixture; it does not expose a meal plan or prove subjective coaching
+quality.
+
+## Body Analysis Automation Policy
+
+Yes: when body analysis becomes automatable, it must have its own independent
+`run_live_bodyanalysis` input and `live-bodyanalysis-contract` job. It must never be bundled with
+workout or nutrition, because photo-bearing calls have different privacy, cost, and reliability
+risks.
+
+Do **not** add a placeholder job today. The current body-analysis entry point is UIKit-gated,
+accepts real image data, sends a freeform vision request, and has no privacy-safe headless fixture
+or live-contract test. A no-op checkbox would falsely imply coverage.
+
+Before adding that job, complete all of these:
+
+1. Extract a Foundation-safe request/payload seam while preserving iPhone JPEG resizing and image limits.
+2. Add deterministic decode and `BodyAnalysisValidator` fixtures, including malformed macro and training-intent cases.
+3. Use only a checked-in, non-personal, rights-cleared synthetic or explicitly consented fixture. Never upload a user's phone photo to GitHub Actions.
+4. Create a dedicated redacted artifact that reports contract/validator counts, never images, prompts, raw responses, or personal measurements.
+5. Keep physical-iPhone review mandatory for actual-photo quality, camera flow, privacy handling, and SwiftData persistence.
+
+## Working Protocol for Future Agents
+
+1. Work only in `C:\Dev\Transform_clean`; ignore `C:\Dev\Transform` and the OneDrive/Desktop copy unless the owner explicitly redirects you.
+2. Run `git fetch --prune`, verify `origin/main...main` is `0 0`, verify a non-empty merge-base, and check the real nested source tree before editing.
+3. Fix the earliest deterministic cause. Trimming output, warning demotion, retry changes, and permissive fallback acceptance are containment measures unless the planner/request layer is proven correct.
+4. For substantial generator or validator work, stage only intended files, run `tools/Invoke-GeneratorSecondAudit.ps1`, and independently audit the result. An incomplete or timed-out Claude review is not approval.
+5. Dispatch billed live jobs only for the requested surface. State the number of actual HTTP calls observed, not merely the logical generation count.
+6. Push completed work directly to `main` as a fast-forward. Never force-push. Windows validation is syntax/smoke-level only; use macOS CI and the physical iPhone for their respective claims.
 
 ## Why This Structure Matters
 This repo is not a flat app root.
@@ -93,7 +170,9 @@ Routine work does not use a promotion branch. Commit directly to `main` and push
 
 ## Secrets / Credential Handling
 - Do not treat repo-tracked files as a safe place for live credentials.
-- The Anthropic API key is entered in-app and stored in iOS Keychain. Build-time key injection has been removed.
+- The shipping iPhone Anthropic API key is entered in-app and stored in iOS Keychain. Build-time key injection has been removed.
+- The distinct GitHub repository secret named `ANTHROPIC_API_KEY` exists only for explicitly selected headless live-contract jobs. It is injected at runner time and must not become an app build setting.
+- The owner's local `GH_TOKEN` can dispatch and inspect GitHub Actions runs. It is not the Anthropic key, must remain local, and must never be pasted into chat or committed.
 - Do not reintroduce build-time key fallbacks (xcconfig, Secrets.plist, Info.plist key).
 - Before first push of a new app, run a secret scan.
 
@@ -147,6 +226,8 @@ Routine work does not use a promotion branch. Commit directly to `main` and push
 - On macOS, prefer real Xcode builds. Runtime validation belongs on the owner's physical iPhone; do not suggest or wait on the iOS Simulator.
 
 ## Recommended Repo-Local Companion Files
-- `docs/2_PROJECT_HANDOFF.md` (handoff docs live in the `docs/` folder)
-- `CLAUDE.md` in the app source tree when app-specific product rules need to live close to the code
-- `EvidenceProfile.md` as the programming contract for workout generation
+- `AGENTS.md` (mandatory rules, source-of-truth safeguards, and validation limits)
+- `docs/AGENT_HANDOFF_2026-07-15_generator-aplus.md` (specialist workout/nutrition architecture and incident history)
+- `docs/generator-troubleshooting-workflow.md` (billed live-job controls and redaction guarantees)
+- `Transform/Transform/CLAUDE.md` (app-specific product rules close to the source)
+- `Transform/Transform/EvidenceProfile.md` (programming contract for workout generation)

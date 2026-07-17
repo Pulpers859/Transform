@@ -1,7 +1,8 @@
 # Generator Troubleshooting Workflow
 
-This workflow removes the physical iPhone from most workout-generator debugging while
-keeping the limits honest. It does not add OpenAI or ChatGPT to the app.
+This workflow removes the physical iPhone from most deterministic workout- and
+nutrition-generator debugging while keeping the limits honest. It does not add OpenAI or
+ChatGPT to the app, and it does not currently automate body analysis.
 
 ## What runs without the phone
 
@@ -33,24 +34,39 @@ The job maps the repository's `ANTHROPIC_API_KEY` GitHub secret to the headless-
 is unavailable, so the credential path is compiled out of the iPhone app. The key is never
 written to a fixture or artifact.
 
-Each live test composes the same production request construction, structured tool call, parsing,
-sanitization, locked-menu set prescription, and validator functions used by `generateWeekOne`.
-The workout check deliberately sends exactly one logical request with one permitted HTTP attempt.
-The nutrition check exercises the production one-week path and its response validation. Neither
-check runs the other generator, parallel candidate scoring, or correction orchestration. These
-narrow seams prove the selected live contract without accidentally billing an unrelated generator.
-They use the configured lightweight generation model, so they are not claims about the production
-Week 1 model's output distribution.
+The workout contract exercises the production structured request, parsing, sanitization,
+locked-menu prescription, and validator seam used by `generateWeekOne`. It deliberately sends
+one logical request with one permitted HTTP attempt.
+
+The nutrition contract exercises the production one-week structured request, sanitization, and
+nutrition validator seam. It creates only Week 1, never an automatic Weeks 2-4 loop. The two
+jobs do not invoke one another or run parallel candidate scoring. They use the configured
+lightweight model, so neither is a claim about the full production output distribution or
+subjective coaching quality.
 
 Nutrition's production service may issue up to three HTTP calls when a response needs a correction
-or recoverable retry. That is still one seven-day generation and does not generate Weeks 2–4. The
+or recoverable retry. That is still one seven-day generation and does not generate Weeks 2-4. The
 nutrition-only run on `1353584` completed with two successful Anthropic calls: the first response
 needed correction and the second passed validation. The workout job was skipped.
 
-The uploaded report uses a synthetic analysis fixture with no personal, photo, medical, or
-training-history data. It contains counts and validator findings only: no prompts, raw model
-payload, final workout JSON, or credential. A passing live run must return seven days, preserve
-five training days, pass the expected validator verdict, and avoid the five historical findings.
+The uploaded reports use synthetic analysis fixtures with no personal, photo, medical, or
+training-history data. They contain counts and validator findings only: no prompts, raw model
+payload, final program JSON, or credential. A passing workout run must return seven days,
+preserve five training days, pass the expected validator verdict, and avoid the five historical
+findings. A passing nutrition run must return a valid AI-sourced Week 1 seven-day plan with no
+nutrition validator issues.
+
+## Why Body Analysis Is Not a Live Job Yet
+
+Body analysis must eventually be a separate `run_live_bodyanalysis` selector and dedicated job;
+it must never be bundled with workout or nutrition. It is intentionally absent today because the
+shipping path is UIKit-gated, consumes real photo data, and has no privacy-safe Foundation-only
+live fixture. Adding a no-op switch would create false confidence.
+
+Before it is wired, refactor a Foundation-safe request seam, add deterministic decoder and
+validator fixtures, establish a non-personal rights-cleared image fixture, redact every artifact,
+and retain physical-iPhone validation for real-photo quality and persistence. Never send a user's
+phone photo through GitHub Actions.
 
 ## What still requires the physical iPhone
 
@@ -73,7 +89,8 @@ primary generator debugger.
 ## Honest interpretation
 
 - Deterministic green: the covered planning and validation contracts passed.
-- Live smoke green: one bounded Anthropic structured request passed the production parsing,
-  sanitization, set-prescription, and validator contract.
-- Neither result alone proves every future workout is high quality.
+- Live workout green: the selected structured workout request passed its production contract.
+- Live nutrition green: the selected one-week nutrition path passed after zero to two correction
+  retries; report the actual observed HTTP-call count.
+- Neither result alone proves every future workout, nutrition plan, or body analysis is high quality.
 - Device green: the actual app built and completed the tested workflow on the owner's iPhone.
