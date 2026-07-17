@@ -42,6 +42,11 @@ narrow seams prove the selected live contract without accidentally billing an un
 They use the configured lightweight generation model, so they are not claims about the production
 Week 1 model's output distribution.
 
+Nutrition's production service may issue up to three HTTP calls when a response needs a correction
+or recoverable retry. That is still one seven-day generation and does not generate Weeks 2–4. The
+nutrition-only run on `1353584` completed with two successful Anthropic calls: the first response
+needed correction and the second passed validation. The workout job was skipped.
+
 The uploaded report uses a synthetic analysis fixture with no personal, photo, medical, or
 training-history data. It contains counts and validator findings only: no prompts, raw model
 payload, final workout JSON, or credential. A passing live run must return seven days, preserve
