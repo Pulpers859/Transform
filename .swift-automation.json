@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "appName": "Transform",
+  "projectType": "hybrid",
+  "platform": "ios",
+  "defaultBranch": "main",
+  "workflowMode": "existing",
+  "physicalDeviceRequired": true,
+  "existingWorkflowPaths": [
+    ".github/workflows/generator-tests.yml",
+    ".github/workflows/swift.yml",
+    ".github/workflows/generator-troubleshooting.yml"
+  ],
+  "swiftPackage": {
+    "enabled": true,
+    "workingDirectory": ".",
+    "testCommand": "swift test --enable-xctest --parallel",
+    "requireExecutedTests": true,
+    "requiredLogPatterns": [
+      "NutritionGeneratorStressTests"
+    ],
+    "timeoutMinutes": 12
+  },
+  "xcode": {
+    "enabled": true,
+    "workingDirectory": "Transform",
+    "containerType": "project",
+    "containerPath": "Transform.xcodeproj",
+    "selectorType": "target",
+    "selector": "Transform",
+    "configuration": "Debug",
+    "sdk": "iphonesimulator",
+    "destination": "generic/platform=iOS Simulator",
+    "action": "build",
+    "timeoutMinutes": 20
+  },
+  "liveAI": {
+    "enabled": true,
+    "providerSecretName": "ANTHROPIC_API_KEY",
+    "secretEnvironmentName": "TRANSFORM_HEADLESS_ANTHROPIC_API_KEY",
+    "confirmationPhrase": "RUN_LIVE_AI",
+    "workingDirectory": ".",
+    "deterministicCommand": "swift test --enable-xctest --filter TransformGeneratorCoreTests.GeneratorTroubleshootingTests/testFiveMaintenanceErrorFixtureStaysResolved",
+    "surfaces": [
+      {
+        "id": "workout-generation",
+        "displayName": "bounded workout generation contract",
+        "command": "swift test --enable-xctest --filter TransformGeneratorCoreTests.GeneratorTroubleshootingTests/testLiveWeekOneStructuredContract",
+        "outputFile": "live-generator-report.txt",
+        "artifactName": "live-generator-report",
+        "maxHttpCalls": 1,
+        "timeoutMinutes": 12
+      },
+      {
+        "id": "nutrition-generation",
+        "displayName": "bounded one-week nutrition generation contract",
+        "command": "swift test --enable-xctest --filter TransformGeneratorCoreTests.NutritionGeneratorStressTests/testLiveNutritionWeekOneStructuredContract",
+        "outputFile": "live-nutrition-generator-report.txt",
+        "artifactName": "live-nutrition-generator-report",
+        "maxHttpCalls": 3,
+        "timeoutMinutes": 12
+      }
+    ]
+  }
+}

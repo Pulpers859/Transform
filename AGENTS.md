@@ -18,6 +18,7 @@
 ## Handoff Authority
 - `docs/3_TRANSFORM_CLEAN_HANDOFF.md` is the canonical long-form operational handoff for current status, automation, evidence boundaries, and body-analysis readiness.
 - `docs/AGENT_HANDOFF_2026-07-15_generator-aplus.md` remains a specialist workout/nutrition generator architecture and incident-history reference. Do not use it as the sole current-status document.
+- `.swift-automation.json` is the machine-readable CI and live-contract profile. `docs/AUTOMATED_TESTING_HANDOFF.md` is its concise cross-repository automation handoff for Codex, Claude Code, and other agents.
 - Before relying on any status claim, verify the current commit, `origin/main` sync, workflow runs, and newer owner/device reports.
 
 ## Branch Policy
