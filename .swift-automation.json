@@ -49,6 +49,9 @@
         "outputFile": "live-generator-report.txt",
         "artifactName": "live-generator-report",
         "maxHttpCalls": 1,
+        "httpCallBudgetEnforcedBy": "The live workout contract calls AnthropicClient.sendStructuredRequest with attemptLimit 1.",
+        "existingInputName": "run_live_workout",
+        "existingJobId": "live-workout-contract",
         "timeoutMinutes": 12
       },
       {
@@ -58,6 +61,9 @@
         "outputFile": "live-nutrition-generator-report.txt",
         "artifactName": "live-nutrition-generator-report",
         "maxHttpCalls": 3,
+        "httpCallBudgetEnforcedBy": "NutritionGeneratorService production generation is capped at the initial request plus bounded correction and retry paths.",
+        "existingInputName": "run_live_nutrition",
+        "existingJobId": "live-nutrition-contract",
         "timeoutMinutes": 12
       }
     ]

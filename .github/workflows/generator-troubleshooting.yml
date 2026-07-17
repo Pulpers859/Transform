@@ -34,7 +34,7 @@ jobs:
       TRANSFORM_FIXTURE_SNAPSHOT_OUTPUT: ${{ github.workspace }}/generator-fixture-snapshot.txt
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
 
       - name: Run captured generator regression
         run: swift test --enable-xctest --filter TransformGeneratorCoreTests.GeneratorTroubleshootingTests/testFiveMaintenanceErrorFixtureStaysResolved
@@ -44,7 +44,7 @@ jobs:
 
       - name: Upload deterministic snapshot
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: generator-fixture-snapshot
           path: generator-fixture-snapshot.txt
@@ -58,21 +58,22 @@ jobs:
     timeout-minutes: 12
     env:
       TRANSFORM_RUN_LIVE_ANTHROPIC_SMOKE: "1"
-      TRANSFORM_HEADLESS_ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       TRANSFORM_LIVE_SMOKE_OUTPUT: ${{ github.workspace }}/live-generator-report.txt
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
 
       - name: Run one bounded live structured generation
+        env:
+          TRANSFORM_HEADLESS_ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: swift test --enable-xctest --filter TransformGeneratorCoreTests.GeneratorTroubleshootingTests/testLiveWeekOneStructuredContract
 
       - name: Verify live contract check executed
         run: test -s live-generator-report.txt
 
       - name: Upload redacted troubleshooting verdict
-        if: always()
-        uses: actions/upload-artifact@v4
+        if: success()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: live-generator-report
           path: live-generator-report.txt
@@ -86,21 +87,22 @@ jobs:
     timeout-minutes: 12
     env:
       TRANSFORM_RUN_LIVE_ANTHROPIC_SMOKE: "1"
-      TRANSFORM_HEADLESS_ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       TRANSFORM_NUTRITION_LIVE_SMOKE_OUTPUT: ${{ github.workspace }}/live-nutrition-generator-report.txt
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
 
       - name: Run one bounded live nutrition generation
+        env:
+          TRANSFORM_HEADLESS_ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: swift test --enable-xctest --filter TransformGeneratorCoreTests.NutritionGeneratorStressTests/testLiveNutritionWeekOneStructuredContract
 
       - name: Verify live nutrition contract check executed
         run: test -s live-nutrition-generator-report.txt
 
       - name: Upload redacted nutrition verdict
-        if: always()
-        uses: actions/upload-artifact@v4
+        if: success()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: live-nutrition-generator-report
           path: live-nutrition-generator-report.txt
