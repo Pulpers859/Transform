@@ -24,11 +24,11 @@ validator.
 | **Roadmap #1 — unify credit ledger + generation-time invariant** | ✅ Fixed and CI-verified. Direct sets require primary metadata, each exercise counts once per priority, and allocation asserts equality with validator recomputation. |
 | **Phone-free troubleshooting workflow** | ✅ Added and CI-verified. A versioned failure-class fixture pins the allocated menu and validator verdict; a manual live Anthropic contract check is bounded to one HTTP attempt; Claude Code can independently review credential-scanned diffs with no tools. |
 | **Roadmap #3 — effort governance + autoregulation loop** | ✅ Implemented in code and macOS-CI green; physical-device confirmation remains. Set records preserve optional RIR, and two corroborating exercise-specific sessions can conservatively override a rep-ceiling load increase to protect recovery. |
-| **Nutrition generator audit** | ✅ Root-cause target reconciliation, meal/grocery arithmetic validation, ordered meal/substitution checks, safe fallback allocation, source provenance, and fallback-transition controls are implemented. The stress matrix and production test target execute on macOS CI. |
+| **Nutrition generator audit** | ✅ Root-cause target reconciliation, meal/grocery arithmetic validation, ordered meal/substitution checks, safe fallback allocation, source provenance, and fallback-transition controls are implemented. New generation now makes one 7-day request; the stress matrix and production test target execute on macOS CI. |
 
-**Current troubleshooting checkpoint:** `786bbec` on `main`, synchronized with `origin/main`. Generator Tests run `29518627719` and Swift/Xcode run `29518627712` both passed. The generator target executed 26 XCTest cases, including four deterministic nutrition stress tests and the manually gated nutrition live-contract test (skipped when live API authorization is absent). The live nutrition workflow is wired but has not been run in this checkpoint, so no Anthropic nutrition response is being claimed as validated.
+**Current troubleshooting checkpoint:** `323db60` on `main`, synchronized with `origin/main`. Generator Tests run `29554596647` and Swift/Xcode run `29554596672` both passed. The generator target executed 26 XCTest cases, including four deterministic nutrition stress tests and the manually gated nutrition live-contract test (skipped when live API authorization is absent). New nutrition generation makes one 7-day request and does not automatically generate Weeks 2–4. The live nutrition workflow is wired but has not been run in this checkpoint, so no Anthropic nutrition response is being claimed as validated.
 
-**If you do one thing next:** dispatch the manual troubleshooting workflow with `run_live_ai=true` and `confirm_api_usage=RUN_LIVE_AI` when API spend is authorized, then build the current `main` in Xcode and run nutrition and workout generation on the physical iPhone. Do not call either generator universally resolved from CI or one live fixture alone.
+**If you do one thing next:** dispatch the manual troubleshooting workflow with `run_live_ai=true` and `confirm_api_usage=RUN_LIVE_AI` when API spend is authorized; that dispatch runs two bounded billed checks, one workout and one nutrition. Then build the current `main` in Xcode and run nutrition and workout generation on the physical iPhone. Do not call either generator universally resolved from CI or one live fixture alone.
 
 **Evidence boundary:** code inspection and CI prove compile/test behavior; the manual live workflow proves the configured Anthropic request/decode/sanitize/validate path only when it is actually dispatched; only the owner's physical-device run proves the shipped SwiftData/UI path and real user-profile experience. The latest Claude second audit was not completed because its session limit was reached; it must not be represented as approval.
 
@@ -392,9 +392,10 @@ Evidence at the current checkpoint:
 feasibility fixes, diagnostics), `1f412b6` (canonical ledger and cross-style reuse),
 `bcd76ed` (append-only baseline repair), `6da0185` (nutrition audit implementation),
 `32371f3` (nutrition target type/root compile fix), `6874500` (real XCTest discovery
-guard), and `786bbec` (nutrition live-test reporting). All are on `main`; current
-automated proof is recorded at the top of this handoff. The nutrition live workflow
-is wired but has not been dispatched in the current checkpoint.
+guard), `786bbec` (nutrition live-test reporting), and `323db60` (one-week
+orchestration). All are on `main`; current automated proof is recorded at the top of
+this handoff. The nutrition live workflow is wired but has not been dispatched in the
+current checkpoint.
 
 ---
 

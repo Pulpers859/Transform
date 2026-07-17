@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       run_live_ai:
-        description: "Also run one API-billed Anthropic contract check"
+        description: "Run the bounded workout and nutrition Anthropic checks (API-billed)"
         type: boolean
         required: true
         default: false
