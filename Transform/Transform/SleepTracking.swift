@@ -57,6 +57,22 @@ struct SleepTrendSnapshot {
 
     var loggedDays: Int { days.count }
 
+    /// The structured, dated form of this snapshot consumed by the workout generator's
+    /// recovery modulation (see RecoveryState.swift).
+    func recoveryState(builtAt: Date = .now) -> SleepRecoveryState {
+        SleepRecoveryState(
+            builtAt: builtAt,
+            threeDayAverageHours: threeDayAverageHours,
+            sevenDayAverageHours: sevenDayAverageHours,
+            acuteLoggedDays: acuteLoggedDays,
+            loggedDays: loggedDays,
+            daysUnderFive: underFiveHours,
+            daysUnderSix: underSixHours,
+            variabilityHours: variabilityHours,
+            recentPostCall: hasRecentPostCallRecovery
+        )
+    }
+
     var variabilityLabel: String {
         switch variabilityHours {
         case ..<0.75: return "Low"
@@ -171,8 +187,19 @@ enum SleepTrendStore {
     static func refresh(using modelContext: ModelContext) {
         do {
             let episodes = try modelContext.fetch(FetchDescriptor<SleepEntry>())
-            let summary = SleepTrendBuilder.build(from: episodes)?.promptSummary ?? ""
-            UserDefaults.standard.set(summary, forKey: AppSettingsKeys.derivedSleepTrendSummary)
+            let snapshot = SleepTrendBuilder.build(from: episodes)
+            UserDefaults.standard.set(
+                snapshot?.promptSummary ?? "",
+                forKey: AppSettingsKeys.derivedSleepTrendSummary
+            )
+            // Structured, dated companion to the prose summary. The generator's recovery
+            // modulation reads ONLY this (never the prose), so a stale summary string can
+            // no longer silently constrain future programs.
+            if let encoded = snapshot?.recoveryState().encodedJSON() {
+                UserDefaults.standard.set(encoded, forKey: AppSettingsKeys.derivedSleepRecoveryState)
+            } else {
+                UserDefaults.standard.removeObject(forKey: AppSettingsKeys.derivedSleepRecoveryState)
+            }
         } catch {
             print("[SleepTrend] Could not refresh derived sleep context: \(error.localizedDescription)")
         }

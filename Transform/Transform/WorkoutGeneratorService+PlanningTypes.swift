@@ -56,6 +56,12 @@ extension ClaudeService {
         let lowPerformanceDataQuality: Bool
         let poorNutritionAdherence: Bool
         let recoveryConstrained: Bool
+        /// Structured recovery tier from dated sleep-log numbers (RecoveryState.swift).
+        /// `recoveryConstrained` stays as the downstream convenience flag
+        /// (true for .constrained and .restricted).
+        let recoveryTier: RecoveryTier
+        /// Inputs-and-rule audit line for the applied tier (dashboard + Generator Workshop).
+        let recoveryAudit: String
         let recompositionGoal: Bool
         let weeklyVolumeScale: Double
         let reduceExerciseSlotComplexity: Bool

@@ -52,6 +52,9 @@ let package = Package(
                 "AppLifecycleMonitor.swift",
                 "AdaptiveInsights.swift",
                 "NutritionGeneratorService.swift",
+                // Structured sleep-recovery state + tier policy (Foundation-only) consumed
+                // by the calibration pass; written on-device by SleepTracking.swift.
+                "RecoveryState.swift",
 
                 // Shared model layer. (Models.swift — the sleep/nutrition/weight
                 // persistence models — is intentionally NOT here: nothing in the

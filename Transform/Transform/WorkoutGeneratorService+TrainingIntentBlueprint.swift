@@ -805,6 +805,8 @@ extension ClaudeService {
             lowPerformanceDataQuality: false,
             poorNutritionAdherence: false,
             recoveryConstrained: false,
+            recoveryTier: .insufficientData,
+            recoveryAudit: "neutral calibration (no analysis context)",
             recompositionGoal: false,
             weeklyVolumeScale: 1.0,
             reduceExerciseSlotComplexity: false,
@@ -821,7 +823,13 @@ extension ClaudeService {
         )
     }
 
-    func calibrationProfile(from analysis: BodyAnalysisResult) -> ProgramCalibrationProfile {
+    /// `recoveryDecision` defaults to the stored structured sleep state; the harness
+    /// injects decisions directly so parallel test processes never race the shared
+    /// UserDefaults plist.
+    func calibrationProfile(
+        from analysis: BodyAnalysisResult,
+        recoveryDecision: RecoveryDecision? = nil
+    ) -> ProgramCalibrationProfile {
         let profile = analysis.inputContext?.profile
         let checkIn = analysis.inputContext?.checkIn
         let progress = analysis.inputContext?.progress
@@ -877,33 +885,56 @@ extension ClaudeService {
             ]
         )
 
-        let recoveryText = normalizedPriorityText([
-            profile?.averageSleep ?? "",
-            profile?.lifestyleConstraints ?? "",
-            checkIn?.recoverySleep ?? "",
-            UserDefaults.standard.string(forKey: AppSettingsKeys.derivedSleepTrendSummary) ?? "",
-            checkIn?.stressSchedule ?? "",
-            analysis.metabolicHealthNotes,
-            analysis.recoveryRiskAssessment
-        ].joined(separator: " "))
-        let recoveryHours = representativeSleepHours(from: recoveryText)
-        let recoveryConstrained =
-            containsAny(
-                recoveryText,
-                keywords: [
-                    "shift work",
-                    "shift-work",
-                    "variable sleep",
-                    "poor sleep",
-                    "under 5 hours",
-                    "post-call recovery",
-                    "high variability",
-                    "long clinical shifts",
-                    "stressful shifts",
-                    "high stress"
-                ]
-            )
-            || recoveryHours.map { $0 < 7.0 } == true
+        // Recovery modulation runs on the structured, dated sleep state (RecoveryState.swift,
+        // EvidenceProfile.md SLEEP-001) — never on regex over the derived prose summary,
+        // which previously never expired and could silently constrain generation forever.
+        let structuredDecision = recoveryDecision ?? sleepRecoveryDecision()
+
+        // Fallback: with no fresh sleep logs, standing profile prose (occupation, lifestyle,
+        // check-in text) may still justify constrained-level caution — but never restricted,
+        // which is reserved for measured acute restriction. The derived sleep summary string
+        // is deliberately excluded from this text.
+        let recoveryTier: RecoveryTier
+        let recoveryAudit: String
+        if structuredDecision.tier == .insufficientData {
+            let fallbackText = normalizedPriorityText([
+                profile?.averageSleep ?? "",
+                profile?.lifestyleConstraints ?? "",
+                checkIn?.recoverySleep ?? "",
+                checkIn?.stressSchedule ?? "",
+                analysis.metabolicHealthNotes,
+                analysis.recoveryRiskAssessment
+            ].joined(separator: " "))
+            let fallbackHours = representativeSleepHours(from: fallbackText)
+            let fallbackConstrained =
+                containsAny(
+                    fallbackText,
+                    keywords: [
+                        "shift work",
+                        "shift-work",
+                        "variable sleep",
+                        "poor sleep",
+                        "under 5 hours",
+                        "post-call recovery",
+                        "high variability",
+                        "long clinical shifts",
+                        "stressful shifts",
+                        "high stress"
+                    ]
+                )
+                || fallbackHours.map { $0 < 7.0 } == true
+            if fallbackConstrained {
+                recoveryTier = .constrained
+                recoveryAudit = "profile/check-in context (no fresh sleep logs: \(structuredDecision.audit))"
+            } else {
+                recoveryTier = .insufficientData
+                recoveryAudit = structuredDecision.audit
+            }
+        } else {
+            recoveryTier = structuredDecision.tier
+            recoveryAudit = structuredDecision.audit
+        }
+        let recoveryConstrained = recoveryTier == .constrained || recoveryTier == .restricted
 
         var weeklyVolumeScale = 1.0
         if lowPerformanceDataQuality {
@@ -912,22 +943,27 @@ extension ClaudeService {
         if poorNutritionAdherence && recompositionGoal {
             weeklyVolumeScale *= 0.90
         }
-        if recoveryConstrained {
-            weeklyVolumeScale *= 0.95
-        }
+        // Recovery no longer contributes a flat scalar here: a ~5% shave frequently vanished
+        // in 0.5-set rounding and cut first hard sets and marginal sets alike. It is replaced
+        // by whole-set evidence-band caps in adjustedPriorityIntent (SLEEP-002).
         weeklyVolumeScale = max(0.70, min(1.0, weeklyVolumeScale))
 
         let reduceExerciseSlotComplexity = lowPerformanceDataQuality
             || (poorNutritionAdherence && recompositionGoal)
-        let baseTimeCap = recoveryConstrained ? 70 : 75
+        let baseTimeCap: Int
+        switch recoveryTier {
+        case .restricted: baseTimeCap = 65
+        case .constrained: baseTimeCap = 70
+        case .ready, .insufficientData: baseTimeCap = 75
+        }
         let defaultSessionTimeCapMinutes = baseTimeCap
         let styleSessionCaps: [String: Int] = [
             "Push": defaultSessionTimeCapMinutes,
             "Pull": defaultSessionTimeCapMinutes,
             "Upper": defaultSessionTimeCapMinutes,
-            "Lower": recoveryConstrained ? 70 : 75,
-            "Legs": recoveryConstrained ? 70 : 75,
-            "Arms": recoveryConstrained ? 55 : 60
+            "Lower": defaultSessionTimeCapMinutes,
+            "Legs": defaultSessionTimeCapMinutes,
+            "Arms": recoveryTier == .restricted ? 50 : (recoveryConstrained ? 55 : 60)
         ]
 
         var notes: [String] = []
@@ -937,13 +973,22 @@ extension ClaudeService {
         if poorNutritionAdherence && recompositionGoal {
             notes.append("Nutrition adherence is the bottleneck right now, so keep specialization volume near the recoverable lower-mid range instead of chasing extra fatigue.")
         }
-        if recoveryConstrained {
-            notes.append("Session design should stay tight for shift-work recovery: trim filler first, keep compounds honest, and protect the weekly time budget.")
+        switch recoveryTier {
+        case .restricted:
+            notes.append("Recovery modulation RESTRICTED (\(recoveryAudit)): weekly priority set targets are capped at the bottom of their evidence band. Take the cut from back-off and accessory sets — preserve the first 1-2 hard sets of each exercise and the session's identity, keep accessories about 1 rep further from failure, and do NOT reduce loads.")
+        case .constrained:
+            notes.append("Recovery modulation CONSTRAINED (\(recoveryAudit)): weekly priority set targets are capped at the midpoint of their evidence band. Session design should stay tight for shift-work recovery: trim filler first, keep compounds honest, and protect the weekly time budget.")
+        case .insufficientData:
+            notes.append("Recovery modulation OFF (\(recoveryAudit)): volume targets are unchanged rather than guessed from stale context.")
+        case .ready:
+            break
         }
         return ProgramCalibrationProfile(
             lowPerformanceDataQuality: lowPerformanceDataQuality,
             poorNutritionAdherence: poorNutritionAdherence,
             recoveryConstrained: recoveryConstrained,
+            recoveryTier: recoveryTier,
+            recoveryAudit: recoveryAudit,
             recompositionGoal: recompositionGoal,
             weeklyVolumeScale: weeklyVolumeScale,
             reduceExerciseSlotComplexity: reduceExerciseSlotComplexity,
@@ -980,11 +1025,28 @@ extension ClaudeService {
     ) -> MusclePriorityIntent {
         let normalizedLevel = normalizedPriorityLevel(intent.priorityLevel, rank: intent.rank)
         let minimumWeeklyDirectTarget = normalizedLevel == "High" ? 6.0 : normalizedLevel == "Medium" ? 4.0 : 3.0
-        let scaledDirectSets = roundedStimulusValue(
+        let preRecoveryDirectSets = roundedStimulusValue(
             max(minimumWeeklyDirectTarget, intent.weeklyDirectSetTarget * calibration.weeklyVolumeScale)
         )
+        // Recovery tiers cut volume in whole sets anchored to the VOL-001 evidence bands
+        // (restricted -> band floor, constrained -> band midpoint) instead of a flat
+        // multiplier that rounding could erase. EvidenceProfile.md SLEEP-002.
+        let scaledDirectSets = roundedStimulusValue(
+            max(
+                minimumWeeklyDirectTarget,
+                recoveryCappedDirectTarget(
+                    preRecoveryDirectSets,
+                    priorityLevel: normalizedLevel,
+                    tier: calibration.recoveryTier
+                )
+            )
+        )
+        let recoveryTrimDelta = max(0, preRecoveryDirectSets - scaledDirectSets)
         let scaledStimulus = roundedStimulusValue(
-            max(scaledDirectSets + 1.0, intent.weeklyStimulusTarget * calibration.weeklyVolumeScale)
+            max(
+                scaledDirectSets + 1.0,
+                intent.weeklyStimulusTarget * calibration.weeklyVolumeScale - recoveryTrimDelta
+            )
         )
 
         var adjustedExerciseTarget = intent.weeklyExerciseTarget
@@ -1023,6 +1085,35 @@ extension ClaudeService {
 
     func sessionTimeCapMinutes(for style: String, calibration: ProgramCalibrationProfile) -> Int {
         calibration.sessionTimeCapsByStyle[canonicalTrainingStyle(style)] ?? calibration.defaultSessionTimeCapMinutes
+    }
+
+    /// The structured recovery decision for the next generation, read from the dated
+    /// sleep state that SleepTrendStore maintains. Stale or missing state yields
+    /// `.insufficientData` — never a silent adjustment.
+    func sleepRecoveryDecision(now: Date = .now) -> RecoveryDecision {
+        SleepRecoveryPolicy.decision(
+            from: SleepRecoveryState.decodedJSON(
+                UserDefaults.standard.string(forKey: AppSettingsKeys.derivedSleepRecoveryState)
+            ),
+            now: now
+        )
+    }
+
+    /// Whole-set recovery cap anchored to the VOL-001 evidence bands:
+    /// restricted -> band floor, constrained -> band midpoint, otherwise unchanged.
+    /// EvidenceProfile.md SLEEP-002 [confidence: low-moderate].
+    func recoveryCappedDirectTarget(_ target: Double, priorityLevel: String, tier: RecoveryTier) -> Double {
+        let band = evidenceProfile.directSetTargetsByPriority[priorityLevel]
+            ?? evidenceProfile.directSetTargetsByPriority["Medium"]
+            ?? 5...8
+        switch tier {
+        case .restricted:
+            return min(target, band.lowerBound)
+        case .constrained:
+            return min(target, (band.lowerBound + band.upperBound) / 2)
+        case .ready, .insufficientData:
+            return target
+        }
     }
 
     func roundedStimulusValue(_ value: Double) -> Double {

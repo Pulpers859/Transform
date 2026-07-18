@@ -385,6 +385,8 @@ nonisolated struct ProfileSettingsSnapshot: Codable {
     let analysisCheckInEnergyLevel: Int?
     let analysisCheckInCravingsLevel: Int?
     let derivedSleepTrendSummary: String?
+    // Optional so older backups (without this key) still decode.
+    let derivedSleepRecoveryState: String?
     let appearanceMode: Int?
     let nutritionShiftWorkMode: String?
 
@@ -437,6 +439,7 @@ nonisolated struct ProfileSettingsSnapshot: Codable {
             analysisCheckInEnergyLevel: d.object(forKey: AppSettingsKeys.analysisCheckInEnergyLevel) as? Int,
             analysisCheckInCravingsLevel: d.object(forKey: AppSettingsKeys.analysisCheckInCravingsLevel) as? Int,
             derivedSleepTrendSummary: d.string(forKey: AppSettingsKeys.derivedSleepTrendSummary),
+            derivedSleepRecoveryState: d.string(forKey: AppSettingsKeys.derivedSleepRecoveryState),
             appearanceMode: d.object(forKey: AppSettingsKeys.appearanceMode) as? Int,
             nutritionShiftWorkMode: d.string(forKey: AppSettingsKeys.nutritionShiftWorkMode)
         )
@@ -490,6 +493,7 @@ nonisolated struct ProfileSettingsSnapshot: Codable {
         if let v = analysisCheckInEnergyLevel { d.set(v, forKey: AppSettingsKeys.analysisCheckInEnergyLevel) }
         if let v = analysisCheckInCravingsLevel { d.set(v, forKey: AppSettingsKeys.analysisCheckInCravingsLevel) }
         if let v = derivedSleepTrendSummary { d.set(v, forKey: AppSettingsKeys.derivedSleepTrendSummary) }
+        if let v = derivedSleepRecoveryState { d.set(v, forKey: AppSettingsKeys.derivedSleepRecoveryState) }
         if let v = appearanceMode { d.set(v, forKey: AppSettingsKeys.appearanceMode) }
         if let v = nutritionShiftWorkMode { d.set(v, forKey: AppSettingsKeys.nutritionShiftWorkMode) }
     }

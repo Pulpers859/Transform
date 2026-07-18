@@ -25,6 +25,7 @@ struct DashboardView: View {
     @State private var showAddFoodSheet = false
     @State private var showSettings = false
     @State private var sleepEditorRequest: SleepEditorRequest?
+    @State private var quickSleepLogPresented = false
     @State private var headlineExpanded = false
     @State private var lastBackupDate: Date?
 
@@ -424,7 +425,7 @@ struct DashboardView: View {
         case .logMeal:
             showAddFoodSheet = true
         case .logSleep:
-            sleepEditorRequest = SleepEditorRequest(episode: nil)
+            quickSleepLogPresented = true
         case .reanalyze:
             selectedTab = .analysis
         }
@@ -476,6 +477,11 @@ struct DashboardView: View {
             }
             .sheet(item: $sleepEditorRequest) { request in
                 SleepEntryEditor(episode: request.episode)
+            }
+            .sheet(isPresented: $quickSleepLogPresented) {
+                SleepQuickLogSheet {
+                    sleepEditorRequest = SleepEditorRequest(episode: nil)
+                }
             }
             .onAppear {
                 SleepTrendStore.refresh(using: modelContext)
@@ -968,13 +974,52 @@ struct DashboardView: View {
 
     // MARK: - Sleep & Recovery
 
+    var todayHasMainSleep: Bool {
+        sleepEpisodes.contains {
+            $0.episodeType == .mainSleep && Calendar.current.isDateInToday($0.resolvedEndDate)
+        }
+    }
+
+    /// The recovery tier the next generated program will apply, with its audit line —
+    /// the same decision function the generator uses, so the card cannot drift from behavior.
+    @ViewBuilder
+    func recoveryModulationLine(for trend: SleepTrendSnapshot) -> some View {
+        let decision = SleepRecoveryPolicy.decision(from: trend.recoveryState())
+        let presentation: (label: String, icon: String, color: Color) = {
+            switch decision.tier {
+            case .ready:
+                return ("Recovery ready — full volume targets", "checkmark.circle.fill", TFColor.success)
+            case .constrained:
+                return ("Next program: volume capped mid-band", "gauge.medium", TFColor.accent)
+            case .restricted:
+                return ("Next program: volume pulled to band floor", "arrow.down.circle.fill", TFColor.danger)
+            case .insufficientData:
+                return ("Recovery adjustment off — \(decision.audit)", "questionmark.circle", Color.secondary)
+            }
+        }()
+        Label {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(presentation.label)
+                    .font(.caption.bold())
+                if decision.tier == .constrained || decision.tier == .restricted {
+                    Text(decision.audit)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        } icon: {
+            Image(systemName: presentation.icon)
+        }
+        .foregroundStyle(presentation.color)
+    }
+
     var sleepRecoveryCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 TFSectionLabel(text: "Sleep & Recovery", color: TFColor.sleep)
                 Spacer()
                 Button {
-                    sleepEditorRequest = SleepEditorRequest(episode: nil)
+                    quickSleepLogPresented = true
                 } label: {
                     Label("Log Sleep", systemImage: "plus.circle.fill")
                         .font(.caption.bold())
@@ -1027,6 +1072,19 @@ struct DashboardView: View {
                     Spacer()
                 }
                 .font(.caption2)
+
+                recoveryModulationLine(for: trend)
+
+                if !todayHasMainSleep {
+                    Button {
+                        quickSleepLogPresented = true
+                    } label: {
+                        Label("Last night not logged yet — log it in 3 taps", systemImage: "moon.stars.fill")
+                            .font(.caption.bold())
+                            .foregroundStyle(TFColor.sleep)
+                    }
+                    .buttonStyle(.plain)
+                }
             } else {
                 HStack(spacing: TFSpacing.innerGap) {
                     Image(systemName: "bed.double.fill")
