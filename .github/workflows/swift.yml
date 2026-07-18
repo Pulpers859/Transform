@@ -9,6 +9,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: transform-swift-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: macos-latest
@@ -21,12 +25,29 @@ jobs:
 
       - name: Build iOS app target
         working-directory: Transform
+        shell: bash
         run: |
+          set -o pipefail
+          result_bundle="$RUNNER_TEMP/transform-build.xcresult"
           xcodebuild \
             -project Transform.xcodeproj \
             -target Transform \
             -configuration Debug \
             -sdk iphonesimulator \
             -destination 'generic/platform=iOS Simulator' \
+            -resultBundlePath "$result_bundle" \
             CODE_SIGNING_ALLOWED=NO \
-            build
+            build 2>&1 | tee "$RUNNER_TEMP/transform-xcode.log"
+          xcode_status=${PIPESTATUS[0]}
+          if [[ "$xcode_status" -ne 0 ]]; then exit "$xcode_status"; fi
+
+      - name: Upload Xcode diagnostics
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: transform-xcode-diagnostics
+          path: |
+            ${{ runner.temp }}/transform-xcode.log
+            ${{ runner.temp }}/transform-build.xcresult
+          if-no-files-found: warn
+          retention-days: 14

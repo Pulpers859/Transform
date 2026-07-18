@@ -32,6 +32,10 @@ This repository is configured by `.swift-automation.json` using schema version 1
 
 - Required provider secret: `ANTHROPIC_API_KEY` exposed only as `TRANSFORM_HEADLESS_ANTHROPIC_API_KEY`.
 
+`swift.yml` is a generic iOS Simulator compile check. It cancels obsolete deterministic runs and,
+on failure, uploads both the raw Xcode log and the structured `.xcresult` bundle. It does not boot
+or test a simulator runtime; physical-iPhone validation remains required for app behavior.
+
 ## Evidence Checkpoint
 
 - Repository commit when this handoff was rendered: `1ac5cbaafae3772b2a37a5425b5b07f9d8201f04`
