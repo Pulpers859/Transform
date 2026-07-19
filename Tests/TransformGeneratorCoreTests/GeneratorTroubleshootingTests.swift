@@ -84,7 +84,11 @@ final class GeneratorTroubleshootingTests: XCTestCase {
         )
     }
 
-    func testSanitizationRepairsMissingProgressionCueWithoutDiscardingFormCue() async throws {
+    // Policy inverted 2026-07-19: sanitization used to APPEND a templated progression
+    // cue to any note lacking one — manufacturing a second advice voice that could
+    // contradict the deterministic progression banner. Notes are now execution-only,
+    // so this pins the opposite: preserve the form cue, inject nothing.
+    func testSanitizationKeepsNotesExecutionOnlyWithoutDiscardingFormCue() async throws {
         let response = WorkoutProgramResponse(
             programName: "Sanitization Test",
             programSummary: "A focused test response.",
@@ -116,11 +120,11 @@ final class GeneratorTroubleshootingTests: XCTestCase {
         let notes = try XCTUnwrap(cleaned.days.first?.exercises.first?.notes)
 
         XCTAssertTrue(notes.contains("soft elbow bend"), "Sanitization discarded the model's valid form cue")
-        XCTAssertTrue(
-            service.hasConcreteProgressionCue(notes),
-            "Sanitization must repair a non-empty note that lacks a concrete progression cue"
+        XCTAssertFalse(
+            service.notesContainProgressionInstruction(notes),
+            "Sanitization must not inject progression prose — the deterministic banner owns progression: \(notes)"
         )
-        XCTAssertTrue(notes.contains("Baseline target:"), "Week 1 repair should use the baseline progression guidance")
+        XCTAssertFalse(notes.contains("Baseline target:"), "The templated progression appendix must be gone")
     }
 
     func testProgressionEngineUsesAllWorkingSetsInsteadOfSummaryTopSet() throws {
