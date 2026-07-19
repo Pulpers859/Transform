@@ -311,6 +311,8 @@ nonisolated struct WorkoutExerciseSnapshot: Codable {
     let muscleTarget: String
     let isCompleted: Bool
     let completionStatusRaw: String?
+    /// Optional so backups written before the structured-RIR field decode cleanly.
+    let targetRIR: Int?
 }
 
 nonisolated struct ExerciseWeightSnapshot: Codable {
@@ -786,7 +788,8 @@ nonisolated struct ProfileSettingsSnapshot: Codable {
             notes: exercise.notes,
             muscleTarget: exercise.muscleTarget,
             isCompleted: exercise.isCompleted,
-            completionStatusRaw: exercise.completionStatusRaw.isEmpty ? nil : exercise.completionStatusRaw
+            completionStatusRaw: exercise.completionStatusRaw.isEmpty ? nil : exercise.completionStatusRaw,
+            targetRIR: exercise.targetRIR
         )
     }
 
@@ -799,7 +802,8 @@ nonisolated struct ProfileSettingsSnapshot: Codable {
             tempo: tempo ?? "",
             restSeconds: restSeconds,
             notes: notes,
-            muscleTarget: muscleTarget
+            muscleTarget: muscleTarget,
+            targetRIR: targetRIR
         )
         exercise.isCompleted = isCompleted
         exercise.completionStatusRaw = completionStatusRaw ?? ""

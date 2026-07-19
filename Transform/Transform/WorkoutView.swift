@@ -883,7 +883,8 @@ struct WorkoutView: View {
                     tempo: exerciseResponse.tempo,
                     restSeconds: exerciseResponse.restSeconds,
                     notes: exerciseResponse.notes,
-                    muscleTarget: exerciseResponse.muscleTarget
+                    muscleTarget: exerciseResponse.muscleTarget,
+                    targetRIR: exerciseResponse.targetRIR
                 )
                 exercise.day = day
                 modelContext.insert(exercise)

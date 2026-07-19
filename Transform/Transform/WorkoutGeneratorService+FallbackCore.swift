@@ -739,7 +739,8 @@ extension ClaudeService {
                                     index: recipientExercises.count,
                                     focus: allocation.area
                                 ),
-                                muscleTarget: donorExercise.muscleTarget
+                                muscleTarget: donorExercise.muscleTarget,
+                                targetRIR: donorExercise.targetRIR ?? proceduralTargetRIR(for: weekNumber)
                             )
                         )
                     }
@@ -898,7 +899,8 @@ extension ClaudeService {
                 tempo: proceduralTempo(for: weekNumber, exerciseName: candidate.name, muscleTarget: candidate.target, reps: reps),
                 restSeconds: proceduralRestSeconds(for: candidate.name, muscleTarget: candidate.target),
                 notes: proceduralExerciseNotes(weekNumber: weekNumber, exerciseName: candidate.name, muscleTarget: candidate.target, index: exercises.count, focus: allocation.area),
-                muscleTarget: candidate.target
+                muscleTarget: candidate.target,
+                targetRIR: proceduralTargetRIR(for: weekNumber)
             )
             let perSetGain = priorityContributionPerSet(for: probeExercise, intent: intent)
             guard perSetGain > 0,
@@ -1273,7 +1275,8 @@ extension ClaudeService {
                     index: index,
                     focus: focus
                 ),
-                muscleTarget: item.target
+                muscleTarget: item.target,
+                targetRIR: proceduralTargetRIR(for: weekNumber)
             )
         }
 
@@ -1316,7 +1319,8 @@ extension ClaudeService {
                     index: index,
                     focus: focus
                 ),
-                muscleTarget: item.muscleTarget
+                muscleTarget: item.muscleTarget,
+                targetRIR: proceduralTargetRIR(for: weekNumber)
             )
         }
 
@@ -1633,10 +1637,12 @@ extension ClaudeService {
         index: Int,
         focus: String
     ) -> String {
+        // Execution-only: effort intent ships as the structured targetRIR field
+        // (proceduralTargetRIR), and load/rep progression belongs to the app's
+        // deterministic banner — never to note prose.
         let technique = techniqueCue(for: muscleTarget, exerciseName: exerciseName, index: index)
-        let progression = progressionCue(for: weekNumber, exerciseName: exerciseName, muscleTarget: muscleTarget)
         let intent = intentCue(muscleTarget: muscleTarget, focus: focus, exerciseName: exerciseName)
-        return "\(technique) \(progression) \(intent)"
+        return "\(technique) \(intent)"
     }
 
     func proceduralMuscleGroups(for style: String) -> String {

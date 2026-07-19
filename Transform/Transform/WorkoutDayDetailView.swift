@@ -371,7 +371,7 @@ struct ExerciseCard: View {
     var bestWeightText: String? {
         guard let latestWeightLog else { return nil }
         let bestWeight = latestWeightLog.hasBestRecord ? latestWeightLog.bestWeightLbs : latestWeightLog.weightLbs
-        return "\(formatWeight(bestWeight)) lb"
+        return formatLoad(bestWeight)
     }
 
     var lastRepsTileText: String? {
@@ -493,7 +493,14 @@ struct ExerciseCard: View {
             if hideProgressionCue,
                containsAny(normalized, [
                 "next session", "add load", "add weight", "add reps", "before adding",
-                "before loading", "progression", "progress load", "hold load", "increase to"
+                "before loading", "progression", "progress load", "hold load", "increase to",
+                // Phrasings seen shipping past this filter while a live banner said
+                // the opposite: "add ankle weight or a dumbbell", "then a 5 lb stack
+                // step", "add a rep before adding a barbell step", "log a load you
+                // can reliably progress", "when you clear 15 clean reps".
+                "ankle weight", "add a dumbbell", "add a rep", "stack step",
+                "barbell step", "reliably progress", "when you clear", "add a plate",
+                "external load", "next week add"
                ]) {
                 continue
             }
@@ -590,6 +597,13 @@ struct ExerciseCard: View {
         return parsedPrescription?.tempo
     }
 
+    /// Structured target RIR when generation provided it; prose-parsed fallback for
+    /// programs generated before the structured field existed.
+    var displayTargetRIR: String? {
+        if let structured = exercise.targetRIR { return String(structured) }
+        return parsedPrescription?.rir
+    }
+
     var prescriptionItems: [ExercisePrescriptionPillData] {
         var items = [
             ExercisePrescriptionPillData(icon: "square.stack.3d.up", label: "\(exercise.sets) sets"),
@@ -598,7 +612,7 @@ struct ExerciseCard: View {
         if let tempo = displayTempo {
             items.append(ExercisePrescriptionPillData(icon: "metronome", label: "Tempo \(tempo)"))
         }
-        if let rir = parsedPrescription?.rir {
+        if let rir = displayTargetRIR {
             items.append(ExercisePrescriptionPillData(icon: "gauge", label: "RIR \(rir)"))
         }
         return items
@@ -607,7 +621,7 @@ struct ExerciseCard: View {
     var compactLastSessionText: String? {
         guard !latestSetLogs.isEmpty else {
             guard let latestWeightLog else { return nil }
-            var text = "\(formatWeight(latestWeightLog.weightLbs)) lb"
+            var text = formatLoad(latestWeightLog.weightLbs)
             if let reps = latestWeightLog.repsCompleted {
                 text += " x \(reps)"
             }
@@ -618,18 +632,23 @@ struct ExerciseCard: View {
         if let first = compactSets.first,
            compactSets.allSatisfy({ abs($0.weightLbs - first.weightLbs) < 0.05 }) {
             let reps = compactSets.map { "\($0.reps)" }.joined(separator: ", ")
-            return "\(formatWeight(first.weightLbs)) lb x \(reps)"
+            return "\(formatLoad(first.weightLbs)) x \(reps)"
         }
 
         if !compactSets.isEmpty {
             return compactSets
-                .map { "\(formatWeight($0.weightLbs))x\($0.reps)" }
+                .map { "\(compactLoad($0.weightLbs))x\($0.reps)" }
                 .joined(separator: ", ")
         }
 
         return latestSetLogs
-            .map { "\(formatWeight($0.weightLbs))x\($0.repsCompleted)" }
+            .map { "\(compactLoad($0.weightLbs))x\($0.repsCompleted)" }
             .joined(separator: ", ")
+    }
+
+    /// Shorthand load for dense set lists: "BW" or the bare number ("90x12").
+    private func compactLoad(_ weightLbs: Double) -> String {
+        weightLbs <= 0 ? "BW" : formatWeight(weightLbs)
     }
 
     var compactBestText: String? {
@@ -655,9 +674,17 @@ struct ExerciseCard: View {
                     exercise: exercise,
                     loggedSets: todaysSetLogs,
                     suggestedWeight: workingSetAnalysis.workingWeight,
-                    suggestedReps: workingSetAnalysis.topWorkingSet?.reps ?? RepRange.parse(exercise.reps)?.high,
+                    suggestedReps: workingSetAnalysis.topWorkingSet?.reps,
+                    targetRepsPlaceholder: RepRange.parse(exercise.reps)?.high,
                     onLog: { setNumber, weight, reps, rir in
-                        SetLoggingService.logSet(setNumber: setNumber, weightLbs: weight, reps: reps, rir: rir, for: exercise, modelContext: modelContext)
+                        if SetLoggingService.logSet(setNumber: setNumber, weightLbs: weight, reps: reps, rir: rir, for: exercise, modelContext: modelContext) {
+                            // A finished set is when rest begins — start the timer
+                            // without a second tap (the rest card can still pause/reset).
+                            NotificationCenter.default.post(
+                                name: .tfWorkoutSetLogged,
+                                object: exercise.persistentModelID
+                            )
+                        }
                     },
                     onClear: { setNumber in
                         SetLoggingService.clearSet(setNumber: setNumber, for: exercise, modelContext: modelContext)
@@ -678,7 +705,7 @@ struct ExerciseCard: View {
                 if let anomaly = workingSetAnalysis.anomalies.first {
                     let reference = workingSetAnalysis.workingWeight ?? anomaly.weightLbs
                     SetAnomalyNotice(
-                        text: "Check Set \(anomaly.setNumber): \(formatWeight(anomaly.weightLbs)) lb is well above your \(formatWeight(reference)) lb working sets. Confirm or fix the entry — it isn't used for progression."
+                        text: "Check Set \(anomaly.setNumber): \(formatLoad(anomaly.weightLbs)) is well above your \(formatLoad(reference)) working sets. Confirm or fix the entry — it isn't used for progression."
                     )
                 }
 
@@ -755,15 +782,18 @@ struct ExerciseCard: View {
     @ViewBuilder
     private var detailContent: some View {
         VStack(alignment: .leading, spacing: 10) {
-            if let parsedPrescription {
+            if parsedPrescription != nil || displayTargetRIR != nil {
                 HStack(alignment: .center) {
-                    Text(parsedPrescription.intensityLabel)
-                        .font(parsedPrescription.intensity == .light ? .caption : .caption.bold())
-                        .foregroundStyle(parsedPrescription.intensity.color)
+                    if let intensity = parsedPrescription?.intensity,
+                       let label = parsedPrescription?.intensityLabel {
+                        Text(label)
+                            .font(intensity == .light ? .caption : .caption.bold())
+                            .foregroundStyle(intensity.color)
+                    }
 
                     Spacer()
 
-                    if let rirValue = parsedPrescription.rir {
+                    if let rirValue = displayTargetRIR {
                         Text("RIR \(rirValue)")
                             .font(.caption.bold())
                             .foregroundStyle(.secondary)
@@ -775,7 +805,7 @@ struct ExerciseCard: View {
                 setLogBreakdown
             } else if latestWeightLog != nil {
                 ExerciseWeightSnapshotTile(
-                    lastWeightText: latestWeightLog.map { "\(formatWeight($0.weightLbs)) lb" } ?? "-",
+                    lastWeightText: latestWeightLog.map { formatLoad($0.weightLbs) } ?? "-",
                     lastRepsText: lastRepsTileText,
                     bestWeightText: bestWeightText ?? "-",
                     bestRepsText: bestRepsTileText
@@ -893,7 +923,7 @@ struct ExerciseCard: View {
                         .font(.caption2.bold())
                         .foregroundStyle(role == .anomaly ? TFColor.warning : TFColor.accent)
                         .frame(width: 38, alignment: .leading)
-                    Text("\(formatWeight(set.weightLbs)) lb")
+                    Text(formatLoad(set.weightLbs))
                         .font(.caption.bold())
                         .foregroundStyle(role == .anomaly ? TFColor.warning : .primary)
                         .frame(width: 65, alignment: .trailing)
@@ -1291,6 +1321,17 @@ struct ExerciseRestTimerView: View {
                 stopRestTimer()
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .tfWorkoutSetLogged)) { note in
+            // A confirmed set means a fresh rest period starts now — no second tap.
+            // Restarts from full even if a previous countdown was mid-flight.
+            guard let id = note.object as? PersistentIdentifier,
+                  id == exercise.persistentModelID else { return }
+            didCompleteRestTimer = false
+            remainingRestSeconds = exercise.restSeconds
+            restEndDate = Date().addingTimeInterval(Double(remainingRestSeconds))
+            isRestTimerActive = true
+            startRestTimer()
+        }
         .fullScreenCover(isPresented: $showExpandedRestTimer) {
             RestTimerFullscreen(
                 exerciseName: exercise.exerciseName,
@@ -1622,12 +1663,17 @@ enum WorkoutIntensity: String {
 
 struct ExercisePrescription {
     let week: Int?
-    let intensity: WorkoutIntensity
+    /// Optional: many generated notes carry RIR/tempo without an intensity word.
+    /// The parse used to bail entirely without one, which silently discarded a
+    /// perfectly parseable "2 RIR" (seen live: Back Squat had no RIR chip while
+    /// Hanging Knee Raise did).
+    let intensity: WorkoutIntensity?
     let rir: String?
     let tempo: String?
     let cleanedNotes: String
 
-    var intensityLabel: String {
+    var intensityLabel: String? {
+        guard let intensity else { return nil }
         var left = ""
         if let week {
             left = "Week \(week)"
@@ -1656,14 +1702,17 @@ struct ExercisePrescription {
         let weekString = firstCapture(in: trimmed, pattern: #"(?i)\bweek\s*(\d+)\b"#)
         let week = weekString.flatMap(Int.init)
 
-        guard let intensityMatch = firstCapture(in: trimmed, pattern: #"(?i)\b(light|moderate|heavy)\b"#)?.lowercased(),
-              let intensity = WorkoutIntensity(rawValue: intensityMatch) else {
-            return nil
-        }
+        let intensity = firstCapture(in: trimmed, pattern: #"(?i)\b(light|moderate|heavy)\b"#)
+            .flatMap { WorkoutIntensity(rawValue: $0.lowercased()) }
 
-        let rir = firstCapture(in: trimmed, pattern: #"(?i)\bRIR\b\s*[:\-]?\s*(\d+(?:\.\d+)?)\b"#)
-            ?? firstCapture(in: trimmed, pattern: #"(?i)\b(\d+(?:\.\d+)?)\s*RIR\b"#)
-            ?? firstCapture(in: trimmed, pattern: #"(?i)\b(\d+(?:\.\d+)?)\s*reps?\s+in\s+reserve\b"#)
+        // Range-aware ("2-3 RIR", "2-3 reps in reserve"): capturing only the single
+        // trailing digit used to read "2-3 reps in reserve" as RIR 3 AND leave a
+        // dangling "2-" behind after cleaning (seen shipping: "finish sets with 2-
+        // and log a load…").
+        let rirNumber = #"\d+(?:\.\d+)?(?:\s*-\s*\d+(?:\.\d+)?)?"#
+        let rir = firstCapture(in: trimmed, pattern: "(?i)\\bRIR\\b\\s*[:\\-]?\\s*(\(rirNumber))\\b")
+            ?? firstCapture(in: trimmed, pattern: "(?i)\\b(\(rirNumber))\\s*RIR\\b")
+            ?? firstCapture(in: trimmed, pattern: "(?i)\\b(\(rirNumber))\\s*reps?\\s+in\\s+reserve\\b")
         let tempo = firstCapture(in: trimmed, pattern: #"(?i)\btempo\b\s*[:\-]?\s*([0-9Xx](?:\s*-\s*[0-9Xx]){3})\b"#)?
             .replacingOccurrences(of: " ", with: "")
             .uppercased()
@@ -1673,14 +1722,20 @@ struct ExercisePrescription {
         cleaned = cleaned.replacingOccurrences(of: #"(?i)\b(light|moderate|heavy)\s+weight\b\s*[:\-]?\s*"#, with: "", options: .regularExpression)
         cleaned = cleaned.replacingOccurrences(of: #"(?i)\bweek\s*\d+\b\s*[:\-]?\s*"#, with: "", options: .regularExpression)
         cleaned = cleaned.replacingOccurrences(of: #"(?i)\b(light|moderate|heavy)\b"#, with: "", options: .regularExpression)
-        cleaned = cleaned.replacingOccurrences(of: #"(?i)\bRIR\b\s*[:\-]?\s*\d+(?:\.\d+)?\b"#, with: "", options: .regularExpression)
-        cleaned = cleaned.replacingOccurrences(of: #"(?i)\b\d+(?:\.\d+)?\s*RIR\b"#, with: "", options: .regularExpression)
-        cleaned = cleaned.replacingOccurrences(of: #"(?i)\b\d+(?:\.\d+)?\s*reps?\s+in\s+reserve\b"#, with: "", options: .regularExpression)
+        cleaned = cleaned.replacingOccurrences(of: "(?i)\\bRIR\\b\\s*[:\\-]?\\s*\(rirNumber)\\b", with: "", options: .regularExpression)
+        cleaned = cleaned.replacingOccurrences(of: "(?i)\\b\(rirNumber)\\s*RIR\\b", with: "", options: .regularExpression)
+        cleaned = cleaned.replacingOccurrences(of: "(?i)\\b\(rirNumber)\\s*reps?\\s+in\\s+reserve\\b", with: "", options: .regularExpression)
+        // Connector left behind when an embedded RIR phrase is removed
+        // ("finish sets with [2-3 reps in reserve] and log…").
+        cleaned = cleaned.replacingOccurrences(of: #"(?i)\bwith\s+and\b"#, with: "and", options: .regularExpression)
         cleaned = cleaned.replacingOccurrences(of: #"(?i)\btempo\b\s*[:\-]?\s*[0-9Xx](?:\s*-\s*[0-9Xx]){3}\b"#, with: "", options: .regularExpression)
         cleaned = cleaned.replacingOccurrences(of: #"\.\s*[:\-]\s*"#, with: ". ", options: .regularExpression)
         cleaned = cleaned.replacingOccurrences(of: #"^\s*[:\-]\s*"#, with: "", options: .regularExpression)
         cleaned = cleaned.replacingOccurrences(of: #"\s{2,}"#, with: " ", options: .regularExpression)
         cleaned = cleaned.trimmingCharacters(in: CharacterSet(charactersIn: " ,.;:-"))
+
+        // A prescription with no parsed values adds nothing over the raw note.
+        guard week != nil || intensity != nil || rir != nil || tempo != nil else { return nil }
 
         return ExercisePrescription(
             week: week,
@@ -1764,20 +1819,36 @@ struct ProgressionSuggestion {
             WorkoutProgressionEngine.nextLoad(from: decision.workingWeight, exerciseName: exerciseName)
         )
 
+        // Bodyweight-equivalent history (true 0-load logs, or the legacy "1 lb"
+        // stand-ins from before the logger allowed BW) gets bodyweight coaching:
+        // percentage math off a fake base produced advice like "1 lb felt
+        // complete. Try 2.5 lb" while the movement's real progression is reps,
+        // then a first external increment.
+        let isBodyweight = WorkoutProgressionEngine.isBodyweightEquivalent(decision.workingWeight)
+        let atLoad = isBodyweight ? "at bodyweight" : "at \(weightText) lb"
+        let holdLabel = isBodyweight ? "Hold bodyweight" : "Hold \(weightText) lb"
+
         switch decision.kind {
         case .addLoad:
             if decision.workingSetCount > 0 && decision.ceilingSetCount < decision.workingSetCount {
                 return ProgressionSuggestion(
                     icon: "arrow.up.circle.fill",
-                    text: "Add load — \(decision.ceilingSetCount) of \(decision.workingSetCount) sets hit \(repRange.high) at \(weightText) lb. Try \(nextText) lb next session",
+                    text: isBodyweight
+                        ? "Add load — \(decision.ceilingSetCount) of \(decision.workingSetCount) sets hit \(repRange.high) \(atLoad). Add ~\(nextText) lb external (ankle weight or dumbbell) next session"
+                        : "Add load — \(decision.ceilingSetCount) of \(decision.workingSetCount) sets hit \(repRange.high) \(atLoad). Try \(nextText) lb next session",
                     color: TFColor.success
                 )
             }
             return ProgressionSuggestion(
                 icon: "arrow.up.circle.fill",
-                text: decision.usedPerSetEvidence
-                    ? "Add load — \(weightText) lb felt complete. Try \(nextText) lb next session"
-                    : "Increase to \(nextText) lb next session",
+                text: {
+                    if isBodyweight {
+                        return "Bodyweight is maxing the rep range — add ~\(nextText) lb external (ankle weight or dumbbell) next session"
+                    }
+                    return decision.usedPerSetEvidence
+                        ? "Add load — \(weightText) lb felt complete. Try \(nextText) lb next session"
+                        : "Increase to \(nextText) lb next session"
+                }(),
                 color: TFColor.success
             )
         case .holdBelowRange:
@@ -1785,14 +1856,14 @@ struct ProgressionSuggestion {
             return ProgressionSuggestion(
                 icon: "arrow.down.circle.fill",
                 text: decision.usedPerSetEvidence
-                    ? "Hold \(weightText) lb — a working set dropped to \(reps) (target \(repRange.low)-\(repRange.high)); even your sets out before adding"
-                    : "Stay at \(weightText) lb, focus on form and full ROM",
+                    ? "\(holdLabel) — a working set dropped to \(reps) (target \(repRange.low)-\(repRange.high)); even your sets out before adding"
+                    : "Stay \(atLoad), focus on form and full ROM",
                 color: TFColor.warning
             )
         case .holdForRecovery:
             return ProgressionSuggestion(
                 icon: "arrow.down.right.circle.fill",
-                text: "Hold \(weightText) lb — repeated low RIR suggests protecting recovery before adding load",
+                text: "\(holdLabel) — repeated low RIR suggests protecting recovery before adding load",
                 color: TFColor.warning
             )
         case .addRepsInRange:
@@ -1802,14 +1873,14 @@ struct ProgressionSuggestion {
                     let needed = majority - decision.ceilingSetCount
                     return ProgressionSuggestion(
                         icon: "flame.fill",
-                        text: "Strong top set at \(weightText) lb — hit \(repRange.high) on \(needed) more set\(needed == 1 ? "" : "s") before adding",
+                        text: "Strong top set \(atLoad) — hit \(repRange.high) on \(needed) more set\(needed == 1 ? "" : "s") before adding",
                         color: TFColor.accent
                     )
                 }
             }
             let reps = decision.minimumWorkingReps ?? repRange.low
             let text = decision.workingSetCount > 0
-                ? "On track at \(weightText) lb — build all sets to \(repRange.high) reps (lowest was \(reps))"
+                ? "On track \(atLoad) — build all sets to \(repRange.high) reps (lowest was \(reps))"
                 : "On track — aim for \(reps + 1)-\(repRange.high) reps next session"
             return ProgressionSuggestion(
                 icon: "arrow.right.circle.fill",
@@ -1859,6 +1930,12 @@ struct SetAnomalyNotice: View {
         .background(TFColor.warning.opacity(0.08))
         .clipShape(RoundedRectangle(cornerRadius: 8))
     }
+}
+
+extension Notification.Name {
+    /// Posted after a set is persisted; object is the exercise's PersistentIdentifier.
+    /// The exercise's rest timer listens and auto-starts its countdown.
+    static let tfWorkoutSetLogged = Notification.Name("tfWorkoutSetLogged")
 }
 
 // MARK: - Set Logging Service
@@ -1923,7 +2000,9 @@ enum SetLoggingService {
         modelContext: ModelContext,
         on date: Date = .now
     ) -> Bool {
-        guard weightLbs > 0, reps > 0 else { return false }
+        // Weight 0 is an explicit bodyweight set; only negative weight or
+        // non-positive reps are rejected.
+        guard weightLbs >= 0, reps > 0 else { return false }
         let log = todaysLogOrCreate(for: exercise, modelContext: modelContext, date: date)
         var sets = log.decodedSetLogs.filter { $0.setNumber != setNumber }
         sets.append(SetLogEntry(setNumber: setNumber, weightLbs: weightLbs, repsCompleted: reps, rir: rir))
@@ -2051,8 +2130,12 @@ enum SetLoggingService {
 struct InlineSetLogger: View {
     let exercise: WorkoutExercise
     let loggedSets: [SetLogEntry]
+    /// Prefill values must come from ACTUAL history (this session's last set, or
+    /// last session's working sets) — never from the programmed target, which is
+    /// a guess and renders as a placeholder instead (`targetRepsPlaceholder`).
     let suggestedWeight: Double?
     let suggestedReps: Int?
+    let targetRepsPlaceholder: Int?
     let onLog: (Int, Double, Int, Double?) -> Void
     let onClear: (Int) -> Void
 
@@ -2146,7 +2229,7 @@ struct InlineSetLogger: View {
     private func loggedRow(_ n: Int, _ set: SetLogEntry) -> some View {
         HStack(spacing: 8) {
             setLabel(n)
-            Text("\(formatWeight(set.weightLbs)) lb")
+            Text(formatLoad(set.weightLbs))
                 .font(.caption.bold())
             Text("\u{00D7}").font(.caption2).foregroundStyle(.tertiary)
             Text("\(set.repsCompleted) reps").font(.caption).foregroundStyle(.secondary)
@@ -2155,7 +2238,7 @@ struct InlineSetLogger: View {
             }
             Spacer()
             Button {
-                draftWeight[n] = formatWeight(set.weightLbs)
+                draftWeight[n] = set.weightLbs <= 0 ? "BW" : formatWeight(set.weightLbs)
                 draftReps[n] = "\(set.repsCompleted)"
                 draftRIR[n] = set.rir.map { formatRIR($0) } ?? ""
                 editing.insert(n)
@@ -2182,12 +2265,16 @@ struct InlineSetLogger: View {
 
     private func entryRow(_ n: Int) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 8) {
+            HStack(spacing: 6) {
                 setLabel(n)
-                field(text: weightBinding(n), placeholder: "lb", key: .weight(n), isReps: false, width: 54)
+                field(text: weightBinding(n), placeholder: "lb", key: .weight(n), isReps: false, width: 50)
                 Text("\u{00D7}").font(.caption2).foregroundStyle(.tertiary)
-                field(text: repsBinding(n), placeholder: "reps", key: .reps(n), isReps: true, width: 44)
-                Spacer()
+                field(text: repsBinding(n), placeholder: repsPlaceholder, key: .reps(n), isReps: true, width: 42)
+                Spacer(minLength: 4)
+                Text("RIR")
+                    .font(.caption2.bold())
+                    .foregroundStyle(.secondary)
+                field(text: rirBinding(n), placeholder: "—", key: .rir(n), isReps: false, width: 38)
                 Button {
                     logRow(n)
                 } label: {
@@ -2199,12 +2286,18 @@ struct InlineSetLogger: View {
                 .disabled(!canLog(n))
                 .accessibilityLabel("Log set \(n)")
             }
-            HStack(spacing: 6) {
-                Spacer()
-                Text("RIR")
-                    .font(.caption2.bold())
-                    .foregroundStyle(.secondary)
-                field(text: rirBinding(n), placeholder: "—", key: .rir(n), isReps: false, width: 42)
+            // The decimal keyboard can't type "BW", so an empty weight field offers
+            // it explicitly. The row disappears once a load (or BW) is entered.
+            if weightBinding(n).wrappedValue.trimmingCharacters(in: .whitespaces).isEmpty {
+                Button {
+                    draftWeight[n] = "BW"
+                } label: {
+                    Label("Bodyweight — no external load", systemImage: "figure.core.training")
+                        .font(.caption2.bold())
+                        .foregroundStyle(TFColor.accent)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Log set \(n) as bodyweight")
             }
         }
         .padding(.horizontal, 8)
@@ -2234,9 +2327,17 @@ struct InlineSetLogger: View {
 
     // MARK: Drafts & parsing
 
+    /// Placeholder for the reps field: the programmed target, visibly a suggestion.
+    /// Actual history prefills as a value; a pure guess never does — a tap must
+    /// report what happened, not confirm what was hoped.
+    private var repsPlaceholder: String {
+        targetRepsPlaceholder.map(String.init) ?? "reps"
+    }
+
     private func defaultWeightText() -> String {
-        if let w = loggedSets.last?.weightLbs ?? suggestedWeight, w > 0 { return formatWeight(w) }
-        return ""
+        // nil = no history (leave empty); 0 = real bodyweight history (prefill "BW").
+        guard let w = loggedSets.last?.weightLbs ?? suggestedWeight else { return "" }
+        return w <= 0 ? "BW" : formatWeight(w)
     }
 
     private func defaultRepsText() -> String {
@@ -2259,8 +2360,11 @@ struct InlineSetLogger: View {
     private func parsedWeight(_ n: Int) -> Double? {
         let t = (draftWeight[n] ?? defaultWeightText())
             .trimmingCharacters(in: .whitespaces)
-            .replacingOccurrences(of: ",", with: ".")
-        guard let v = Double(t), v > 0 else { return nil }
+        // "BW" (from the bodyweight button or a BW-history prefill) is an explicit
+        // 0-load set; it is the only way to log 0 — a typed number must be positive.
+        if t.caseInsensitiveCompare("BW") == .orderedSame { return 0 }
+        let cleaned = t.replacingOccurrences(of: ",", with: ".")
+        guard let v = Double(cleaned), v > 0 else { return nil }
         return v
     }
 

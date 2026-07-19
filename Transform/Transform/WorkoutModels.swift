@@ -221,6 +221,10 @@ class WorkoutExercise {
     var muscleTarget: String = ""
     var isCompleted: Bool = false
     var completionStatusRaw: String = ""
+    /// Structured target reps-in-reserve from generation. Optional (lightweight
+    /// migration): nil for programs generated before the field existed — display
+    /// falls back to parsing the coaching note prose.
+    var targetRIR: Int?
 
     @Relationship(deleteRule: .nullify, inverse: \ExerciseWeightEntry.exercise)
     var weightLogs: [ExerciseWeightEntry] = []
@@ -235,7 +239,8 @@ class WorkoutExercise {
         tempo: String = "",
         restSeconds: Int = 90,
         notes: String = "",
-        muscleTarget: String = ""
+        muscleTarget: String = "",
+        targetRIR: Int? = nil
     ) {
         self.order = order
         self.exerciseName = exerciseName
@@ -245,6 +250,7 @@ class WorkoutExercise {
         self.restSeconds = restSeconds
         self.notes = notes
         self.muscleTarget = muscleTarget
+        self.targetRIR = targetRIR
         self.isCompleted = false
     }
 
@@ -296,7 +302,9 @@ class ExerciseWeightEntry {
     }
 
     var hasBestRecord: Bool {
-        bestWeightLbs > 0
+        // Rep-only records count: a bodyweight exercise's best lives in its reps
+        // (weight 0 = bodyweight, not "no data").
+        bestWeightLbs > 0 || (bestRepsCompleted ?? 0) > 0
     }
 
     func applyLog(
@@ -320,7 +328,14 @@ class ExerciseWeightEntry {
         } else if weightLbs > bestWeightLbs + 0.001 {
             shouldReplaceBest = true
         } else if abs(weightLbs - bestWeightLbs) <= 0.001 {
-            shouldReplaceBest = (bestLoggedAt ?? .distantPast) <= loggedAt
+            // At equal load, more reps is the better record (this is also how a
+            // bodyweight best — always weight 0 — can improve at all). Tie on
+            // reps keeps the old newest-wins behavior.
+            let newReps = repsCompleted ?? 0
+            let oldReps = bestRepsCompleted ?? 0
+            shouldReplaceBest = newReps != oldReps
+                ? newReps > oldReps
+                : (bestLoggedAt ?? .distantPast) <= loggedAt
         } else {
             shouldReplaceBest = false
         }
@@ -417,6 +432,14 @@ nonisolated struct SetLogEntry: Codable, Identifiable, Equatable {
     /// Optional reps-in-reserve captured after the set. This is intentionally optional so
     /// older JSON logs remain valid and legacy sessions never acquire invented effort data.
     var rir: Double? = nil
+}
+
+/// User-facing load label. Weight 0 is a real value — a bodyweight set with no
+/// external load — not missing data, so it renders as "BW" instead of "0 lb".
+/// (Added load on a bodyweight movement is logged as its actual value.)
+/// Declared like `formatWeight(_:)` (same isolation) since it wraps it.
+func formatLoad(_ weightLbs: Double) -> String {
+    weightLbs <= 0 ? "BW" : "\(formatWeight(weightLbs)) lb"
 }
 
 @Model
@@ -548,7 +571,8 @@ struct WorkingSetAnalysis {
     }
 
     static func analyze(_ logs: [SetLogEntry]) -> WorkingSetAnalysis {
-        let valid = logs.filter { $0.weightLbs > 0 && $0.repsCompleted > 0 }
+        // Weight 0 is a valid bodyweight set (reps still required); negative is junk.
+        let valid = logs.filter { $0.weightLbs >= 0 && $0.repsCompleted > 0 }
         guard !valid.isEmpty else {
             return WorkingSetAnalysis(sets: [], workingSets: [], anomalies: [],
                                       workingWeight: nil, topWorkingSet: nil)
@@ -595,7 +619,11 @@ struct WorkingSetAnalysis {
             workingSets: working,
             anomalies: analyzed.filter { $0.role == .anomaly },
             workingWeight: workingWeight,
-            topWorkingSet: working.max(by: { $0.estimatedOneRepMax < $1.estimatedOneRepMax })
+            // Reps break e1RM ties so bodyweight sessions (every e1RM is 0) still
+            // surface the highest-rep set as the top set.
+            topWorkingSet: working.max(by: {
+                ($0.estimatedOneRepMax, $0.reps) < ($1.estimatedOneRepMax, $1.reps)
+            })
         )
     }
 
@@ -923,6 +951,9 @@ nonisolated struct WorkoutExerciseResponse: Codable {
     let restSeconds: Int
     let notes: String
     let muscleTarget: String
+    /// Structured target reps-in-reserve. Optional: absent in pre-field programs
+    /// and replay JSON, in which case display falls back to prose parsing.
+    let targetRIR: Int?
 
     init(
         exerciseName: String,
@@ -931,7 +962,8 @@ nonisolated struct WorkoutExerciseResponse: Codable {
         tempo: String,
         restSeconds: Int,
         notes: String,
-        muscleTarget: String
+        muscleTarget: String,
+        targetRIR: Int? = nil
     ) {
         self.exerciseName = exerciseName
         self.sets = sets
@@ -940,6 +972,7 @@ nonisolated struct WorkoutExerciseResponse: Codable {
         self.restSeconds = restSeconds
         self.notes = notes
         self.muscleTarget = muscleTarget
+        self.targetRIR = targetRIR
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -950,6 +983,7 @@ nonisolated struct WorkoutExerciseResponse: Codable {
         case restSeconds
         case notes
         case muscleTarget
+        case targetRIR
     }
 
     init(from decoder: Decoder) throws {
@@ -965,6 +999,8 @@ nonisolated struct WorkoutExerciseResponse: Codable {
             default: "Control the eccentric for 2-3 seconds, keep full ROM, and add load only after you own every rep."
         )
         self.muscleTarget = container.decodeFlexibleString(forKey: .muscleTarget, default: "Primary Target")
+        // Clamped to the sane coaching range; junk values are dropped, not stored.
+        self.targetRIR = container.decodeFlexibleInt(forKey: .targetRIR).flatMap { (0...5).contains($0) ? $0 : nil }
     }
 }
 

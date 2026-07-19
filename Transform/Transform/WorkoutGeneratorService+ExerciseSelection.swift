@@ -13,7 +13,8 @@ extension ClaudeService {
             tempo: exercise.tempo,
             restSeconds: exercise.restSeconds,
             notes: exercise.notes,
-            muscleTarget: exercise.muscleTarget
+            muscleTarget: exercise.muscleTarget,
+            targetRIR: exercise.targetRIR
         )
     }
 

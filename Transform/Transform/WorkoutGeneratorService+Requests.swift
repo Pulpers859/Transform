@@ -213,13 +213,19 @@ extension ClaudeService {
           Keep session notes concise: 2-3 short sentences, ideally under 70 words total.
           No template language. No phrases like "progressive overload session."
         - Exercise notes must be exactly 2 short sentences of real coaching, ideally under 45
-          words total: (a) a form/technique cue for THIS movement and (b) a progression cue
-          appropriate for Week 1 (RIR/RPE or load/rep intent). Fold in a brief "why this is
-          here for you" phrase tied to the analysis only when it adds information that the day
-          notes do not already state.
-        - Use double progression as the default progression model: choose a load that lands in
-          the rep range at the prescribed RPE/RIR, add reps before load, and hold load or trim
-          the lowest-priority isolation set when sleep, joint pain, or stress is poor.
+          words total: (a) a form/technique cue for THIS movement and (b) a setup, ROM,
+          control, or bracing cue. Fold in a brief "why this is here for you" phrase tied to
+          the analysis only when it adds information that the day notes do not already state.
+        - Exercise notes are EXECUTION-ONLY. Never write load- or rep-progression
+          instructions in notes ("add weight", "next session", "when you clear X reps",
+          "add a rep before adding load") — the app computes progression deterministically
+          from logged performance and renders it beside your note; a second voice there
+          contradicts it. State effort intent in the structured `targetRIR` field instead.
+          Write numbers plainly; never use shorthand like "2-".
+        - Use double progression as the default progression model when choosing each
+          prescription: choose a load intent that lands in the rep range at the target RIR,
+          prefer rep increases before load increases, and trim the lowest-priority isolation
+          exposure when sleep, joint pain, or stress is poor.
 
         Programming constraints:
         - Exactly 7 days, dayNumber 1..7.
@@ -269,15 +275,14 @@ extension ClaudeService {
 
         --- Logged performance (actual weights/reps from recent workouts — use for load cues) ---
         \(history)
-        Use these actual loads to write concrete progression cues (e.g., "aim for 190 lb x 8" instead
-        of "select an appropriate weight"). Where a line carries an "app verdict", that is the app's
-        deterministic progression engine speaking from the actual log — your written progression cue
-        for that exercise MUST agree with it: restate it in coaching language, never contradict it.
-        Never tell the user to hold a load and stay inside a rep range their logged reps already
-        exceed — that combination is impossible; prescribe the next load instead. Match increment
-        language to the equipment: dumbbells and weight-stack machines move in ~5 lb steps, barbells
-        in 2.5-5 lb, and "add a plate" is wrong for any cable/stack movement. Do not change the
-        output schema or add new fields.
+        Use these actual loads when setting each exercise's rep prescription and `targetRIR` so
+        the written intent matches reality. Where a line carries an "app verdict", that is the
+        app's deterministic progression engine speaking from the actual log — set that
+        exercise's rep range and targetRIR to agree with it, and never prescribe a rep range
+        the logged reps already exceed at that load. Do NOT restate loads or write progression
+        instructions in exercise notes — the app renders its live progression suggestion next
+        to your note, and notes are execution-only. Do not change the output schema or add new
+        fields.
         --- end logged performance ---
         """
     }
@@ -301,14 +306,14 @@ extension ClaudeService {
         - Each training day's `notes` must read like a real coach's briefing for that day — tie
           the intent back to the analysis and give warm-up / mobility guidance specific to the
           day's lifts and the user's posture/injury notes. Keep each day note compact.
-        - Each exercise's `notes` must be concise: include one form cue and one concrete Week 1
-          progression cue. Add analysis personalization only when it gives new information that
-          is not already stated in the day notes.
+        - Each exercise's `notes` must be concise execution coaching: one form cue and one
+          setup/ROM/control cue. Add analysis personalization only when it gives new
+          information that is not already stated in the day notes. No progression
+          instructions in notes — set the structured `targetRIR` field instead; the app
+          derives load/rep progression from logs and displays it itself.
         - Avoid repeating phase labels, week labels, or generic goal language in every exercise
           note. The workout screen already shows sets, reps, tempo, RIR/intensity, and deload
           guidance separately, so do not restate those unless needed for safety.
-        - Progression cues must be concrete: mention RPE/RIR, adding reps before load, holding
-          load, or another specific load/rep progression rule.
 
         Call the emit_workout_program tool with your answer.
         """
@@ -330,16 +335,18 @@ extension ClaudeService {
 
         Exercise selection and set allocation are locked by the Pre-Selected Exercise Menu — do
         not add, remove, substitute, or change set counts. Focus your coaching judgment on reps,
-        tempo, rest, progression cues, and notes.
+        tempo, rest, targetRIR, and execution notes.
 
         Session Notes still must be personal, specific, analysis-anchored, and include a "Warm-up:"
         line (on its own line) with specific warm-up and mobility items separated by commas, tied
-        to this day's lifts AND the user's posture/injury notes. Exercise
-        notes still must include a form cue + phase-appropriate progression cue. Add a "why this
-        is here for you" phrase only when it is specific and not already repeated in the day notes.
-        Use double progression as the default progression model: add reps before load, keep
-        compounds inside the phase RPE cap, and hold load or trim the lowest-priority isolation
-        set when sleep, joint pain, or stress is poor.
+        to this day's lifts AND the user's posture/injury notes. Exercise notes still must be
+        execution-only: a form cue + a setup/ROM/control cue, with NO load- or rep-progression
+        instructions (the app computes and displays progression from logs; state effort intent in
+        the structured `targetRIR` field). Add a "why this is here for you" phrase only when it is
+        specific and not already repeated in the day notes.
+        Use double progression as the default progression model when choosing prescriptions: add
+        reps before load, keep compounds inside the phase RPE cap, and hold load or trim the
+        lowest-priority isolation set when sleep, joint pain, or stress is poor.
 
         Programming constraints:
         - Exactly 7 days for the requested dayNumber range.
@@ -403,11 +410,11 @@ extension ClaudeService {
         - Every training day's `notes` must re-anchor to the analysis (don't drop the
           personalization just because it's week \(weekNumber)) and must include warm-up /
           mobility guidance tied to this day's lifts and the user's posture/injury notes.
-        - Every exercise's `notes` must be concise: include one form cue and one Week \(weekNumber)-appropriate
-          progression cue. Add analysis personalization only when it gives new information that is
-          not already stated in the day notes.
-        - Progression cues must be concrete: mention RPE/RIR, adding reps before load, holding
-          load, or another specific load/rep progression rule.
+        - Every exercise's `notes` must be concise execution coaching: one form cue and one
+          setup/ROM/control cue appropriate for Week \(weekNumber). Add analysis
+          personalization only when it gives new information that is not already stated in
+          the day notes. No progression instructions in notes — set the structured
+          `targetRIR` field instead; the app derives load/rep progression from logs.
         - Do not repeat phase labels or deload/recovery language in every exercise note. The app
           already shows intensity, RIR, tempo, and deload guidance as separate UI.
         - weekSummary: one sentence describing what THIS phase accomplishes for THIS person,
@@ -618,10 +625,21 @@ extension ClaudeService {
             // EvidenceProfile.md TEMPO-001 [confidence: low]
             "tempo": stringProp("Optional. Use an explicit 4-part tempo for rep-based lifts when cadence matters, e.g., '3-1-1-0' or '2-0-X-1'. Omit or leave empty for carries, distance-based work, and similar drills where a 4-part tempo is not meaningful."),
             "restSeconds": integerProp(minimum: 30, maximum: 240),
-            "notes": stringProp("Exactly 2 short sentences: form cue + phase-appropriate progression cue. Add a brief analysis-tied 'why this is here for you' phrase only when it adds new information."),
-            "muscleTarget": stringProp("Primary muscle target.")
+            // Execution-only on purpose: the app computes load/rep progression
+            // deterministically from logged performance, so a progression cue here
+            // creates a second voice that can contradict the live suggestion.
+            "notes": stringProp("Exactly 2 short sentences of execution coaching: a form/setup cue plus a control, ROM, or bracing cue. Add a brief analysis-tied 'why this is here for you' phrase only when it adds new information. Do NOT include load- or rep-progression instructions ('add weight', 'next session', 'when you clear X reps') — the app derives progression from logged performance. Write numbers plainly; never use shorthand like '2-'."),
+            "muscleTarget": stringProp("Primary muscle target."),
+            "targetRIR": [
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 4,
+                "description": "Target reps in reserve for this exercise's working sets. Always include for rep-based lifts; effort intent belongs in this structured field, not in prose."
+            ] as [String: Any]
         ]
-        let required: [String] = ["exerciseName", "sets", "reps", "restSeconds", "notes", "muscleTarget"]
+        // targetRIR is required so effort intent is always structured; tempo stays
+        // optional because carries/isometrics legitimately omit it.
+        let required: [String] = ["exerciseName", "sets", "reps", "restSeconds", "notes", "muscleTarget", "targetRIR"]
         let schema: [String: Any] = [
             "type": "object",
             "properties": properties,

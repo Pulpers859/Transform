@@ -234,7 +234,8 @@ extension ClaudeService {
             tempo: cleanedTempo,
             restSeconds: cleanedRestSeconds,
             notes: reconciledNotes,
-            muscleTarget: cleanedTarget
+            muscleTarget: cleanedTarget,
+            targetRIR: exercise.targetRIR
         )
     }
 
@@ -301,7 +302,8 @@ extension ClaudeService {
                 tempo: updatedTempo,
                 restSeconds: updatedRestSeconds,
                 notes: exercise.notes,
-                muscleTarget: exercise.muscleTarget
+                muscleTarget: exercise.muscleTarget,
+                targetRIR: exercise.targetRIR
             )
         }
     }
@@ -485,7 +487,8 @@ extension ClaudeService {
                         exercise.notes,
                         toSetCount: expected.prescribedSets
                     ),
-                    muscleTarget: exercise.muscleTarget
+                    muscleTarget: exercise.muscleTarget,
+                    targetRIR: exercise.targetRIR
                 )
             }
             let day = updated[dayIndex]
@@ -854,8 +857,16 @@ extension ClaudeService {
                 if isEmptyOrTooShortInsight(exercise.notes) {
                     issues.append("Day \(day.dayNumber) exercise \(exercise.exerciseName) notes are empty or too short.")
                 }
-                if !hasConcreteProgressionCue(exercise.notes) {
-                    issues.append("Day \(day.dayNumber) exercise \(exercise.exerciseName) notes do not include a concrete progression cue.")
+                // Notes are execution-only; effort intent belongs in the structured
+                // targetRIR field and progression belongs to the app's deterministic
+                // engine. (This check replaced its exact opposite — the validator
+                // used to REQUIRE a progression cue in notes, which forced the
+                // two-voices contradiction with the live progression banner.)
+                if RepRange.parse(exercise.reps) != nil, exercise.targetRIR == nil {
+                    issues.append("Day \(day.dayNumber) exercise \(exercise.exerciseName) is missing targetRIR — state working-set effort in the structured field, not in prose.")
+                }
+                if notesContainProgressionInstruction(exercise.notes) {
+                    issues.append("Day \(day.dayNumber) exercise \(exercise.exerciseName) notes contain load/rep progression instructions — notes must be execution-only coaching; the app derives progression from logged performance.")
                 }
             }
 

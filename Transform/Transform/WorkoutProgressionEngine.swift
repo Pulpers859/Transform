@@ -93,7 +93,8 @@ enum WorkoutProgressionEngine {
             )
         }
 
-        guard let summaryWeight, summaryWeight > 0, let summaryReps, summaryReps > 0 else {
+        // Weight 0 is a valid bodyweight summary; nil means no usable log at all.
+        guard let summaryWeight, summaryWeight >= 0, let summaryReps, summaryReps > 0 else {
             return nil
         }
 
@@ -165,8 +166,20 @@ enum WorkoutProgressionEngine {
         return .neutral
     }
 
+    /// Loads at or under this are treated as bodyweight work. Covers true bodyweight
+    /// logs (0) AND the historical workaround records where a bodyweight exercise was
+    /// logged as "1 lb" because the logger once required a positive weight — those
+    /// records are reinterpreted here rather than rewritten (no destructive migration).
+    static let bodyweightEquivalentThresholdLbs = 1.0
+
+    static func isBodyweightEquivalent(_ weight: Double) -> Bool {
+        weight <= bodyweightEquivalentThresholdLbs
+    }
+
     static func nextLoad(from weight: Double, exerciseName: String) -> Double {
-        guard weight > 0 else { return 2.5 }
+        // From bodyweight (or a fake ~1 lb record), the first external step is one
+        // small increment, not percentage math off a meaningless base.
+        guard !isBodyweightEquivalent(weight) else { return 2.5 }
         let isDumbbell = isDumbbellLift(exerciseName)
         let coarseIncrements = isDumbbell || isStackLift(exerciseName)
         let step: Double = coarseIncrements ? 5.0 : 2.5

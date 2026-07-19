@@ -238,22 +238,33 @@ extension ClaudeService {
     }
 
     // EvidenceProfile.md PROG-001 [confidence: low-moderate]
-    func progressionCue(for weekNumber: Int, exerciseName: String, muscleTarget: String) -> String {
-        let role = proceduralExerciseRole(for: exerciseName, muscleTarget: muscleTarget)
+    /// Structured week-phase effort target for procedurally built exercises — the
+    /// numeric replacement for the retired prose "progression cue" sentence (whose
+    /// "2-3 reps in reserve" text the note cleaner once mangled into a literal
+    /// on-screen "finish sets with 2-"). Week 1-2 accumulate at RIR 2, week 3
+    /// peaks at RIR 1, week 4 deloads at RIR 3.
+    func proceduralTargetRIR(for weekNumber: Int) -> Int {
         switch weekNumber {
-        case 2:
-            return role == .anchor || role == .secondary
-                ? "Progression target: add 2.5-5 lb or 1 rep versus last week while holding RPE around 7-8."
-                : "Progression target: beat last week by at least one quality rep before increasing load."
-        case 3:
-            return role == .anchor || role == .secondary
-                ? "Progression target: push top sets to RPE 8-9 with no breakdown in rep quality."
-                : "Progression target: match or slightly beat Week 2 reps at the same load while keeping 1-2 reps in reserve."
-        case 4:
-            return "Deload target: reduce hard-set fatigue, keep bar speed crisp, and stop with 3-4 reps in reserve."
-        default:
-            return "Baseline target: finish sets with 2-3 reps in reserve and log a load you can reliably progress."
+        case 3: return 1
+        case 4: return 3
+        default: return 2
         }
+    }
+
+    /// Narrow, high-precision detector for load/rep-progression prose in EXERCISE
+    /// notes. The validator uses it to keep notes execution-only, so keep fragments
+    /// unambiguous — a false positive here burns a paid retry.
+    func notesContainProgressionInstruction(_ notes: String) -> Bool {
+        let normalized = normalizedPriorityText(notes)
+        return containsAny(
+            normalized,
+            keywords: [
+                "next session", "next week", "add load", "add weight", "increase to",
+                "add reps", "add a rep", "add one rep", "add 1 rep", "when you clear",
+                "beat last week", "before increasing load", "before adding load",
+                "progression target", "deload target", "baseline target"
+            ]
+        )
     }
 
     func intentCue(muscleTarget: String, focus: String, exerciseName: String) -> String {
@@ -330,14 +341,11 @@ extension ClaudeService {
             )
         }
 
-        let tuned = evidenceTunedCoachingLanguage(trimmed)
-        guard !hasConcreteProgressionCue(tuned) else {
-            return tuned
-        }
-
-        return evidenceTunedCoachingLanguage(
-            "\(tuned) \(progressionCue(for: weekNumber, exerciseName: exerciseName, muscleTarget: muscleTarget))"
-        )
+        // Execution-only notes: the deterministic progression banner owns load/rep
+        // advice. (This used to APPEND a templated progression cue whenever a note
+        // lacked one — manufacturing the exact two-voices contradiction the banner
+        // filter then had to strip.)
+        return evidenceTunedCoachingLanguage(trimmed)
     }
 
     func isEmptyOrTooShortInsight(_ notes: String) -> Bool {
@@ -347,33 +355,6 @@ extension ClaudeService {
         return wordCount < 5
     }
 
-    func hasConcreteProgressionCue(_ notes: String) -> Bool {
-        let normalized = normalizedPriorityText(notes)
-        return containsAny(
-            normalized,
-            keywords: [
-                "rpe",
-                "rir",
-                "reps in reserve",
-                "rep in reserve",
-                "add reps",
-                "add one rep",
-                "add 1 rep",
-                "add load",
-                "increase load",
-                "increase weight",
-                "beat last week",
-                "same load",
-                "hold load",
-                "top of the rep range",
-                "top of range",
-                "before increasing load",
-                "progression target",
-                "deload target",
-                "baseline target"
-            ]
-        )
-    }
 
     func withSourceLabel(_ summary: String, sourceLabel: String) -> String {
         let cleaned = summary.trimmedOr(default: "Weekly progression update.")
