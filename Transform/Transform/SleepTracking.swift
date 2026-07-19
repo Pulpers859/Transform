@@ -271,6 +271,49 @@ struct SleepEntryEditor: View {
         max(wakeDate.timeIntervalSince(fellAsleepDate) / 3600, 0)
     }
 
+    // MARK: - Personal defaults for a fresh main sleep
+
+    private var recentMainSleeps: [SleepEntry] {
+        let cutoff = Calendar.current.date(byAdding: .day, value: -14, to: .now) ?? .distantPast
+        return existingEpisodes.filter { $0.episodeType == .mainSleep && $0.resolvedEndDate >= cutoff }
+    }
+
+    private var medianMainSleepHours: Double {
+        let values = recentMainSleeps.map(\.resolvedDurationHours).sorted()
+        guard !values.isEmpty else { return 7.5 }
+        return values.count % 2 == 1
+            ? values[values.count / 2]
+            : (values[values.count / 2 - 1] + values[values.count / 2]) / 2
+    }
+
+    /// The owner's typical wake clock-time as minutes past midnight, from recent main
+    /// sleeps (fallback 7:30). Used only to anchor a fresh default; the owner adjusts the
+    /// exact time in the picker, and unusual night-shift wakes still edit cleanly.
+    private var medianWakeMinutes: Int {
+        let calendar = Calendar.current
+        let minutes = recentMainSleeps.map { episode -> Int in
+            let parts = calendar.dateComponents([.hour, .minute], from: episode.resolvedEndDate)
+            return (parts.hour ?? 7) * 60 + (parts.minute ?? 30)
+        }.sorted()
+        guard !minutes.isEmpty else { return 7 * 60 + 30 }
+        return minutes.count % 2 == 1
+            ? minutes[minutes.count / 2]
+            : (minutes[minutes.count / 2 - 1] + minutes[minutes.count / 2]) / 2
+    }
+
+    /// A fresh main sleep defaults to *last night*, not a same-day now−7h span: wake at
+    /// the owner's typical morning time today (or now, if they're logging before it), and
+    /// asleep a median duration earlier. This keeps a morning/daytime log from silently
+    /// recording the wake as the log-moment and mis-dating a cross-midnight night.
+    private func defaultMainSleepInterval(now: Date = .now) -> (start: Date, end: Date) {
+        let calendar = Calendar.current
+        let wakeToday = calendar.startOfDay(for: now)
+            .addingTimeInterval(TimeInterval(medianWakeMinutes * 60))
+        let end = min(wakeToday, now)
+        let start = end.addingTimeInterval(-medianMainSleepHours * 3600)
+        return (start, end)
+    }
+
     var body: some View {
         NavigationStack {
             Form {
@@ -336,8 +379,9 @@ struct SleepEntryEditor: View {
             }
             .onAppear {
                 guard let episode else {
-                    wakeDate = .now
-                    fellAsleepDate = Calendar.current.date(byAdding: .hour, value: -7, to: .now) ?? .now
+                    let interval = defaultMainSleepInterval()
+                    fellAsleepDate = interval.start
+                    wakeDate = interval.end
                     return
                 }
                 wakeDate = episode.resolvedEndDate

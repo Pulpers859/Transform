@@ -191,7 +191,10 @@ struct SleepQuickLogSheet: View {
     }
 
     /// Duration chips centered on the owner's recent median main sleep (fallback 7h),
-    /// half-hour steps, ±1.5h — so the common case is a single obvious tap.
+    /// half-hour steps. The band starts at the personal anchor so the common case is a
+    /// single obvious tap on the left, but it always reaches up to 9.5h so an unusually
+    /// long night (e.g. a 9h catch-up) can be logged with one tap and a scroll instead of
+    /// being clipped to the ceiling and forced into the full editor.
     private var durationChoices: [Double] {
         let durations = recentMainSleeps.map(\.resolvedDurationHours).sorted()
         let median: Double
@@ -203,7 +206,10 @@ struct SleepQuickLogSheet: View {
             median = (durations[durations.count / 2 - 1] + durations[durations.count / 2]) / 2
         }
         let anchor = min(max((median * 2).rounded() / 2, 5.5), 8.5)
-        return stride(from: anchor - 1.5, through: anchor + 1.5, by: 0.5).map { $0 }
+        let lowest = anchor - 1.5
+        // Guarantee headroom for a long night regardless of a short personal median.
+        let highest = max(anchor + 1.5, 9.5)
+        return stride(from: lowest, through: highest, by: 0.5).map { $0 }
     }
 
     /// Most common shift context over the recent window (most recent wins ties).
