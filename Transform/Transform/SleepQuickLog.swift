@@ -19,8 +19,9 @@ struct SleepQuickLogSheet: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \SleepEntry.date, order: .reverse) private var episodes: [SleepEntry]
 
-    /// Invoked when the user needs the full episode editor instead.
-    let onOpenFullEditor: () -> Void
+    /// Invoked when the user needs the full episode editor instead — with the
+    /// existing episode to edit, or nil for a blank editor.
+    let onOpenFullEditor: (SleepEntry?) -> Void
 
     @State private var selectedDuration: Double?
     @State private var selectedQuality: Int?
@@ -34,6 +35,10 @@ struct SleepQuickLogSheet: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
+                    if let existing = existingMainSleepOnCreditedDay {
+                        alreadyLoggedNotice(for: existing)
+                    }
+
                     chipSection(title: "How long did you sleep?") {
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 8) {
@@ -78,7 +83,7 @@ struct SleepQuickLogSheet: View {
 
                     Button {
                         dismiss()
-                        onOpenFullEditor()
+                        onOpenFullEditor(nil)
                     } label: {
                         Label("Exact times, naps & post-call…", systemImage: "slider.horizontal.3")
                             .font(.caption.bold())
@@ -86,7 +91,7 @@ struct SleepQuickLogSheet: View {
                     .buttonStyle(.plain)
                     .foregroundStyle(TFColor.sleep)
 
-                    Text("Saved as a main sleep ending now. Use the full editor for anything that ended earlier.")
+                    Text(saveExplanation)
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
                 }
@@ -101,13 +106,16 @@ struct SleepQuickLogSheet: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") { save() }
                         .bold()
-                        .disabled(selectedDuration == nil || selectedQuality == nil || selectedShift == nil)
+                        .disabled(
+                            selectedDuration == nil || selectedQuality == nil || selectedShift == nil
+                                || existingMainSleepOnCreditedDay != nil
+                        )
                 }
             }
             .alert("Overlapping Sleep Episode", isPresented: $showOverlapAlert) {
                 Button("Open Full Editor") {
                     dismiss()
-                    onOpenFullEditor()
+                    onOpenFullEditor(nil)
                 }
                 Button("Cancel", role: .cancel) {}
             } message: {
@@ -115,6 +123,63 @@ struct SleepQuickLogSheet: View {
             }
         }
         .presentationDetents([.medium, .large])
+    }
+
+    // MARK: - Wake-day crediting & double-log guard
+
+    /// The wake-day this quick log would be credited to (yesterday when it is
+    /// shortly after midnight — see SleepQuickLogPolicy).
+    private var creditedWakeDayStart: Date {
+        SleepQuickLogPolicy.creditedWakeDayStart(loggedAt: .now)
+    }
+
+    private var creditsPreviousWakeDay: Bool {
+        creditedWakeDayStart < Calendar.current.startOfDay(for: .now)
+    }
+
+    /// A main sleep already recorded for the credited wake-day. Saving a second
+    /// one would double-count the day (e.g. a 14h phantom day hiding a real
+    /// restriction), so the sheet blocks it and routes to editing instead.
+    private var existingMainSleepOnCreditedDay: SleepEntry? {
+        let dayStart = creditedWakeDayStart
+        return episodes.first {
+            $0.episodeType == .mainSleep
+                && Calendar.current.startOfDay(for: $0.resolvedEndDate) == dayStart
+        }
+    }
+
+    private var saveExplanation: String {
+        creditsPreviousWakeDay
+            ? "It's after midnight, so this counts for yesterday — the sleep you woke from yesterday morning. Logging tonight's sleep? Wait until you wake up, or use the full editor."
+            : "Saved as a main sleep ending now. Use the full editor for anything that ended earlier."
+    }
+
+    private func alreadyLoggedNotice(for existing: SleepEntry) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label(
+                creditsPreviousWakeDay
+                    ? "Yesterday already has a main sleep"
+                    : "Today already has a main sleep",
+                systemImage: "checkmark.circle.fill"
+            )
+            .font(.subheadline.bold())
+            Text("\(SleepFormatting.duration(existing.resolvedDurationHours)) ending \(existing.resolvedEndDate.formatted(date: .abbreviated, time: .shortened)). Logging it twice would double-count the day, so edit that entry — or add naps and post-call sleep in the full editor.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Button {
+                dismiss()
+                onOpenFullEditor(existing)
+            } label: {
+                Label("Edit that entry", systemImage: "pencil")
+                    .font(.caption.bold())
+            }
+            .buttonStyle(.bordered)
+            .tint(TFColor.sleep)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(TFColor.sleep.opacity(0.10))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
     // MARK: - Choices
@@ -168,7 +233,10 @@ struct SleepQuickLogSheet: View {
 
     private func save() {
         guard let selectedDuration, let selectedQuality, let selectedShift else { return }
-        let end = Date()
+        // Re-checked at save time (not just render time): the sheet can sit open
+        // across the midnight/cutoff boundary or a background sync.
+        guard existingMainSleepOnCreditedDay == nil else { return }
+        let end = SleepQuickLogPolicy.quickLogEnd(loggedAt: .now)
         let start = end.addingTimeInterval(-selectedDuration * 3600)
 
         if let conflict = episodes.first(where: { start < $0.resolvedEndDate && end > $0.resolvedStartDate }) {

@@ -479,8 +479,8 @@ struct DashboardView: View {
                 SleepEntryEditor(episode: request.episode)
             }
             .sheet(isPresented: $quickSleepLogPresented) {
-                SleepQuickLogSheet {
-                    sleepEditorRequest = SleepEditorRequest(episode: nil)
+                SleepQuickLogSheet { episode in
+                    sleepEditorRequest = SleepEditorRequest(episode: episode)
                 }
             }
             .onAppear {
@@ -974,9 +974,15 @@ struct DashboardView: View {
 
     // MARK: - Sleep & Recovery
 
-    var todayHasMainSleep: Bool {
-        sleepEpisodes.contains {
-            $0.episodeType == .mainSleep && Calendar.current.isDateInToday($0.resolvedEndDate)
+    /// Whether the wake-day a quick log would be credited to (yesterday shortly
+    /// after midnight — see SleepQuickLogPolicy) already has a main sleep. Drives
+    /// the "log it in 3 taps" nudge so it doesn't fire at 12:30 AM for a night
+    /// that was already logged yesterday morning.
+    var creditedWakeDayHasMainSleep: Bool {
+        let dayStart = SleepQuickLogPolicy.creditedWakeDayStart(loggedAt: .now)
+        return sleepEpisodes.contains {
+            $0.episodeType == .mainSleep
+                && Calendar.current.startOfDay(for: $0.resolvedEndDate) == dayStart
         }
     }
 
@@ -1075,7 +1081,7 @@ struct DashboardView: View {
 
                 recoveryModulationLine(for: trend)
 
-                if !todayHasMainSleep {
+                if !creditedWakeDayHasMainSleep {
                     Button {
                         quickSleepLogPresented = true
                     } label: {

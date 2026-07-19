@@ -55,6 +55,9 @@ let package = Package(
                 // Structured sleep-recovery state + tier policy (Foundation-only) consumed
                 // by the calibration pass; written on-device by SleepTracking.swift.
                 "RecoveryState.swift",
+                // Day-anchored sleep aggregation math + quick-log wake-date crediting
+                // (Foundation-only core behind SleepTrendBuilder).
+                "SleepAggregationCore.swift",
 
                 // Shared model layer. (Models.swift — the sleep/nutrition/weight
                 // persistence models — is intentionally NOT here: nothing in the

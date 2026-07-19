@@ -54,6 +54,9 @@ struct SleepTrendSnapshot {
     let hasRecentPostCallRecovery: Bool
     let shiftCounts: [SleepShiftType: Int]
     let acuteLoggedDays: Int
+    /// Wake-days whose only logged episodes were naps — excluded from every
+    /// average and day count (see SleepAggregationCore) but surfaced honestly.
+    let napOnlyDayCount: Int
 
     var loggedDays: Int { days.count }
 
@@ -93,12 +96,15 @@ struct SleepTrendSnapshot {
         let postCallText = hasRecentPostCallRecovery
             ? " A post-call recovery episode occurred within the last 3 days."
             : ""
+        let napOnlyText = napOnlyDayCount > 0
+            ? " \(napOnlyDayCount) day(s) had only naps logged; those days are excluded from the averages and day counts because the night itself was not recorded."
+            : ""
         let acuteText = acuteLoggedDays > 0
             ? String(format: "3-day average %.1f hours across %d logged day(s)", threeDayAverageHours, acuteLoggedDays)
             : "3-day average unavailable because no recent days were logged"
 
         return String(
-            format: "Dated sleep episodes aggregated by wake date: %@; 7-day average %.1f hours across %d logged days; quality %.1f/5; variability %.1f hours (%@); %d day(s) under 6 hours and %d under 5 hours. Shift context: %@.%@%@",
+            format: "Dated sleep episodes aggregated by wake date: %@; 7-day average %.1f hours across %d logged days; quality %.1f/5; variability %.1f hours (%@); %d day(s) under 6 hours and %d under 5 hours. Shift context: %@.%@%@%@",
             acuteText,
             sevenDayAverageHours,
             loggedDays,
@@ -109,14 +115,44 @@ struct SleepTrendSnapshot {
             underFiveHours,
             shiftText,
             mismatchText,
-            postCallText
+            postCallText,
+            napOnlyText
+        )
+    }
+}
+
+private extension SleepEntry {
+    var aggregationSample: SleepEpisodeSample {
+        let kind: SleepSampleKind
+        switch episodeType {
+        case .mainSleep: kind = .main
+        case .nap: kind = .nap
+        case .recoverySleep: kind = .recovery
+        }
+        return SleepEpisodeSample(
+            start: resolvedStartDate,
+            end: resolvedEndDate,
+            durationHours: resolvedDurationHours,
+            quality: qualityRating,
+            kind: kind,
+            isPostCallShift: shiftType == .postCall
         )
     }
 }
 
 enum SleepTrendBuilder {
+    /// Thin adapter: SleepAggregationCore owns the trend math (and its harness
+    /// tests); this layer only maps SwiftData models in and attaches the episode
+    /// lists the UI needs onto the core's anchored days.
     static func build(from episodes: [SleepEntry], now: Date = .now) -> SleepTrendSnapshot? {
         let calendar = Calendar.current
+        guard let core = SleepAggregationCore.build(
+            from: episodes.map(\.aggregationSample),
+            now: now,
+            calendar: calendar
+        ) else { return nil }
+
+        // Same window the core used, to attach episodes and count shift context.
         let today = calendar.startOfDay(for: now)
         let cutoff = calendar.date(byAdding: .day, value: -6, to: today) ?? today
         let tomorrow = calendar.date(byAdding: .day, value: 1, to: today) ?? now
@@ -124,61 +160,35 @@ enum SleepTrendBuilder {
             let wakeDate = $0.resolvedEndDate
             return wakeDate >= cutoff && wakeDate < tomorrow
         }
-
         let grouped = Dictionary(grouping: recentEpisodes) {
             calendar.startOfDay(for: $0.resolvedEndDate)
         }
-        let days = grouped.map { date, dayEpisodes in
-            let duration = dayEpisodes.reduce(0) { $0 + $1.resolvedDurationHours }
-            let weightedQuality = dayEpisodes.reduce(0.0) {
-                $0 + Double($1.qualityRating) * max($1.resolvedDurationHours, 0.25)
-            } / max(dayEpisodes.reduce(0.0) { $0 + max($1.resolvedDurationHours, 0.25) }, 0.25)
-            return DailySleepSummary(
-                date: date,
-                episodes: dayEpisodes.sorted { $0.resolvedStartDate < $1.resolvedStartDate },
-                totalHours: duration,
-                mainSleepHours: dayEpisodes
-                    .filter { $0.episodeType == .mainSleep }
-                    .reduce(0) { $0 + $1.resolvedDurationHours },
-                napHours: dayEpisodes
-                    .filter { $0.episodeType == .nap }
-                    .reduce(0) { $0 + $1.resolvedDurationHours },
-                averageQuality: weightedQuality
+
+        let days = core.days.map { aggregate in
+            DailySleepSummary(
+                date: aggregate.date,
+                episodes: (grouped[aggregate.date] ?? [])
+                    .sorted { $0.resolvedStartDate < $1.resolvedStartDate },
+                totalHours: aggregate.totalHours,
+                mainSleepHours: aggregate.mainSleepHours,
+                napHours: aggregate.napHours,
+                averageQuality: aggregate.averageQuality
             )
         }
-        .sorted { $0.date < $1.date }
-        guard !days.isEmpty else { return nil }
-
-        let totals = days.map(\.totalHours)
-        let sevenDayAverage = totals.reduce(0, +) / Double(totals.count)
-        let threeDayCutoff = calendar.date(byAdding: .day, value: -2, to: today) ?? today
-        let acuteDays = days.filter { $0.date >= threeDayCutoff }
-        let threeDayAverage = acuteDays.isEmpty
-            ? 0
-            : acuteDays.map(\.totalHours).reduce(0, +) / Double(acuteDays.count)
-        let variance = totals.map { pow($0 - sevenDayAverage, 2) }.reduce(0, +) / Double(totals.count)
-        let averageQuality = days.map(\.averageQuality).reduce(0, +) / Double(days.count)
-        let qualityDurationMismatch = days.filter {
-            ($0.totalHours >= 7 && $0.averageQuality <= 2) || ($0.totalHours < 6 && $0.averageQuality >= 4)
-        }.count
-        let recentPostCall = recentEpisodes.contains {
-            $0.resolvedEndDate >= threeDayCutoff
-                && ($0.episodeType == .recoverySleep || $0.shiftType == .postCall)
-        }
-        let shiftCounts = Dictionary(grouping: recentEpisodes, by: \.shiftType).mapValues(\.count)
 
         return SleepTrendSnapshot(
             days: days,
-            sevenDayAverageHours: sevenDayAverage,
-            threeDayAverageHours: threeDayAverage,
-            averageQuality: averageQuality,
-            variabilityHours: sqrt(variance),
-            underSixHours: days.filter { $0.totalHours < 6 }.count,
-            underFiveHours: days.filter { $0.totalHours < 5 }.count,
-            qualityDurationMismatchDays: qualityDurationMismatch,
-            hasRecentPostCallRecovery: recentPostCall,
-            shiftCounts: shiftCounts,
-            acuteLoggedDays: acuteDays.count
+            sevenDayAverageHours: core.sevenDayAverageHours,
+            threeDayAverageHours: core.threeDayAverageHours,
+            averageQuality: core.averageQuality,
+            variabilityHours: core.variabilityHours,
+            underSixHours: core.underSixHours,
+            underFiveHours: core.underFiveHours,
+            qualityDurationMismatchDays: core.qualityDurationMismatchDays,
+            hasRecentPostCallRecovery: core.hasRecentPostCallRecovery,
+            shiftCounts: Dictionary(grouping: recentEpisodes, by: \.shiftType).mapValues(\.count),
+            acuteLoggedDays: core.acuteLoggedDays,
+            napOnlyDayCount: core.napOnlyDayCount
         )
     }
 }

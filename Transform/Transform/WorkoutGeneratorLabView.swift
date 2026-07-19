@@ -4,6 +4,7 @@ import UIKit
 
 struct WorkoutGeneratorLabView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
     @Query(sort: \BodyAnalysisSession.date, order: .reverse) private var analysisSessions: [BodyAnalysisSession]
     @Query(sort: \WorkoutProgram.createdDate, order: .reverse) private var programs: [WorkoutProgram]
     @FocusState private var focusedEditor: EditorField?
@@ -566,6 +567,9 @@ struct WorkoutGeneratorLabView: View {
                 isRunning = false
             }
         }
+        // Match the real generation path: re-derive the sleep-recovery state so the
+        // tier the Workshop reports is the tier a generation right now would apply.
+        SleepTrendStore.refresh(using: modelContext)
 
         do {
             let generatedReport: WorkoutGeneratorDebugReport

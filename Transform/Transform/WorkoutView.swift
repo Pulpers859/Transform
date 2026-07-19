@@ -665,6 +665,9 @@ struct WorkoutView: View {
             isGenerating = false
             generationTask = nil
         }
+        // Re-derive the structured sleep-recovery state at the moment of generation
+        // so the tier decision never rides a window cached up to 3 days earlier.
+        SleepTrendStore.refresh(using: modelContext)
 
         do {
             let performanceHistory = compactPerformanceHistory(from: exerciseWeightEntries, performanceLogs: exercisePerformanceLogs)
@@ -766,6 +769,9 @@ struct WorkoutView: View {
             isGenerating = false
             generationTask = nil
         }
+        // Same generation-time re-derivation as week 1: the recovery tier must
+        // reflect sleep as of now, not a cached window.
+        SleepTrendStore.refresh(using: modelContext)
 
         do {
             WorkoutGenerationDiagnostics.markStage("requesting week \(nextWeek) program from AI")
