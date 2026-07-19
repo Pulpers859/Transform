@@ -1266,6 +1266,7 @@ enum BodyAnalysisValidator {
         guard let macros = result.macroTargets else { return [] }
         var issues: [AnalysisValidationIssue] = []
 
+        // Internal macro arithmetic on the RAW AI recommendation (before any clamp).
         let computedCalories = macros.proteinG * 4 + macros.carbsG * 4 + macros.fatG * 9
         let deviation = abs(computedCalories - Double(macros.calories)) / max(Double(macros.calories), 1)
         if deviation > 0.15 {
@@ -1280,34 +1281,39 @@ enum BodyAnalysisValidator {
             ))
         }
 
-        if macros.calories < 1200 {
+        // Safety floors: audit against the EXACT bodyweight-scaled floors that
+        // MacroTargetResolver will enforce, not absolute constants, so the report
+        // card and the macro card agree. A sub-floor value is a WARNING, not a
+        // save-blocking critical: the resolver silently raises it to a safe number,
+        // so an otherwise-good physique analysis must stay saveable. `.critical` is
+        // reserved for genuinely unusable output (e.g. an empty overall assessment).
+        let floors = MacroTargetResolver.safetyFloors(bodyweightLbs: bodyweightLbs)
+        if macros.calories < floors.calories {
             issues.append(AnalysisValidationIssue(
-                severity: .critical, field: "macroTargets.calories",
-                message: "AI recommended \(macros.calories) kcal — dangerously low and will be floor-clamped."
+                severity: .warning, field: "macroTargets.calories",
+                message: "AI recommended \(macros.calories) kcal — below the \(floors.calories) kcal safety floor and will be auto-raised."
             ))
         }
-        if macros.proteinG < 60 {
+        if macros.proteinG < floors.proteinG {
             issues.append(AnalysisValidationIssue(
-                severity: .critical, field: "macroTargets.proteinG",
-                message: "AI recommended \(Int(macros.proteinG))g protein — implausibly low and will be floor-clamped."
+                severity: .warning, field: "macroTargets.proteinG",
+                message: "AI recommended \(Int(macros.proteinG))g protein — below the \(Int(floors.proteinG))g safety floor and will be auto-raised."
             ))
         }
-        if macros.fatG < 25 {
+        if macros.fatG < floors.fatG {
             issues.append(AnalysisValidationIssue(
-                severity: .error, field: "macroTargets.fatG",
-                message: "AI recommended \(Int(macros.fatG))g fat — below hormonal safety floor."
+                severity: .warning, field: "macroTargets.fatG",
+                message: "AI recommended \(Int(macros.fatG))g fat — below the \(Int(floors.fatG))g hormonal safety floor and will be auto-raised."
             ))
         }
 
-        if let bw = bodyweightLbs {
+        // Upper-bound protein sanity. The lower g/kg check is intentionally gone:
+        // the 1.4 g/kg protein floor above already covers (more strictly) anything
+        // that would have tripped a "below 1.2 g/kg" warning, so keeping it only
+        // double-reported the same shortfall.
+        if let bw = bodyweightLbs, bw > 0 {
             let kg = bw / 2.205
             let proteinPerKg = macros.proteinG / kg
-            if proteinPerKg < 1.2 {
-                issues.append(AnalysisValidationIssue(
-                    severity: .warning, field: "macroTargets.proteinG",
-                    message: "Protein is \(String(format: "%.1f", proteinPerKg)) g/kg — below typical hypertrophy range (1.4–2.0 g/kg)."
-                ))
-            }
             if proteinPerKg > 3.5 {
                 issues.append(AnalysisValidationIssue(
                     severity: .warning, field: "macroTargets.proteinG",
@@ -1346,6 +1352,12 @@ enum BodyAnalysisValidator {
         "you have lordosis",
         "diagnosed with",
         "you suffer from",
+        "you are suffering from",
+        "you definitely have",
+        "you clearly have",
+        "consistent with a diagnosis",
+        "confirmed case of",
+        "unmistakable signs of",
         "clinical signs of",
         "pathological",
         "you need to see a doctor",
@@ -1381,6 +1393,15 @@ enum BodyAnalysisValidator {
 
     // MARK: - Photo-Angle Contradictions
 
+    /// Priority comes back as free text from the model. Match it case- and
+    /// whitespace-insensitively so a `"high"` (vs the schema's `"High"`) doesn't
+    /// silently disable the missing-angle confidence warnings below — this mirrors
+    /// the caseInsensitive comparison `highPriorityRegionsToAddress` already uses.
+    private static func isHighPriority(_ priority: String) -> Bool {
+        priority.trimmingCharacters(in: .whitespacesAndNewlines)
+            .caseInsensitiveCompare("High") == .orderedSame
+    }
+
     private static func checkPhotoAngleContradictions(
         _ result: BodyAnalysisResult,
         photoAngles: [String]
@@ -1396,7 +1417,7 @@ enum BodyAnalysisValidator {
                 let name = region.region.lowercased()
                 return (name.contains("back") || name.contains("lat") || name.contains("rear delt")
                     || name.contains("posterior"))
-                    && region.priority == "High"
+                    && isHighPriority(region.priority)
             }
             for region in backRegions {
                 issues.append(AnalysisValidationIssue(
@@ -1411,7 +1432,7 @@ enum BodyAnalysisValidator {
                 let name = region.region.lowercased()
                 return name.contains("posture") || name.contains("presentation")
             }
-            for region in sideRegions where region.priority == "High" {
+            for region in sideRegions where isHighPriority(region.priority) {
                 issues.append(AnalysisValidationIssue(
                     severity: .warning, field: "regionBreakdown",
                     message: "'\(region.region)' marked High priority without side photos — lateral posture assessment is limited."

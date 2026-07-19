@@ -434,6 +434,31 @@ enum MacroTargetResolver {
         )
     }
 
+    /// The macro safety floors the app will actually enforce for a given bodyweight.
+    ///
+    /// This is the SINGLE source of truth: `resolvedTargets` clamps AI/adaptive
+    /// macros up to these numbers, and `BodyAnalysisValidator` audits the AI's raw
+    /// recommendation against the SAME numbers. Keeping both on this one function is
+    /// what stops the validation surface (the report card) from drifting away from
+    /// the real clamp (the macro card), which is a bodyweight-scaled floor, not the
+    /// absolute constants the validator used to hard-code.
+    struct MacroSafetyFloors {
+        let calories: Int
+        let proteinG: Double
+        let fatG: Double
+        let carbsG: Double
+    }
+
+    static func safetyFloors(bodyweightLbs: Double? = nil) -> MacroSafetyFloors {
+        let bw = bodyweightLbs ?? profileBodyweightLbs()
+        return MacroSafetyFloors(
+            calories: contextAwareCalorieFloor(baseFloor: calorieFloor(bodyweightLbs: bw)),
+            proteinG: proteinFloor(bodyweightLbs: bw),
+            fatG: fatFloor(bodyweightLbs: bw),
+            carbsG: 50
+        )
+    }
+
     private static func resolvedTargets(
         calories: Int,
         proteinG: Double,
@@ -442,29 +467,32 @@ enum MacroTargetResolver {
         bodyweightLbs: Double?,
         source: MacroTargetSource
     ) -> DailyMacroTargets {
-        let bw = bodyweightLbs ?? profileBodyweightLbs()
+        let floors = safetyFloors(bodyweightLbs: bodyweightLbs)
         var adjustments: [String] = []
-        let calFloor = contextAwareCalorieFloor(baseFloor: calorieFloor(bodyweightLbs: bw))
-        let proFloor = proteinFloor(bodyweightLbs: bw)
-        let fFloor = fatFloor(bodyweightLbs: bw)
-        let resolvedCalories = max(calories, calFloor)
-        let resolvedProtein = max(proteinG, proFloor)
-        let resolvedFat = max(fatG, fFloor)
+        let resolvedCalories = max(calories, floors.calories)
+        let resolvedProtein = max(proteinG, floors.proteinG)
+        let resolvedFat = max(fatG, floors.fatG)
+        let resolvedCarbs = max(carbsG, floors.carbsG)
 
-        if calories < calFloor {
-            adjustments.append("Calories raised from \(calories) to \(calFloor) (safety floor: BW×10)")
+        if calories < floors.calories {
+            adjustments.append("Calories raised from \(calories) to \(floors.calories) (safety floor: BW×10)")
         }
-        if proteinG < proFloor {
-            adjustments.append("Protein raised from \(Int(proteinG))g to \(Int(proFloor))g (safety floor: 1.4 g/kg)")
+        if proteinG < floors.proteinG {
+            adjustments.append("Protein raised from \(Int(proteinG))g to \(Int(floors.proteinG))g (safety floor: 1.4 g/kg)")
         }
-        if fatG < fFloor {
-            adjustments.append("Fat raised from \(Int(fatG))g to \(Int(fFloor))g (safety floor: 0.35 g/kg)")
+        if fatG < floors.fatG {
+            adjustments.append("Fat raised from \(Int(fatG))g to \(Int(floors.fatG))g (safety floor: 0.35 g/kg)")
+        }
+        // Previously the carb floor was applied silently; surface it like the others
+        // so a raised carb number is never invisible on the macro card.
+        if carbsG < floors.carbsG {
+            adjustments.append("Carbs raised from \(Int(carbsG))g to \(Int(floors.carbsG))g (minimum training-fuel floor)")
         }
 
         return DailyMacroTargets(
             calories: resolvedCalories,
             proteinG: resolvedProtein,
-            carbsG: max(carbsG, 50),
+            carbsG: resolvedCarbs,
             fatG: resolvedFat,
             source: source,
             floorAdjustments: adjustments

@@ -138,6 +138,7 @@ class ClaudeService {
         - weeklyDayTarget, weeklyExerciseTarget, volumeBias, and directWorkBias should reflect realistic recoverable hypertrophy exposure for this client
         - preferredStyles should use only: Push, Pull, Legs, Lower, Upper, Arms
         - weeklyDayTarget and weeklyExerciseTarget should reflect realistic weekly exposure for hypertrophy, not arbitrary numbers
+        - For any single priority, weeklyDayTarget must not exceed 3 and weeklyExerciseTarget must not exceed 5, even for a top-priority lagging area — spreading beyond that is not recoverable
         - analysisLimitations must explicitly state what this photo-only assessment can and cannot support confidently
 
         CONFIDENCE BY DOMAIN:
@@ -244,7 +245,10 @@ class ClaudeService {
 
         let requestBody: [String: Any] = [
             "model": Config.claudeModel,
-            "max_tokens": 8192,
+            // Headroom so a rich multi-region assessment + prior-analysis comparison
+            // doesn't get truncated mid-JSON (which surfaces to the user as a hard
+            // parse failure after they've already shot and uploaded their photos).
+            "max_tokens": 16384,
             "system": systemPrompt,
             "messages": [
                 [
@@ -276,13 +280,43 @@ class ClaudeService {
     // MARK: - Network Request
 
     private func makeAnalysisRequest(body: [String: Any]) async throws -> BodyAnalysisResult {
+        // A single malformed or truncated completion used to be terminal: the user
+        // lost the whole run after shooting and uploading photos. The photos and
+        // context are identical across attempts, so a fresh completion often parses.
+        // Re-request ONLY on a parse/truncation failure; auth, image, and
+        // cancellation errors are not retryable and propagate immediately. Bounded
+        // to 2 attempts so a genuinely doomed prompt can't burn credits in a loop.
+        let maxAttempts = 2
+        var lastParseError: Error?
+
+        for attempt in 1...maxAttempts {
+            do {
+                return try await attemptAnalysisRequest(body: body, attempt: attempt, of: maxAttempts)
+            } catch let error as ClaudeError {
+                if case .parseError = error, attempt < maxAttempts {
+                    lastParseError = error
+                    print("[ClaudeService] Body analysis parse failure on attempt \(attempt) of \(maxAttempts) — re-requesting.")
+                    continue
+                }
+                throw error
+            }
+        }
+
+        throw lastParseError ?? ClaudeError.parseError("Body analysis failed after \(maxAttempts) attempts")
+    }
+
+    private func attemptAnalysisRequest(
+        body: [String: Any],
+        attempt: Int,
+        of maxAttempts: Int
+    ) async throws -> BodyAnalysisResult {
         let text = try await AnthropicClient.shared.sendRequest(body: body, timeout: 120)
 
         // Extract JSON object from response
         let jsonString = ClaudeService.extractJSON(from: text)
 
         guard let jsonData = jsonString.data(using: .utf8) else {
-            print("[ClaudeService] Could not convert cleaned text to Data")
+            print("[ClaudeService] Could not convert cleaned text to Data (attempt \(attempt)/\(maxAttempts))")
             print("[ClaudeService] Raw response (first 500 chars): \(String(text.prefix(500)))")
             throw ClaudeError.parseError("Response was not valid text")
         }
@@ -291,7 +325,7 @@ class ClaudeService {
         do {
             return try decoder.decode(BodyAnalysisResult.self, from: jsonData)
         } catch let decodingError {
-            print("[ClaudeService] JSON decode failed: \(decodingError)")
+            print("[ClaudeService] JSON decode failed (attempt \(attempt)/\(maxAttempts)): \(decodingError)")
             print("[ClaudeService] Extracted JSON (first 500 chars): \(String(jsonString.prefix(500)))")
             throw ClaudeError.parseError("\(decodingError)")
         }
