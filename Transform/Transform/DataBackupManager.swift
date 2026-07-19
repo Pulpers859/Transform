@@ -154,6 +154,8 @@ nonisolated struct SleepSnapshot: Codable {
     let startDate: Date?
     let endDate: Date?
     let episodeTypeRaw: String?
+    // Optional so older backups (no source key) still decode — missing means manual.
+    let sourceRaw: String?
 }
 
 nonisolated struct MeasurementSnapshot: Codable {
@@ -525,7 +527,8 @@ nonisolated struct ProfileSettingsSnapshot: Codable {
             notes: entry.notes,
             startDate: entry.startDate,
             endDate: entry.endDate,
-            episodeTypeRaw: entry.episodeTypeRaw
+            episodeTypeRaw: entry.episodeTypeRaw,
+            sourceRaw: entry.sourceRaw
         )
     }
 
@@ -552,7 +555,8 @@ nonisolated struct ProfileSettingsSnapshot: Codable {
             qualityRating: qualityRating,
             shiftType: SleepShiftType(rawValue: shiftTypeRaw) ?? .off,
             episodeType: SleepEpisodeType(rawValue: episodeTypeRaw ?? "") ?? .mainSleep,
-            notes: notes
+            notes: notes,
+            source: SleepEntrySource(rawValue: sourceRaw ?? "") ?? .manual
         )
     }
 }

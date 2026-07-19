@@ -395,7 +395,9 @@
 				DEVELOPMENT_TEAM = R4L58G49L2;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				CODE_SIGN_ENTITLEMENTS = Transform/Transform.entitlements;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Transform uses the camera so you can capture physique photos for body analysis.";
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "Transform reads your sleep from Apple Health so recovery and training recommendations reflect how you actually slept.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Transform uses your photo library so you can choose physique photos for body analysis.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -432,7 +434,9 @@
 				DEVELOPMENT_TEAM = R4L58G49L2;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				CODE_SIGN_ENTITLEMENTS = Transform/Transform.entitlements;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Transform uses the camera so you can capture physique photos for body analysis.";
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "Transform reads your sleep from Apple Health so recovery and training recommendations reflect how you actually slept.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Transform uses your photo library so you can choose physique photos for body analysis.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;

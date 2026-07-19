@@ -29,6 +29,10 @@ class SleepEntry {
     var startDate: Date?
     var endDate: Date?
     var episodeTypeRaw: String = SleepEpisodeType.mainSleep.rawValue
+    // Where this record's timing came from. Defaults to `.manual` so every existing
+    // record (pre-migration) and every hand-entered log is treated as manual and is
+    // never overwritten by the HealthKit importer — see SleepHealthImportCore.
+    var sourceRaw: String = SleepEntrySource.manual.rawValue
 
     init(
         startDate: Date,
@@ -36,7 +40,8 @@ class SleepEntry {
         qualityRating: Int,
         shiftType: SleepShiftType,
         episodeType: SleepEpisodeType,
-        notes: String = ""
+        notes: String = "",
+        source: SleepEntrySource = .manual
     ) {
         self.date = endDate
         self.durationHours = max(0, endDate.timeIntervalSince(startDate) / 3600)
@@ -46,6 +51,7 @@ class SleepEntry {
         self.endDate = endDate
         self.episodeTypeRaw = episodeType.rawValue
         self.notes = notes
+        self.sourceRaw = source.rawValue
     }
 
     var shiftType: SleepShiftType {
@@ -56,6 +62,11 @@ class SleepEntry {
     var episodeType: SleepEpisodeType {
         get { SleepEpisodeType(rawValue: episodeTypeRaw) ?? .mainSleep }
         set { episodeTypeRaw = newValue.rawValue }
+    }
+
+    var source: SleepEntrySource {
+        get { SleepEntrySource(rawValue: sourceRaw) ?? .manual }
+        set { sourceRaw = newValue.rawValue }
     }
 
     var resolvedEndDate: Date { endDate ?? date }

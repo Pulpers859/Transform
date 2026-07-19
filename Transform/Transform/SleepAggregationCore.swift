@@ -100,10 +100,19 @@ enum SleepAggregationCore {
 
         let days = anchored.map { date, episodes -> SleepDayAggregate in
             let total = episodes.reduce(0) { $0 + $1.durationHours }
-            let qualityWeight = episodes.reduce(0.0) { $0 + max($1.durationHours, 0.25) }
-            let weightedQuality = episodes.reduce(0.0) {
-                $0 + Double($1.quality) * max($1.durationHours, 0.25)
-            } / max(qualityWeight, 0.25)
+            // Quality is a subjective 1-5 rating; 0 means "no rating" (a HealthKit
+            // import has no felt quality, and legacy migrated rows can also be 0).
+            // Duration-weight only the rated episodes so an unrated night neither
+            // drags the average toward zero nor trips the quality/duration mismatch
+            // check below. A day with no rated episodes reports averageQuality 0 and
+            // is excluded from the cross-day quality math.
+            let ratedEpisodes = episodes.filter { $0.quality >= 1 }
+            let qualityWeight = ratedEpisodes.reduce(0.0) { $0 + max($1.durationHours, 0.25) }
+            let weightedQuality = qualityWeight > 0
+                ? ratedEpisodes.reduce(0.0) {
+                    $0 + Double($1.quality) * max($1.durationHours, 0.25)
+                } / qualityWeight
+                : 0
             return SleepDayAggregate(
                 date: date,
                 totalHours: total,
@@ -123,9 +132,17 @@ enum SleepAggregationCore {
             ? 0
             : acuteDays.map(\.totalHours).reduce(0, +) / Double(acuteDays.count)
         let variance = totals.map { pow($0 - sevenDayAverage, 2) }.reduce(0, +) / Double(totals.count)
-        let averageQuality = days.map(\.averageQuality).reduce(0, +) / Double(days.count)
+        // Only days with a real rating (averageQuality >= 1) participate in the quality
+        // average; unrated (imported/legacy) days are neither counted nor treated as 0.
+        let ratedDays = days.filter { $0.averageQuality >= 1 }
+        let averageQuality = ratedDays.isEmpty
+            ? 0
+            : ratedDays.map(\.averageQuality).reduce(0, +) / Double(ratedDays.count)
+        // The low-quality branch only fires on a rated day; an unrated long night is not
+        // a "slept long but felt terrible" mismatch, it is simply un-rated.
         let qualityDurationMismatch = days.filter {
-            ($0.totalHours >= 7 && $0.averageQuality <= 2) || ($0.totalHours < 6 && $0.averageQuality >= 4)
+            ($0.totalHours >= 7 && $0.averageQuality >= 1 && $0.averageQuality <= 2)
+                || ($0.totalHours < 6 && $0.averageQuality >= 4)
         }.count
         // Post-call context is real regardless of anchoring, so this looks at all
         // recent episodes (a post-call nap still marks a post-call window).

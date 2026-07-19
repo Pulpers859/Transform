@@ -42,6 +42,12 @@ struct AppSettingsView: View {
                     } label: {
                         Label("Medical Screening", systemImage: "heart.text.clipboard")
                     }
+
+                    NavigationLink {
+                        SettingsSleepImportView()
+                    } label: {
+                        Label("Sleep Source", systemImage: "bed.double.fill")
+                    }
                 } header: {
                     Text("You")
                 }

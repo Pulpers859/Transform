@@ -485,6 +485,7 @@ struct DashboardView: View {
             }
             .onAppear {
                 SleepTrendStore.refresh(using: modelContext)
+                autoImportSleepIfEnabled()
                 lastBackupDate = DataBackupManager.shared.lastAutomaticBackupDate
                 withAnimation(.easeOut(duration: 0.9).delay(0.2)) {
                     animateRings = true
@@ -498,6 +499,24 @@ struct DashboardView: View {
                     lastBackupDate = DataBackupManager.shared.lastAutomaticBackupDate
                 }
             }
+        }
+    }
+
+    // MARK: - Apple Health sleep sync
+
+    /// Pull recent sleep from Apple Health when the user enabled the source, throttled so
+    /// returning to the dashboard doesn't re-query every time. The import is idempotent
+    /// (it never overwrites a manual log and updates its own rows in place), and the
+    /// SwiftData insert propagates through the sleep @Query, so the rings react on their
+    /// own — no explicit refresh needed here.
+    private func autoImportSleepIfEnabled() {
+        guard UserDefaults.standard.bool(forKey: AppSettingsKeys.healthKitSleepImportEnabled) else { return }
+        if let last = UserDefaults.standard.object(forKey: AppSettingsKeys.healthKitSleepLastImport) as? Date,
+           Date().timeIntervalSince(last) < 15 * 60 {
+            return
+        }
+        Task {
+            await SleepHealthKitService.shared.importRecentSleep(into: modelContext)
         }
     }
 

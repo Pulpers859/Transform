@@ -58,6 +58,11 @@ let package = Package(
                 // Day-anchored sleep aggregation math + quick-log wake-date crediting
                 // (Foundation-only core behind SleepTrendBuilder).
                 "SleepAggregationCore.swift",
+                // Foundation-only reconciliation core for importing sleep from an
+                // external timing source (HealthKit): coalescing + plausibility +
+                // never-overwrite-manual reconcile. The HKHealthStore I/O that feeds
+                // it lives in SleepHealthKitService.swift and is NOT in this closure.
+                "SleepHealthImportCore.swift",
 
                 // Shared model layer. (Models.swift — the sleep/nutrition/weight
                 // persistence models — is intentionally NOT here: nothing in the

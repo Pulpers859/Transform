@@ -384,6 +384,9 @@ struct SleepEntryEditor: View {
             episode.shiftType = shiftType
             episode.episodeType = episodeType
             episode.notes = trimmedNotes
+            // A hand-edit is an intentional correction: promote an imported night to
+            // manual so a later Apple Health sync never overwrites what the user fixed.
+            episode.source = .manual
         } else {
             modelContext.insert(
                 SleepEntry(

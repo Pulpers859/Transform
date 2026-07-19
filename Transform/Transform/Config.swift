@@ -716,6 +716,8 @@ nonisolated enum AppSettingsKeys {
     static let analysisCheckInCravingsLevel = "analysis_checkin_cravings_level"
     static let derivedSleepTrendSummary = "derived_sleep_trend_summary"
     static let derivedSleepRecoveryState = "derived_sleep_recovery_state"
+    static let healthKitSleepImportEnabled = "healthkit_sleep_import_enabled"
+    static let healthKitSleepLastImport = "healthkit_sleep_last_import"
 
     static let calorieTarget = "nutrition_calorie_target"
     static let proteinTarget = "nutrition_protein_target"

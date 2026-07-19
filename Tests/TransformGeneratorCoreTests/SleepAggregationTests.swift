@@ -135,6 +135,39 @@ final class SleepAggregationTests: XCTestCase {
         ]), "Naps alone are not a sleep trend")
     }
 
+    // MARK: - Unrated (imported) nights
+
+    func testUnratedNightDoesNotCountAsAQualityDurationMismatch() throws {
+        // A HealthKit-imported 8h night has quality 0 (unrated). Pre-fix this tripped the
+        // "slept >=7h but quality <=2" mismatch on every imported night.
+        let core = try XCTUnwrap(SleepAggregationCore.build(from: [
+            sample(endDaysAgo: 1, duration: 8.0, quality: 0),
+            sample(endDaysAgo: 0, duration: 7.5, quality: 0)
+        ]))
+        XCTAssertEqual(core.qualityDurationMismatchDays, 0)
+    }
+
+    func testUnratedNightsAreExcludedFromTheQualityAverage() throws {
+        // One rated night (4/5) and one unrated import: the average must be the rated
+        // value, not dragged toward zero by the 0.
+        let core = try XCTUnwrap(SleepAggregationCore.build(from: [
+            sample(endDaysAgo: 1, duration: 7.5, quality: 4),
+            sample(endDaysAgo: 0, duration: 7.5, quality: 0)
+        ]))
+        XCTAssertEqual(core.averageQuality, 4, accuracy: 0.001)
+    }
+
+    func testMixedRatedAndUnratedEpisodesOnADayWeightOnlyTheRatedOne() throws {
+        // An anchored day with a rated main sleep plus an unrated imported nap keeps the
+        // day's quality equal to the rated episode.
+        let core = try XCTUnwrap(SleepAggregationCore.build(from: [
+            sample(endDaysAgo: 0, duration: 6.0, quality: 5),
+            sample(endDaysAgo: 0, wakeHour: 16, duration: 1.5, kind: .nap, quality: 0)
+        ]))
+        let day = try XCTUnwrap(core.days.last)
+        XCTAssertEqual(day.averageQuality, 5, accuracy: 0.001)
+    }
+
     // MARK: - Quick-log wake-day crediting
 
     func testQuickLogAfterMidnightCreditsThePreviousWakeDay() throws {
