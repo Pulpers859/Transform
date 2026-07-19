@@ -101,14 +101,44 @@ extension ClaudeService {
         return pattern.isEmpty ? nil : pattern
     }
 
+    /// Free-standing barbell squats — the axial-loaded, high-skill squat variants capped at
+    /// ONE per session (SEQ-001). Machine/guided/implement squats (hack, pendulum, sissy,
+    /// belt, Smith, goblet, landmine, dumbbell, kettlebell) are NOT free-barbell squats even
+    /// though they share the "Squat" movement pattern, and leg presses live in the separate
+    /// "Press" pattern entirely — none of those trip this cap.
+    func isFreeBarbellSquat(exerciseName: String, muscleTarget: String) -> Bool {
+        guard menuMovementPattern(forExerciseName: exerciseName, muscleTarget: muscleTarget) == "Squat" else {
+            return false
+        }
+        let name = normalizeExerciseName(exerciseName)
+        guard name.contains("squat") else { return false }
+        let guidedOrImplementSignals = [
+            "hack", "pendulum", "sissy", "belt", "smith", "machine",
+            "goblet", "landmine", "dumbbell", "kettlebell"
+        ]
+        return !guidedOrImplementSignals.contains { name.contains($0) }
+    }
+
     /// A single session gets at most 2 exercises of the same movement pattern. This is the
     /// selection-time guard against menus like four vertical pulls or three flat presses in
     /// one day — previously only penalized during fatigue trimming, never prevented.
+    ///
+    /// Free-barbell squats carry a stricter cap of ONE (SEQ-001): two axial-loaded free
+    /// squats back-to-back (e.g. Back Squat + Front Squat) are redundant quad stimulus at
+    /// high skill and systemic-fatigue cost. Stable machine/guided squats and leg presses
+    /// are exempt, so a barbell squat can still be paired with a hack squat or leg press.
     func dayPatternCapAllows(
         candidateName: String,
         candidateTarget: String,
         in selected: [(name: String, target: String)]
     ) -> Bool {
+        if isFreeBarbellSquat(exerciseName: candidateName, muscleTarget: candidateTarget) {
+            let barbellSquatsAlready = selected.contains {
+                isFreeBarbellSquat(exerciseName: $0.name, muscleTarget: $0.target)
+            }
+            if barbellSquatsAlready { return false }
+        }
+
         guard let pattern = menuMovementPattern(forExerciseName: candidateName, muscleTarget: candidateTarget) else {
             return true
         }
