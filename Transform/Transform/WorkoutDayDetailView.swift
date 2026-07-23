@@ -2291,6 +2291,17 @@ struct InlineSetLogger: View {
             if weightBinding(n).wrappedValue.trimmingCharacters(in: .whitespaces).isEmpty {
                 Button {
                     draftWeight[n] = "BW"
+                    // A bodyweight movement progresses on reps and usually has no
+                    // load history to prefill them, so tapping "Bodyweight" used to
+                    // resolve the weight but leave reps an empty placeholder — the
+                    // checkmark stayed silently disabled and the set dead-ended.
+                    // Seed the programmed target as an editable starting point so the
+                    // set is one confirm away; the user still edits/confirms the
+                    // actual count (a tap reports what happened, not what was hoped).
+                    if repsBinding(n).wrappedValue.trimmingCharacters(in: .whitespaces).isEmpty,
+                       let target = targetRepsPlaceholder ?? suggestedReps {
+                        draftReps[n] = "\(target)"
+                    }
                 } label: {
                     Label("Bodyweight — no external load", systemImage: "figure.core.training")
                         .font(.caption2.bold())
