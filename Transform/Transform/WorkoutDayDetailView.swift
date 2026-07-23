@@ -463,8 +463,41 @@ struct ExerciseCard: View {
         ExercisePrescription.parse(from: exercise.notes)
     }
 
+    /// Previous-session analysis. Drives set-log PREFILL (chain the next set off last
+    /// session's working load) and the "Last" panel. Deliberately NOT today's — prefilling
+    /// from a set you just logged would fight the live draft chaining in InlineSetLogger.
     var workingSetAnalysis: WorkingSetAnalysis {
         WorkingSetAnalysis.analyze(latestSetLogs)
+    }
+
+    /// The session the progression cue and anomaly check must reason about: today's logged
+    /// sets the instant they exist, otherwise the previous completed session. Progression
+    /// answers "what next time," so once today is logged it MUST reflect today — not keep
+    /// coaching off a session you've already beaten (the live bug: a 135 lb × 15 set that
+    /// was told to "try 105 lb next session" because the cue was frozen on last week's 100).
+    var progressionReferenceSets: [SetLogEntry] {
+        todaysSetLogs.isEmpty ? latestSetLogs : todaysSetLogs
+    }
+
+    var progressionAnalysis: WorkingSetAnalysis {
+        WorkingSetAnalysis.analyze(progressionReferenceSets)
+    }
+
+    /// Cross-session sanity check on the just-logged session. The intra-session anomaly
+    /// detector needs 3+ sets to establish a center, so single-set isolation work (a rear-
+    /// delt machine, a raise) has NOTHING guarding a fat-fingered entry — and that entry
+    /// silently becomes the Best and the next progression baseline. Compare today's working
+    /// load with last session's: an implausible one-week jump earns a soft "confirm or fix"
+    /// (it never blocks). The ~10 lb floor keeps tiny-weight ratios (5→10) from over-firing;
+    /// a ≥25% single-session jump is far beyond any step the engine would ever recommend.
+    var historicalLoadAnomaly: (setNumber: Int, weight: Double, reference: Double)? {
+        let today = WorkingSetAnalysis.analyze(todaysSetLogs)
+        guard let todayWeight = today.workingWeight, todayWeight > 0,
+              let top = today.topWorkingSet else { return nil }
+        let prior = WorkingSetAnalysis.analyze(latestSetLogs)
+        guard let priorWeight = prior.workingWeight, priorWeight > 0 else { return nil }
+        guard todayWeight >= priorWeight * 1.25, todayWeight - priorWeight >= 10 else { return nil }
+        return (top.setNumber, todayWeight, priorWeight)
     }
 
     /// True when this exercise sits inside a deload block. Deload weeks intentionally pull
@@ -518,10 +551,38 @@ struct ExerciseCard: View {
         ).prefix(3)
 
         let compact = kept.joined(separator: " ")
-        guard compact.count > 420 else { return compact }
+        if compact.count > 420 {
+            // Cut on a word boundary, never mid-word.
+            let hard = compact.prefix(417)
+            let wordSafe = (hard.lastIndex(of: " ").map { String(hard[..<$0]) } ?? String(hard))
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return "\(wordSafe)…"
+        }
+        return tidyTrailingFragment(compact)
+    }
 
-        let prefix = compact.prefix(417).trimmingCharacters(in: .whitespacesAndNewlines)
-        return "\(prefix)..."
+    /// Defends the cue against a coaching note stored truncated mid-thought (seen live:
+    /// "…chase reps first at"). A well-formed note ends in . ! or ? and is returned
+    /// untouched; only text that trails off with no terminal punctuation AND ends on a
+    /// connector/preposition gets its dangling tail trimmed so the card never renders a
+    /// broken half-sentence. The real fix for the truncated DATA is regenerating the
+    /// program (generator/parsing layer) — this just stops it from LOOKING broken.
+    private func tidyTrailingFragment(_ text: String) -> String {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let last = trimmed.last, !".!?".contains(last) else { return trimmed }
+        let danglers: Set<String> = [
+            "at", "the", "a", "an", "and", "or", "to", "of", "for", "with", "in", "on",
+            "before", "after", "then", "than", "as", "by", "up", "your", "you", "is",
+            "are", "this", "that", "into", "from", "toward", "so", "but"
+        ]
+        func tailWord(_ words: [String]) -> String? {
+            words.last?.lowercased().trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
+        }
+        var words = trimmed.split(separator: " ").map(String.init)
+        guard let tail = tailWord(words), danglers.contains(tail) else { return trimmed }
+        while let tail = tailWord(words), danglers.contains(tail) { words.removeLast() }
+        let rebuilt = words.joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
+        return rebuilt.isEmpty ? trimmed : "\(rebuilt)…"
     }
 
     /// Full-length variant for the expanded Details view: same sentence filtering as the
@@ -534,11 +595,13 @@ struct ExerciseCard: View {
         hideProgressionCue: Bool,
         hideDeloadCue: Bool
     ) -> String {
-        coachingSentences(
-            from: note,
-            hideProgressionCue: hideProgressionCue,
-            hideDeloadCue: hideDeloadCue
-        ).joined(separator: " ")
+        tidyTrailingFragment(
+            coachingSentences(
+                from: note,
+                hideProgressionCue: hideProgressionCue,
+                hideDeloadCue: hideDeloadCue
+            ).joined(separator: " ")
+        )
     }
 
     private func coachingSentences(
@@ -623,7 +686,7 @@ struct ExerciseCard: View {
         guard let log = latestWeightLog else { return nil }
         guard let repRange = RepRange.parse(exercise.reps) else { return nil }
         let suggestion = ProgressionSuggestion.evaluate(
-            analysis: workingSetAnalysis,
+            analysis: progressionAnalysis,
             summaryRepsCompleted: log.repsCompleted,
             repRange: repRange,
             lastWeight: log.weightLbs,
@@ -681,7 +744,7 @@ struct ExerciseCard: View {
 
     var prescriptionItems: [ExercisePrescriptionPillData] {
         var items = [
-            ExercisePrescriptionPillData(icon: "square.stack.3d.up", label: "\(exercise.sets) sets"),
+            ExercisePrescriptionPillData(icon: "square.stack.3d.up", label: setsLabel(exercise.sets)),
             ExercisePrescriptionPillData(icon: "arrow.up.arrow.down", label: "\(exercise.reps) reps")
         ]
         if let tempo = displayTempo {
@@ -723,7 +786,7 @@ struct ExerciseCard: View {
 
     /// Shorthand load for dense set lists: "BW" or the bare number ("90x12").
     private func compactLoad(_ weightLbs: Double) -> String {
-        weightLbs <= 0 ? "BW" : formatWeight(weightLbs)
+        WorkoutProgressionEngine.isBodyweightEquivalent(weightLbs) ? "BW" : formatWeight(weightLbs)
     }
 
     var compactBestText: String? {
@@ -777,10 +840,14 @@ struct ExerciseCard: View {
                     ProgressionSuggestionBadge(suggestion: suggestion)
                 }
 
-                if let anomaly = workingSetAnalysis.anomalies.first {
-                    let reference = workingSetAnalysis.workingWeight ?? anomaly.weightLbs
+                if let anomaly = progressionAnalysis.anomalies.first {
+                    let reference = progressionAnalysis.workingWeight ?? anomaly.weightLbs
                     SetAnomalyNotice(
                         text: "Check Set \(anomaly.setNumber): \(formatLoad(anomaly.weightLbs)) is well above your \(formatLoad(reference)) working sets. Confirm or fix the entry — it isn't used for progression."
+                    )
+                } else if let hist = historicalLoadAnomaly {
+                    SetAnomalyNotice(
+                        text: "Check Set \(hist.setNumber): \(formatLoad(hist.weight)) is a big jump from last session's \(formatLoad(hist.reference)). Confirm it — a mis-log here would set a false best and skew your next target."
                     )
                 }
 
@@ -831,9 +898,11 @@ struct ExerciseCard: View {
             .accessibilityLabel(exercise.isCompleted ? "Mark \(exercise.exerciseName) incomplete" : "Mark \(exercise.exerciseName) complete")
 
             VStack(alignment: .leading, spacing: 2) {
+                // Completed exercises are dimmed, not struck through: a line through the
+                // title reads as "deleted/cancelled," the opposite of "done." The green
+                // check plus the muted color already communicate completion.
                 Text(exercise.exerciseName)
                     .font(.subheadline.bold())
-                    .strikethrough(exercise.isCompleted, color: .secondary)
                     .foregroundStyle(exercise.isCompleted ? .secondary : .primary)
 
                 if !exercise.muscleTarget.isEmpty {
@@ -1909,8 +1978,8 @@ struct ProgressionSuggestion {
                 return ProgressionSuggestion(
                     icon: "arrow.up.circle.fill",
                     text: isBodyweight
-                        ? "Add load — \(decision.ceilingSetCount) of \(decision.workingSetCount) sets hit \(repRange.high) \(atLoad). Add ~\(nextText) lb external (ankle weight or dumbbell) next session"
-                        : "Add load — \(decision.ceilingSetCount) of \(decision.workingSetCount) sets hit \(repRange.high) \(atLoad). Try \(nextText) lb next session",
+                        ? "Add load — \(decision.ceilingSetCount) of \(setsLabel(decision.workingSetCount)) hit \(repRange.high) \(atLoad). Add ~\(nextText) lb external (ankle weight or dumbbell) next session"
+                        : "Add load — \(decision.ceilingSetCount) of \(setsLabel(decision.workingSetCount)) hit \(repRange.high) \(atLoad). Try \(nextText) lb next session",
                     color: TFColor.success
                 )
             }
@@ -2340,7 +2409,7 @@ struct InlineSetLogger: View {
             }
             Spacer()
             Button {
-                draftWeight[n] = set.weightLbs <= 0 ? "BW" : formatWeight(set.weightLbs)
+                draftWeight[n] = WorkoutProgressionEngine.isBodyweightEquivalent(set.weightLbs) ? "BW" : formatWeight(set.weightLbs)
                 draftReps[n] = "\(set.repsCompleted)"
                 draftRIR[n] = set.rir.map { formatRIR($0) } ?? ""
                 editing.insert(n)
@@ -2448,9 +2517,10 @@ struct InlineSetLogger: View {
     }
 
     private func defaultWeightText() -> String {
-        // nil = no history (leave empty); 0 = real bodyweight history (prefill "BW").
+        // nil = no history (leave empty); bodyweight-equivalent history (true 0 or a legacy
+        // ≤1 lb stand-in) prefills "BW" so the logger field matches how the load displays.
         guard let w = loggedSets.last?.weightLbs ?? suggestedWeight else { return "" }
-        return w <= 0 ? "BW" : formatWeight(w)
+        return WorkoutProgressionEngine.isBodyweightEquivalent(w) ? "BW" : formatWeight(w)
     }
 
     private func defaultRepsText() -> String {

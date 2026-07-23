@@ -442,12 +442,20 @@ nonisolated struct SetLogEntry: Codable, Identifiable, Equatable {
     var rir: Double? = nil
 }
 
-/// User-facing load label. Weight 0 is a real value — a bodyweight set with no
-/// external load — not missing data, so it renders as "BW" instead of "0 lb".
-/// (Added load on a bodyweight movement is logged as its actual value.)
-/// Declared like `formatWeight(_:)` (same isolation) since it wraps it.
+/// User-facing load label. Bodyweight-equivalent loads render as "BW", not a number:
+/// true 0-load sets AND the legacy "1 lb" stand-ins recorded before the logger allowed
+/// bodyweight. This is the SAME reinterpretation the progression engine applies
+/// (`WorkoutProgressionEngine.isBodyweightEquivalent`), so a card can never show "1 lb"
+/// in its Last/Best history while the progression cue right below it says "at bodyweight".
+/// Real added load on a bodyweight movement (e.g. a +25 lb weighted pull-up) shows its
+/// actual value. Declared like `formatWeight(_:)` (same isolation) since it wraps it.
 func formatLoad(_ weightLbs: Double) -> String {
-    weightLbs <= 0 ? "BW" : "\(formatWeight(weightLbs)) lb"
+    WorkoutProgressionEngine.isBodyweightEquivalent(weightLbs) ? "BW" : "\(formatWeight(weightLbs)) lb"
+}
+
+/// Grammatical set count so prescriptions and cues read "1 set" / "2 sets", never "1 sets".
+func setsLabel(_ count: Int) -> String {
+    "\(count) set\(count == 1 ? "" : "s")"
 }
 
 @Model

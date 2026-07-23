@@ -100,7 +100,7 @@ struct AddExerciseWeightSheet: View {
                 .font(.title3.bold())
 
             HStack(spacing: 8) {
-                metricChip(icon: "square.stack.3d.up", text: "\(exercise.sets) sets")
+                metricChip(icon: "square.stack.3d.up", text: setsLabel(exercise.sets))
                 metricChip(icon: "arrow.left.arrow.right", text: "\(exercise.reps) target")
                 if !exercise.muscleTarget.isEmpty {
                     metricChip(icon: "target", text: exercise.muscleTarget)
