@@ -31,6 +31,7 @@ struct WorkoutDayDetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 dayHeader
+                sessionTimingBadge
                 if !day.notes.isEmpty {
                     sessionNotes
                 }
@@ -136,6 +137,73 @@ struct WorkoutDayDetailView: View {
             .clipShape(Capsule())
     }
 
+    // MARK: - Session Timing
+
+    /// Auto-tracking clock. Once the first set is logged the session start is stamped
+    /// automatically (see SetLoggingService.stampSessionTiming) and this shows a live
+    /// running duration. Before any set exists it offers an optional manual start for
+    /// athletes who want a long warm-up counted — but starting is never required.
+    @ViewBuilder
+    var sessionTimingBadge: some View {
+        if !day.isCompleted {
+            if let start = day.sessionStartedAt {
+                TimelineView(.periodic(from: .now, by: 60)) { context in
+                    let minutes = max(0, Int(context.date.timeIntervalSince(start) / 60))
+                    HStack(spacing: 8) {
+                        Image(systemName: "stopwatch")
+                            .font(.caption.bold())
+                            .foregroundStyle(TFColor.accent)
+                        Text("Session in progress")
+                            .font(.caption.bold())
+                            .foregroundStyle(.primary)
+                        Spacer()
+                        Text("\(start.formatted(date: .omitted, time: .shortened)) · \(minutes) min")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .monospacedDigit()
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 9)
+                    .background(TFColor.accent.opacity(0.10))
+                    .clipShape(Capsule())
+                }
+            } else {
+                Button(action: startSessionManually) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "stopwatch")
+                            .font(.caption.bold())
+                        Text("Start session timer")
+                            .font(.caption.bold())
+                        Spacer()
+                        Text("or just log your first set")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    .foregroundStyle(TFColor.accent)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 9)
+                    .background(TFColor.accent.opacity(0.08))
+                    .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Start session timer")
+            }
+        }
+    }
+
+    private func startSessionManually() {
+        guard day.sessionStartedAt == nil else { return }
+        // End is left nil so a started-but-unlogged session still defaults its finish to
+        // "now" in the feedback sheet; the first logged set stamps the real end.
+        day.sessionStartedAt = .now
+        TFHaptics.impact(.light)
+        guard PersistenceReporter.save(modelContext, operation: "manual session start") else {
+            modelContext.rollback()
+            return
+        }
+        TFHaptics.success()
+    }
+
     // MARK: - Session Notes
 
     var sessionNotes: some View {
@@ -189,9 +257,7 @@ struct WorkoutDayDetailView: View {
                     Text(day.hasSessionFeedback ? "Session Feedback" : "Add Session Feedback")
                         .font(.subheadline.bold())
                         .foregroundStyle(.primary)
-                    Text(day.hasSessionFeedback
-                         ? "Effort \(day.sessionEffort)/5 · Stimulus \(day.stimulusQuality)/5 · Pain \(day.jointPain)/5 · \(day.performanceRating?.rawValue ?? "Not rated")"
-                         : "Four quick ratings help calibrate next week.")
+                    Text(sessionFeedbackSubtitle)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.leading)
@@ -206,6 +272,15 @@ struct WorkoutDayDetailView: View {
             .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
         }
         .buttonStyle(.plain)
+    }
+
+    /// Duration first (it's the auto-tracked highlight), then ratings or the prompt.
+    private var sessionFeedbackSubtitle: String {
+        let durationPrefix = day.sessionDurationMinutes.map { "\($0) min · " } ?? ""
+        let body = day.hasSessionFeedback
+            ? "Effort \(day.sessionEffort)/5 · Stimulus \(day.stimulusQuality)/5 · Pain \(day.jointPain)/5 · \(day.performanceRating?.rawValue ?? "Not rated")"
+            : "Four quick ratings help calibrate next week."
+        return durationPrefix + body
     }
 
     // MARK: - Exercise List
@@ -2104,7 +2179,29 @@ enum SetLoggingService {
         let summary = summaryEntryOrCreate(for: exercise, weight: topWeight, reps: topReps, date: date, modelContext: modelContext)
         summary.applyLog(loggedAt: date, exerciseName: exercise.exerciseName, weightLbs: topWeight, repsCompleted: topReps, notes: summary.notes)
 
+        stampSessionTiming(for: exercise, date: date)
+
         return persist(modelContext)
+    }
+
+    /// Auto-tracks session duration so the athlete never hand-dials a clock. The first
+    /// set logged marks the session start; each later set advances the end, so by the
+    /// time feedback is entered the real elapsed time is already recorded. Only touches a
+    /// live (not-yet-finalized) session and only for logs stamped today, so correcting an
+    /// old session's set tomorrow can't rewrite its clock. Reports observed timestamps —
+    /// no invented warm-up padding; the athlete can still nudge either end in the sheet.
+    private static func stampSessionTiming(for exercise: WorkoutExercise, date: Date) {
+        guard let day = exercise.day,
+              day.feedbackSubmittedAt == nil,
+              Calendar.current.isDateInToday(date) else { return }
+        if day.sessionStartedAt == nil {
+            day.sessionStartedAt = date
+        }
+        if let end = day.sessionEndedAt {
+            if date > end { day.sessionEndedAt = date }
+        } else {
+            day.sessionEndedAt = date
+        }
     }
 
     private static func persist(_ modelContext: ModelContext) -> Bool {

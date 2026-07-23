@@ -156,6 +156,14 @@ class WorkoutDay {
     var hasSessionFeedback: Bool {
         feedbackSubmittedAt != nil
     }
+
+    /// Elapsed training time inferred from the auto-tracked start/end stamps
+    /// (first set logged → last set logged). nil until both exist and are ordered,
+    /// so callers can fall back to a manual estimate rather than show "0 min".
+    var sessionDurationMinutes: Int? {
+        guard let start = sessionStartedAt, let end = sessionEndedAt, end > start else { return nil }
+        return max(1, Int(end.timeIntervalSince(start) / 60))
+    }
 }
 
 enum WorkoutPerformanceRating: String, CaseIterable, Identifiable {
