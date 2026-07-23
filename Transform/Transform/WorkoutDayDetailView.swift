@@ -2184,18 +2184,23 @@ enum SetLoggingService {
         return persist(modelContext)
     }
 
+    /// Warm-up lead: the athlete is already training (warming up) before the first rep is
+    /// logged, so an inferred start is back-dated by this much to approximate real session
+    /// length. Applies ONLY to the automatic first-set start — a manual "Start" tap records
+    /// an exact time and is left untouched. The athlete can still nudge it in the sheet.
+    static let inferredWarmupLeadMinutes = 10
+
     /// Auto-tracks session duration so the athlete never hand-dials a clock. The first
-    /// set logged marks the session start; each later set advances the end, so by the
-    /// time feedback is entered the real elapsed time is already recorded. Only touches a
-    /// live (not-yet-finalized) session and only for logs stamped today, so correcting an
-    /// old session's set tomorrow can't rewrite its clock. Reports observed timestamps —
-    /// no invented warm-up padding; the athlete can still nudge either end in the sheet.
+    /// set logged marks the session start (minus the warm-up lead); each later set advances
+    /// the end, so by the time feedback is entered the real elapsed time is already
+    /// recorded. Only touches a live (not-yet-finalized) session and only for logs stamped
+    /// today, so correcting an old session's set tomorrow can't rewrite its clock.
     private static func stampSessionTiming(for exercise: WorkoutExercise, date: Date) {
         guard let day = exercise.day,
               day.feedbackSubmittedAt == nil,
               Calendar.current.isDateInToday(date) else { return }
         if day.sessionStartedAt == nil {
-            day.sessionStartedAt = date
+            day.sessionStartedAt = date.addingTimeInterval(-Double(inferredWarmupLeadMinutes) * 60)
         }
         if let end = day.sessionEndedAt {
             if date > end { day.sessionEndedAt = date }
