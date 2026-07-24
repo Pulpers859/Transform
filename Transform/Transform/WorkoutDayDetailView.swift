@@ -676,12 +676,25 @@ struct ExerciseCard: View {
                 // can reliably progress", "when you clear 15 clean reps".
                 "ankle weight", "add a dumbbell", "add a rep", "stack step",
                 "barbell step", "reliably progress", "when you clear", "add a plate",
-                "external load", "next week add"
+                "external load", "next week add",
+                // Load/rep-advance phrasings the structured ProgressionSuggestionBadge
+                // already owns, seen duplicated in the Cue ("move up to 105", "chase reps
+                // first", "go heavier"). Kept deliberately load-specific: bare "move to",
+                // "bump", and "keep the load" are excluded because they also match
+                // technique cues ("move to a staggered stance", "bump your chest up",
+                // "keep the load on your lats").
+                "move up to", "go up to", "go heavier", "bump the load", "bump to", "chase reps"
                ]) {
                 continue
             }
 
-            if containsAny(normalized, ["you logged", "you used", "your last session", "last time you"]) {
+            // Last-session performance recaps: the Last panel and the progression badge
+            // already show what you did, so narrating it again never belongs in the
+            // execution Cue ("You beat 100 lb x15 — move to 105 lb" was shipping in both).
+            if containsAny(normalized, [
+                "you logged", "you used", "your last session", "last time you",
+                "you beat"
+            ]) {
                 continue
             }
 
@@ -895,7 +908,10 @@ struct ExerciseCard: View {
             VStack(alignment: .leading, spacing: 10) {
                 ExercisePrescriptionPillRow(items: prescriptionItems)
 
-                if exercise.restSeconds > 0 {
+                // A finished exercise has no rest left to run — hide the timer band. It
+                // still shows through the last set (completion is a separate, explicit
+                // toggle, so logging the final set does not flip isCompleted on its own).
+                if exercise.restSeconds > 0 && !exercise.isCompleted {
                     ExerciseRestTimerView(exercise: exercise)
                 }
 
