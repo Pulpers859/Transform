@@ -1207,24 +1207,80 @@ extension ClaudeService {
         return true
     }
 
+    /// Priority companion to `maintenanceSlotBudgetsAreFeasible`. Variety hygiene
+    /// (`weeklyVariationViolations`) caps how many *kinds* of a movement a priority may use, but
+    /// nothing tied breadth to the priority's set budget — so a small-muscle priority (rear
+    /// delts, biceps, calves) could accumulate more distinct movements than its weekly direct-set
+    /// budget can fund to the two-set minimum-dose floor, and the allocator then stranded the
+    /// surplus at one seed set each (the fragmented single-set day the owner flagged). Mirror the
+    /// maintenance floor here: the number of distinct movements that give a priority direct credit
+    /// may not exceed what its recoverable weekly budget — the menu-locked over-volume hard-fail
+    /// line, matching how the maintenance gate uses the maintenance ceiling — can pay for at two
+    /// sets apiece.
+    func priorityDoseBudgetsAreFeasible(
+        existingMenus: [[PreSelectedExercise]],
+        selectedToday: [(name: String, target: String)],
+        blueprint: ProgramBlueprint
+    ) -> Bool {
+        let recoveryTight = blueprint.calibration.recoveryConstrained
+            || blueprint.calibration.poorNutritionAdherence
+        // Matches the validator's moderate over-volume multiplier (ParsingValidation): direct
+        // sets above `target * moderateMultiplier + buffer` hard-fail a locked menu, so that
+        // product is the most volume the plan can actually spend on this priority.
+        let moderateMultiplier = recoveryTight ? 1.15 : 1.3
+        let identities = existingMenus.joined().map {
+            (name: $0.exerciseName, target: $0.muscleTarget)
+        } + selectedToday
+        for allocation in blueprint.priorityAllocations {
+            let spendableDirectSets = allocation.directSetTarget * moderateMultiplier
+            // Whole two-set doses the recoverable budget can pay for. Never below one so a
+            // priority can always seat at least one movement even on a tiny budget.
+            let maxDosedMovements = max(1, Int((spendableDirectSets / 2.0).rounded(.down)))
+            let distinctDirect = identities.reduce(into: Set<String>()) { result, exercise in
+                let probe = WorkoutExerciseResponse(
+                    exerciseName: exercise.name,
+                    sets: 1,
+                    reps: "",
+                    tempo: "",
+                    restSeconds: 0,
+                    notes: "",
+                    muscleTarget: exercise.target
+                )
+                guard stimulusCredit(for: probe, area: allocation.area).directSets > 0 else { return }
+                result.insert(normalizeExerciseName(exercise.name))
+            }
+            guard distinctDirect.count <= maxDosedMovements else { return false }
+        }
+        return true
+    }
+
     func menuPlanningBudgetAllows(
         candidateName: String,
         candidateTarget: String,
         existingMenus: [[PreSelectedExercise]],
         selectedToday: [(name: String, target: String)],
-        blueprint: ProgramBlueprint
+        blueprint: ProgramBlueprint,
+        enforcePriorityDose: Bool = true
     ) -> Bool {
         menuPlanningBudgetsAreFeasible(
             existingMenus: existingMenus,
             selectedToday: selectedToday + [(name: candidateName, target: candidateTarget)],
-            blueprint: blueprint
+            blueprint: blueprint,
+            enforcePriorityDose: enforcePriorityDose
         )
     }
 
+    /// `enforcePriorityDose` is a QUALITY guard, not a safety one: fragmenting a small-muscle
+    /// priority across too many one-set movements is a warning, never a menu-locked hard failure.
+    /// The maintenance ceiling below IS a safety guard (over-ceiling maintenance hard-fails), so it
+    /// always holds. The last-resort "avoid a <5-exercise menu" sweeps pass `false` here, exactly as
+    /// they already drop the within-day pattern cap — a short menu is a deterministic dead-end that
+    /// outranks dose hygiene, and the allocation floor pass still doses whatever survives.
     func menuPlanningBudgetsAreFeasible(
         existingMenus: [[PreSelectedExercise]],
         selectedToday: [(name: String, target: String)],
-        blueprint: ProgramBlueprint
+        blueprint: ProgramBlueprint,
+        enforcePriorityDose: Bool = true
     ) -> Bool {
         guard maintenanceSlotBudgetsAreFeasible(
             existingMenus: existingMenus,
@@ -1232,6 +1288,16 @@ extension ClaudeService {
             blueprint: blueprint
         ) else {
             return false
+        }
+
+        if enforcePriorityDose {
+            guard priorityDoseBudgetsAreFeasible(
+                existingMenus: existingMenus,
+                selectedToday: selectedToday,
+                blueprint: blueprint
+            ) else {
+                return false
+            }
         }
 
         let identities = existingMenus.joined().map {
@@ -1418,7 +1484,8 @@ extension ClaudeService {
                         candidateTarget: candidate.target,
                         existingMenus: allMenus,
                         selectedToday: selected,
-                        blueprint: blueprint
+                        blueprint: blueprint,
+                        enforcePriorityDose: false
                     ) else { continue }
                     selected.append((candidate.name, candidate.target))
                 }
@@ -1430,7 +1497,8 @@ extension ClaudeService {
                         candidateTarget: candidate.target,
                         existingMenus: allMenus,
                         selectedToday: selected,
-                        blueprint: blueprint
+                        blueprint: blueprint,
+                        enforcePriorityDose: false
                     ) else { continue }
                     selected.append((candidate.name, candidate.target))
                 }
@@ -2061,7 +2129,7 @@ extension ClaudeService {
             return (direct, weighted)
         }
 
-        func canAddSet(dayIndex: Int, exerciseIndex: Int) -> Bool {
+        func canAddSet(dayIndex: Int, exerciseIndex: Int, allowFloorOvershoot: Bool = false) -> Bool {
             let exercise = allocated[dayIndex][exerciseIndex]
             let roleDefault = proceduralSets(
                 for: weekNumber,
@@ -2096,8 +2164,22 @@ extension ClaudeService {
                     addingAt: (dayIndex, exerciseIndex)
                 )
                 let addsDirectCredit = projected.direct > current.direct + 0.01
-                guard !addsDirectCredit
-                        || projected.direct <= allocations[allocIndex].directSetTarget + 0.01 else {
+                // Normal funding stops at the soft weekly target. The floor pass may overshoot
+                // it to buy a movement a real minimum dose, but must stay under the menu-locked
+                // over-volume HARD-fail line (validator: directSets > target * moderateMultiplier
+                // + moderateBuffer), or it would trade fragmentation for a deterministic,
+                // unrepairable generation failure. The -0.02 margin absorbs the 0.01 allocator/
+                // validator ledger tolerance on each side.
+                let ceiling: Double
+                if allowFloorOvershoot {
+                    let moderateMultiplier = recoveryTight ? 1.15 : 1.3
+                    let moderateBuffer = recoveryTight ? 0.0 : 0.5
+                    ceiling = allocations[allocIndex].directSetTarget * moderateMultiplier
+                        + moderateBuffer - 0.02
+                } else {
+                    ceiling = allocations[allocIndex].directSetTarget + 0.01
+                }
+                guard !addsDirectCredit || projected.direct <= ceiling else {
                     return false
                 }
             }
@@ -2208,6 +2290,32 @@ extension ClaudeService {
                     guard canAddSet(dayIndex: dayIndex, exerciseIndex: exerciseIndex) else { continue }
                     allocated[dayIndex][exerciseIndex].prescribedSets += 1
                     madeProgress = true
+                }
+            }
+        }
+
+        // Per-exercise minimum-dose floor. The funding loops above optimize weekly aggregate
+        // priority/maintenance volume and are indifferent to how it lands per movement, so an
+        // exercise can still sit at the seed value of one set — below the two-set (accessory/
+        // secondary) / three-set (anchor) floor `minimumSetFloor` treats as the minimum worth
+        // programming and that the reduction path already refuses to cross. Lift every under-floor
+        // exercise to its role floor wherever recoverability allows, reusing canAddSet's hard-fail
+        // guards (day fatigue, session time, per-session and maintenance ceilings) with a bounded
+        // overshoot of the soft weekly target so a real dose never tips into an over-volume hard
+        // failure. The priority/maintenance breadth gates keep this from having much to do; this
+        // is the belt-and-suspenders guarantee that nothing ships below its floor.
+        for dayIndex in allocated.indices {
+            for exerciseIndex in allocated[dayIndex].indices {
+                let floor = minimumSetFloor(
+                    for: response(dayIndex: dayIndex, exerciseIndex: exerciseIndex)
+                )
+                while allocated[dayIndex][exerciseIndex].prescribedSets < floor
+                    && canAddSet(
+                        dayIndex: dayIndex,
+                        exerciseIndex: exerciseIndex,
+                        allowFloorOvershoot: true
+                    ) {
+                    allocated[dayIndex][exerciseIndex].prescribedSets += 1
                 }
             }
         }
