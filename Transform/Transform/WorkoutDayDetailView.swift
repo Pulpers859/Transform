@@ -10,6 +10,13 @@ struct WorkoutDayDetailView: View {
     @State private var exerciseForWeightLogging: WorkoutExercise?
     @State private var feedbackDay: WorkoutDay?
     @State private var completionPromptExercise: WorkoutExercise?
+    /// Which exercise cards are open. Manual open/close is authoritative; the one-time
+    /// seed (see `seedExpansionIfNeeded`) opens only the current lift so a finished or
+    /// returning day lands collapsed and calm.
+    @State private var expandedExerciseIDs: Set<PersistentIdentifier> = []
+    /// Guards the one-time default so re-appearing (returning from a pushed Progression
+    /// view) never re-collapses cards the lifter opened by hand.
+    @State private var didSeedExpansion = false
 
     var completedExerciseCount: Int {
         day.sortedExercises.filter { $0.isCompleted }.count
@@ -47,6 +54,7 @@ struct WorkoutDayDetailView: View {
         // inline nav title on this dark theme; the hard edge keeps the bar legible.
         .scrollEdgeEffectStyle(.hard, for: .top)
         .workoutTabBarClearance()
+        .onAppear { seedExpansionIfNeeded() }
         .navigationTitle("Day \(day.dayNumber)")
         .navigationBarTitleDisplayMode(.inline)
         .sheet(item: $exerciseForWeightLogging) { exercise in
@@ -296,9 +304,35 @@ struct WorkoutDayDetailView: View {
                     latestSetLogs: latestSetLogs(for: exercise),
                     todaysSetLogs: todaysSetLogs(for: exercise),
                     performanceHistory: performanceLogSnapshots,
+                    isExpanded: expandedExerciseIDs.contains(exercise.persistentModelID),
                     onToggle: { toggleExercise(exercise) },
+                    onToggleExpanded: { toggleExpanded(exercise) },
                     onLogWeight: { exerciseForWeightLogging = exercise }
                 )
+            }
+        }
+    }
+
+    /// Opens only the current lift (the first not-yet-completed exercise) on first load,
+    /// so a finished or returning day stays collapsed. Runs once per view lifetime; every
+    /// manual open/close afterward wins.
+    private func seedExpansionIfNeeded() {
+        guard !didSeedExpansion else { return }
+        didSeedExpansion = true
+        if let current = day.sortedExercises.first(where: { !$0.isCompleted }) {
+            expandedExerciseIDs = [current.persistentModelID]
+        } else {
+            expandedExerciseIDs = []
+        }
+    }
+
+    private func toggleExpanded(_ exercise: WorkoutExercise) {
+        let id = exercise.persistentModelID
+        withAnimation(.easeInOut(duration: 0.2)) {
+            if expandedExerciseIDs.contains(id) {
+                expandedExerciseIDs.remove(id)
+            } else {
+                expandedExerciseIDs.insert(id)
             }
         }
     }
@@ -435,7 +469,11 @@ struct ExerciseCard: View {
     let todaysSetLogs: [SetLogEntry]
     /// All decoded performance sessions, used for the exercise-specific effort signal.
     let performanceHistory: [WorkoutPerformanceLogSnapshot]
+    /// Whether this card is open. Ownership lives in the parent so the default (only the
+    /// current lift open) can reason across exercises; the card just renders the state.
+    let isExpanded: Bool
     let onToggle: () -> Void
+    let onToggleExpanded: () -> Void
     let onLogWeight: () -> Void
     @State private var showDetails = false
 
@@ -798,6 +836,59 @@ struct ExerciseCard: View {
     }
 
     var body: some View {
+        Group {
+            if isExpanded {
+                expandedBody
+            } else {
+                collapsedRow
+            }
+        }
+        .background(exercise.isCompleted ? TFColor.success.opacity(0.05) : TFColor.surface)
+        .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(exercise.isCompleted ? TFColor.success.opacity(0.2) : Color.clear, lineWidth: 1)
+        )
+    }
+
+    /// Closed state, per the owner's spec: exercise name + prescription (`3×8-12`) only.
+    /// The green fill (from `body`) is the "completed" signal, so nothing else competes
+    /// here. The whole row is the tap target — a forgiving hit area for a sweaty gym thumb.
+    private var collapsedRow: some View {
+        HStack(spacing: 12) {
+            Text(exercise.exerciseName)
+                .font(.subheadline.bold())
+                .foregroundStyle(exercise.isCompleted ? .secondary : .primary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+
+            Spacer(minLength: 8)
+
+            Text(compactPrescription)
+                .font(.caption.bold())
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+
+            Image(systemName: "chevron.down")
+                .font(.caption.bold())
+                .foregroundStyle(.tertiary)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 14)
+        .contentShape(Rectangle())
+        .onTapGesture { onToggleExpanded() }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(exercise.exerciseName), \(compactPrescription)")
+        .accessibilityHint("Double tap to expand")
+    }
+
+    /// Sets by rep range and nothing more — "3×8-12". Falls back to a bare set count if a
+    /// program somehow has no rep string.
+    private var compactPrescription: String {
+        exercise.reps.isEmpty ? "\(exercise.sets) sets" : "\(exercise.sets)×\(exercise.reps)"
+    }
+
+    private var expandedBody: some View {
         VStack(alignment: .leading, spacing: 0) {
             exerciseHeader
 
@@ -877,12 +968,6 @@ struct ExerciseCard: View {
             Divider().padding(.horizontal, 14)
             exerciseActionRow
         }
-        .background(exercise.isCompleted ? TFColor.success.opacity(0.05) : TFColor.surface)
-        .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(exercise.isCompleted ? TFColor.success.opacity(0.2) : Color.clear, lineWidth: 1)
-        )
     }
 
     private var exerciseHeader: some View {
@@ -911,12 +996,27 @@ struct ExerciseCard: View {
                         .foregroundStyle(TFColor.accent)
                 }
             }
+            // Tapping the title area collapses the card (the completion circle to its left
+            // is a separate Button, so it is unaffected). The caret is the visible
+            // affordance; this just widens the hit area.
+            .contentShape(Rectangle())
+            .onTapGesture { onToggleExpanded() }
 
             Spacer()
 
             Text("#\(exercise.order + 1)")
                 .font(.caption2.bold())
                 .foregroundStyle(.tertiary)
+
+            Button {
+                onToggleExpanded()
+            } label: {
+                Image(systemName: "chevron.up")
+                    .font(.caption.bold())
+                    .foregroundStyle(.tertiary)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Collapse \(exercise.exerciseName)")
         }
         .padding(.horizontal, 14)
         .padding(.top, 14)
