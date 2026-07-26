@@ -68,6 +68,9 @@ class ClaudeService {
     // UIKit-only body-analysis entry points (consume AnalysisPhoto / UIImage). Guarded
     // so the generator core is buildable headlessly on macOS; active on device.
     #if canImport(UIKit)
+    /// Device entry point: encodes the captured UIImages to JPEG base64, then delegates
+    /// to the Foundation-only `analyzeBody(encodedPhotos:...)` core below — the same core
+    /// the headless live-contract test exercises with a synthetic PNG.
     func analyzeBody(
         photos: [AnalysisPhoto],
         inputContext suppliedInputContext: AnalysisInputContext? = nil,
@@ -77,16 +80,51 @@ class ClaudeService {
 
         let inputContext = suppliedInputContext ?? Config.analysisInputContext
 
-        // Encode every photo FIRST, then describe coverage from the encoded set only.
-        // A photo that fails JPEG conversion used to be silently skipped from the request
-        // while the prompt still claimed that angle (count, pose list, quality caveats
-        // were built from the requested photos) — so the model could "assess" an angle it
-        // never actually received. Deriving everything below from encodedPhotos keeps the
-        // prompt honest about what the model can see.
+        // Encode every photo FIRST, then derive coverage from the encoded set only. A
+        // photo that fails JPEG conversion used to be silently skipped from the request
+        // while the prompt still claimed that angle, so the model could "assess" an angle
+        // it never received. Encoding up front keeps the prompt honest about what is sent.
         let encodedPhotos: [(pose: String, base64: String)] = photos.compactMap { photo in
             guard let data = photo.jpegData else { return nil }
             return (pose: photo.pose, base64: data.base64EncodedString())
         }
+        guard !encodedPhotos.isEmpty else { throw ClaudeError.invalidImage }
+
+        return try await analyzeBody(
+            encodedPhotos: encodedPhotos,
+            mediaType: "image/jpeg",
+            inputContext: inputContext,
+            priorAnalysis: priorAnalysis
+        )
+    }
+
+    // MARK: - Single-Photo (backward compat convenience)
+
+    func analyzeBody(
+        imageData: Data,
+        pose: String,
+        inputContext: AnalysisInputContext? = nil
+    ) async throws -> BodyAnalysisResult {
+        guard let image = UIImage(data: imageData) else { throw ClaudeError.invalidImage }
+        return try await analyzeBody(
+            photos: [AnalysisPhoto(image: image, pose: pose)],
+            inputContext: inputContext
+        )
+    }
+    #endif
+
+    // MARK: - Foundation-only analysis core (headless-testable)
+
+    /// Builds the vision request from already-encoded base64 image data — so it needs no
+    /// UIKit — plus the resolved input context, sends it, and decodes the analysis. The
+    /// device wrapper above feeds it JPEGs; the headless live contract test feeds a
+    /// synthetic PNG (hence the `mediaType` parameter).
+    func analyzeBody(
+        encodedPhotos: [(pose: String, base64: String)],
+        mediaType: String = "image/jpeg",
+        inputContext: AnalysisInputContext,
+        priorAnalysis: BodyAnalysisResult? = nil
+    ) async throws -> BodyAnalysisResult {
         guard !encodedPhotos.isEmpty else { throw ClaudeError.invalidImage }
 
         let poseList = encodedPhotos.map(\.pose).joined(separator: ", ")
@@ -237,7 +275,7 @@ class ClaudeService {
                 "type": "image",
                 "source": [
                     "type": "base64",
-                    "media_type": "image/jpeg",
+                    "media_type": mediaType,
                     "data": photo.base64
                 ]
             ])
@@ -270,21 +308,6 @@ class ClaudeService {
         let decodedResult = try await makeAnalysisRequest(body: requestBody)
         return decodedResult.withInputContext(inputContext)
     }
-
-    // MARK: - Single-Photo (backward compat convenience)
-
-    func analyzeBody(
-        imageData: Data,
-        pose: String,
-        inputContext: AnalysisInputContext? = nil
-    ) async throws -> BodyAnalysisResult {
-        guard let image = UIImage(data: imageData) else { throw ClaudeError.invalidImage }
-        return try await analyzeBody(
-            photos: [AnalysisPhoto(image: image, pose: pose)],
-            inputContext: inputContext
-        )
-    }
-    #endif
 
     // MARK: - Network Request
 
