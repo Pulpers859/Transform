@@ -1,0 +1,47 @@
+{
+  "overallAssessment": "Lean, advanced-intermediate physique sitting around 13-15% body fat with a clear upper-chest and rear-delt bottleneck relative to strong arm and quad development. Confidence: medium-high based on clear multi-angle visibility.",
+  "trainingAssessment": "Visible anterior-delt dominance and a flatter upper chest support prioritizing low-incline pressing and direct rear-delt work. Confidence: medium-high for visible musculature.",
+  "nutritionAssessment": "Composition supports a lean-gain or maintenance approach; body fat is visibly moderate-low but intake is not observable from photos. Confidence: medium.",
+  "recoveryRiskAssessment": "Ribcage sits slightly forward, which may suggest bracing cues on overhead and incline work; non-diagnostic. Confidence: low-medium.",
+  "adherenceAssessment": "Stated training consistency looks reasonable; adherence itself cannot be read from photos. Confidence: low, informed by profile context.",
+  "analysisLimitations": "Photo-based analysis is strongest for visible physique patterns and rough body-composition bands. It cannot confirm injury, metabolic, posture, or adherence inferences without training history, labs, and reported context.",
+  "regionBreakdown": [
+    { "region": "Upper Chest", "assessment": "Clavicular head is underdeveloped relative to the sternal head; low-incline pressing is warranted.", "priority": "High" },
+    { "region": "Rear Deltoids", "assessment": "Posterior head lags the anterior head, contributing to a slightly rounded-forward shoulder look.", "priority": "High" },
+    { "region": "Quads", "assessment": "Good sweep and mass; maintenance volume is sufficient.", "priority": "Low" }
+  ],
+  "topLeverageChange": "Add a second weekly low-incline pressing session and dedicated rear-delt volume.",
+  "priorityMuscles": ["Upper Chest", "Rear Deltoids"],
+  "workoutRecommendations": [
+    "Low-incline barbell or dumbbell press, 3-4 sets of 6-10, twice weekly for upper-chest emphasis",
+    "Direct rear-delt work (reverse pec deck, cable rear-delt fly), 3-4 sets of 12-20, 2-3x weekly"
+  ],
+  "dietRecommendations": [
+    "Hold a slight surplus if lean-gaining, keeping protein high to support the added pressing volume",
+    "Anchor intake to the logged weekly bodyweight trend rather than day-to-day fluctuation"
+  ],
+  "macroTargets": {
+    "calories": 2600,
+    "proteinG": 200,
+    "carbsG": 250,
+    "fatG": 90,
+    "macroRationale": "Calories set from the client's ~185 lb logged bodyweight and roughly flat weekly trend at a lean-gain goal; protein high for the added pressing volume, fat kept above the hormonal floor."
+  },
+  "posturalNotes": "Ribcage sits slightly forward of the pelvis; cue ribs-down bracing on presses and overhead work. Non-diagnostic.",
+  "estimatedBodyFat": "13-15%",
+  "metabolicHealthNotes": "No visible red flags; focus on consistent sleep and managing training fatigue around the added volume.",
+  "psychologicalInsights": "A two-session upper-chest focus is sustainable within the stated 5-day schedule; keep changes small to protect adherence.",
+  "injuryRiskNotes": "Slight forward-shoulder posture may justify careful incline setup and scapular positioning cues; not a diagnosis.",
+  "structuredTrainingIntent": {
+    "splitRecommendation": "Upper/Lower with an arm/delt accent",
+    "weeklyTrainingDays": 5,
+    "priorities": [
+      { "area": "Upper Chest", "priorityLevel": "High", "rationale": "Clavicular head lags the sternal head and flattens the upper-chest line.", "weeklyDayTarget": 2, "weeklyExerciseTarget": 3, "preferredStyles": ["Push", "Upper"], "preferredMovementPatterns": ["low incline press", "low-to-high cable fly"], "volumeBias": "High", "directWorkBias": "Direct emphasis" },
+      { "area": "Rear Deltoids", "priorityLevel": "High", "rationale": "Posterior delt lags and contributes to a rounded-forward shoulder look.", "weeklyDayTarget": 3, "weeklyExerciseTarget": 4, "preferredStyles": ["Pull", "Upper"], "preferredMovementPatterns": ["reverse pec deck", "cable rear-delt fly"], "volumeBias": "High", "directWorkBias": "Direct emphasis" }
+    ],
+    "programmingNotes": [
+      "Distribute the added pressing volume across two non-consecutive days to manage anterior-delt and triceps fatigue.",
+      "Rear-delt work can be spread across pull and upper days since its recovery cost is low."
+    ]
+  }
+}
