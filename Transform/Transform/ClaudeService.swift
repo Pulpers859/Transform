@@ -75,8 +75,22 @@ class ClaudeService {
     ) async throws -> BodyAnalysisResult {
         guard !photos.isEmpty else { throw ClaudeError.noPhotos }
 
-        let poseList = photos.map { $0.pose }.joined(separator: ", ")
         let inputContext = suppliedInputContext ?? Config.analysisInputContext
+
+        // Encode every photo FIRST, then describe coverage from the encoded set only.
+        // A photo that fails JPEG conversion used to be silently skipped from the request
+        // while the prompt still claimed that angle (count, pose list, quality caveats
+        // were built from the requested photos) — so the model could "assess" an angle it
+        // never actually received. Deriving everything below from encodedPhotos keeps the
+        // prompt honest about what the model can see.
+        let encodedPhotos: [(pose: String, base64: String)] = photos.compactMap { photo in
+            guard let data = photo.jpegData else { return nil }
+            return (pose: photo.pose, base64: data.base64EncodedString())
+        }
+        guard !encodedPhotos.isEmpty else { throw ClaudeError.invalidImage }
+
+        let poseList = encodedPhotos.map(\.pose).joined(separator: ", ")
+        let encodedCount = encodedPhotos.count
 
         let systemPrompt = """
         You are an AI photo-based physique analysis system. Your job is to produce a useful,
@@ -94,9 +108,9 @@ class ClaudeService {
         User context for this analysis:
         \(inputContext.promptDescription)
 
-        You are reviewing \(photos.count) photo(s) from these angles: \(poseList).
-        \(photos.count > 1 ? "Cross-reference all views to produce a comprehensive assessment. Note differences visible between angles." : "Assess what is visible and note limitations from having only one angle.")
-        \(ClaudeService.photoQualityContext(poses: photos.map(\.pose)))
+        You are reviewing \(encodedCount) photo(s) from these angles: \(poseList).
+        \(encodedCount > 1 ? "Cross-reference all views to produce a comprehensive assessment. Note differences visible between angles." : "Assess what is visible and note limitations from having only one angle.")
+        \(ClaudeService.photoQualityContext(poses: encodedPhotos.map(\.pose)))
         \(ClaudeService.priorAnalysisContext(priorAnalysis))
 
         HARD SCOPE LIMITS:
@@ -211,19 +225,17 @@ class ClaudeService {
         }
         """
 
-        // Build content array with all photos + text prompt
+        // Build content array from the already-encoded photos + text prompt. The empty
+        // guard above guarantees at least one image, so no per-item skip is needed here.
         var contentArray: [[String: Any]] = []
 
-        for (index, photo) in photos.enumerated() {
-            guard let jpegData = photo.jpegData else { continue }
-            let base64 = jpegData.base64EncodedString()
-
+        for (index, photo) in encodedPhotos.enumerated() {
             contentArray.append([
                 "type": "image",
                 "source": [
                     "type": "base64",
                     "media_type": "image/jpeg",
-                    "data": base64
+                    "data": photo.base64
                 ]
             ])
             contentArray.append([
@@ -232,15 +244,9 @@ class ClaudeService {
             ])
         }
 
-        // Every photo failed JPEG conversion — without this guard the request would go
-        // out with no images and the model would "analyze" nothing.
-        guard contentArray.contains(where: { ($0["type"] as? String) == "image" }) else {
-            throw ClaudeError.invalidImage
-        }
-
         contentArray.append([
             "type": "text",
-            "text": "Analyze \(photos.count > 1 ? "all \(photos.count) photos together" : "this photo"). Respond with ONLY the JSON object specified in your instructions. Do not include any text before or after the JSON. Start your response with {"
+            "text": "Analyze \(encodedCount > 1 ? "all \(encodedCount) photos together" : "this photo"). Respond with ONLY the JSON object specified in your instructions. Do not include any text before or after the JSON. Start your response with {"
         ])
 
         let requestBody: [String: Any] = [
@@ -293,16 +299,22 @@ class ClaudeService {
             do {
                 return try await attemptAnalysisRequest(body: body, attempt: attempt, of: maxAttempts)
             } catch let error as ClaudeError {
-                if case .parseError = error, attempt < maxAttempts {
+                if case .parseError = error {
                     lastParseError = error
-                    print("[ClaudeService] Body analysis parse failure on attempt \(attempt) of \(maxAttempts) — re-requesting.")
-                    continue
+                    if attempt < maxAttempts {
+                        print("[ClaudeService] Body analysis parse failure on attempt \(attempt) of \(maxAttempts) — re-requesting.")
+                        continue
+                    }
+                    // Final attempt still failed to parse. Surface a human message — the
+                    // raw Swift DecodingError detail is already logged in
+                    // attemptAnalysisRequest and would only confuse the user in an alert.
+                    throw ClaudeError.parseError("The analysis response couldn't be read after \(maxAttempts) attempts. Please run the analysis again.")
                 }
                 throw error
             }
         }
 
-        throw lastParseError ?? ClaudeError.parseError("Body analysis failed after \(maxAttempts) attempts")
+        throw lastParseError ?? ClaudeError.parseError("The analysis response couldn't be read after \(maxAttempts) attempts. Please run the analysis again.")
     }
 
     private func attemptAnalysisRequest(

@@ -100,7 +100,8 @@ nonisolated struct BodyAnalysisResult: Codable {
         // field degrades to an empty default so that one missing/renamed key in a
         // stored or newer-schema payload can't throw and silently demote the entire
         // analysis to the thin legacy fallback (decodedResult uses `try?`).
-        regionBreakdown = try container.decodeIfPresent([RegionAssessment].self, forKey: .regionBreakdown) ?? []
+        let rawRegions = try container.decodeIfPresent([RegionAssessment].self, forKey: .regionBreakdown) ?? []
+        regionBreakdown = rawRegions.filter { !$0.region.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
         topLeverageChange = try container.decodeIfPresent(String.self, forKey: .topLeverageChange) ?? ""
         priorityMuscles = try container.decodeIfPresent([String].self, forKey: .priorityMuscles) ?? []
         workoutRecommendations = try container.decodeIfPresent([String].self, forKey: .workoutRecommendations) ?? []
@@ -215,6 +216,28 @@ nonisolated struct StructuredTrainingIntent: Codable {
     let weeklyTrainingDays: Int
     let priorities: [StructuredTrainingPriority]
     let programmingNotes: [String]
+
+    enum CodingKeys: String, CodingKey {
+        case splitRecommendation, weeklyTrainingDays, priorities, programmingNotes
+    }
+}
+
+extension StructuredTrainingIntent {
+    // Resilient decode (custom init lives in an extension so the memberwise init the
+    // tests/generator use is preserved). A single missing sub-field must NOT throw away
+    // the whole machine-readable training contract and silently demote the generator to
+    // priorityMuscles extraction. Missing keys fall back to sane defaults; priorities
+    // with no usable area are dropped rather than fed to the blueprint as empty slots.
+    // Numeric targets are kept RAW (not clamped here) so BodyAnalysisValidator can still
+    // flag out-of-range values — the generator already clamps them at consumption.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        splitRecommendation = try c.decodeIfPresent(String.self, forKey: .splitRecommendation) ?? ""
+        weeklyTrainingDays = try c.decodeIfPresent(Int.self, forKey: .weeklyTrainingDays) ?? 5
+        let rawPriorities = try c.decodeIfPresent([StructuredTrainingPriority].self, forKey: .priorities) ?? []
+        priorities = rawPriorities.filter { !$0.area.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        programmingNotes = try c.decodeIfPresent([String].self, forKey: .programmingNotes) ?? []
+    }
 }
 
 nonisolated struct StructuredTrainingPriority: Codable {
@@ -227,6 +250,29 @@ nonisolated struct StructuredTrainingPriority: Codable {
     let preferredMovementPatterns: [String]
     let volumeBias: String
     let directWorkBias: String
+
+    enum CodingKeys: String, CodingKey {
+        case area, priorityLevel, rationale, weeklyDayTarget, weeklyExerciseTarget
+        case preferredStyles, preferredMovementPatterns, volumeBias, directWorkBias
+    }
+}
+
+extension StructuredTrainingPriority {
+    // Resilient decode: one omitted field (e.g. directWorkBias) no longer discards the
+    // entire priority list. Defaults are conservative middles; raw targets preserved for
+    // the validator (see StructuredTrainingIntent note).
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        area = try c.decodeIfPresent(String.self, forKey: .area) ?? ""
+        priorityLevel = try c.decodeIfPresent(String.self, forKey: .priorityLevel) ?? "Medium"
+        rationale = try c.decodeIfPresent(String.self, forKey: .rationale) ?? ""
+        weeklyDayTarget = try c.decodeIfPresent(Int.self, forKey: .weeklyDayTarget) ?? 2
+        weeklyExerciseTarget = try c.decodeIfPresent(Int.self, forKey: .weeklyExerciseTarget) ?? 3
+        preferredStyles = try c.decodeIfPresent([String].self, forKey: .preferredStyles) ?? []
+        preferredMovementPatterns = try c.decodeIfPresent([String].self, forKey: .preferredMovementPatterns) ?? []
+        volumeBias = try c.decodeIfPresent(String.self, forKey: .volumeBias) ?? ""
+        directWorkBias = try c.decodeIfPresent(String.self, forKey: .directWorkBias) ?? ""
+    }
 }
 
 nonisolated struct AnalysisInputContext: Codable {
@@ -1125,6 +1171,19 @@ nonisolated struct RegionAssessment: Codable, Identifiable {
 
     enum CodingKeys: String, CodingKey {
         case region, assessment, priority
+    }
+}
+
+extension RegionAssessment {
+    // Resilient decode: a region entry missing one field must NOT throw the entire
+    // analysis decode (which is uncaught in BodyAnalysisResult.init, so it becomes a hard
+    // parse failure that can lose the whole run after photos were shot and uploaded).
+    // Missing priority defaults to Medium; empty-region entries are filtered by the parent.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        region = try c.decodeIfPresent(String.self, forKey: .region) ?? ""
+        assessment = try c.decodeIfPresent(String.self, forKey: .assessment) ?? ""
+        priority = try c.decodeIfPresent(String.self, forKey: .priority) ?? "Medium"
     }
 }
 

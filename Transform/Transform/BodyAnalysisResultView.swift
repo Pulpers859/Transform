@@ -70,6 +70,16 @@ struct BodyAnalysisResultView: View {
                         TFHaptics.impact(.soft)
                     }
 
+                // Surface validation issues in the normal flow — not only behind the
+                // hidden long-press debug panel. Collapsed to a one-line summary
+                // ("Validation: 1 error, 2 warnings") that expands in place, so the
+                // macro-math, diagnostic-language, photo-angle, and training-intent
+                // checks are actually visible without blocking an otherwise-usable save.
+                if let report = validationReport, !report.issues.isEmpty {
+                    ValidationReportCard(report: report)
+                        .padding(.top, 8)
+                }
+
                 // Save button
                 if let report = validationReport, !report.isUsable {
                     VStack(spacing: 6) {
