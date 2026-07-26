@@ -856,14 +856,11 @@ struct BodyAnalysisView: View {
                         Label("Delete", systemImage: "trash")
                     }
                 }
-                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                    Button(role: .destructive) {
-                        sessionToDelete = session
-                        showDeleteConfirm = true
-                    } label: {
-                        Label("Delete", systemImage: "trash")
-                    }
-                }
+                // NOTE: no .swipeActions here — these rows are in a ScrollView+VStack,
+                // not a List, so SwiftUI ignores swipeActions entirely (it only works on
+                // List rows). Delete is exposed via the long-press contextMenu above.
+                // Restoring a discoverable swipe would require moving Past Analyses into a
+                // List, which is a device-tested layout change, not a drop-in.
             }
         }
     }
