@@ -142,11 +142,14 @@ class ClaudeService {
         - Diet recs must be specific to this user's stated goal and lifestyle constraints — not generic
         - Include concrete daily macro targets tailored to this client
         - macroTargets must include a macroRationale explaining which inputs controlled the target (weight trend, goal rate, recovery constraints, adherence level, training demand, shift-work schedule). If the data is insufficient to set confident targets, say so.
+        - macroTargets must be arithmetically self-consistent: proteinG×4 + carbsG×4 + fatG×9 must land within ~5% of the calories value. Anchor calories to the client's logged bodyweight, weekly weight trend, and stated goal rate — not to the visual body-fat estimate alone.
+        - Reconcile your visual impressions against the objective data provided (logged weekly bodyweight trend, circumference-measurement changes, and logged performance). Where the photos suggest a change the logged trend or measurements contradict, say so explicitly rather than asserting the visual read as fact.
         - Identify the #1 highest-leverage change for visible transformation
         - Metabolic health notes should stay conservative and focus on practical recovery/energy-management implications, not disease claims
         - Psychological/adherence insights should address realistic plan design and consistency strategies grounded in the user's stated context
         - Injury/risk notes should flag visible patterns that may justify more careful exercise selection or setup cues, without acting like a diagnosis
         - structuredTrainingIntent must translate the assessment into a machine-readable hypertrophy programming contract
+        - priorityMuscles must name the same areas emphasized in structuredTrainingIntent.priorities, so the physique summary and the programming contract agree rather than diverge
         - weeklyTrainingDays in structuredTrainingIntent must stay between 4 and 6
         - Each structuredTrainingIntent priority must describe a real programming need, not generic filler
         - weeklyDayTarget, weeklyExerciseTarget, volumeBias, and directWorkBias should reflect realistic recoverable hypertrophy exposure for this client
@@ -191,7 +194,7 @@ class ClaudeService {
             "Specific nutrition recommendation accounting for this user's stated schedule and recovery constraints"
           ],
           "macroTargets": {
-            "calories": 2300,
+            "calories": 2350,
             "proteinG": 210,
             "carbsG": 220,
             "fatG": 70,
