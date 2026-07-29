@@ -299,6 +299,9 @@ nonisolated struct WorkoutDaySnapshot: Codable {
     let sessionFeedbackNotes: String?
     let sessionStartedAt: Date?
     let sessionEndedAt: Date?
+    /// Optional so backups written before the session-clock close flag decode cleanly;
+    /// absent means "never closed", which is the correct reading of an older backup.
+    let isSessionClosed: Bool?
     let exercises: [WorkoutExerciseSnapshot]
 }
 
@@ -832,6 +835,7 @@ nonisolated struct ProfileSettingsSnapshot: Codable {
             sessionFeedbackNotes: day.sessionFeedbackNotes,
             sessionStartedAt: day.sessionStartedAt,
             sessionEndedAt: day.sessionEndedAt,
+            isSessionClosed: day.isSessionClosed,
             exercises: mainActorMap(day.sortedExercises, WorkoutExerciseSnapshot.init)
         )
     }
@@ -853,6 +857,7 @@ nonisolated struct ProfileSettingsSnapshot: Codable {
         day.sessionFeedbackNotes = sessionFeedbackNotes ?? ""
         day.sessionStartedAt = sessionStartedAt
         day.sessionEndedAt = sessionEndedAt
+        day.isSessionClosed = isSessionClosed ?? false
 
         for exerciseSnapshot in exercises {
             let exercise = exerciseSnapshot.makeModel()

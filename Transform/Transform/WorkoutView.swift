@@ -895,6 +895,8 @@ struct WorkoutView: View {
     func toggleDayCompletion(_ day: WorkoutDay) {
         let priorDayCompletion = day.isCompleted
         let priorExerciseCompletion = day.exercises.map { ($0, $0.isCompleted) }
+        let priorEnd = day.sessionEndedAt
+        let priorClosed = day.isSessionClosed
 
         day.isCompleted.toggle()
         // Keep exercise checks consistent with the day: completing checks all,
@@ -903,12 +905,21 @@ struct WorkoutView: View {
         for exercise in day.exercises {
             exercise.isCompleted = day.isCompleted
         }
+        // Ticking the day off from the week list is a finish tap like any other, so it
+        // closes the session clock; un-ticking re-opens it for continued tracking.
+        if day.isCompleted {
+            if !day.isRestDay { SessionLifecycle.markSessionEnded(for: day) }
+        } else {
+            day.isSessionClosed = false
+        }
         guard PersistenceReporter.save(modelContext, operation: "day completion toggle") else {
             modelContext.rollback()
             day.isCompleted = priorDayCompletion
             for (exercise, priorValue) in priorExerciseCompletion {
                 exercise.isCompleted = priorValue
             }
+            day.sessionEndedAt = priorEnd
+            day.isSessionClosed = priorClosed
             TFHaptics.error()
             return
         }

@@ -69,6 +69,11 @@ let package = Package(
                 // generator closure references it, and it drags in unrelated types.)
                 "BodyAnalysisModels.swift",
                 "WorkoutModels.swift",
+                // Session completion / clock state machine. Foundation + SwiftData only
+                // (all its UI callers stay out of this closure), so the rules that decide
+                // when a day is finished and when the clock closes get real regression
+                // coverage instead of shipping correct-by-inspection.
+                "SessionLifecycle.swift",
                 "WorkoutProgressionEngine.swift",
                 "WorkoutEffortGovernance.swift",
 

@@ -568,6 +568,12 @@ struct AddExerciseWeightSheet: View {
             modelContext.insert(entry)
         }
 
+        // This sheet writes performance logs directly instead of going through
+        // SetLoggingService, so it has to advance the session clock itself — otherwise
+        // work logged here is invisible to the session timer and the recorded duration
+        // stops at whatever was last entered in the inline logger.
+        SessionLifecycle.noteSetLogged(for: exercise, at: loggedAt)
+
         guard PersistenceReporter.save(modelContext, operation: "exercise set logging") else {
             modelContext.rollback()
             didSave = false

@@ -42,7 +42,7 @@ struct WorkoutDayDetailView: View {
                 if !day.notes.isEmpty {
                     sessionNotes
                 }
-                if day.isCompleted {
+                if day.hasReviewableSession {
                     sessionFeedbackCard
                 }
                 exerciseList
@@ -148,12 +148,17 @@ struct WorkoutDayDetailView: View {
     // MARK: - Session Timing
 
     /// Auto-tracking clock. Once the first set is logged the session start is stamped
-    /// automatically (see SetLoggingService.stampSessionTiming) and this shows a live
-    /// running duration. Before any set exists it offers an optional manual start for
-    /// athletes who want a long warm-up counted — but starting is never required.
+    /// automatically (see `SessionLifecycle.noteSetLogged`) and this shows a live running
+    /// duration. Before any set exists it offers an optional manual start for athletes who
+    /// want a long warm-up counted — but starting is never required.
+    ///
+    /// The running badge also carries "Finish" — the escape hatch for a session that ends
+    /// without every exercise being resolved. Without it, walking away mid-day left the
+    /// clock running and the feedback sheet unreachable, since the feedback card only
+    /// appears once the day is finished.
     @ViewBuilder
     var sessionTimingBadge: some View {
-        if !day.isCompleted {
+        if !day.isCompleted && !day.isSessionClosed {
             if let start = day.sessionStartedAt {
                 TimelineView(.periodic(from: .now, by: 60)) { context in
                     let minutes = max(0, Int(context.date.timeIntervalSince(start) / 60))
@@ -169,6 +174,14 @@ struct WorkoutDayDetailView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .monospacedDigit()
+                        Button(action: finishSessionEarly) {
+                            Text("Finish")
+                                .font(.caption.bold())
+                                .foregroundStyle(TFColor.accent)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Finish session now")
+                        .accessibilityHint("Stops the clock and opens session feedback")
                     }
                     .padding(.horizontal, 12)
                     .padding(.vertical, 9)
@@ -307,7 +320,9 @@ struct WorkoutDayDetailView: View {
                     isExpanded: expandedExerciseIDs.contains(exercise.persistentModelID),
                     onToggle: { toggleExercise(exercise) },
                     onToggleExpanded: { toggleExpanded(exercise) },
-                    onLogWeight: { exerciseForWeightLogging = exercise }
+                    onLogWeight: { exerciseForWeightLogging = exercise },
+                    onSetStatus: { setStatus($0, on: exercise) },
+                    onClearStatus: { clearStatus(on: exercise) }
                 )
             }
         }
@@ -374,61 +389,116 @@ struct WorkoutDayDetailView: View {
             }
         }
 
-        let previousExerciseState = exercise.isCompleted
-        let previousDayState = day.isCompleted
-        let previousStatus = exercise.completionStatus
+        // Snapshot before mutating — it captures the exercise's own flags, so taking it
+        // afterwards would "restore" the very values the rollback is meant to undo.
+        let snapshot = DispositionSnapshot(exercise: exercise, day: day, status: exercise.completionStatus)
         exercise.isCompleted.toggle()
-        if !exercise.isCompleted && previousStatus == .completedModified {
+        if !exercise.isCompleted && snapshot.status == .completedModified {
             exercise.completionStatus = nil
         }
+        commitDisposition(of: exercise, operation: "exercise completion toggle", restoring: snapshot)
+    }
 
-        let allDone = day.exercises.allSatisfy { $0.isCompleted }
-        if allDone != day.isCompleted {
-            day.isCompleted = allDone
-        }
+    func completeExerciseAsModified(_ exercise: WorkoutExercise) {
+        let snapshot = DispositionSnapshot(exercise: exercise, day: day, status: exercise.completionStatus)
+        exercise.isCompleted = true
+        exercise.completionStatus = .completedModified
+        commitDisposition(of: exercise, operation: "exercise modified completion", restoring: snapshot)
+    }
 
-        guard PersistenceReporter.save(modelContext, operation: "exercise completion toggle") else {
+    /// Records an exercise's disposition (completed / modified / skipped / cleared) that
+    /// the caller has already applied, then re-derives the day through the one funnel that
+    /// owns that decision. Every path that can finish a day lands here, so skipping the
+    /// last lift closes the session exactly like ticking it off does.
+    func commitDisposition(
+        of exercise: WorkoutExercise,
+        operation: String,
+        restoring snapshot: DispositionSnapshot
+    ) {
+        let transition = SessionLifecycle.syncDayCompletion(for: day)
+
+        guard PersistenceReporter.save(modelContext, operation: operation) else {
             modelContext.rollback()
-            exercise.isCompleted = previousExerciseState
-            exercise.completionStatus = previousStatus
-            day.isCompleted = previousDayState
+            snapshot.restore(exercise: exercise, day: day)
             TFHaptics.error()
             return
         }
+
         DataBackupManager.shared.writeAutomaticBackupCoalesced(using: modelContext)
         TFHaptics.impact(.light)
-        if day.isCompleted && !previousDayState {
+        if transition == .justFinished {
             feedbackDay = day
         }
     }
 
-    func completeExerciseAsModified(_ exercise: WorkoutExercise) {
-        let previousExerciseState = exercise.isCompleted
-        let previousDayState = day.isCompleted
-        let previousStatus = exercise.completionStatus
+    /// Pre-change state for the rollback path. SwiftData's `rollback()` reverts the store,
+    /// but the in-memory objects this view already mutated need restoring by hand.
+    struct DispositionSnapshot {
+        let exerciseCompleted: Bool
+        let dayCompleted: Bool
+        let sessionEndedAt: Date?
+        let sessionClosed: Bool
+        let status: ExerciseCompletionStatus?
 
-        exercise.isCompleted = true
-        exercise.completionStatus = .completedModified
-
-        let allDone = day.exercises.allSatisfy { $0.isCompleted }
-        if allDone != day.isCompleted {
-            day.isCompleted = allDone
+        init(exercise: WorkoutExercise, day: WorkoutDay, status: ExerciseCompletionStatus?) {
+            self.exerciseCompleted = exercise.isCompleted
+            self.dayCompleted = day.isCompleted
+            self.sessionEndedAt = day.sessionEndedAt
+            self.sessionClosed = day.isSessionClosed
+            self.status = status
         }
 
-        guard PersistenceReporter.save(modelContext, operation: "exercise modified completion") else {
+        func restore(exercise: WorkoutExercise, day: WorkoutDay) {
+            exercise.isCompleted = exerciseCompleted
+            exercise.completionStatus = status
+            day.isCompleted = dayCompleted
+            day.sessionEndedAt = sessionEndedAt
+            day.isSessionClosed = sessionClosed
+        }
+    }
+
+    /// "I'm done for today" with work still unresolved — ran out of time and walked away.
+    /// Closes the clock and opens feedback so the session is recorded honestly, but
+    /// deliberately does NOT mark the day complete: the untouched exercises are real
+    /// missing work and skip/pain history feeds next week's programming.
+    func finishSessionEarly() {
+        let previousEnd = day.sessionEndedAt
+        let previousClosed = day.isSessionClosed
+        SessionLifecycle.markSessionEnded(for: day)
+        guard PersistenceReporter.save(modelContext, operation: "finish session early") else {
             modelContext.rollback()
-            exercise.isCompleted = previousExerciseState
-            exercise.completionStatus = previousStatus
-            day.isCompleted = previousDayState
+            day.sessionEndedAt = previousEnd
+            day.isSessionClosed = previousClosed
             TFHaptics.error()
             return
         }
-
         DataBackupManager.shared.writeAutomaticBackupCoalesced(using: modelContext)
         TFHaptics.impact(.light)
-        if day.isCompleted && !previousDayState {
-            feedbackDay = day
+        feedbackDay = day
+    }
+
+    /// Skip / substitute / modified from the exercise's action menu. A skip resolves the
+    /// exercise for today, so it can finish the day and trigger feedback just like the
+    /// completion checkmark — the case that used to leave a timed-out session open.
+    func setStatus(_ status: ExerciseCompletionStatus, on exercise: WorkoutExercise) {
+        let snapshot = DispositionSnapshot(exercise: exercise, day: day, status: exercise.completionStatus)
+        exercise.completionStatus = status
+        if status.isSkipped {
+            exercise.isCompleted = true
         }
+        commitDisposition(of: exercise, operation: "set exercise status", restoring: snapshot)
+    }
+
+    /// Undo a skip / substitution. Re-opens the day if that exercise was holding it shut,
+    /// which the old inline handler never did — a cleared skip could leave the day ticked
+    /// off with unresolved work in it.
+    func clearStatus(on exercise: WorkoutExercise) {
+        let snapshot = DispositionSnapshot(exercise: exercise, day: day, status: exercise.completionStatus)
+        if exercise.completionStatus?.isSkipped == true {
+            exercise.isCompleted = false
+        }
+        exercise.completionStatus = nil
+        commitDisposition(of: exercise, operation: "clear exercise status", restoring: snapshot)
     }
 
     func weightSummary(for exercise: WorkoutExercise) -> ExerciseWeightEntry? {
@@ -475,6 +545,11 @@ struct ExerciseCard: View {
     let onToggle: () -> Void
     let onToggleExpanded: () -> Void
     let onLogWeight: () -> Void
+    /// Skip / substitute / modified selections are applied by the parent, not here: the
+    /// day's completion state has to be re-derived from the same funnel that the
+    /// completion checkmark uses, and the card cannot see its siblings.
+    let onSetStatus: (ExerciseCompletionStatus) -> Void
+    let onClearStatus: () -> Void
     @State private var showDetails = false
 
     var latestWeightLog: ExerciseWeightEntry? {
@@ -1098,9 +1173,7 @@ struct ExerciseCard: View {
                 .foregroundStyle(status.isSkipped ? TFColor.danger : TFColor.warning)
             Spacer()
             Button {
-                exercise.completionStatus = nil
-                if status.isSkipped { exercise.isCompleted = false }
-                PersistenceReporter.saveWithBackup(modelContext, operation: "clear exercise status", haptic: .success)
+                onClearStatus()
             } label: {
                 Text("Clear")
                     .font(.caption2)
@@ -1127,11 +1200,7 @@ struct ExerciseCard: View {
             Menu {
                 ForEach(ExerciseCompletionStatus.allCases.filter { $0 != .completed }) { status in
                     Button {
-                        exercise.completionStatus = status
-                        if status.isSkipped {
-                            exercise.isCompleted = true
-                        }
-                        PersistenceReporter.saveWithBackup(modelContext, operation: "set exercise status", haptic: .success)
+                        onSetStatus(status)
                     } label: {
                         Text(status.rawValue)
                     }
@@ -2364,34 +2433,9 @@ enum SetLoggingService {
         let summary = summaryEntryOrCreate(for: exercise, weight: topWeight, reps: topReps, date: date, modelContext: modelContext)
         summary.applyLog(loggedAt: date, exerciseName: exercise.exerciseName, weightLbs: topWeight, repsCompleted: topReps, notes: summary.notes)
 
-        stampSessionTiming(for: exercise, date: date)
+        SessionLifecycle.noteSetLogged(for: exercise, at: date)
 
         return persist(modelContext)
-    }
-
-    /// Warm-up lead: the athlete is already training (warming up) before the first rep is
-    /// logged, so an inferred start is back-dated by this much to approximate real session
-    /// length. Applies ONLY to the automatic first-set start — a manual "Start" tap records
-    /// an exact time and is left untouched. The athlete can still nudge it in the sheet.
-    static let inferredWarmupLeadMinutes = 10
-
-    /// Auto-tracks session duration so the athlete never hand-dials a clock. The first
-    /// set logged marks the session start (minus the warm-up lead); each later set advances
-    /// the end, so by the time feedback is entered the real elapsed time is already
-    /// recorded. Only touches a live (not-yet-finalized) session and only for logs stamped
-    /// today, so correcting an old session's set tomorrow can't rewrite its clock.
-    private static func stampSessionTiming(for exercise: WorkoutExercise, date: Date) {
-        guard let day = exercise.day,
-              day.feedbackSubmittedAt == nil,
-              Calendar.current.isDateInToday(date) else { return }
-        if day.sessionStartedAt == nil {
-            day.sessionStartedAt = date.addingTimeInterval(-Double(inferredWarmupLeadMinutes) * 60)
-        }
-        if let end = day.sessionEndedAt {
-            if date > end { day.sessionEndedAt = date }
-        } else {
-            day.sessionEndedAt = date
-        }
     }
 
     private static func persist(_ modelContext: ModelContext) -> Bool {

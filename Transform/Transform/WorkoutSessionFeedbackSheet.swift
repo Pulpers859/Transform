@@ -22,8 +22,14 @@ struct WorkoutSessionFeedbackSheet: View {
         _pain = State(initialValue: day.jointPain)
         _performance = State(initialValue: day.performanceRating ?? .same)
         _notes = State(initialValue: day.sessionFeedbackNotes)
-        _sessionStartedAt = State(initialValue: day.sessionStartedAt ?? Calendar.current.date(byAdding: .hour, value: -1, to: .now) ?? .now)
-        _sessionEndedAt = State(initialValue: day.sessionEndedAt ?? .now)
+        // Both stamps are normally auto-tracked. When a session has no start at all —
+        // nothing logged, timer never tapped — fall back to the warm-up lead rather than
+        // the old flat hour: an unknown session should open as a visibly small placeholder
+        // to adjust, not as a plausible-looking 60 minutes the athlete might just save.
+        let end = day.sessionEndedAt ?? .now
+        let fallbackStart = end.addingTimeInterval(-Double(SessionLifecycle.inferredWarmupLeadMinutes) * 60)
+        _sessionStartedAt = State(initialValue: day.sessionStartedAt ?? fallbackStart)
+        _sessionEndedAt = State(initialValue: end)
     }
 
     var body: some View {
@@ -44,7 +50,9 @@ struct WorkoutSessionFeedbackSheet: View {
                 Section {
                     DatePicker("Started", selection: $sessionStartedAt, in: ...Date(), displayedComponents: [.date, .hourAndMinute])
                     DatePicker("Finished", selection: $sessionEndedAt, in: sessionStartedAt...Date(), displayedComponents: [.date, .hourAndMinute])
-                    let durationMinutes = Int(sessionEndedAt.timeIntervalSince(sessionStartedAt) / 60)
+                    // Rounded, not truncated: a 22:50 session reading "22 min" looks like
+                    // an off-by-one against the two clock times displayed right above it.
+                    let durationMinutes = Int((sessionEndedAt.timeIntervalSince(sessionStartedAt) / 60).rounded())
                     if durationMinutes > 0 {
                         HStack {
                             Text("Duration")
@@ -56,7 +64,7 @@ struct WorkoutSessionFeedbackSheet: View {
                 } header: {
                     Text("Workout time")
                 } footer: {
-                    Text("Auto-tracked from ~10 min before your first logged set (warm-up) to your last — adjust only if needed. Tracking when you train helps identify your best time of day over time.")
+                    Text("Auto-tracked from ~10 min before your first logged set (warm-up) to the moment you finished — adjust only if needed. Tracking when you train helps identify your best time of day over time.")
                 }
 
                 Section("Performance") {
@@ -125,8 +133,12 @@ struct WorkoutSessionFeedbackSheet: View {
         let priorNotes = day.sessionFeedbackNotes
         let priorStartedAt = day.sessionStartedAt
         let priorEndedAt = day.sessionEndedAt
+        let priorClosed = day.isSessionClosed
 
         day.feedbackSubmittedAt = .now
+        // Rating the session settles it: nothing may move the clock afterwards, including
+        // a set correction typed later.
+        day.isSessionClosed = true
         day.sessionEffort = effort
         day.stimulusQuality = stimulus
         day.jointPain = pain
@@ -145,6 +157,7 @@ struct WorkoutSessionFeedbackSheet: View {
             day.sessionFeedbackNotes = priorNotes
             day.sessionStartedAt = priorStartedAt
             day.sessionEndedAt = priorEndedAt
+            day.isSessionClosed = priorClosed
             TFHaptics.error()
             return
         }

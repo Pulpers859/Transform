@@ -119,6 +119,12 @@ class WorkoutDay {
     var sessionFeedbackNotes: String = ""
     var sessionStartedAt: Date?
     var sessionEndedAt: Date?
+    /// The session clock has been deliberately closed — every exercise resolved, or an
+    /// explicit "Finish" tap. Separates a real end time from the provisional stamp that
+    /// set-logging keeps pushing forward, so re-opening feedback an hour later can't
+    /// inflate the recorded session. Defaults false, which is correct for every day
+    /// written before this field existed (lightweight migration).
+    var isSessionClosed: Bool = false
 
     @Relationship(deleteRule: .cascade, inverse: \WorkoutExercise.day)
     var exercises: [WorkoutExercise] = []
@@ -157,12 +163,36 @@ class WorkoutDay {
         feedbackSubmittedAt != nil
     }
 
-    /// Elapsed training time inferred from the auto-tracked start/end stamps
-    /// (first set logged → last set logged). nil until both exist and are ordered,
-    /// so callers can fall back to a manual estimate rather than show "0 min".
+    /// Elapsed training time from the auto-tracked stamps: first logged set (minus the
+    /// warm-up lead) → the moment the session was finished. nil until both exist and are
+    /// ordered, so callers can fall back to a manual estimate rather than show "0 min".
+    ///
+    /// Rounds to nearest rather than truncating — a 22:50 session reading "22 min" looks
+    /// like an off-by-one against the two clock times shown right above it.
     var sessionDurationMinutes: Int? {
         guard let start = sessionStartedAt, let end = sessionEndedAt, end > start else { return nil }
-        return max(1, Int(end.timeIntervalSince(start) / 60))
+        return max(1, Int((end.timeIntervalSince(start) / 60).rounded()))
+    }
+
+    /// Every exercise has been completed, modified, or explicitly skipped. Empty days
+    /// (rest days) are never auto-finished — `allSatisfy` on an empty collection is true,
+    /// which would silently tick them off.
+    var allExercisesResolved: Bool {
+        !exercises.isEmpty && exercises.allSatisfy(\.isResolved)
+    }
+
+    /// A session is underway: the clock is running, not closed, and the day is not
+    /// finished. Drives the live timing badge and its "Finish" escape hatch.
+    var isSessionInProgress: Bool {
+        sessionStartedAt != nil && !isCompleted && !isSessionClosed
+    }
+
+    /// There is a session worth reviewing — finished, closed early, or already rated. The
+    /// feedback card keys off this rather than `isCompleted` alone so a day cut short for
+    /// time is still reachable instead of stranding the ratings behind a day that will
+    /// never be ticked complete.
+    var hasReviewableSession: Bool {
+        isCompleted || isSessionClosed || hasSessionFeedback
     }
 }
 
@@ -265,6 +295,18 @@ class WorkoutExercise {
     var completionStatus: ExerciseCompletionStatus? {
         get { ExerciseCompletionStatus(rawValue: completionStatusRaw) }
         set { completionStatusRaw = newValue?.rawValue ?? "" }
+    }
+
+    /// Whether this exercise still needs a decision from the athlete. "Resolved" is a
+    /// wider idea than "completed": a lift that was skipped for time, equipment, or pain
+    /// is finished business for today even though no work was done. Day completion is
+    /// derived from this, not from `isCompleted` alone, so running out of time closes the
+    /// session instead of leaving it open forever.
+    ///
+    /// Skips already set `isCompleted = true` at the call site; the status check keeps the
+    /// definition honest if that ever changes.
+    var isResolved: Bool {
+        isCompleted || (completionStatus?.isSkipped ?? false)
     }
 }
 
