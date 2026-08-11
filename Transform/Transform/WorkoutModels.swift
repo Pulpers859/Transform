@@ -357,6 +357,17 @@ class WorkoutExercise {
     var isResolved: Bool {
         isCompleted || (completionStatus?.isSkipped ?? false)
     }
+
+    /// Whether work actually happened here, as distinct from `isResolved` / `isCompleted`,
+    /// which only mean the athlete has finished deciding about it.
+    ///
+    /// Every skip sets `isCompleted = true` so the day can close (see `SessionLifecycle`), so
+    /// `isCompleted` answers "is this settled?", never "was this trained?". Any UI that
+    /// congratulates the athlete has to ask the second question: a session where three lifts
+    /// were abandoned for pain is fully resolved and was not a complete workout.
+    var wasPerformed: Bool {
+        isCompleted && !(completionStatus?.isSkipped ?? false)
+    }
 }
 
 // MARK: - Logged Exercise Weight (for progression tracking)

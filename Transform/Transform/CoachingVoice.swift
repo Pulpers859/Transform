@@ -59,6 +59,9 @@ enum CoachingVoice {
         case tricepExtension
         case squat
         case hinge
+        /// A bridge, not a hinge. Kept separate because hinge cues ("push the hips back",
+        /// "keep the bar close to the legs") describe the wrong axis for a thrust.
+        case hipThrust
         case lunge
         case legPress
         case legCurl
@@ -164,6 +167,19 @@ enum CoachingVoice {
 
     /// Order is significant: the first match wins, so narrower phrases are tested before the
     /// broad ones they contain ("incline press" before "press", "leg curl" before "curl").
+    ///
+    /// Two hazards this ordering has already been bitten by, both verified against the shipped
+    /// exercise catalog (see `CoachingVoiceCatalogTests`):
+    ///
+    /// * SUBSTRINGS THAT SPAN WORDS. `"t bar"` was a needle for rows and matched inside
+    ///   "fla{t bar}bell", so Flat Barbell Bench Press — the anchor of the Push catalog — was
+    ///   classified as a horizontal PULL and coached "set the scapula, then pull with the
+    ///   elbows". Needles must be anchored or unambiguous; "row" already covers every T-bar
+    ///   row without the hazard.
+    /// * A MOVEMENT WORD SHADOWING THE ONE THAT MATTERS. "incline dumbbell" caught Incline
+    ///   Dumbbell *Curl* and Low-Incline Dumbbell *Fly*; "fly"/"pec deck" caught Reverse Pec
+    ///   Deck and every rear-delt fly. The isolation word is the meaningful one, so the
+    ///   isolation patterns are now tested BEFORE the press/fly families they sit inside.
     static func pattern(forName name: String, muscleTarget: String) -> Pattern {
         let text = normalize("\(name) \(muscleTarget)")
 
@@ -171,30 +187,46 @@ enum CoachingVoice {
         // "seated curl" / "lying curl" are deliberately NOT here: a seated dumbbell curl is a
         // biceps movement, and matching them would classify it as a hamstring curl and coach
         // the lifter to pin their hips to a pad.
-        if matches(text, ["leg curl", "nordic", "hamstring curl", "glute ham"]) { return .legCurl }
+        if matches(text, ["leg curl", "nordic", "hamstring curl", "glute ham", "glute-ham"]) { return .legCurl }
         if matches(text, ["leg extension", "quad extension"]) { return .legExtension }
-        if matches(text, ["leg press", "hack squat"]) { return .legPress }
+        // Calf before leg press: "Leg Press Calf Raise" is a calf raise performed on a sled.
         if matches(text, ["calf", "calves"]) { return .calfRaise }
+        if matches(text, ["leg press", "hack squat"]) { return .legPress }
         if matches(text, ["lunge", "split squat", "step up", "step-up"]) { return .lunge }
         if matches(text, ["squat", "goblet"]) { return .squat }
-        if matches(text, ["deadlift", "romanian", "rdl", "good morning", "hip thrust", "hip hinge", "back extension"]) { return .hinge }
+        // Hip thrust is a bridge, not a hinge: "push the hips back" and "keep the bar close to
+        // the legs" describe the wrong axis entirely.
+        if matches(text, ["hip thrust", "glute bridge"]) { return .hipThrust }
+        if matches(text, ["deadlift", "romanian", "rdl", "good morning", "hip hinge", "back extension"]) { return .hinge }
+
+        // Isolation words before the compound families that contain them.
+        if matches(text, ["rear delt", "rear deltoid", "reverse fly", "reverse pec", "face pull", "reverse cable crossover"]) { return .rearDelt }
+        if matches(text, ["lateral raise", "side raise", "lateral machine", "side lateral"]) { return .lateralRaise }
+        if matches(text, ["shrug", "trap raise"]) { return .shrug }
+        if matches(text, ["curl", "bicep", "brachialis", "preacher", "hammer"]) { return .bicepCurl }
+        // Straight-arm pulldown is a lat isolation over a fixed elbow, not a vertical pull —
+        // the bar travels to the thighs, so "stop at your collarbone" is backwards.
+        if matches(text, ["pullover", "pull-over", "straight arm pull", "straight-arm pull"]) { return .pullover }
+        if matches(text, ["fly", "flye", "flies", "pec deck", "peck deck", "crossover", "cross-over"]) { return .chestFly }
 
         if matches(text, ["dip"]) { return .dip }
-        if matches(text, ["incline press", "incline bench", "incline dumbbell", "incline barbell", "incline machine", "incline chest"]) { return .inclinePress }
-        if matches(text, ["fly", "flye", "flies", "pec deck", "peck deck", "crossover", "cross-over"]) { return .chestFly }
-        if matches(text, ["pullover", "pull-over"]) { return .pullover }
-        if matches(text, ["overhead press", "shoulder press", "military press", "arnold press", "landmine press"]) { return .overheadPress }
-        if matches(text, ["lateral raise", "side raise", "lateral machine", "side lateral"]) { return .lateralRaise }
-        if matches(text, ["rear delt", "reverse fly", "reverse pec", "face pull", "rear deltoid"]) { return .rearDelt }
-        if matches(text, ["shrug", "trap raise"]) { return .shrug }
+        // Requires BOTH tokens so "Incline Dumbbell Curl" cannot be read as a press.
+        if text.contains("incline") && text.contains("press") { return .inclinePress }
+        // "landmine press" is an angled press, closer to an incline than an overhead.
+        if matches(text, ["landmine press"]) { return .inclinePress }
+        if matches(text, ["overhead press", "shoulder press", "military press", "arnold press"]) { return .overheadPress }
 
         if matches(text, ["pulldown", "pull-down", "pull up", "pull-up", "pullup", "chin up", "chin-up", "chinup", "lat pull"]) { return .verticalPull }
-        if matches(text, ["row", "seal row", "t-bar", "t bar"]) { return .horizontalPull }
+        // NOT "t bar" — it matches inside "flat barbell". "row" covers T-bar rows already.
+        if matches(text, ["row"]) { return .horizontalPull }
 
-        if matches(text, ["pushdown", "push-down", "skull", "overhead extension", "tricep extension", "triceps extension", "kickback", "close grip", "close-grip", "jm press"]) { return .tricepExtension }
-        if matches(text, ["curl", "bicep", "biceps", "brachialis", "preacher", "hammer"]) { return .bicepCurl }
+        // Close-grip bench is a triceps-biased PRESS; cueing "let only the forearms travel"
+        // on a compound barbell press is wrong and unsafe.
+        if matches(text, ["close grip bench", "close-grip bench"]) { return .horizontalPress }
+        // "kickback" qualified: a glute kickback is not a triceps movement.
+        if matches(text, ["pushdown", "push-down", "pressdown", "press-down", "skull", "overhead extension", "tricep extension", "triceps extension", "triceps kickback", "tricep kickback", "close grip", "close-grip", "jm press"]) { return .tricepExtension }
 
-        if matches(text, ["crunch", "plank", "ab wheel", "leg raise", "hanging raise", "pallof", "oblique", "dead bug"]) { return .core }
+        if matches(text, ["crunch", "plank", "ab wheel", "leg raise", "knee raise", "pallof", "oblique", "dead bug", "hollow", "rollout"]) { return .core }
 
         // Broad press last: anything still unmatched that presses is a horizontal press.
         if matches(text, ["bench press", "chest press", "press"]) { return .horizontalPress }
@@ -205,8 +237,12 @@ enum CoachingVoice {
     static func equipment(forName name: String) -> Equipment {
         let text = normalize(name)
         // Cable before machine: a "cable machine" movement is coached like a cable.
-        if matches(text, ["cable", "crossover", "cross-over", "pulldown", "pull-down", "pushdown", "push-down", "rope"]) { return .cable }
-        if matches(text, ["machine", "smith", "hammer strength", "pec deck", "peck deck", "sled", "lever"]) { return .machine }
+        if matches(text, ["cable", "crossover", "cross-over", "pulldown", "pull-down", "pushdown", "push-down", "pressdown", "rope"]) { return .cable }
+        // Smith before machine, and classified as a BARBELL: it is a bar on a fixed path, so
+        // machine cues about seat height, handles and a carriage describe equipment that is
+        // not there.
+        if matches(text, ["smith"]) { return .barbell }
+        if matches(text, ["machine", "hammer strength", "pec deck", "peck deck", "sled", "lever"]) { return .machine }
         if matches(text, ["dumbbell", "db ", " db", "goblet", "arnold"]) { return .dumbbell }
         if matches(text, ["barbell", "bb ", "ez bar", "ez-bar", "landmine", "t-bar", "trap bar"]) { return .barbell }
         if matches(text, ["bodyweight", "body weight", "assisted", "weighted", "pull up", "pull-up", "pullup", "chin up", "chin-up", "chinup", "dip", "push up", "push-up", "pushup", "plank", "nordic"]) { return .bodyweight }
@@ -298,6 +334,10 @@ enum CoachingVoice {
             "Brace against your belt line before you unrack and hold that brace until the rep is finished.",
             "Push the floor apart with your feet and keep the bar tracking over mid-foot the whole way down."
         ],
+        Key(pattern: .overheadPress, equipment: .machine): [
+            "Set the seat so the handles start level with your ears and press straight up from there.",
+            "Keep your back against the pad and stop just short of locking the elbows."
+        ],
         Key(pattern: .legPress, equipment: .machine): [
             "Keep the lower back flat against the pad and stop the descent the moment the pelvis starts to tuck.",
             "Drive through the whole foot and stop just short of locking the knees at the top."
@@ -376,6 +416,11 @@ enum CoachingVoice {
             "Keep the knees tracking over the toes and the torso angle constant.",
             "Descend to the depth you can hold position at, and own that depth every rep."
         ],
+        .hipThrust: [
+            "Drive through the heels and finish with the hips level, ribs down rather than arched.",
+            "Pause at the top with the glutes hard before letting the hips travel back down.",
+            "Keep the chin tucked and the shins vertical so the hips do the work."
+        ],
         .hinge: [
             "Keep the spine neutral and push the hips back rather than bending at the waist.",
             "Keep the bar or dumbbells close to the legs through the whole range.",
@@ -431,6 +476,13 @@ enum CoachingVoiceAudit {
     /// Mirrors the strip lists in `WorkoutDayDetailView.coachingSentences`. Kept as a literal
     /// copy on purpose: the display filter is UI-layer and this type stays Foundation-only so
     /// it can be exercised headlessly. If the filter gains a fragment, add it here too.
+    /// A literal UNION of the display filter's strip lists and the validator's
+    /// `notesContainProgressionInstruction` fragments — not just the former.
+    ///
+    /// It previously mirrored only the display filter, which left six validator fragments
+    /// ("next week", "add one rep", "beat last week", "before increasing load",
+    /// "baseline target", "add 1 rep") unchecked. Any consumer using this as its sole safety
+    /// net could therefore emit a string that passes here and HARD-FAILS generation.
     static let forbiddenFragments: [String] = [
         // Progression-cue strip — the structured banner owns all of this.
         "next session", "add load", "add weight", "add reps", "before adding",
@@ -439,6 +491,10 @@ enum CoachingVoiceAudit {
         "barbell step", "reliably progress", "when you clear", "add a plate",
         "external load", "next week add",
         "move up to", "go up to", "go heavier", "bump the load", "bump to", "chase reps",
+        // Validator-only fragments (notesContainProgressionInstruction) that the display
+        // filter does not carry. Omitting these is what made this list an incomplete guard.
+        "next week", "add one rep", "add 1 rep", "beat last week",
+        "before increasing load", "baseline target",
         // Unconditional recap strip — the Last panel already says what you did.
         "you logged", "you used", "your last session", "last time you", "you beat",
         // Deload strip — effort ships as the structured targetRIR field.

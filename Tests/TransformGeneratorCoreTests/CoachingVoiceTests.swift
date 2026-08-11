@@ -200,6 +200,64 @@ final class CoachingVoiceTests: XCTestCase {
         XCTAssertEqual(CoachingVoice.pattern(forName: "Triceps Pushdown", muscleTarget: "Triceps"), .tricepExtension)
     }
 
+    /// Names taken verbatim from the SHIPPED exercise catalog, each one a real misroute found
+    /// by running the whole catalog through the classifier.
+    ///
+    /// The earlier test asserted seven names that all happened to classify correctly, which is
+    /// why every one of these shipped. Curated hand-picked inputs test the cases the author
+    /// already thought about; these are the ones the author did not.
+    func testShippedCatalogNamesClassifyCorrectly() {
+        let expected: [(String, CoachingVoice.Pattern)] = [
+            // "t bar" matched inside "fla(t bar)bell", making the anchor push movement a ROW.
+            ("Flat Barbell Bench Press", .horizontalPress),
+            // "incline dumbbell" swallowed every isolation movement done on an incline bench.
+            ("Incline Dumbbell Curl", .bicepCurl),
+            ("Low-Incline Dumbbell Fly", .chestFly),
+            ("Lying Incline Dumbbell Lateral Raise", .lateralRaise),
+            ("Prone Incline Dumbbell Rear Delt Raise", .rearDelt),
+            // "fly"/"pec deck" shadowed rear delts entirely, making the reverse-fly needles
+            // unreachable dead code.
+            ("Reverse Pec Deck", .rearDelt),
+            ("Cable Rear Delt Fly", .rearDelt),
+            ("Reverse Cable Crossover", .rearDelt),
+            // "pressdown" was on no list, so the most-programmed triceps movements fell
+            // through to the broad "press" catch-all and were coached as bench presses.
+            ("Rope Triceps Pressdown", .tricepExtension),
+            ("V-Bar Pressdown", .tricepExtension),
+            // Wrong-family assignments with real coaching consequences.
+            ("Close-Grip Bench Press", .horizontalPress),
+            ("Straight-Arm Pulldown", .pullover),
+            ("Hip Thrust", .hipThrust),
+            ("Landmine Press", .inclinePress),
+            ("Machine Shoulder Press", .overheadPress),
+            ("Leg Press Calf Raise", .calfRaise),
+            ("Incline Smith Machine Press", .inclinePress),
+            // Needles that never matched their own catalog rows.
+            ("Glute-Ham Raise", .legCurl),
+            ("Hanging Knee Raise", .core),
+            // Controls: these were always right and must stay right.
+            ("Incline Dumbbell Press", .inclinePress),
+            ("Machine Incline Press", .inclinePress),
+            ("Seated Cable Row", .horizontalPull),
+            ("Back Squat", .squat),
+            ("Romanian Deadlift", .hinge)
+        ]
+
+        for (name, want) in expected {
+            XCTAssertEqual(
+                CoachingVoice.pattern(forName: name, muscleTarget: ""), want,
+                "\(name) misclassified"
+            )
+        }
+    }
+
+    /// A Smith bar runs on a fixed path but there is no seat, no handles and no carriage, so
+    /// machine cues describe equipment that is not in front of the lifter.
+    func testSmithIsCoachedAsABarbellNotAMachine() {
+        XCTAssertEqual(CoachingVoice.equipment(forName: "Smith Machine Bench Press"), .barbell)
+        XCTAssertEqual(CoachingVoice.equipment(forName: "Smith Machine Calf Raise"), .barbell)
+    }
+
     /// An unrecognised movement still gets a true sentence rather than an empty note — the
     /// old generic bucket was where every unmatched target landed and duplicated hardest.
     func testUnknownMovementStillGetsAUsableCue() {

@@ -34,13 +34,21 @@ struct WorkoutDayDetailView: View {
         SessionNoteSections.parse(day.notes)
     }
 
-    /// Accent while there is work left, success once there is not. A full bar still painted in
-    /// the in-progress accent reads as "not finished" against every other done-signal in the
-    /// app, which are all green.
+    /// Accent while there is work left, success once the day was genuinely trained. A full bar
+    /// still painted in the in-progress accent reads as "not finished" against every other
+    /// done-signal in the app, which are all green.
+    ///
+    /// "Resolved" is NOT the same as "performed", and the bar must not conflate them. Every
+    /// skip — including a skip for pain — sets `isCompleted = true` so the day can close, and
+    /// finishing an exercise as Modified with zero sets logged does too. Tinting on
+    /// `completedExerciseCount` alone would paint a session where three lifts were abandoned
+    /// for shoulder pain in the app's universal "you did it" colour. Green is reserved for a
+    /// day where every exercise was actually worked.
     var progressTint: Color {
-        completedExerciseCount == totalExerciseCount && totalExerciseCount > 0
-            ? TFColor.success
-            : TFColor.accent
+        guard totalExerciseCount > 0, completedExerciseCount == totalExerciseCount else {
+            return TFColor.accent
+        }
+        return day.sortedExercises.allSatisfy(\.wasPerformed) ? TFColor.success : TFColor.accent
     }
 
     var body: some View {
@@ -325,9 +333,17 @@ struct WorkoutDayDetailView: View {
     /// broken.
     private var feedbackResponseText: String? {
         guard day.hasSessionFeedback else { return nil }
+        // Scoped to THIS day's week, matching how generation actually builds the signal
+        // (WorkoutView's next-week request filters to a single week before snapshotting).
+        //
+        // Reading every week instead produced a line that asserted a consequence which would
+        // not happen: on the first rated day of a week, generation sees one session and stays
+        // neutral, while an all-weeks read pulls in the tail of the previous week, crosses the
+        // recovery threshold, and promises load changes nobody requested. It also let an old
+        // day's card describe ratings recorded weeks AFTER the session being viewed.
         let rated = (day.program?.days ?? [])
-            .filter(\.hasSessionFeedback)
-            .sorted { ($0.weekNumber, $0.dayNumber) < ($1.weekNumber, $1.dayNumber) }
+            .filter { $0.weekNumber == day.weekNumber && $0.hasSessionFeedback }
+            .sorted { $0.dayNumber < $1.dayNumber }
             .map {
                 WorkoutSessionFeedbackSnapshot(
                     effort: $0.sessionEffort,
@@ -963,7 +979,13 @@ struct ExerciseCard: View {
     /// numbers rather than a generic definition — "3-0-1-0" means nothing until someone says
     /// which 3 and which 1.
     private func tempoExplanation(_ tempo: String) -> String {
-        let phases = tempo.split(separator: "-").map(String.init)
+        // Trimmed per component: the structured field is compact, but the prose fallback
+        // parsed out of a coaching note can arrive as "3 - 0 - 1 - 0" and would otherwise
+        // render "Lower for 3  seconds".
+        let phases = tempo
+            .split(separator: "-")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
         guard phases.count == 4 else {
             return "Seconds per phase of each rep: lowering, pause at the bottom, lifting, pause at the top."
         }
@@ -1493,7 +1515,10 @@ struct ExercisePrescriptionPillRow: View {
                 .popover(
                     isPresented: Binding(
                         get: { explainingID == item.id },
-                        set: { if !$0 { explainingID = nil } }
+                        // Guarded on identity: a dismissal callback arriving after another
+                        // chip has claimed `explainingID` would otherwise close the new
+                        // popover instead of the one that actually went away.
+                        set: { if !$0, explainingID == item.id { explainingID = nil } }
                     )
                 ) {
                     Text(explanation)
