@@ -311,7 +311,11 @@ extension ClaudeService {
                 restSeconds: updatedRestSeconds,
                 notes: exercise.notes,
                 muscleTarget: exercise.muscleTarget,
-                targetRIR: exercise.targetRIR
+                targetRIR: exercise.targetRIR,
+                // Carry provenance through every rebuild. This runs after sanitization has
+                // already classified the note, so omitting it here would silently reset the
+                // field to nil — the field would compile, ship, and always read "unknown".
+                coachingSource: exercise.coachingSource
             )
         }
     }
@@ -496,7 +500,9 @@ extension ClaudeService {
                         toSetCount: expected.prescribedSets
                     ),
                     muscleTarget: exercise.muscleTarget,
-                    targetRIR: exercise.targetRIR
+                    targetRIR: exercise.targetRIR,
+                    // Set-count reconciliation rewrites prose, not authorship.
+                    coachingSource: exercise.coachingSource
                 )
             }
             let day = updated[dayIndex]

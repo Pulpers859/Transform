@@ -745,7 +745,8 @@ extension ClaudeService {
                                     avoiding: Set(recipientExercises.map(\.notes))
                                 ),
                                 muscleTarget: donorExercise.muscleTarget,
-                                targetRIR: donorExercise.targetRIR ?? proceduralTargetRIR(for: weekNumber)
+                                targetRIR: donorExercise.targetRIR ?? proceduralTargetRIR(for: weekNumber),
+                                coachingSource: .procedural
                             )
                         )
                     }
@@ -905,7 +906,8 @@ extension ClaudeService {
                 restSeconds: proceduralRestSeconds(for: candidate.name, muscleTarget: candidate.target),
                 notes: proceduralExerciseNotes(weekNumber: weekNumber, exerciseName: candidate.name, muscleTarget: candidate.target, index: exercises.count, focus: allocation.area, avoiding: Set(exercises.map(\.notes))),
                 muscleTarget: candidate.target,
-                targetRIR: proceduralTargetRIR(for: weekNumber)
+                targetRIR: proceduralTargetRIR(for: weekNumber),
+                coachingSource: .procedural
             )
             let perSetGain = priorityContributionPerSet(for: probeExercise, intent: intent)
             guard perSetGain > 0,

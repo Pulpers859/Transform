@@ -14,7 +14,11 @@ extension ClaudeService {
             restSeconds: exercise.restSeconds,
             notes: exercise.notes,
             muscleTarget: exercise.muscleTarget,
-            targetRIR: exercise.targetRIR
+            targetRIR: exercise.targetRIR,
+            // Set-count adjustment does not change who wrote the note. This helper is the
+            // shared rebuild path for repair and trimming, so dropping provenance here would
+            // erase it from every repaired day at once.
+            coachingSource: exercise.coachingSource
         )
     }
 

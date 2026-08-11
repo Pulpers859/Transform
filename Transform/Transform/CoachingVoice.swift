@@ -43,7 +43,7 @@ enum CoachingVoice {
     /// What the lifter's body is actually doing. Deliberately coarser than an exercise name
     /// and finer than a muscle group — that middle altitude is where technique advice is
     /// both true and specific.
-    enum Pattern: String, CaseIterable {
+    enum Pattern: String, CaseIterable, Sendable {
         case inclinePress
         case horizontalPress
         case chestFly
@@ -70,7 +70,7 @@ enum CoachingVoice {
 
     /// How the load is held. Changes the cue meaningfully: a machine sets the path for you,
     /// a dumbbell makes you own it.
-    enum Equipment: String, CaseIterable {
+    enum Equipment: String, CaseIterable, Sendable {
         case machine
         case cable
         case dumbbell
@@ -151,7 +151,11 @@ enum CoachingVoice {
         return ladder
     }
 
-    private struct Key: Hashable {
+    /// `Sendable` explicitly: the cue tables are `static let` dictionaries keyed by this type,
+    /// and under Swift 6 strict concurrency a static stored property must be of a Sendable
+    /// type. Inference would almost certainly get there on its own; stating it means a future
+    /// stored property on this key cannot silently break the build.
+    private struct Key: Hashable, Sendable {
         let pattern: Pattern
         let equipment: Equipment
     }
@@ -164,7 +168,10 @@ enum CoachingVoice {
         let text = normalize("\(name) \(muscleTarget)")
 
         // Legs first — "leg press" and "leg curl" contain "press" and "curl".
-        if matches(text, ["leg curl", "lying curl", "seated curl", "nordic", "hamstring curl"]) { return .legCurl }
+        // "seated curl" / "lying curl" are deliberately NOT here: a seated dumbbell curl is a
+        // biceps movement, and matching them would classify it as a hamstring curl and coach
+        // the lifter to pin their hips to a pad.
+        if matches(text, ["leg curl", "nordic", "hamstring curl", "glute ham"]) { return .legCurl }
         if matches(text, ["leg extension", "quad extension"]) { return .legExtension }
         if matches(text, ["leg press", "hack squat"]) { return .legPress }
         if matches(text, ["calf", "calves"]) { return .calfRaise }
