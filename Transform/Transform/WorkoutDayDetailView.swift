@@ -983,14 +983,21 @@ struct ExerciseCard: View {
 
     /// RIR is the effort target the whole programme is built on, so it earns a concrete
     /// reading rather than an expansion of the acronym.
-    private func rirExplanation(_ rir: Int) -> String {
+    ///
+    /// Takes a String because `displayTargetRIR` is one: the structured `targetRIR` field is
+    /// an Int, but the prose fallback parsed out of the coaching note can be a range ("2-3").
+    /// Read the leading number for the concrete sentence and fall back to the general
+    /// definition when it isn't a plain integer.
+    private func rirExplanation(_ rir: String) -> String {
+        let leading = Int(rir.prefix { $0.isNumber })
         let tail: String
-        switch rir {
+        switch leading {
         case 0: tail = "Take the set to the point where another rep would fail."
         case 1: tail = "Stop when you could manage one more rep, and no more."
         case 2: tail = "Stop when you could manage two more reps — hard, but not to failure."
         case 3: tail = "Stop well short of failure; this is a deliberate back-off."
-        default: tail = "Stop with \(rir) reps still available."
+        case .some(let value): tail = "Stop with \(value) reps still available."
+        case nil: tail = "Stop before failure, leaving the listed number of reps in the tank."
         }
         return "Reps In Reserve: how many reps you should still have left when you rack the set.\n\n\(tail)"
     }
