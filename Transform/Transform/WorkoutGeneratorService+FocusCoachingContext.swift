@@ -229,7 +229,8 @@ extension ClaudeService {
         exerciseName: String,
         muscleTarget: String,
         weekNumber: Int,
-        exerciseIndex: Int
+        exerciseIndex: Int,
+        cuesAlreadyOnDay: Set<String> = []
     ) -> String {
         let trimmed = rawNotes.trimmingCharacters(in: .whitespacesAndNewlines)
 
@@ -237,19 +238,29 @@ extension ClaudeService {
         // truly unusable (a few words). Previously we replaced perfectly good personalized
         // notes with templated cues whenever they didn't match keyword heuristics — that
         // was the "generic AI slop" users were seeing.
-        if isEmptyOrTooShortInsight(trimmed) {
+        // The decode stand-in is treated as absent, not as content. It clears the length
+        // threshold, so without this every exercise whose response omitted `notes` would keep
+        // the same hard-coded sentence — reintroducing, from a different direction, exactly
+        // the duplicate-cue problem this system was built to remove.
+        if isEmptyOrTooShortInsight(trimmed) || trimmed == WorkoutExerciseResponse.absentNoteDefault {
             // This is the AI-repair path: the model returned nothing usable for THIS
             // exercise, so a procedural cue stands in. It previously always took the most
             // generic template branch (focus was hardcoded empty), which is why substituted
             // cues read as the most obviously machine-written text in the app.
             //
-            // `spokenCues` cannot be seen from here — sanitization runs per exercise — so
-            // day-wide uniqueness is not guaranteed on this path the way it is for a fully
-            // procedural day. Movement-pattern keying still makes a collision unlikely, and
-            // `coachingSource` records that this cue was substituted so the mix is auditable
-            // rather than silently indistinguishable from AI output.
+            // `cuesAlreadyOnDay` carries the notes already placed on this day, so two
+            // substitutions in one session cannot land on the same sentence. Without it the
+            // day-scoped uniqueness guarantee held only for fully procedural days — and the
+            // AI path is the default, so the guarantee would have been mostly theoretical.
+            //
+            // `coachingSource` separately records that this cue was substituted, so a mixed
+            // day stays auditable rather than silently indistinguishable from AI output.
             return evidenceTunedCoachingLanguage(
-                CoachingVoice.cue(forName: exerciseName, muscleTarget: muscleTarget)
+                CoachingVoice.cue(
+                    forName: exerciseName,
+                    muscleTarget: muscleTarget,
+                    avoiding: cuesAlreadyOnDay
+                )
             )
         }
 

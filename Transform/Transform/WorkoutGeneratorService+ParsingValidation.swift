@@ -131,7 +131,19 @@ extension ClaudeService {
             cleanedExercises.reserveCapacity(day.exercises.count)
             for (j, exercise) in day.exercises.enumerated() {
                 let exTag = "\(tag).e\(j + 1)/\(day.exercises.count)"
-                let cleaned = sanitizeExercise(exercise, weekNumber: weekNumber, exerciseIndex: j, tag: exTag)
+                // Pass the cues already placed on THIS day. When the model returns an
+                // unusable note, sanitization substitutes a procedural cue — and two
+                // substitutions on one day would otherwise land on the same sentence, which
+                // is the duplication the whole cue rewrite exists to make impossible. The
+                // day-scoped guarantee has to hold on the AI path too, not just the
+                // procedural one, because the AI path is the default.
+                let cleaned = sanitizeExercise(
+                    exercise,
+                    weekNumber: weekNumber,
+                    exerciseIndex: j,
+                    tag: exTag,
+                    cuesAlreadyOnDay: Set(cleanedExercises.map(\.notes))
+                )
                 cleanedExercises.append(cleaned)
             }
             cleanedExercises = rebalanceUniformPrescriptionsIfNeeded(
@@ -173,7 +185,8 @@ extension ClaudeService {
         _ exercise: WorkoutExerciseResponse,
         weekNumber: Int,
         exerciseIndex: Int,
-        tag: String
+        tag: String,
+        cuesAlreadyOnDay: Set<String> = []
     ) -> WorkoutExerciseResponse {
         WorkoutGenerationDiagnostics.markStage("sanitize \(tag) name")
         let cleanedTarget = normalizedDisplayText(exercise.muscleTarget, fallback: "Primary Target")
@@ -220,13 +233,18 @@ extension ClaudeService {
         // procedural cue has been substituted the result is indistinguishable from a note the
         // model actually wrote. Program-level source labelling misses this case entirely — the
         // week still reads "[AI Coach]" while individual cues came from the engine.
+        // The decode-time stand-in counts as "not written by the model" even though it clears
+        // the length threshold — otherwise a response that simply omitted `notes` would be
+        // reported as AI-authored coaching.
         let noteWasSubstituted = isEmptyOrTooShortInsight(exercise.notes)
+            || exercise.notes.trimmingCharacters(in: .whitespacesAndNewlines) == WorkoutExerciseResponse.absentNoteDefault
         let cleanedNotes = polishedExerciseNotes(
             rawNotes: exercise.notes,
             exerciseName: cleanedName,
             muscleTarget: cleanedTarget,
             weekNumber: weekNumber,
-            exerciseIndex: exerciseIndex
+            exerciseIndex: exerciseIndex,
+            cuesAlreadyOnDay: cuesAlreadyOnDay
         )
         // Keep any set-count the note cites in step with the (possibly polished) structured
         // count so prose and the SETS tile / log rows can't disagree.

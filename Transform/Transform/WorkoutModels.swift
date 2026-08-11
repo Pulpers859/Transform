@@ -1126,7 +1126,7 @@ nonisolated struct WorkoutExerciseResponse: Codable {
         // that fills a gap must never be the thing that fails the validation.
         self.notes = container.decodeFlexibleString(
             forKey: .notes,
-            default: "Control the lowering phase, keep full range, and repeat the same setup on every rep."
+            default: WorkoutExerciseResponse.absentNoteDefault
         )
         self.muscleTarget = container.decodeFlexibleString(forKey: .muscleTarget, default: "Primary Target")
         // Clamped to the sane coaching range; junk values are dropped, not stored.
@@ -1134,6 +1134,15 @@ nonisolated struct WorkoutExerciseResponse: Codable {
         // Never sent by the model; stamped by the generator or by sanitization.
         self.coachingSource = try container.decodeIfPresent(CoachingSource.self, forKey: .coachingSource)
     }
+
+    /// Stand-in used when a response omits `notes` entirely.
+    ///
+    /// Exposed rather than inlined so sanitization can RECOGNISE it. It is long enough to
+    /// clear the five-word "too short" threshold, which meant a note the model never wrote was
+    /// classified as `.aiCoach` and the Details disclosure reported "Written by AI Coach" over
+    /// a hard-coded constant — provenance lying in precisely the case the field exists for.
+    static let absentNoteDefault =
+        "Control the lowering phase, keep full range, and repeat the same setup on every rep."
 }
 
 // MARK: - Week-Only Response (for generating subsequent weeks)
