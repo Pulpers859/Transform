@@ -34,6 +34,15 @@ struct WorkoutDayDetailView: View {
         SessionNoteSections.parse(day.notes)
     }
 
+    /// Accent while there is work left, success once there is not. A full bar still painted in
+    /// the in-progress accent reads as "not finished" against every other done-signal in the
+    /// app, which are all green.
+    var progressTint: Color {
+        completedExerciseCount == totalExerciseCount && totalExerciseCount > 0
+            ? TFColor.success
+            : TFColor.accent
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
@@ -116,10 +125,10 @@ struct WorkoutDayDetailView: View {
                 GeometryReader { geo in
                     ZStack(alignment: .leading) {
                         Capsule()
-                            .fill(TFColor.accent.opacity(0.15))
+                            .fill(progressTint.opacity(0.15))
                             .frame(height: 6)
                         Capsule()
-                            .fill(TFColor.accent)
+                            .fill(progressTint)
                             .frame(width: geo.size.width * exerciseProgress, height: 6)
                             .animation(.easeOut(duration: 0.4), value: exerciseProgress)
                     }
@@ -128,7 +137,7 @@ struct WorkoutDayDetailView: View {
 
                 Text("\(completedExerciseCount)/\(totalExerciseCount)")
                     .font(.caption.bold())
-                    .foregroundStyle(TFColor.accent)
+                    .foregroundStyle(progressTint)
                     .frame(width: 36)
             }
         }
@@ -282,6 +291,19 @@ struct WorkoutDayDetailView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.leading)
+
+                    // What the rating actually did. The numbers were already echoed back
+                    // verbatim and nothing on the screen reacted to them — a session rated
+                    // 2/5 for stimulus with non-zero pain looked identical to a great one.
+                    // Feedback IS consumed (WorkoutEffortGovernance feeds generation), so the
+                    // gap was visibility, not plumbing: rating something and observing no
+                    // response is how a rating habit dies.
+                    if let response = feedbackResponseText {
+                        Text(response)
+                            .font(.caption2)
+                            .foregroundStyle(TFColor.accent)
+                            .multilineTextAlignment(.leading)
+                    }
                 }
                 Spacer()
                 Image(systemName: "chevron.right")
@@ -293,6 +315,36 @@ struct WorkoutDayDetailView: View {
             .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
         }
         .buttonStyle(.plain)
+    }
+
+    /// The governance signal your ratings are currently producing, in plain language.
+    ///
+    /// `nil` when there is nothing to say — no feedback on this day yet, or a neutral signal,
+    /// where inventing a reassurance would be noise. The signal needs at least two rated
+    /// sessions to exist at all, so early in a block this is silent by design rather than
+    /// broken.
+    private var feedbackResponseText: String? {
+        guard day.hasSessionFeedback else { return nil }
+        let rated = (day.program?.days ?? [])
+            .filter(\.hasSessionFeedback)
+            .sorted { ($0.weekNumber, $0.dayNumber) < ($1.weekNumber, $1.dayNumber) }
+            .map {
+                WorkoutSessionFeedbackSnapshot(
+                    effort: $0.sessionEffort,
+                    stimulus: $0.stimulusQuality,
+                    jointPain: $0.jointPain,
+                    performanceRawValue: $0.performanceRatingRaw
+                )
+            }
+
+        switch WorkoutEffortGovernance.signal(from: rated) {
+        case .protectRecovery:
+            return "Your recent ratings are asking for recovery — next week holds load steady."
+        case .progressionHeadroom:
+            return "Your recent ratings show headroom — next week keeps adding reps before load."
+        case .neutral:
+            return nil
+        }
     }
 
     /// Duration first (it's the auto-tracked highlight), then ratings or the prompt.

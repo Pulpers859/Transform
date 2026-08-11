@@ -75,6 +75,12 @@ let package = Package(
                 // HARD generation failure that discards a paid AI week, so it gets real
                 // regression coverage rather than shipping correct-by-inspection.
                 "CoachingVoice.swift",
+                // One resolved answer to "what happened on this exercise?". Replaces four
+                // independently-read data sources on different time windows, which is how the
+                // card came to contradict itself on screen (a Best set TODAY presented beside
+                // a Last that excludes today, a zero-set Modified lift wearing the same green
+                // check as one actually performed). Foundation-only.
+                "ExerciseSessionSummary.swift",
                 // Session completion / clock state machine. Foundation + SwiftData only
                 // (all its UI callers stay out of this closure), so the rules that decide
                 // when a day is finished and when the clock closes get real regression
