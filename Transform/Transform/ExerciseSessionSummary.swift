@@ -105,6 +105,11 @@ struct ExerciseSessionSummary: Equatable {
         /// Logged effort well short of target. Two-plus RIR of slack is a warm-up being
         /// counted as a working set, not a rounding difference.
         case effortUnderTarget(setNumber: Int, rir: Double, target: Int)
+        /// Logged effort well BEYOND target — a set taken to failure against a back-off
+        /// prescription. Flagged for symmetry: the under-effort direction is merely wasted
+        /// stimulus, while this one is the direction with joint and recovery consequences, and
+        /// reporting only the harmless deviation would be a strange kind of honesty.
+        case effortOverTarget(setNumber: Int, rir: Double, target: Int)
         /// Marked done with fewer sets than prescribed.
         case setsIncomplete(logged: Int, planned: Int)
 
@@ -116,6 +121,13 @@ struct ExerciseSessionSummary: Equatable {
     // MARK: - Stored
 
     let state: State
+    /// The raw stored status, kept alongside the derived state.
+    ///
+    /// `State` collapses once `isCompleted` is true, so a lift that was substituted and then
+    /// ticked off resolves to `.completedAsPlanned` and the substitution disappears. The card
+    /// shows that fact today, so dropping it here would make wiring this type a REGRESSION.
+    /// Held separately and re-joined in `qualifierLabel`.
+    let completionStatus: ExerciseCompletionStatus?
     let plannedSets: Int
     let repRange: RepRange?
     let targetRIR: Int?
@@ -125,6 +137,26 @@ struct ExerciseSessionSummary: Equatable {
     let adherence: [AdherenceFlag]
 
     var loggedSetCount: Int { todaysSets.count }
+
+    /// The single label the card shows under the pill row, or `nil` when the plain completion
+    /// check already says everything.
+    ///
+    /// Prefers the derived state's own wording (it knows about zero-set completions, which the
+    /// stored status does not) and falls back to the stored status so a substitution survives
+    /// being ticked off.
+    var qualifierLabel: String? {
+        if let derived = state.qualifierLabel { return derived }
+        guard let completionStatus, completionStatus != .completed else { return nil }
+        return completionStatus.shortLabel
+    }
+
+    /// Green "as planned" treatment is reserved for work that was actually performed as
+    /// written. Everything else — skipped, substituted, modified, zero-set — gets a qualified
+    /// presentation, because an exercise marked done with nothing logged wearing the same
+    /// green check as five performed lifts is the contradiction this type exists to remove.
+    var deservesCleanCompletionTreatment: Bool {
+        state.isCleanCompletion && (completionStatus == nil || completionStatus == .completed)
+    }
 
     /// True when the card should offer a way to record what was actually done. A lift marked
     /// finished with nothing logged leaves no trace for future programming.
@@ -180,6 +212,7 @@ struct ExerciseSessionSummary: Equatable {
 
         return ExerciseSessionSummary(
             state: state,
+            completionStatus: completionStatus,
             plannedSets: plannedSets,
             repRange: range,
             targetRIR: targetRIR,
@@ -246,9 +279,13 @@ struct ExerciseSessionSummary: Equatable {
             // Only flag effort the lifter actually reported. `rir` is optional by design so
             // legacy sessions never acquire invented effort data, and an absent value must
             // not be read as zero.
-            if let target = targetRIR, let rir = set.rir,
-               rir - Double(target) >= AdherenceFlag.effortSlackThreshold {
-                flags.append(.effortUnderTarget(setNumber: set.setNumber, rir: rir, target: target))
+            if let target = targetRIR, let rir = set.rir {
+                let drift = rir - Double(target)
+                if drift >= AdherenceFlag.effortSlackThreshold {
+                    flags.append(.effortUnderTarget(setNumber: set.setNumber, rir: rir, target: target))
+                } else if -drift >= AdherenceFlag.effortSlackThreshold {
+                    flags.append(.effortOverTarget(setNumber: set.setNumber, rir: rir, target: target))
+                }
             }
         }
 
@@ -271,6 +308,9 @@ extension ExerciseSessionSummary.AdherenceFlag {
         case .effortUnderTarget(let setNumber, let rir, let target):
             let rirText = rir.rounded() == rir ? String(Int(rir)) : String(format: "%.1f", rir)
             return "Set \(setNumber) logged RIR \(rirText) against a target of \(target) — closer to a warm-up than a working set."
+        case .effortOverTarget(let setNumber, let rir, let target):
+            let rirText = rir.rounded() == rir ? String(Int(rir)) : String(format: "%.1f", rir)
+            return "Set \(setNumber) logged RIR \(rirText) against a target of \(target) — harder than the session called for."
         case .setsIncomplete(let logged, let planned):
             return logged == 0
                 ? "Marked done with no sets logged, so nothing from it reaches your history."

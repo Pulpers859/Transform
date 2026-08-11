@@ -44,6 +44,68 @@ final class ExerciseSessionSummaryTests: XCTestCase {
         )
     }
 
+    // MARK: - Wiring contract
+    //
+    // These pin the properties the card actually renders from. Before wiring, the resolver
+    // passed its own tests while the view read `exercise.isCompleted` raw at seven sites — the
+    // type was correct and completely inert. A resolver nothing renders is not a fix.
+
+    /// Wiring this in must not LOSE information the card already showed. `State` collapses
+    /// once `isCompleted` is true, so a substituted lift that then gets ticked off resolves to
+    /// `.completedAsPlanned` and the substitution vanishes from the derived state — while the
+    /// pre-wiring card displayed it for any non-`.completed` status.
+    func testSubstitutionSurvivesBeingTickedOff() {
+        let summary = resolve(isCompleted: true, status: .substituted, plannedSets: 2, today: [set(1, reps: 10), set(2, reps: 10)])
+
+        XCTAssertEqual(summary.qualifierLabel, ExerciseCompletionStatus.substituted.shortLabel)
+        XCTAssertFalse(summary.deservesCleanCompletionTreatment, "A substitution is not the plan as written")
+    }
+
+    /// Green is reserved for work performed as written. Everything else — skipped, modified,
+    /// zero-set — gets a qualified presentation.
+    func testOnlyCleanCompletionEarnsTheGreenTreatment() {
+        XCTAssertTrue(
+            resolve(isCompleted: true, plannedSets: 2, today: [set(1, reps: 10), set(2, reps: 10)])
+                .deservesCleanCompletionTreatment
+        )
+        XCTAssertFalse(resolve(isCompleted: true, status: .skippedPain, plannedSets: 2).deservesCleanCompletionTreatment)
+        XCTAssertFalse(resolve(isCompleted: true, plannedSets: 2).deservesCleanCompletionTreatment, "Zero sets logged")
+        XCTAssertFalse(resolve(isCompleted: false, plannedSets: 2).deservesCleanCompletionTreatment)
+    }
+
+    /// A lift ticked off with sets outstanding carries NO stored status, so the label has to
+    /// come from the derived state or the card shows a bare green check again.
+    func testShortCompletionIsLabelledWithoutAStoredStatus() {
+        let summary = resolve(isCompleted: true, plannedSets: 3, today: [set(1, reps: 10)])
+
+        XCTAssertNil(summary.completionStatus)
+        XCTAssertEqual(summary.qualifierLabel, "Done · modified")
+    }
+
+    func testCleanCompletionCarriesNoQualifier() {
+        let summary = resolve(isCompleted: true, plannedSets: 1, today: [set(1, reps: 10)])
+
+        XCTAssertNil(summary.qualifierLabel, "An ordinary finished lift needs no extra label")
+    }
+
+    /// The direction with actual consequences. Only under-effort was reported, so a set taken
+    /// to failure against a back-off prescription passed silently while the harmless deviation
+    /// was flagged.
+    func testEffortBeyondTargetIsFlagged() {
+        let summary = resolve(plannedSets: 1, targetRIR: 3, today: [set(1, reps: 10, rir: 0)])
+
+        XCTAssertTrue(
+            summary.adherence.contains { if case .effortOverTarget = $0 { return true }; return false },
+            "RIR 0 against a target of 3 must not pass silently"
+        )
+    }
+
+    func testEffortDriftWithinThresholdIsNotFlagged() {
+        let summary = resolve(plannedSets: 1, targetRIR: 2, today: [set(1, reps: 10, rir: 1)])
+
+        XCTAssertTrue(summary.adherence.isEmpty, "One RIR of self-report drift is noise, not a finding")
+    }
+
     // MARK: - State
 
     /// The live contradiction: Dumbbell Bench Press showed a green completed check beside an

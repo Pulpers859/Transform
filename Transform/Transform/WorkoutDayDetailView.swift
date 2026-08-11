@@ -379,11 +379,23 @@ struct WorkoutDayDetailView: View {
             TFSectionLabel(text: "Exercises")
 
             ForEach(day.sortedExercises) { exercise in
+                // Each of these scans the full log set, so they are resolved ONCE here and
+                // handed down rather than recomputed inside the card.
+                let entry = weightSummary(for: exercise)
+                let previous = latestSetLogs(for: exercise)
+                let today = todaysSetLogs(for: exercise)
+
                 ExerciseCard(
                     exercise: exercise,
-                    weightSummary: weightSummary(for: exercise),
-                    latestSetLogs: latestSetLogs(for: exercise),
-                    todaysSetLogs: todaysSetLogs(for: exercise),
+                    summary: sessionSummary(
+                        for: exercise,
+                        entry: entry,
+                        previous: previous,
+                        today: today
+                    ),
+                    weightSummary: entry,
+                    latestSetLogs: previous,
+                    todaysSetLogs: today,
                     performanceHistory: performanceLogSnapshots,
                     isExpanded: expandedExerciseIDs.contains(exercise.persistentModelID),
                     onToggle: { toggleExercise(exercise) },
@@ -394,6 +406,36 @@ struct WorkoutDayDetailView: View {
                 )
             }
         }
+    }
+
+    /// Resolves the one answer to "what happened on this exercise?" that every element of the
+    /// card reads from.
+    ///
+    /// The best-date argument is the subtle part. `bestLoggedAt` is nil whenever the summary
+    /// row has not yet promoted a separate best record — which is exactly the case where the
+    /// row itself IS the current best, including a personal best set minutes ago. Passing it
+    /// bare would report `wasSetToday == false` for the very case the flag was added for, and
+    /// `resolve` would accept that silently because a missing date is documented as
+    /// historical. Fall back to the row's own timestamp, matching what AddExerciseWeightSheet
+    /// and DataBackupManager already do.
+    func sessionSummary(
+        for exercise: WorkoutExercise,
+        entry: ExerciseWeightEntry?,
+        previous: [SetLogEntry],
+        today: [SetLogEntry]
+    ) -> ExerciseSessionSummary {
+        ExerciseSessionSummary.resolve(
+            isCompleted: exercise.isCompleted,
+            completionStatus: exercise.completionStatus,
+            plannedSets: exercise.sets,
+            reps: exercise.reps,
+            targetRIR: exercise.targetRIR,
+            todaysSets: today,
+            previousSets: previous,
+            bestWeightLbs: entry.map { $0.hasBestRecord ? $0.bestWeightLbs : $0.weightLbs },
+            bestReps: entry.flatMap { $0.hasBestRecord ? ($0.bestRepsCompleted ?? $0.repsCompleted) : $0.repsCompleted },
+            bestLoggedAt: entry.flatMap { $0.hasBestRecord ? $0.bestLoggedAt : $0.loggedAt }
+        )
     }
 
     /// Opens only the current lift (the first not-yet-completed exercise) on first load,
@@ -612,6 +654,10 @@ struct WorkoutDayDetailView: View {
 struct ExerciseCard: View {
     @Environment(\.modelContext) private var modelContext
     let exercise: WorkoutExercise
+    /// The resolved answer to "what happened here?", built once by the parent. Every element
+    /// that used to read `exercise.isCompleted` directly reads this instead, so the card can
+    /// no longer contradict itself.
+    let summary: ExerciseSessionSummary
     let weightSummary: ExerciseWeightEntry?
     /// The most recent *completed* session before today — drives the "last session"
     /// panel and the progression suggestion.
@@ -1057,12 +1103,17 @@ struct ExerciseCard: View {
         WorkoutProgressionEngine.isBodyweightEquivalent(weightLbs) ? "BW" : formatWeight(weightLbs)
     }
 
+    /// The all-time best, marked when it was set in THIS session.
+    ///
+    /// "Last" deliberately excludes today and "Best" includes it. Each is defensible alone and
+    /// incoherent stacked in one box: a live card read "Last 40 lb x 15" above "Best 50 lb ·
+    /// 14 reps" where the 50 lb had been logged minutes earlier, while a notice four lines
+    /// below asked the lifter to confirm that same 50 lb was not a mis-log. Saying which one
+    /// it is costs three words and removes the contradiction.
     var compactBestText: String? {
         guard let bestWeightText else { return nil }
-        if let bestRepsTileText {
-            return "\(bestWeightText) · \(bestRepsTileText)"
-        }
-        return bestWeightText
+        let value = bestRepsTileText.map { "\(bestWeightText) · \($0)" } ?? bestWeightText
+        return summary.best?.wasSetToday == true ? "\(value) — set today" : value
     }
 
     var body: some View {
@@ -1073,11 +1124,13 @@ struct ExerciseCard: View {
                 collapsedRow
             }
         }
-        .background(exercise.isCompleted ? TFColor.success.opacity(0.05) : TFColor.surface)
+        // Green fill is earned by performed work, not by the day being settled. A lift skipped
+        // for pain or ticked off with nothing logged keeps the neutral surface.
+        .background(summary.deservesCleanCompletionTreatment ? TFColor.success.opacity(0.05) : TFColor.surface)
         .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
         .overlay(
             RoundedRectangle(cornerRadius: 12)
-                .stroke(exercise.isCompleted ? TFColor.success.opacity(0.2) : Color.clear, lineWidth: 1)
+                .stroke(summary.deservesCleanCompletionTreatment ? TFColor.success.opacity(0.2) : Color.clear, lineWidth: 1)
         )
     }
 
@@ -1156,7 +1209,12 @@ struct ExerciseCard: View {
                 if let compactLastSessionText {
                     LastSessionCompactRow(
                         summary: compactLastSessionText,
-                        best: compactBestText
+                        best: compactBestText,
+                        // Only when it disagrees with the current prescription; annotating a
+                        // match would be noise.
+                        previousSetCount: summary.previous.map(\.setCount).flatMap {
+                            $0 == summary.plannedSets ? nil : $0
+                        }
                     )
                 }
 
@@ -1175,6 +1233,13 @@ struct ExerciseCard: View {
                     )
                 }
 
+                // How today's work departed from what was prescribed. Descriptive only — the
+                // progression banner above owns every statement about what to load next.
+                // Capped so a set-by-set list cannot bury the card.
+                ForEach(Array(summary.adherence.prefix(2).enumerated()), id: \.offset) { _, flag in
+                    SetAnomalyNotice(text: flag.noticeText)
+                }
+
                 if !conciseCoachingNote.isEmpty {
                     // Expanded view gets the filtered full note, not the raw one: the raw
                     // note can carry a generation-time progression cue that contradicts
@@ -1187,8 +1252,15 @@ struct ExerciseCard: View {
             }
             .padding(14)
 
-            if let status = exercise.completionStatus, status != .completed {
-                completionStatusRow(status)
+            // Reads the resolved state, not the stored status. A lift ticked off with fewer
+            // sets than prescribed carries no status at all, so the old condition left it
+            // wearing a plain green check identical to five genuinely completed lifts.
+            if let qualifier = summary.qualifierLabel {
+                completionStatusRow(
+                    qualifier,
+                    isSkip: summary.completionStatus?.isSkipped ?? false,
+                    isClearable: summary.completionStatus != nil
+                )
             }
 
             if showDetails {
@@ -1208,9 +1280,16 @@ struct ExerciseCard: View {
             Button {
                 onToggle()
             } label: {
-                Image(systemName: exercise.isCompleted ? "checkmark.circle.fill" : "circle")
+                // Three distinct marks, because "settled" and "performed" are different
+                // things: a filled green check for work actually done as written, a filled
+                // neutral check for a lift that is resolved but was skipped or left short,
+                // and an empty circle for outstanding work.
+                // Filled once resolved, but green ONLY for work performed as written. A lift
+                // skipped for pain or ticked off with nothing logged reads as settled, not as
+                // an achievement.
+                Image(systemName: summary.state.isResolved ? "checkmark.circle.fill" : "circle")
                     .font(.title3)
-                    .foregroundStyle(exercise.isCompleted ? TFColor.success : .secondary)
+                    .foregroundStyle(summary.deservesCleanCompletionTreatment ? TFColor.success : Color.secondary)
             }
             .buttonStyle(.plain)
             .accessibilityLabel(exercise.isCompleted ? "Mark \(exercise.exerciseName) incomplete" : "Mark \(exercise.exerciseName) complete")
@@ -1221,7 +1300,7 @@ struct ExerciseCard: View {
                 // check plus the muted color already communicate completion.
                 Text(exercise.exerciseName)
                     .font(.subheadline.bold())
-                    .foregroundStyle(exercise.isCompleted ? .secondary : .primary)
+                    .foregroundStyle(summary.state.isResolved ? .secondary : .primary)
 
                 if !exercise.muscleTarget.isEmpty {
                     Text(exercise.muscleTarget)
@@ -1315,27 +1394,33 @@ struct ExerciseCard: View {
         }
     }
 
-    private func completionStatusRow(_ status: ExerciseCompletionStatus) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: status.isSkipped ? "forward.fill" : "arrow.triangle.swap")
+    /// - Parameter isClearable: false when the qualifier was DERIVED rather than stored (a
+    ///   lift ticked off with sets outstanding carries no `completionStatus`), in which case
+    ///   there is nothing for a Clear button to clear.
+    private func completionStatusRow(_ label: String, isSkip: Bool, isClearable: Bool) -> some View {
+        let tint = isSkip ? TFColor.danger : TFColor.warning
+        return HStack(spacing: 6) {
+            Image(systemName: isSkip ? "forward.fill" : "arrow.triangle.swap")
                 .font(.caption2)
-                .foregroundStyle(status.isSkipped ? TFColor.danger : TFColor.warning)
-            Text(status.shortLabel)
+                .foregroundStyle(tint)
+            Text(label)
                 .font(.caption2.bold())
-                .foregroundStyle(status.isSkipped ? TFColor.danger : TFColor.warning)
+                .foregroundStyle(tint)
             Spacer()
-            Button {
-                onClearStatus()
-            } label: {
-                Text("Clear")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+            if isClearable {
+                Button {
+                    onClearStatus()
+                } label: {
+                    Text("Clear")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
-        .background(status.isSkipped ? TFColor.danger.opacity(0.06) : TFColor.warning.opacity(0.06))
+        .background(tint.opacity(0.06))
     }
 
     private var exerciseActionRow: some View {
@@ -1581,14 +1666,19 @@ struct ExercisePillFlowLayout: Layout {
 struct LastSessionCompactRow: View {
     let summary: String
     let best: String?
+    /// Set count from the previous session, shown only when it differs from what is
+    /// prescribed now. A "3 sets" chip above a four-number history reads as a bug; it is
+    /// simply what happened last time, and saying so is cheaper than leaving it ambiguous.
+    var previousSetCount: Int? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
             HStack(alignment: .firstTextBaseline, spacing: 5) {
-                Text("Last")
+                Text(previousSetCount.map { "LAST · \($0) SETS" } ?? "Last")
                     .font(.system(size: 9, weight: .bold, design: .monospaced))
                     .foregroundStyle(.tertiary)
                     .tracking(1)
+                    .fixedSize()
                 Text(summary)
                     .font(.caption)
                     .foregroundStyle(.secondary)
