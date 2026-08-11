@@ -732,12 +732,17 @@ extension ClaudeService {
                                 reps: donorExercise.reps,
                                 tempo: donorExercise.tempo,
                                 restSeconds: donorExercise.restSeconds,
+                                // Avoid the cues already on this day: a repair-inserted
+                                // exercise lands beside the existing cards, so it has to
+                                // respect the same day-scoped uniqueness the main builder
+                                // guarantees.
                                 notes: proceduralExerciseNotes(
                                     weekNumber: weekNumber,
                                     exerciseName: donorExercise.exerciseName,
                                     muscleTarget: donorExercise.muscleTarget,
                                     index: recipientExercises.count,
-                                    focus: allocation.area
+                                    focus: allocation.area,
+                                    avoiding: Set(recipientExercises.map(\.notes))
                                 ),
                                 muscleTarget: donorExercise.muscleTarget,
                                 targetRIR: donorExercise.targetRIR ?? proceduralTargetRIR(for: weekNumber)
@@ -898,7 +903,7 @@ extension ClaudeService {
                 reps: reps,
                 tempo: proceduralTempo(for: weekNumber, exerciseName: candidate.name, muscleTarget: candidate.target, reps: reps),
                 restSeconds: proceduralRestSeconds(for: candidate.name, muscleTarget: candidate.target),
-                notes: proceduralExerciseNotes(weekNumber: weekNumber, exerciseName: candidate.name, muscleTarget: candidate.target, index: exercises.count, focus: allocation.area),
+                notes: proceduralExerciseNotes(weekNumber: weekNumber, exerciseName: candidate.name, muscleTarget: candidate.target, index: exercises.count, focus: allocation.area, avoiding: Set(exercises.map(\.notes))),
                 muscleTarget: candidate.target,
                 targetRIR: proceduralTargetRIR(for: weekNumber)
             )
@@ -1280,13 +1285,17 @@ extension ClaudeService {
             )
         }
 
-        return balancedProceduralExercises(
-            mapped,
-            weekNumber: weekNumber,
-            focusIntent: focusIntent,
-            supportIntents: supportIntents,
-            targetFatigueCap: targetFatigueCap,
-            targetSessionMinutes: targetSessionMinutes
+        // Cues last: balancing can drop, add or reorder exercises, and cue uniqueness is a
+        // property of the final on-screen list, not of the pre-balance draft.
+        return withDayScopedCues(
+            balancedProceduralExercises(
+                mapped,
+                weekNumber: weekNumber,
+                focusIntent: focusIntent,
+                supportIntents: supportIntents,
+                targetFatigueCap: targetFatigueCap,
+                targetSessionMinutes: targetSessionMinutes
+            )
         )
     }
 
@@ -1324,7 +1333,7 @@ extension ClaudeService {
             )
         }
 
-        return mapped
+        return withDayScopedCues(mapped)
     }
 
     func exerciseCatalog(for style: String) -> [(name: String, target: String)] {
@@ -1630,19 +1639,54 @@ extension ClaudeService {
         return parts.joined(separator: "-")
     }
 
+    /// Single-exercise execution note. Kept for the repair paths, which add one exercise to a
+    /// day that already exists — they pass the day's current notes as `avoiding` so the new
+    /// card cannot echo a cue already on screen.
+    ///
+    /// `weekNumber`, `index` and `focus` are no longer read. Effort ships as the structured
+    /// `targetRIR` field, and cue choice is now driven by movement pattern and equipment
+    /// (`CoachingVoice`) rather than by a parity rotation over a two-string muscle-family
+    /// pool — the mechanism that guaranteed duplicate cues on any day with three or more
+    /// movements for one muscle. The parameters stay in the signature because callers and
+    /// tests are written against it and the values remain meaningful context for a future
+    /// week- or focus-aware cue.
     func proceduralExerciseNotes(
         weekNumber: Int,
         exerciseName: String,
         muscleTarget: String,
         index: Int,
-        focus: String
+        focus: String,
+        avoiding spoken: Set<String> = []
     ) -> String {
-        // Execution-only: effort intent ships as the structured targetRIR field
-        // (proceduralTargetRIR), and load/rep progression belongs to the app's
-        // deterministic banner — never to note prose.
-        let technique = techniqueCue(for: muscleTarget, exerciseName: exerciseName, index: index)
-        let intent = intentCue(muscleTarget: muscleTarget, focus: focus, exerciseName: exerciseName)
-        return "\(technique) \(intent)"
+        CoachingVoice.cue(forName: exerciseName, muscleTarget: muscleTarget, avoiding: spoken)
+    }
+
+    /// Day-scoped cue assignment: the only way to make duplicate cues unrepresentable.
+    ///
+    /// Per-exercise cue selection cannot see its siblings, so two chest presses built
+    /// independently will happily land on the same sentence. Resolving the day as a unit lets
+    /// `CoachingVoice` walk a specificity ladder and skip anything already spoken here.
+    ///
+    /// Runs AFTER any balancing/reordering pass so the cue order matches the order the lifter
+    /// actually reads, and rebuilds each response because `WorkoutExerciseResponse` is
+    /// immutable.
+    func withDayScopedCues(_ exercises: [WorkoutExerciseResponse]) -> [WorkoutExerciseResponse] {
+        let cues = CoachingVoice.assignCues(
+            for: exercises.map { (name: $0.exerciseName, muscleTarget: $0.muscleTarget) }
+        )
+        return zip(exercises, cues).map { exercise, cue in
+            WorkoutExerciseResponse(
+                exerciseName: exercise.exerciseName,
+                sets: exercise.sets,
+                reps: exercise.reps,
+                tempo: exercise.tempo,
+                restSeconds: exercise.restSeconds,
+                notes: cue,
+                muscleTarget: exercise.muscleTarget,
+                targetRIR: exercise.targetRIR,
+                coachingSource: .procedural
+            )
+        }
     }
 
     func proceduralMuscleGroups(for style: String) -> String {

@@ -318,6 +318,11 @@ nonisolated struct WorkoutExerciseSnapshot: Codable {
     let completionStatusRaw: String?
     /// Optional so backups written before the structured-RIR field decode cleanly.
     let targetRIR: Int?
+    /// Optional so backups written before coaching provenance existed decode cleanly; absent
+    /// means "unknown", which is the correct reading of an older backup. Appended last —
+    /// these snapshots use synthesized memberwise inits with positional call sites, so
+    /// inserting mid-struct would silently reorder same-typed arguments.
+    let coachingSourceRaw: String?
 }
 
 nonisolated struct ExerciseWeightSnapshot: Codable {
@@ -796,7 +801,8 @@ nonisolated struct ProfileSettingsSnapshot: Codable {
             muscleTarget: exercise.muscleTarget,
             isCompleted: exercise.isCompleted,
             completionStatusRaw: exercise.completionStatusRaw.isEmpty ? nil : exercise.completionStatusRaw,
-            targetRIR: exercise.targetRIR
+            targetRIR: exercise.targetRIR,
+            coachingSourceRaw: exercise.coachingSourceRaw.isEmpty ? nil : exercise.coachingSourceRaw
         )
     }
 
@@ -814,6 +820,7 @@ nonisolated struct ProfileSettingsSnapshot: Codable {
         )
         exercise.isCompleted = isCompleted
         exercise.completionStatusRaw = completionStatusRaw ?? ""
+        exercise.coachingSourceRaw = coachingSourceRaw ?? ""
         return exercise
     }
 }

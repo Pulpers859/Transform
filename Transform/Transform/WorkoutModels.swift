@@ -247,6 +247,33 @@ enum ExerciseCompletionStatus: String, CaseIterable, Identifiable {
 
 // MARK: - Workout Exercise
 
+/// Provenance of a single exercise's coaching note.
+///
+/// Program-level source labelling (`GeneratedContentSource`) answers "did the AI build this
+/// week?". It cannot answer "did the AI write THIS cue?", because sanitization silently
+/// substitutes a procedural cue whenever the model returns an unusable note for one
+/// exercise. That mixed case is the one worth recording.
+///
+/// Raw values are persisted, so they are frozen — add cases, never rename these.
+enum CoachingSource: String, Codable, CaseIterable {
+    /// Written by the model and kept as-is.
+    case aiCoach = "ai"
+    /// Built by the deterministic generator for a procedurally-generated day.
+    case procedural = "procedural"
+    /// The day came from the model, but this exercise's note was unusable and was replaced
+    /// with a procedural cue. The case the program-level label gets wrong.
+    case substituted = "substituted"
+
+    /// Shown only inside the per-exercise Details disclosure — never on the card face.
+    var detailLabel: String {
+        switch self {
+        case .aiCoach: return "Written by AI Coach"
+        case .procedural: return "Built by the training engine"
+        case .substituted: return "Training-engine cue (AI note unusable)"
+        }
+    }
+}
+
 @Model
 class WorkoutExercise {
     var order: Int = 0
@@ -263,6 +290,21 @@ class WorkoutExercise {
     /// migration): nil for programs generated before the field existed — display
     /// falls back to parsing the coaching note prose.
     var targetRIR: Int?
+    /// Where this exercise's coaching note actually came from. Empty means unknown, which
+    /// is correct for every exercise written before this field existed (lightweight
+    /// migration) and is rendered as nothing at all.
+    ///
+    /// Program-level provenance already exists as a `[AI Coach]` / `[Recovery Engine]`
+    /// prefix on `programSummary`, but it lies at the exercise level: when the model returns
+    /// an unusable note for ONE exercise, sanitization substitutes a procedural cue and the
+    /// program still reads `[AI Coach]`. This field closes that gap so a mixed day is
+    /// auditable per card.
+    ///
+    /// Deliberately NOT surfaced on the day screen. A "fallback" badge over a workout is an
+    /// apology label — it makes the day uglier without making it better, and the honest fix
+    /// is cue quality, not disclosure. Provenance lives in the data, in the per-exercise
+    /// Details disclosure, and in the generator Lab.
+    var coachingSourceRaw: String = ""
 
     @Relationship(deleteRule: .nullify, inverse: \ExerciseWeightEntry.exercise)
     var weightLogs: [ExerciseWeightEntry] = []
@@ -278,7 +320,8 @@ class WorkoutExercise {
         restSeconds: Int = 90,
         notes: String = "",
         muscleTarget: String = "",
-        targetRIR: Int? = nil
+        targetRIR: Int? = nil,
+        coachingSource: CoachingSource? = nil
     ) {
         self.order = order
         self.exerciseName = exerciseName
@@ -289,12 +332,18 @@ class WorkoutExercise {
         self.notes = notes
         self.muscleTarget = muscleTarget
         self.targetRIR = targetRIR
+        self.coachingSourceRaw = coachingSource?.rawValue ?? ""
         self.isCompleted = false
     }
 
     var completionStatus: ExerciseCompletionStatus? {
         get { ExerciseCompletionStatus(rawValue: completionStatusRaw) }
         set { completionStatusRaw = newValue?.rawValue ?? "" }
+    }
+
+    var coachingSource: CoachingSource? {
+        get { CoachingSource(rawValue: coachingSourceRaw) }
+        set { coachingSourceRaw = newValue?.rawValue ?? "" }
     }
 
     /// Whether this exercise still needs a decision from the athlete. "Resolved" is a
@@ -1012,6 +1061,10 @@ nonisolated struct WorkoutExerciseResponse: Codable {
     /// Structured target reps-in-reserve. Optional: absent in pre-field programs
     /// and replay JSON, in which case display falls back to prose parsing.
     let targetRIR: Int?
+    /// Provenance of `notes`. The model never sends this — it is stamped by the generator
+    /// (procedural build) or by sanitization (note substituted). Optional so replay JSON and
+    /// stored fixtures written before the field decode unchanged.
+    let coachingSource: CoachingSource?
 
     init(
         exerciseName: String,
@@ -1021,7 +1074,8 @@ nonisolated struct WorkoutExerciseResponse: Codable {
         restSeconds: Int,
         notes: String,
         muscleTarget: String,
-        targetRIR: Int? = nil
+        targetRIR: Int? = nil,
+        coachingSource: CoachingSource? = nil
     ) {
         self.exerciseName = exerciseName
         self.sets = sets
@@ -1031,6 +1085,7 @@ nonisolated struct WorkoutExerciseResponse: Codable {
         self.notes = notes
         self.muscleTarget = muscleTarget
         self.targetRIR = targetRIR
+        self.coachingSource = coachingSource
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -1042,6 +1097,7 @@ nonisolated struct WorkoutExerciseResponse: Codable {
         case notes
         case muscleTarget
         case targetRIR
+        case coachingSource
     }
 
     init(from decoder: Decoder) throws {
@@ -1052,13 +1108,20 @@ nonisolated struct WorkoutExerciseResponse: Codable {
         self.reps = container.decodeFlexibleString(forKey: .reps, default: "")
         self.tempo = container.decodeFlexibleString(forKey: .tempo, default: "")
         self.restSeconds = container.decodeFlexibleInt(forKey: .restSeconds) ?? 0
+        // Execution-only. The previous default ("...and add load only after you own every
+        // rep") contained "add load", which `notesContainProgressionInstruction` treats as a
+        // HARD validation failure — so a model response that merely omitted `notes` got the
+        // entire paid week discarded and fell back to the procedural generator. The default
+        // that fills a gap must never be the thing that fails the validation.
         self.notes = container.decodeFlexibleString(
             forKey: .notes,
-            default: "Control the eccentric for 2-3 seconds, keep full ROM, and add load only after you own every rep."
+            default: "Control the lowering phase, keep full range, and repeat the same setup on every rep."
         )
         self.muscleTarget = container.decodeFlexibleString(forKey: .muscleTarget, default: "Primary Target")
         // Clamped to the sane coaching range; junk values are dropped, not stored.
         self.targetRIR = container.decodeFlexibleInt(forKey: .targetRIR).flatMap { (0...5).contains($0) ? $0 : nil }
+        // Never sent by the model; stamped by the generator or by sanitization.
+        self.coachingSource = try container.decodeIfPresent(CoachingSource.self, forKey: .coachingSource)
     }
 }
 

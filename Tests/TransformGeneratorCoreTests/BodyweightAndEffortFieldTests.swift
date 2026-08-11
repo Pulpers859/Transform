@@ -129,7 +129,14 @@ final class BodyweightAndEffortFieldTests: XCTestCase {
         for clean in [
             "Brace hard and keep ribs over pelvis out of the hole.",
             "Curl the pelvis up rather than just lifting the knees, no swinging.",
-            "Prioritize full range and repeatable rep mechanics before chasing heavier load."
+            // Was "Prioritize full range and repeatable rep mechanics before chasing heavier
+            // load." — clean against THIS detector, which is why it passed here for months,
+            // but it matched `coachingCueConflict`'s add-load pattern and burned a paid
+            // correction pass whenever the logged verdict was hold-below-range. Passing one
+            // execution-only rule is not the same as being execution-only; see
+            // CoachingVoiceTests.testNoCueContradictsTheProgressionVerdict, which checks the
+            // whole cue library against both.
+            "Prioritise a full range and repeatable mechanics over anything else in the set."
         ] {
             XCTAssertFalse(service.notesContainProgressionInstruction(clean), "Should NOT flag: \(clean)")
         }

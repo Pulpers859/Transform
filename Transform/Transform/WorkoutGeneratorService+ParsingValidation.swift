@@ -216,6 +216,11 @@ extension ClaudeService {
         )
 
         WorkoutGenerationDiagnostics.markStage("sanitize \(tag) notes")
+        // Decided BEFORE polishing, because polishing is what erases the evidence: once a
+        // procedural cue has been substituted the result is indistinguishable from a note the
+        // model actually wrote. Program-level source labelling misses this case entirely — the
+        // week still reads "[AI Coach]" while individual cues came from the engine.
+        let noteWasSubstituted = isEmptyOrTooShortInsight(exercise.notes)
         let cleanedNotes = polishedExerciseNotes(
             rawNotes: exercise.notes,
             exerciseName: cleanedName,
@@ -235,7 +240,10 @@ extension ClaudeService {
             restSeconds: cleanedRestSeconds,
             notes: reconciledNotes,
             muscleTarget: cleanedTarget,
-            targetRIR: exercise.targetRIR
+            targetRIR: exercise.targetRIR,
+            // A procedurally-built day re-entering sanitization keeps its own provenance;
+            // only a note that arrived from the model is classified here.
+            coachingSource: exercise.coachingSource ?? (noteWasSubstituted ? .substituted : .aiCoach)
         )
     }
 

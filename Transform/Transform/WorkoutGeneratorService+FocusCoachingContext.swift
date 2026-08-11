@@ -194,49 +194,6 @@ extension ClaudeService {
         )
     }
 
-    func techniqueCue(for muscleTarget: String, exerciseName: String, index: Int) -> String {
-        let target = normalizedPriorityText(muscleTarget)
-
-        let cues: [String]
-        if containsPriorityPhrase(in: target, keywords: ["chest", "upper chest", "pec"]) {
-            cues = [
-                "Lock your upper back down and use a 2-3 second eccentric so the pecs stay loaded through the full stretch.",
-                "Keep shoulder blades retracted and drive the bar path slightly down-and-back to maximize chest tension."
-            ]
-        } else if containsPriorityPhrase(in: target, keywords: ["delt", "deltoid", "shoulder", "lateral deltoids", "rear deltoids", "anterior deltoids"]) {
-            cues = [
-                "Keep ribs down and raise through the scapular plane so delts stay loaded without shrugging.",
-                "Control top-end positioning with a brief pause to remove momentum from each repetition."
-            ]
-        } else if containsPriorityPhrase(in: target, keywords: ["lat", "lats", "latissimus dorsi", "latissimus", "back", "upper back", "mid back"]) {
-            cues = [
-                "Initiate each rep by setting the scapula first, then pull with elbows to keep the lats doing the work.",
-                "Control the lowering phase and avoid torso swing so tension stays in the back instead of momentum."
-            ]
-        } else if containsPriorityPhrase(in: target, keywords: ["quad", "quads", "hamstring", "hamstrings", "glute", "glutes", "legs", "posterior chain"]) {
-            cues = [
-                "Brace before every rep and keep a controlled eccentric to maintain joint position under load.",
-                "Use full available range with stable foot pressure so target leg musculature carries the set."
-            ]
-        } else if containsPriorityPhrase(in: target, keywords: ["biceps", "triceps", "arms", "brachialis", "forearms"]) {
-            cues = [
-                "Keep elbows fixed and control the eccentric so tension stays on the arm musculature throughout.",
-                "Use strict body position and a smooth tempo to prevent torso swing from stealing work."
-            ]
-        } else {
-            cues = [
-                "Use a controlled eccentric and stable setup to keep tension on the target muscle.",
-                "Prioritize full range and repeatable rep mechanics before chasing heavier load."
-            ]
-        }
-
-        let normalizedName = normalizeExerciseName(exerciseName)
-        let rawOffset: Int = index + normalizedName.count
-        let safeOffset: Int = rawOffset >= 0 ? rawOffset : -rawOffset
-        let rotatedIndex: Int = safeOffset % max(1, cues.count)
-        return cues[rotatedIndex]
-    }
-
     // EvidenceProfile.md PROG-001 [confidence: low-moderate]
     /// Structured week-phase effort target for procedurally built exercises — the
     /// numeric replacement for the retired prose "progression cue" sentence (whose
@@ -267,55 +224,6 @@ extension ClaudeService {
         )
     }
 
-    func intentCue(muscleTarget: String, focus: String, exerciseName: String) -> String {
-        let cleanedTarget = muscleTarget.trimmedOr(default: "target musculature").lowercased()
-        let cleanedFocus = focus.trimmingCharacters(in: .whitespacesAndNewlines)
-        if cleanedFocus.isEmpty || !focusMatchesExercise(cleanedFocus, muscleTarget: cleanedTarget, exerciseName: exerciseName) {
-            return "Intent: bias force into \(cleanedTarget) and keep execution consistent across all sets of \(exerciseName)."
-        }
-        return "Intent: bias the rep toward \(cleanedFocus.lowercased()) while maintaining continuous tension on \(cleanedTarget)."
-    }
-
-    func focusMatchesExercise(_ focus: String, muscleTarget: String, exerciseName: String) -> Bool {
-        let focusFamilies = movementFamilies(in: focus)
-        let exerciseFamilies = movementFamilies(in: "\(muscleTarget) \(exerciseName)")
-        if !focusFamilies.isEmpty && !exerciseFamilies.isEmpty {
-            return !focusFamilies.intersection(exerciseFamilies).isEmpty
-        }
-
-        let loweredFocus = focus.lowercased()
-        let loweredExercise = "\(muscleTarget) \(exerciseName)".lowercased()
-        return loweredExercise.contains(loweredFocus) || loweredFocus.contains(muscleTarget.lowercased())
-    }
-
-    func movementFamilies(in text: String) -> Set<String> {
-        let lower = text.lowercased()
-        var families: Set<String> = []
-        if containsAny(lower, keywords: ["chest", "pec", "bench", "fly"]) { families.insert("chest") }
-        if containsAny(lower, keywords: ["delt", "shoulder", "lateral raise"]) { families.insert("shoulders") }
-        if containsAny(lower, keywords: ["tricep", "pressdown", "extension", "dip"]) { families.insert("triceps") }
-        if containsAny(lower, keywords: ["bicep", "curl", "brachialis"]) { families.insert("biceps") }
-        if containsPriorityPhrase(in: lower, keywords: ["lat", "lats", "latissimus dorsi", "row", "back", "pulldown", "pull-up", "pull up"]) {
-            families.insert("back")
-        }
-        if containsAny(lower, keywords: ["quad", "hamstring", "glute", "calf", "squat", "lunge", "deadlift", "leg press"]) { families.insert("legs") }
-        if containsAny(lower, keywords: ["core", "abs", "oblique", "crunch"]) { families.insert("core") }
-        if containsAny(lower, keywords: ["press"]) && !containsAny(lower, keywords: ["leg press"]) {
-            families.insert("chest")
-            families.insert("shoulders")
-            families.insert("triceps")
-        }
-        if containsAny(lower, keywords: ["row", "pulldown", "pull-up", "pull up"]) {
-            families.insert("back")
-            families.insert("biceps")
-        }
-        if containsAny(lower, keywords: ["squat", "deadlift", "lunge", "leg press", "hip thrust"]) {
-            families.insert("legs")
-            families.insert("core")
-        }
-        return families
-    }
-
     func polishedExerciseNotes(
         rawNotes: String,
         exerciseName: String,
@@ -330,14 +238,18 @@ extension ClaudeService {
         // notes with templated cues whenever they didn't match keyword heuristics — that
         // was the "generic AI slop" users were seeing.
         if isEmptyOrTooShortInsight(trimmed) {
+            // This is the AI-repair path: the model returned nothing usable for THIS
+            // exercise, so a procedural cue stands in. It previously always took the most
+            // generic template branch (focus was hardcoded empty), which is why substituted
+            // cues read as the most obviously machine-written text in the app.
+            //
+            // `spokenCues` cannot be seen from here — sanitization runs per exercise — so
+            // day-wide uniqueness is not guaranteed on this path the way it is for a fully
+            // procedural day. Movement-pattern keying still makes a collision unlikely, and
+            // `coachingSource` records that this cue was substituted so the mix is auditable
+            // rather than silently indistinguishable from AI output.
             return evidenceTunedCoachingLanguage(
-                proceduralExerciseNotes(
-                weekNumber: weekNumber,
-                exerciseName: exerciseName,
-                muscleTarget: muscleTarget,
-                index: exerciseIndex,
-                focus: ""
-                )
+                CoachingVoice.cue(forName: exerciseName, muscleTarget: muscleTarget)
             )
         }
 

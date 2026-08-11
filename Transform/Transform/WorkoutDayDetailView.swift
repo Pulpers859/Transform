@@ -1160,6 +1160,16 @@ struct ExerciseCard: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
+
+            // Coaching provenance lives here and nowhere else. A "fallback" badge on the card
+            // face would be an apology label — it makes the day uglier without making the
+            // coaching better. Behind the Details tap it is available to anyone who wants to
+            // audit where a cue came from, and invisible to everyone training.
+            if let source = exercise.coachingSource {
+                Text(source.detailLabel)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
         }
     }
 

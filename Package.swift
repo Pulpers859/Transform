@@ -69,6 +69,12 @@ let package = Package(
                 // generator closure references it, and it drags in unrelated types.)
                 "BodyAnalysisModels.swift",
                 "WorkoutModels.swift",
+                // Execution-cue authoring: movement-pattern/equipment keying plus the
+                // day-scoped uniqueness pass. Foundation-only, and the content it emits must
+                // survive the validator's execution-only rules — a banned fragment here is a
+                // HARD generation failure that discards a paid AI week, so it gets real
+                // regression coverage rather than shipping correct-by-inspection.
+                "CoachingVoice.swift",
                 // Session completion / clock state machine. Foundation + SwiftData only
                 // (all its UI callers stay out of this closure), so the rules that decide
                 // when a day is finished and when the clock closes get real regression
