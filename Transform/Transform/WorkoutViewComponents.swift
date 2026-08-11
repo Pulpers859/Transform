@@ -86,10 +86,19 @@ struct TrainingDayCard: View {
 }
 
 private struct WorkoutTabBarClearanceModifier: ViewModifier {
+    /// Scales with Dynamic Type. The clearance was a flat 104pt while the floating tab bar it
+    /// clears is built from text that grows — so at larger accessibility sizes the bar got
+    /// taller, the inset did not, and the last card stayed permanently under it with no way
+    /// to scroll further. `@ScaledMetric` ties the two together.
+    ///
+    /// This only governs how far the scroll can travel. Content passing UNDER the floating
+    /// bar mid-scroll is inherent to a floating bar and is not what this fixes.
+    @ScaledMetric(relativeTo: .caption) private var clearance: CGFloat = 104
+
     func body(content: Content) -> some View {
         content.safeAreaInset(edge: .bottom) {
             Color.clear
-                .frame(height: 104)
+                .frame(height: clearance)
         }
     }
 }

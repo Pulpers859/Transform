@@ -479,6 +479,19 @@ struct WorkoutDayDetailView: View {
         DataBackupManager.shared.writeAutomaticBackupCoalesced(using: modelContext)
         TFHaptics.impact(.light)
         if transition == .justFinished {
+            // Training is over, so the day becomes something to review rather than operate.
+            //
+            // The one-time seed already lands a RETURNING finished day collapsed, but it runs
+            // once per view lifetime and cannot help here: over a session the lifter opens
+            // each card as they reach it, and by the last set all of them are open. Nothing
+            // ever closed them again, so the moment of finishing left six full-height cards —
+            // each still leading with a Log-sets button — between the lifter and the summary
+            // they actually want.
+            //
+            // Collapsing here is the missing state transition, not a second default.
+            withAnimation(.easeInOut(duration: 0.25)) {
+                expandedExerciseIDs.removeAll()
+            }
             feedbackDay = day
         }
     }
@@ -926,12 +939,60 @@ struct ExerciseCard: View {
             ExercisePrescriptionPillData(icon: "arrow.up.arrow.down", label: "\(exercise.reps) reps")
         ]
         if let tempo = displayTempo {
-            items.append(ExercisePrescriptionPillData(icon: "metronome", label: "Tempo \(tempo)"))
+            items.append(
+                ExercisePrescriptionPillData(
+                    icon: "metronome",
+                    label: "Tempo \(tempo)",
+                    explanation: tempoExplanation(tempo)
+                )
+            )
         }
         if let rir = displayTargetRIR {
-            items.append(ExercisePrescriptionPillData(icon: "gauge", label: "RIR \(rir)"))
+            items.append(
+                ExercisePrescriptionPillData(
+                    icon: "gauge",
+                    label: "RIR \(rir)",
+                    explanation: rirExplanation(rir)
+                )
+            )
         }
         return items
+    }
+
+    /// Reads the four digits back as the phases they represent, using this exercise's own
+    /// numbers rather than a generic definition — "3-0-1-0" means nothing until someone says
+    /// which 3 and which 1.
+    private func tempoExplanation(_ tempo: String) -> String {
+        let phases = tempo.split(separator: "-").map(String.init)
+        guard phases.count == 4 else {
+            return "Seconds per phase of each rep: lowering, pause at the bottom, lifting, pause at the top."
+        }
+        func seconds(_ value: String) -> String {
+            if value.uppercased() == "X" { return "as fast as you can control" }
+            return value == "1" ? "1 second" : "\(value) seconds"
+        }
+        return """
+        Seconds per phase of every rep:
+
+        • Lower for \(seconds(phases[0]))
+        • Pause at the bottom for \(seconds(phases[1]))
+        • Lift for \(seconds(phases[2]))
+        • Pause at the top for \(seconds(phases[3]))
+        """
+    }
+
+    /// RIR is the effort target the whole programme is built on, so it earns a concrete
+    /// reading rather than an expansion of the acronym.
+    private func rirExplanation(_ rir: Int) -> String {
+        let tail: String
+        switch rir {
+        case 0: tail = "Take the set to the point where another rep would fail."
+        case 1: tail = "Stop when you could manage one more rep, and no more."
+        case 2: tail = "Stop when you could manage two more reps — hard, but not to failure."
+        case 3: tail = "Stop well short of failure; this is a deliberate back-off."
+        default: tail = "Stop with \(rir) reps still available."
+        }
+        return "Reps In Reserve: how many reps you should still have left when you rack the set.\n\n\(tail)"
     }
 
     var compactLastSessionText: String? {
@@ -1366,6 +1427,13 @@ struct ExerciseCard: View {
 struct ExercisePrescriptionPillData: Identifiable {
     let icon: String
     let label: String
+    /// Plain-language meaning, shown on tap. `nil` for chips that need no gloss — a set count
+    /// and a rep range explain themselves.
+    ///
+    /// "Tempo 3-0-1-0" and "RIR 2" do not. They were inert notation with no affordance to
+    /// learn them: fine for the person who configured the programme, a wall for anyone else
+    /// and for that same person on a lift they have not touched in three months.
+    var explanation: String? = nil
 
     var id: String { "\(icon)-\(label)" }
 }
@@ -1373,26 +1441,66 @@ struct ExercisePrescriptionPillData: Identifiable {
 struct ExercisePrescriptionPillRow: View {
     let items: [ExercisePrescriptionPillData]
 
+    /// Which chip is currently explaining itself. Held here rather than per-chip so opening
+    /// one closes any other.
+    @State private var explainingID: String?
+
     var body: some View {
         ExercisePillFlowLayout(spacing: 7, rowSpacing: 7) {
             ForEach(items) { item in
-                HStack(spacing: 5) {
-                    Image(systemName: item.icon)
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundStyle(TFColor.accent)
-                    Text(item.label)
-                        .font(.caption2.bold())
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.82)
-                }
-                .padding(.horizontal, 9)
-                .padding(.vertical, 6)
-                .background(Color.primary.opacity(0.04))
-                .clipShape(Capsule())
+                chip(for: item)
             }
         }
-        .accessibilityElement(children: .combine)
+    }
+
+    @ViewBuilder
+    private func chip(for item: ExercisePrescriptionPillData) -> some View {
+        let content = HStack(spacing: 5) {
+            Image(systemName: item.icon)
+                .font(.system(size: 9, weight: .bold))
+                .foregroundStyle(TFColor.accent)
+            Text(item.label)
+                .font(.caption2.bold())
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.82)
+            // A quiet affordance: without it a tappable chip is indistinguishable from an
+            // inert one, which is the state the whole row was in.
+            if item.explanation != nil {
+                Image(systemName: "questionmark.circle")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .padding(.horizontal, 9)
+        .padding(.vertical, 6)
+        .background(Color.primary.opacity(0.04))
+        .clipShape(Capsule())
+
+        if let explanation = item.explanation {
+            Button {
+                TFHaptics.impact(.light)
+                explainingID = item.id
+            } label: { content }
+                .buttonStyle(.plain)
+                .popover(
+                    isPresented: Binding(
+                        get: { explainingID == item.id },
+                        set: { if !$0 { explainingID = nil } }
+                    )
+                ) {
+                    Text(explanation)
+                        .font(.callout)
+                        .multilineTextAlignment(.leading)
+                        .padding()
+                        .frame(maxWidth: 300)
+                        .presentationCompactAdaptation(.popover)
+                }
+                .accessibilityLabel(item.label)
+                .accessibilityHint("Double tap to explain")
+        } else {
+            content.accessibilityElement(children: .combine)
+        }
     }
 }
 
