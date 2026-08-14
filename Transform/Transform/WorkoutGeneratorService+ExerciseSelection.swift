@@ -155,10 +155,22 @@ extension ClaudeService {
     func metadataFocusExerciseCatalog(for focusArea: String) -> [(name: String, target: String)] {
         let aliases = Set(stimulusAreaAliases(for: focusArea))
         guard !aliases.isEmpty else { return [] }
+        // Catalog position is the tiebreak, because Swift's sort is NOT stable: entries
+        // sharing a fatigueCost had unspecified relative order, so an edit that touched
+        // neither the cost nor the catalog order could still reorder the day. Renaming
+        // exercises surfaced this — the deterministic menu snapshot moved with a pure rename,
+        // which means "deterministic generation" was resting on an implementation detail of
+        // the sort. Ordering is now a property of the catalog, which is reviewable.
         return exerciseMetadataEntries
             .filter { !aliases.isDisjoint(with: Set($0.primaryAreas)) }
-            .sorted { $0.fatigueCost < $1.fatigueCost }
-            .map { ($0.canonicalName, $0.primaryAreas.first ?? focusArea) }
+            .enumerated()
+            .sorted { lhs, rhs in
+                if lhs.element.fatigueCost != rhs.element.fatigueCost {
+                    return lhs.element.fatigueCost < rhs.element.fatigueCost
+                }
+                return lhs.offset < rhs.offset
+            }
+            .map { ($0.element.canonicalName, $0.element.primaryAreas.first ?? focusArea) }
     }
 
     func enforceFocusExerciseCoverage(
