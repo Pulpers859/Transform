@@ -80,6 +80,9 @@ let package = Package(
                 // silently erased logged weights once before (INC-2), so it gets executed
                 // regression coverage rather than mental tracing.
                 "ExerciseNameDisambiguation.swift",
+                // Single source of truth for the banned-prose fragment lists. Previously
+                // retyped in three places, one of which had already drifted.
+                "ProgressionProseFragments.swift",
                 // One resolved answer to "what happened on this exercise?". Replaces four
                 // independently-read data sources on different time windows, which is how the
                 // card came to contradict itself on screen (a Best set TODAY presented beside

@@ -213,15 +213,7 @@ extension ClaudeService {
     /// unambiguous — a false positive here burns a paid retry.
     func notesContainProgressionInstruction(_ notes: String) -> Bool {
         let normalized = normalizedPriorityText(notes)
-        return containsAny(
-            normalized,
-            keywords: [
-                "next session", "next week", "add load", "add weight", "increase to",
-                "add reps", "add a rep", "add one rep", "add 1 rep", "when you clear",
-                "beat last week", "before increasing load", "before adding load",
-                "progression target", "deload target", "baseline target"
-            ]
-        )
+        return containsAny(normalized, keywords: ProgressionProseFragments.validatorBanned)
     }
 
     func polishedExerciseNotes(

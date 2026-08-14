@@ -214,6 +214,21 @@ enum ExerciseCompletionStatus: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
+    /// Whether choosing this status settles the exercise for today.
+    ///
+    /// Skips already did this; `.completed` and `.completedModified` did NOT, so picking
+    /// "Completed" from the status menu left `isCompleted` false — the stored status said
+    /// finished while the derived state said not started, and the day would not close.
+    /// `.substituted` is deliberately absent: a substitution is work still to be performed.
+    var marksExerciseFinished: Bool {
+        switch self {
+        case .completed, .completedModified, .skippedTime, .skippedEquipment, .skippedPain:
+            return true
+        case .substituted:
+            return false
+        }
+    }
+
     var isSkipped: Bool {
         switch self {
         case .skippedTime, .skippedEquipment, .skippedPain: return true

@@ -528,9 +528,19 @@ struct WorkoutGeneratorLabView: View {
                                         .foregroundStyle(TFColor.accent)
                                 } else {
                                     ForEach(Array(day.exercises.enumerated()), id: \.offset) { index, exercise in
-                                        Text("\(index + 1). \(exercise.exerciseName) • \(exercise.sets)x\(exercise.reps)")
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
+                                        // Per-exercise coaching provenance. The program-level
+                                        // source badge above lies at this granularity: when
+                                        // the model returns an unusable note for ONE exercise,
+                                        // sanitization substitutes a procedural cue and the
+                                        // week still reads "[AI Coach]". This is the audit
+                                        // surface for that, deliberately kept out of the
+                                        // training screen.
+                                        Text(
+                                            "\(index + 1). \(exercise.exerciseName) • \(exercise.sets)x\(exercise.reps)"
+                                                + (exercise.coachingSource.map { " • \($0.detailLabel)" } ?? "")
+                                        )
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
                                     }
                                 }
                             }

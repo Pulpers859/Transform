@@ -551,6 +551,13 @@ struct WorkoutDayDetailView: View {
                 expandedExerciseIDs.removeAll()
             }
             feedbackDay = day
+        } else if transition == .reopened {
+            // Symmetry. Finishing collapses everything, so un-finishing has to give the lifter
+            // somewhere to land — otherwise a mis-tap and an undo leaves six closed cards and
+            // no indication of which one just re-opened.
+            withAnimation(.easeInOut(duration: 0.25)) {
+                expandedExerciseIDs.insert(exercise.persistentModelID)
+            }
         }
     }
 
@@ -606,7 +613,10 @@ struct WorkoutDayDetailView: View {
     func setStatus(_ status: ExerciseCompletionStatus, on exercise: WorkoutExercise) {
         let snapshot = DispositionSnapshot(exercise: exercise, day: day, status: exercise.completionStatus)
         exercise.completionStatus = status
-        if status.isSkipped {
+        // Any settling status finishes the exercise, not just skips. Picking "Completed" from
+        // the menu used to set the status and leave isCompleted false, so the card claimed to
+        // be done while the resolver read it as not started and the day never closed.
+        if status.marksExerciseFinished {
             exercise.isCompleted = true
         }
         commitDisposition(of: exercise, operation: "set exercise status", restoring: snapshot)
@@ -860,43 +870,21 @@ struct ExerciseCard: View {
                 .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
                 .lowercased()
 
-            if hideDeloadCue,
-               containsAny(normalized, [
-                "deload", "10%", "under your last", "leave 2", "leave 3", "reserve",
-                "chase pr", "prs", "personal record"
-               ]) {
+            if hideDeloadCue, containsAny(normalized, ProgressionProseFragments.deloadContext) {
                 continue
             }
 
-            if hideProgressionCue,
-               containsAny(normalized, [
-                "next session", "add load", "add weight", "add reps", "before adding",
-                "before loading", "progression", "progress load", "hold load", "increase to",
-                // Phrasings seen shipping past this filter while a live banner said
-                // the opposite: "add ankle weight or a dumbbell", "then a 5 lb stack
-                // step", "add a rep before adding a barbell step", "log a load you
-                // can reliably progress", "when you clear 15 clean reps".
-                "ankle weight", "add a dumbbell", "add a rep", "stack step",
-                "barbell step", "reliably progress", "when you clear", "add a plate",
-                "external load", "next week add",
-                // Load/rep-advance phrasings the structured ProgressionSuggestionBadge
-                // already owns, seen duplicated in the Cue ("move up to 105", "chase reps
-                // first", "go heavier"). Kept deliberately load-specific: bare "move to",
-                // "bump", and "keep the load" are excluded because they also match
-                // technique cues ("move to a staggered stance", "bump your chest up",
-                // "keep the load on your lats").
-                "move up to", "go up to", "go heavier", "bump the load", "bump to", "chase reps"
-               ]) {
+            // Fragment lists live in ProgressionProseFragments. They were previously
+            // written out here AND in the validator AND in CoachingVoiceAudit; the audit copy
+            // had already drifted out of step, which is how a cue could pass its own safety
+            // check and still hard-fail generation.
+            if hideProgressionCue, containsAny(normalized, ProgressionProseFragments.progressionOwnedByBanner) {
                 continue
             }
 
-            // Last-session performance recaps: the Last panel and the progression badge
-            // already show what you did, so narrating it again never belongs in the
-            // execution Cue ("You beat 100 lb x15 — move to 105 lb" was shipping in both).
-            if containsAny(normalized, [
-                "you logged", "you used", "your last session", "last time you",
-                "you beat"
-            ]) {
+            // The Last panel and the progression badge already show what you did, so
+            // narrating it again never belongs in the execution Cue.
+            if containsAny(normalized, ProgressionProseFragments.sessionRecap) {
                 continue
             }
 
@@ -1262,7 +1250,11 @@ struct ExerciseCard: View {
                 completionStatusRow(
                     qualifier,
                     isSkip: summary.completionStatus?.isSkipped ?? false,
-                    isClearable: summary.completionStatus != nil
+                    isClearable: summary.completionStatus != nil,
+                    // A lift marked done with nothing logged leaves no trace for future
+                    // programming. Naming that in the qualifier and then offering no way to
+                    // fix it is a dead end, so the row carries the remedy.
+                    needsLogging: summary.needsLoggingPrompt
                 )
             }
 
@@ -1408,7 +1400,12 @@ struct ExerciseCard: View {
     /// - Parameter isClearable: false when the qualifier was DERIVED rather than stored (a
     ///   lift ticked off with sets outstanding carries no `completionStatus`), in which case
     ///   there is nothing for a Clear button to clear.
-    private func completionStatusRow(_ label: String, isSkip: Bool, isClearable: Bool) -> some View {
+    private func completionStatusRow(
+        _ label: String,
+        isSkip: Bool,
+        isClearable: Bool,
+        needsLogging: Bool = false
+    ) -> some View {
         let tint = isSkip ? TFColor.danger : TFColor.warning
         return HStack(spacing: 6) {
             Image(systemName: isSkip ? "forward.fill" : "arrow.triangle.swap")
@@ -1418,6 +1415,18 @@ struct ExerciseCard: View {
                 .font(.caption2.bold())
                 .foregroundStyle(tint)
             Spacer()
+            if needsLogging {
+                Button {
+                    onLogWeight()
+                } label: {
+                    Text("Log what you did")
+                        .font(.caption2.bold())
+                        .foregroundStyle(TFColor.accent)
+                        .frame(minHeight: TFTapTarget.minimum)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
             if isClearable {
                 Button {
                     onClearStatus()
@@ -1425,6 +1434,8 @@ struct ExerciseCard: View {
                     Text("Clear")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
+                        .frame(minHeight: TFTapTarget.minimum)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
             }

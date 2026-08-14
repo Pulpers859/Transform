@@ -133,12 +133,14 @@ enum CoachingVoice {
     /// ladder is somehow exhausted (a day with more exercises of one pattern than the pool
     /// has phrasings) it returns the last candidate rather than an empty string — a repeated
     /// true cue beats a blank box.
+    ///
+    /// `universalCues` is never empty, so `candidates` is never empty and `.last` always
+    /// yields. A third fallback used to sit here holding a byte-identical copy of
+    /// `universalCues[0]`: unreachable, and a second place for the same sentence to be edited
+    /// out of step with the first.
     private static func firstUnspoken(from candidates: [String], spoken: Set<String>) -> String {
-        candidates.first { !spoken.contains($0) } ?? candidates.last ?? Self.universalFallback
+        candidates.first { !spoken.contains($0) } ?? candidates.last ?? universalCues[0]
     }
-
-    private static let universalFallback =
-        "Set your position before the first rep and keep that position identical on every rep after it."
 
     // MARK: - Candidate ladder
 
@@ -479,31 +481,13 @@ enum CoachingVoiceAudit {
     /// Mirrors the strip lists in `WorkoutDayDetailView.coachingSentences`. Kept as a literal
     /// copy on purpose: the display filter is UI-layer and this type stays Foundation-only so
     /// it can be exercised headlessly. If the filter gains a fragment, add it here too.
-    /// A literal UNION of the display filter's strip lists and the validator's
-    /// `notesContainProgressionInstruction` fragments — not just the former.
+    /// Composed from `ProgressionProseFragments`, never retyped.
     ///
-    /// It previously mirrored only the display filter, which left six validator fragments
-    /// ("next week", "add one rep", "beat last week", "before increasing load",
-    /// "baseline target", "add 1 rep") unchecked. Any consumer using this as its sole safety
-    /// net could therefore emit a string that passes here and HARD-FAILS generation.
-    static let forbiddenFragments: [String] = [
-        // Progression-cue strip — the structured banner owns all of this.
-        "next session", "add load", "add weight", "add reps", "before adding",
-        "before loading", "progression", "progress load", "hold load", "increase to",
-        "ankle weight", "add a dumbbell", "add a rep", "stack step",
-        "barbell step", "reliably progress", "when you clear", "add a plate",
-        "external load", "next week add",
-        "move up to", "go up to", "go heavier", "bump the load", "bump to", "chase reps",
-        // Validator-only fragments (notesContainProgressionInstruction) that the display
-        // filter does not carry. Omitting these is what made this list an incomplete guard.
-        "next week", "add one rep", "add 1 rep", "beat last week",
-        "before increasing load", "baseline target",
-        // Unconditional recap strip — the Last panel already says what you did.
-        "you logged", "you used", "your last session", "last time you", "you beat",
-        // Deload strip — effort ships as the structured targetRIR field.
-        "deload", "10%", "under your last", "leave 2", "leave 3", "reserve",
-        "chase pr", "prs", "personal record"
-    ]
+    /// This constant used to be a hand-copy of the display filter's strip lists. Copies drift:
+    /// it was missing six validator fragments, so a cue could pass this audit and still hard-
+    /// fail generation. Composition makes that failure mode structurally impossible — a
+    /// fragment added to the rule is added here by construction.
+    static let forbiddenFragments: [String] = ProgressionProseFragments.all
 
     /// Fragments found in `cue`, lowercased. Empty means the cue survives the display filter.
     static func violations(in cue: String) -> [String] {
