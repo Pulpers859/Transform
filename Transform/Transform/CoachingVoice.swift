@@ -222,7 +222,10 @@ enum CoachingVoice {
 
         // Close-grip bench is a triceps-biased PRESS; cueing "let only the forearms travel"
         // on a compound barbell press is wrong and unsafe.
-        if matches(text, ["close grip bench", "close-grip bench"]) { return .horizontalPress }
+        // Matched on the two tokens rather than the phrase: the catalog name is "Close-Grip
+        // BARBELL Bench Press", so a contiguous "close-grip bench" needle misses it and the
+        // movement falls through to the triceps branch on the bare word "close-grip".
+        if text.contains("close") && text.contains("bench") { return .horizontalPress }
         // "kickback" qualified: a glute kickback is not a triceps movement.
         if matches(text, ["pushdown", "push-down", "pressdown", "press-down", "skull", "overhead extension", "tricep extension", "triceps extension", "triceps kickback", "tricep kickback", "close grip", "close-grip", "jm press"]) { return .tricepExtension }
 

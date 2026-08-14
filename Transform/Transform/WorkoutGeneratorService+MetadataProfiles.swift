@@ -22,7 +22,7 @@ extension ClaudeService {
         if normalized.contains("face pull") {
             return normalized.contains("external rotation")
                 ? "Face Pull with External Rotation"
-                : "Face Pull"
+                : "Cable Face Pull"
         }
 
         if normalized.contains("rope pushdown") {
@@ -38,7 +38,7 @@ extension ClaudeService {
         if normalized.contains("hammer curl") {
             return normalized.contains("cable")
                 ? "Cable Hammer Curl"
-                : "Hammer Curl"
+                : "Dumbbell Hammer Curl"
         }
 
         if normalized == "barbell curls" || normalized == "barbell curl" {
@@ -1647,9 +1647,9 @@ extension ClaudeService {
                 accessoryCatalog: [
                     ("EZ-Bar Curl", "Biceps"),
                     ("Incline Dumbbell Curl", "Biceps"),
-                    ("Spider Curl", "Biceps"),
+                    ("Dumbbell Spider Curl", "Biceps"),
                     ("Bayesian Cable Curl", "Biceps"),
-                    ("Concentration Curl", "Biceps"),
+                    ("Dumbbell Concentration Curl", "Biceps"),
                     ("Machine Preacher Curl", "Biceps")
                 ]
             ),
@@ -1689,7 +1689,7 @@ extension ClaudeService {
                     ("Machine Row", "Mid Back"),
                     ("Cable High Row", "Upper Back"),
                     ("Barbell Bent-Over Row", "Upper Back"),
-                    ("Meadows Row", "Upper Back")
+                    ("Landmine Meadows Row", "Upper Back")
                 ]
             ),
             PriorityFocusProfile(
@@ -1708,7 +1708,7 @@ extension ClaudeService {
                 coverageKeywords: ["oblique", "obliques", "pallof", "side plank", "woodchop"],
                 preferredStyles: ["Legs", "Lower", "Upper"],
                 accessoryCatalog: [
-                    ("Pallof Press", "Obliques"),
+                    ("Cable Pallof Press", "Obliques"),
                     ("Ab Wheel Rollout", "Anterior Core")
                 ]
             ),
@@ -1719,7 +1719,7 @@ extension ClaudeService {
                 preferredStyles: ["Legs", "Lower", "Upper"],
                 accessoryCatalog: [
                     ("Ab Wheel Rollout", "Anterior Core"),
-                    ("Pallof Press", "Obliques")
+                    ("Cable Pallof Press", "Obliques")
                 ]
             ),
             PriorityFocusProfile(
@@ -1830,11 +1830,11 @@ extension ClaudeService {
                 coverageKeywords: ["glute", "hip thrust", "split squat", "rdl", "romanian deadlift", "hinge"],
                 preferredStyles: ["Lower", "Legs"],
                 accessoryCatalog: [
-                    ("Hip Thrust", "Glutes"),
-                    ("Bulgarian Split Squat", "Quads/Glutes"),
+                    ("Barbell Hip Thrust", "Glutes"),
+                    ("Dumbbell Bulgarian Split Squat", "Quads/Glutes"),
                     ("Cable Glute Kickback", "Glutes"),
                     ("Single-Leg Hip Thrust", "Glutes"),
-                    ("Reverse Lunge", "Glutes"),
+                    ("Dumbbell Reverse Lunge", "Glutes"),
                     ("45-Degree Back Extension", "Glutes")
                 ]
             ),
@@ -1845,7 +1845,7 @@ extension ClaudeService {
                 preferredStyles: ["Lower", "Legs"],
                 accessoryCatalog: [
                     ("Front Squat", "Quads"),
-                    ("Leg Extension", "Quads"),
+                    ("Machine Leg Extension", "Quads"),
                     ("Pendulum Squat", "Quads"),
                     ("Belt Squat", "Quads"),
                     ("Hack Squat", "Quads")
@@ -1857,11 +1857,11 @@ extension ClaudeService {
                 coverageKeywords: ["hamstring", "hamstrings", "rdl", "romanian deadlift", "leg curl", "hinge"],
                 preferredStyles: ["Lower", "Legs"],
                 accessoryCatalog: [
-                    ("Romanian Deadlift", "Hamstrings"),
+                    ("Barbell Romanian Deadlift", "Hamstrings"),
                     ("Seated Leg Curl", "Hamstrings"),
                     ("Nordic Hamstring Curl", "Hamstrings"),
                     ("Lying Leg Curl", "Hamstrings"),
-                    ("Stiff-Leg Deadlift", "Hamstrings")
+                    ("Barbell Stiff-Leg Deadlift", "Hamstrings")
                 ]
             ),
             PriorityFocusProfile(

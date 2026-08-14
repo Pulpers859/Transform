@@ -28,8 +28,14 @@
           "rationale": "Improve clavicular-pec development with progressive incline work.",
           "weeklyDayTarget": 2,
           "weeklyExerciseTarget": 3,
-          "preferredStyles": ["Push", "Upper"],
-          "preferredMovementPatterns": ["incline press", "low incline fly"],
+          "preferredStyles": [
+            "Push",
+            "Upper"
+          ],
+          "preferredMovementPatterns": [
+            "incline press",
+            "low incline fly"
+          ],
           "volumeBias": "High",
           "directWorkBias": "Direct emphasis"
         },
@@ -39,8 +45,15 @@
           "rationale": "Improve shoulder width with stable direct work.",
           "weeklyDayTarget": 2,
           "weeklyExerciseTarget": 3,
-          "preferredStyles": ["Upper", "Push", "Arms"],
-          "preferredMovementPatterns": ["lateral raise", "cable lateral raise"],
+          "preferredStyles": [
+            "Upper",
+            "Push",
+            "Arms"
+          ],
+          "preferredMovementPatterns": [
+            "lateral raise",
+            "cable lateral raise"
+          ],
           "volumeBias": "High",
           "directWorkBias": "Direct emphasis"
         },
@@ -50,8 +63,14 @@
           "rationale": "Preserve abdominal strength and thickness without displacing recoverable hypertrophy work.",
           "weeklyDayTarget": 2,
           "weeklyExerciseTarget": 2,
-          "preferredStyles": ["Upper", "Lower"],
-          "preferredMovementPatterns": ["loaded trunk flexion", "controlled leg raise"],
+          "preferredStyles": [
+            "Upper",
+            "Lower"
+          ],
+          "preferredMovementPatterns": [
+            "loaded trunk flexion",
+            "controlled leg raise"
+          ],
           "volumeBias": "Moderate",
           "directWorkBias": "Modest direct work"
         }
@@ -77,10 +96,10 @@
     ],
     "menuSignature": [
       "Day 1: Incline Barbell Press#4#Upper Chest | Machine Incline Press#3#Upper Chest | Cable Fly#2#Chest | Cable Lateral Raise#2#Lateral Deltoids | Behind-the-Back Cable Lateral Raise#1#Lateral Deltoids | Cable Crunch#2#Abs",
-      "Day 2: Hanging Knee Raise#4#Lower Abs | Leg Press#3#Quads | Seated Leg Curl#3#Hamstrings | Cable Pull-Through#3#Glutes | Leg Extension#3#Quads | Standing Calf Raise#3#Calves",
+      "Day 2: Hanging Knee Raise#4#Lower Abs | Leg Press#3#Quads | Seated Leg Curl#3#Hamstrings | Cable Pull-Through#3#Glutes | Machine Leg Extension#3#Quads | Standing Calf Raise#3#Calves",
       "Day 3: REST",
       "Day 4: Leaning Dumbbell Lateral Raise#2#Lateral Deltoids | Machine Lateral Raise#2#Lateral Deltoids | Incline Dumbbell Press#3#Upper Chest | Machine Chest Press#2#Chest | Rope Triceps Pressdown#2#Triceps | V-Bar Pressdown#2#Triceps",
-      "Day 5: Pull-Up (Weighted or Assisted)#2#Lats | Lat Pulldown#2#Lats | Chest-Supported Row#2#Upper Back | Seated Cable Row#2#Mid Back | Reverse Pec Deck#2#Rear Deltoids | Face Pull#2#Rear Deltoids",
+      "Day 5: Pull-Up (Weighted or Assisted)#2#Lats | Lat Pulldown#2#Lats | Chest-Supported Row#2#Upper Back | Seated Cable Row#2#Mid Back | Reverse Pec Deck#2#Rear Deltoids | Cable Face Pull#2#Rear Deltoids",
       "Day 6: Cable Lateral Raise#2#Lateral Deltoids | Machine Lateral Raise#2#Lateral Deltoids | Bayesian Cable Curl#3#Biceps | Cable Kickback#2#Triceps | EZ-Bar Curl#3#Biceps | Overhead Cable Triceps Extension#2#Triceps",
       "Day 7: REST"
     ]

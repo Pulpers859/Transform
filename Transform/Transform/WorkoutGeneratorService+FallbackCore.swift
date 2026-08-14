@@ -1366,7 +1366,7 @@ extension ClaudeService {
                 ("Single-Arm Dumbbell Row", "Lats"),
                 ("Cable High Row", "Upper Back"),
                 ("Reverse Pec Deck", "Rear Deltoids"),
-                ("Face Pull", "Rear Deltoids"),
+                ("Cable Face Pull", "Rear Deltoids"),
                 ("Prone Incline Dumbbell Rear Delt Raise", "Rear Deltoids"),
                 ("EZ-Bar Curl", "Biceps"),
                 ("Incline Dumbbell Curl", "Biceps"),
@@ -1376,14 +1376,14 @@ extension ClaudeService {
             return [
                 ("Back Squat", "Quads"),
                 ("Front Squat", "Quads"),
-                ("Romanian Deadlift", "Hamstrings"),
+                ("Barbell Romanian Deadlift", "Hamstrings"),
                 ("Leg Press", "Quads"),
-                ("Walking Lunge", "Glutes"),
-                ("Reverse Lunge", "Glutes"),
-                ("Leg Curl", "Hamstrings"),
+                ("Dumbbell Walking Lunge", "Glutes"),
+                ("Dumbbell Reverse Lunge", "Glutes"),
+                ("Machine Leg Curl", "Hamstrings"),
                 ("Seated Leg Curl", "Hamstrings"),
-                ("Leg Extension", "Quads"),
-                ("Hip Thrust", "Glutes"),
+                ("Machine Leg Extension", "Quads"),
+                ("Barbell Hip Thrust", "Glutes"),
                 ("Standing Calf Raise", "Calves"),
                 ("Seated Calf Raise", "Calves")
             ]
@@ -1405,14 +1405,14 @@ extension ClaudeService {
         case "Legs":
             return [
                 ("Trap Bar Deadlift", "Posterior Chain"),
-                ("Bulgarian Split Squat", "Quads/Glutes"),
+                ("Dumbbell Bulgarian Split Squat", "Quads/Glutes"),
                 ("Hack Squat", "Quads"),
                 ("Pendulum Squat", "Quads"),
                 ("Seated Leg Curl", "Hamstrings"),
                 ("Nordic Hamstring Curl", "Hamstrings"),
-                ("Hip Thrust", "Glutes"),
+                ("Barbell Hip Thrust", "Glutes"),
                 ("Single-Leg Hip Thrust", "Glutes"),
-                ("Leg Extension", "Quads"),
+                ("Machine Leg Extension", "Quads"),
                 ("Seated Calf Raise", "Calves"),
                 ("Cable Crunch", "Abs")
             ]
@@ -1422,14 +1422,14 @@ extension ClaudeService {
                 ("Rope Triceps Pressdown", "Triceps"),
                 ("Incline Dumbbell Curl", "Biceps"),
                 ("Overhead Cable Triceps Extension", "Triceps"),
-                ("Hammer Curl", "Brachialis"),
-                ("Skull Crusher", "Triceps"),
+                ("Dumbbell Hammer Curl", "Brachialis"),
+                ("EZ-Bar Skull Crusher", "Triceps"),
                 ("Cable Curl", "Biceps"),
-                ("Spider Curl", "Biceps"),
+                ("Dumbbell Spider Curl", "Biceps"),
                 ("Bayesian Cable Curl", "Biceps"),
                 ("V-Bar Pressdown", "Triceps"),
                 ("Cable Kickback", "Triceps"),
-                ("Concentration Curl", "Biceps")
+                ("Dumbbell Concentration Curl", "Biceps")
             ]
         default:
             return genericExerciseCatalog()
@@ -1440,7 +1440,7 @@ extension ClaudeService {
         [
             ("Incline Dumbbell Press", "Chest"),
             ("Chest-Supported Row", "Upper Back"),
-            ("Romanian Deadlift", "Hamstrings"),
+            ("Barbell Romanian Deadlift", "Hamstrings"),
             ("Leg Press", "Quads"),
             ("Lat Pulldown", "Lats"),
             ("Cable Lateral Raise", "Deltoids"),
@@ -1454,7 +1454,7 @@ extension ClaudeService {
             ("Cable Crunch", "Abs"),
             ("Hanging Knee Raise", "Lower Abs"),
             ("Ab Wheel Rollout", "Anterior Core"),
-            ("Pallof Press", "Obliques")
+            ("Cable Pallof Press", "Obliques")
         ]
     }
 
