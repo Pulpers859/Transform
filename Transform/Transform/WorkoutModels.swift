@@ -801,6 +801,20 @@ enum ExerciseWeightStore {
         }
 
         var changed = false
+
+        // Disambiguation renames run BEFORE grouping, because the grouping key is derived from
+        // the name. Renaming first is what lets a pre-rename "Hammer Curl" summary and a
+        // post-rename "Dumbbell Hammer Curl" summary land in the same group and consolidate
+        // into one record with the true all-time best preserved. Renaming after would leave
+        // two separate identities for the same lift, each with half the history.
+        for entry in fetched {
+            let resolvedName = ExerciseNameDisambiguation.resolved(entry.exerciseName)
+            if entry.exerciseName != resolvedName {
+                entry.exerciseName = resolvedName
+                changed = true
+            }
+        }
+
         let grouped = Dictionary(grouping: fetched) { entry in
             ExerciseWeightEntry.canonicalLookupKey(entry.exerciseName)
         }
@@ -889,6 +903,23 @@ enum ExerciseWeightStore {
 
         var changed = false
         for log in fetched {
+            // Names first, keys second. Disambiguating an exercise ("Hammer Curl" ->
+            // "Dumbbell Hammer Curl") changes what `canonicalLookupKey` derives, because
+            // equipment words are not stop words and the key is built from the name. Renaming
+            // the catalog WITHOUT this pass would leave every previously logged set filed
+            // under the old key — still on the device, never found again. That is INC-2 with a
+            // different trigger.
+            //
+            // Rewriting the stored name here makes the key follow by itself, and
+            // `normalizeAndConsolidate` (run immediately after this at startup) merges the
+            // renamed record with any history already under the new name. `resolved` is
+            // idempotent, so a launch after the migration has settled changes nothing.
+            let resolvedName = ExerciseNameDisambiguation.resolved(log.exerciseName)
+            if log.exerciseName != resolvedName {
+                log.exerciseName = resolvedName
+                changed = true
+            }
+
             let correctKey = ExerciseWeightEntry.canonicalLookupKey(log.exerciseName)
             if log.canonicalExerciseKey != correctKey {
                 log.canonicalExerciseKey = correctKey

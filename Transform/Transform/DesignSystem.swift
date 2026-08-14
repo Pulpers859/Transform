@@ -121,6 +121,18 @@ enum TFSpacing {
 
 // MARK: - Radii
 
+/// Minimum interactive dimension.
+///
+/// Apple's HIG floor is 44×44pt. Several controls in this app were sized by their icon
+/// instead — a 12pt caret, an 8pt help glyph — which is workable on a desk and not workable
+/// mid-set with chalk on your hands. Icons stay small; the TARGET around them does not.
+///
+/// Use with `.frame(minWidth:minHeight:)` plus `.contentShape(Rectangle())`, since a frame
+/// alone widens layout without widening the hit region.
+enum TFTapTarget {
+    static let minimum: CGFloat = 44
+}
+
 enum TFRadius {
     static let card: CGFloat = 16
     static let cardCompact: CGFloat = 12

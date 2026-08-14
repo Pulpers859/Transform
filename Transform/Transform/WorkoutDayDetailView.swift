@@ -1158,6 +1158,9 @@ struct ExerciseCard: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 14)
+        // The whole closed row is the target, not the caret in it — the caret is only the
+        // affordance saying the row does something.
+        .frame(minHeight: TFTapTarget.minimum)
         .contentShape(Rectangle())
         .onTapGesture { onToggleExpanded() }
         .accessibilityElement(children: .combine)
@@ -1291,6 +1294,12 @@ struct ExerciseCard: View {
                     .font(.title3)
                     .foregroundStyle(summary.deservesCleanCompletionTreatment ? TFColor.success : Color.secondary)
             }
+            // A glyph is not a target. Both controls in this header were sized by their icon —
+            // roughly 20pt for the circle and 12pt for the caret — sitting a few points apart
+            // on the screen used mid-set with chalky hands. Missing the caret and hitting the
+            // circle does not just fail, it marks the exercise complete.
+            .frame(minWidth: TFTapTarget.minimum, minHeight: TFTapTarget.minimum)
+            .contentShape(Rectangle())
             .buttonStyle(.plain)
             .accessibilityLabel(exercise.isCompleted ? "Mark \(exercise.exerciseName) incomplete" : "Mark \(exercise.exerciseName) complete")
 
@@ -1326,6 +1335,8 @@ struct ExerciseCard: View {
                 Image(systemName: "chevron.up")
                     .font(.caption.bold())
                     .foregroundStyle(.tertiary)
+                    .frame(minWidth: TFTapTarget.minimum, minHeight: TFTapTarget.minimum)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Collapse \(exercise.exerciseName)")
@@ -1582,7 +1593,7 @@ struct ExercisePrescriptionPillRow: View {
             // inert one, which is the state the whole row was in.
             if item.explanation != nil {
                 Image(systemName: "questionmark.circle")
-                    .font(.system(size: 8, weight: .bold))
+                    .font(.caption2.bold())
                     .foregroundStyle(.tertiary)
             }
         }
@@ -1595,7 +1606,11 @@ struct ExercisePrescriptionPillRow: View {
             Button {
                 TFHaptics.impact(.light)
                 explainingID = item.id
-            } label: { content }
+            } label: {
+                content
+                    .frame(minHeight: TFTapTarget.minimum)
+                    .contentShape(Rectangle())
+            }
                 .buttonStyle(.plain)
                 .popover(
                     isPresented: Binding(

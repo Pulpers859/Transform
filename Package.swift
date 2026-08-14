@@ -75,6 +75,11 @@ let package = Package(
                 // HARD generation failure that discards a paid AI week, so it gets real
                 // regression coverage rather than shipping correct-by-inspection.
                 "CoachingVoice.swift",
+                // Exercise-name disambiguation + the rename map the startup re-keying
+                // migration consumes. Foundation-only, and squarely on the path that
+                // silently erased logged weights once before (INC-2), so it gets executed
+                // regression coverage rather than mental tracing.
+                "ExerciseNameDisambiguation.swift",
                 // One resolved answer to "what happened on this exercise?". Replaces four
                 // independently-read data sources on different time windows, which is how the
                 // card came to contradict itself on screen (a Best set TODAY presented beside
