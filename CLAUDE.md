@@ -45,6 +45,26 @@
 - Keep workout quality and evidence-informed programming integrity ahead of validator convenience.
 - Respect the split `WorkoutGeneratorService` architecture.
 
+## How To Explain Things To The Owner
+- The owner is not a programmer. Write every summary, finding, and status update in plain
+  everyday language — assume a smart 10-year-old is reading it.
+- Say what was broken, what it meant for the app or for him while it was broken, and what is
+  different now. Lead with the effect a person would notice, not the mechanism.
+- Avoid jargon. If a technical term is genuinely unavoidable, define it in the same sentence in
+  ordinary words. Never use these unexplained: race condition, cache, dictionary iteration,
+  determinism, refactor, main thread/actor, prefix, regex, validator disposition, O(n), etc.
+- Prefer short sentences and everyday comparisons over precise vocabulary. "The app asked the
+  same question 30 times instead of once" beats "redundant O(n·m) recomputation".
+- Plain language is about VOCABULARY, never about softening the truth. Do not hide or downplay
+  a bug's severity, a risk, or something that was not finished or not tested. If the news is
+  bad, say it plainly in simple words.
+- Keep exact identifiers exact when he may need them: file names, branch names, commands to
+  run, and menu items in Xcode. Do not "simplify" those into something that will not work.
+- A short list of "what this means for you" is better than a description of how the code works.
+  He cares about the app's behavior, his data, and his money (API spend), not the internals.
+- This applies to chat summaries and reports. Code comments and commit messages stay technical
+  for future maintainers.
+
 ## Context Discipline
 - Read this file first, then only the one repo skill and files needed for the task.
 - Do not load all handoff docs by default.
