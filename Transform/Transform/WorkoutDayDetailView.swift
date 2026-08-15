@@ -1608,9 +1608,10 @@ struct ExercisePrescriptionPillRow: View {
         VStack(alignment: .leading, spacing: 7) {
             ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
                 HStack(spacing: 7) {
+                    // Cell sizing lives in `chip(for:)` so it applies uniformly rather than
+                    // being reapplied here per placement.
                     ForEach(row) { item in
                         chip(for: item)
-                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     // Keeps a short final row's cells the same width as every other row's, so
                     // a 3-chip prescription still aligns with a 4-chip one. At most one
@@ -1656,14 +1657,30 @@ struct ExercisePrescriptionPillRow: View {
         .background(Color.primary.opacity(0.04))
         .clipShape(Capsule())
 
+        // EVERY chip gets the same cell, interactive or not.
+        //
+        // The tap-target fix originally applied this minimum height only to chips that could
+        // explain themselves, which made Tempo and RIR 44pt tall while "sets" and "reps"
+        // stayed around 26pt. The layout top-aligns its items, so a taller chip renders its
+        // capsule centred — roughly 9pt below its shorter neighbours. That is the misalignment
+        // on the card: the two chips carrying a "?" visibly sat lower than the two without.
+        //
+        // Grouping equal-height chips into the same grid row would hide it, but only by luck
+        // of the pairing. Uniform cells make alignment a property of every chip rather than of
+        // how they happen to be arranged, so it holds for any future set of chips.
+        //
+        // Filling the cell width also gives the interactive chips a target of roughly the
+        // half-card width rather than the glyph — comfortably past the 44pt minimum in the
+        // dimension that is hard to hit — without adding any height to do it.
+        let cell = content
+            .frame(maxWidth: .infinity, minHeight: TFTapTarget.minimum, alignment: .leading)
+
         if let explanation = item.explanation {
             Button {
                 TFHaptics.impact(.light)
                 explainingID = item.id
             } label: {
-                content
-                    .frame(minHeight: TFTapTarget.minimum)
-                    .contentShape(Rectangle())
+                cell.contentShape(Rectangle())
             }
                 .buttonStyle(.plain)
                 .popover(
@@ -1685,7 +1702,7 @@ struct ExercisePrescriptionPillRow: View {
                 .accessibilityLabel(item.label)
                 .accessibilityHint("Double tap to explain")
         } else {
-            content.accessibilityElement(children: .combine)
+            cell.accessibilityElement(children: .combine)
         }
     }
 }
