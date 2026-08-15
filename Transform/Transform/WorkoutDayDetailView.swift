@@ -375,7 +375,13 @@ struct WorkoutDayDetailView: View {
     // MARK: - Exercise List
 
     var exerciseList: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        // Resolved once per render, OUTSIDE the loop. Every card used to read the
+        // `performanceLogSnapshots` computed property from inside `ForEach`, which decoded
+        // every performance log in the database once per exercise — see the property's own
+        // note for why that was the expensive way to answer a per-exercise question.
+        let historyByKey = performanceSnapshotsByKey
+
+        return VStack(alignment: .leading, spacing: 10) {
             TFSectionLabel(text: "Exercises")
 
             ForEach(day.sortedExercises) { exercise in
@@ -396,7 +402,13 @@ struct WorkoutDayDetailView: View {
                     weightSummary: entry,
                     latestSetLogs: previous,
                     todaysSetLogs: today,
-                    performanceHistory: performanceLogSnapshots,
+                    // Only this exercise's history. The card's single consumer
+                    // (`WorkoutProgressionEngine.effortSignal`) filters to one canonical key
+                    // and keeps three sessions, so handing it the whole database was work
+                    // done purely to be discarded.
+                    performanceHistory: historyByKey[
+                        ExerciseWeightEntry.canonicalLookupKey(exercise.exerciseName)
+                    ] ?? [],
                     isExpanded: expandedExerciseIDs.contains(exercise.persistentModelID),
                     onToggle: { toggleExercise(exercise) },
                     onToggleExpanded: { toggleExpanded(exercise) },
@@ -648,14 +660,33 @@ struct WorkoutDayDetailView: View {
         SetLoggingService.todaysSets(for: exercise, in: allPerformanceLogs)
     }
 
-    var performanceLogSnapshots: [WorkoutPerformanceLogSnapshot] {
-        allPerformanceLogs.map {
-            WorkoutPerformanceLogSnapshot(
-                canonicalExerciseKey: $0.canonicalExerciseKey,
-                loggedAt: $0.loggedAt,
-                setLogs: $0.decodedSetLogs
-            )
-        }
+    /// Performance history sliced by canonical exercise key, built ONCE per render.
+    ///
+    /// `ExercisePerformanceLog.decodedSetLogs` runs a full `JSONDecoder` pass on every access.
+    /// This used to be a flat array read from inside `exerciseList`'s `ForEach`, so a single
+    /// render decoded every log in the database once per exercise card — and a card only ever
+    /// looks at its OWN exercise, so the rest was decoded and thrown away.
+    ///
+    /// The cost landed at the worst possible moment. This view's body re-runs on every
+    /// keystroke in the inline set logger and every minute from the session-timer
+    /// `TimelineView`, so the waste compounded while the lifter was mid-set typing a weight,
+    /// and it grew with every workout ever logged.
+    ///
+    /// Grouping by the log's stored `canonicalExerciseKey` while callers look up by
+    /// `canonicalLookupKey(exerciseName)` is the same pairing `effortSignal` already relies
+    /// on, and the startup normalizers re-derive stored keys from names each launch — so this
+    /// introduces no assumption that was not already load-bearing.
+    var performanceSnapshotsByKey: [String: [WorkoutPerformanceLogSnapshot]] {
+        Dictionary(
+            grouping: allPerformanceLogs.map {
+                WorkoutPerformanceLogSnapshot(
+                    canonicalExerciseKey: $0.canonicalExerciseKey,
+                    loggedAt: $0.loggedAt,
+                    setLogs: $0.decodedSetLogs
+                )
+            },
+            by: \.canonicalExerciseKey
+        )
     }
 }
 
@@ -2551,7 +2582,8 @@ struct ProgressionSuggestion {
             return ProgressionSuggestion(
                 icon: "arrow.right.circle.fill",
                 text: text,
-                color: .blue
+                // Token, not a raw Color — every other suggestion here uses one (INC-7).
+                color: TFColor.info
             )
         }
     }
