@@ -51,6 +51,20 @@ extension ClaudeService {
     var programToolName: String { "emit_workout_program" }
     var weekToolName: String { "emit_workout_week" }
 
+    /// Anthropic caches a request PREFIX, and the prefix order is tools → system → messages.
+    /// A breakpoint on the system block therefore already covers the tool schema; the extra
+    /// breakpoint this used to carry on the tool itself only defined a shorter prefix that
+    /// nothing ever requested on its own, and the tool block alone sits under the minimum
+    /// cacheable length, so it was a cache write that could never be read.
+    ///
+    /// What the single remaining breakpoint can actually buy: within one generation the main
+    /// request and its correction pass send identical tools and an identical system prompt, so
+    /// the correction reads this entry seconds later instead of paying full price. That is the
+    /// only read this flow can realistically get — the week tool schema pins `dayNumber` to the
+    /// week's own day range, so the prefix differs from week to week by construction, and the
+    /// parallel candidates fire simultaneously and cannot see each other's write. Keeping the
+    /// schema exact is the right trade: a loose `dayNumber` would move a cheap schema guarantee
+    /// into a paid validator correction.
     func structuredRequestBody(
         config: GenerationConfig,
         systemPrompt: String,
@@ -61,8 +75,7 @@ extension ClaudeService {
         let tool: [String: Any] = [
             "name": toolName,
             "description": "Emit the workout program in the required structured shape. Always call this tool; never respond with free text.",
-            "input_schema": toolSchema,
-            "cache_control": ["type": "ephemeral"]
+            "input_schema": toolSchema
         ]
 
         let cachedSystem: [[String: Any]] = [
@@ -85,8 +98,20 @@ extension ClaudeService {
         ]
     }
 
+    /// The correction pass reuses the ORIGINAL system prompt verbatim, with its own framing
+    /// moved into the user message.
+    ///
+    /// Two reasons, and the cost one is the smaller of them. It used to substitute a four-line
+    /// stand-in system prompt, which meant the repair call was asked to "preserve everything
+    /// that was already good" while no longer being shown the coaching contract that defined
+    /// good — the voice rules, the execution-only note policy, the menu lock, the postural
+    /// guidance. Keeping the real system prompt means the correction is judged against the same
+    /// standard that produced the payload. It also makes the request share a prefix with the
+    /// call it is repairing, so this second request reads the cache the first one wrote instead
+    /// of writing another entry of its own.
     func correctionRequestBody(
         config: GenerationConfig,
+        systemPrompt: String,
         toolName: String,
         toolSchema: [String: Any],
         issues: [String],
@@ -96,13 +121,6 @@ extension ClaudeService {
     ) -> [String: Any] {
         let issueBlock = issues.enumerated().map { "\($0.offset + 1). \($0.element)" }.joined(separator: "\n")
         let tacticBlock = correctionTactics(for: issues)
-
-        let systemPrompt = """
-        You are the same expert coaching panel as before. Your previous call to the tool did not
-        satisfy the coaching intent. Call the tool again and fix ONLY the listed issues while
-        preserving everything that was already good. Do not change the overall programming logic
-        or the ties to the user's body analysis.
-        """
 
         // Without the previous payload the model regenerates blind and "preserve everything
         // that was already good" is unenforceable — corrections drift instead of converging.
@@ -116,6 +134,11 @@ extension ClaudeService {
             } ?? ""
 
         let userPrompt = """
+        CORRECTION PASS. Your previous call to \(toolName) did not satisfy the coaching intent.
+        Every rule in your system instructions still applies unchanged. Call the tool again and
+        fix ONLY the listed issues while preserving everything that was already good — do not
+        change the overall programming logic or the ties to the user's body analysis.
+
         Issues to correct (preserve everything else):
         \(issueBlock)
 

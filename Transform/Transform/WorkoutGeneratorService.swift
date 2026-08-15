@@ -329,6 +329,7 @@ extension ClaudeService {
 
                 let correctionBody = correctionRequestBody(
                     config: config,
+                    systemPrompt: systemPrompt,
                     toolName: programToolName,
                     toolSchema: toolSchema,
                     issues: best.issues,
@@ -660,6 +661,7 @@ extension ClaudeService {
 
                 let correctionBody = correctionRequestBody(
                     config: config,
+                    systemPrompt: systemPrompt,
                     toolName: weekToolName,
                     toolSchema: toolSchema,
                     issues: best.issues,
@@ -995,6 +997,7 @@ extension ClaudeService {
                         if attempt < generationAttempts {
                             requestBody = correctionRequestBody(
                                 config: config,
+                                systemPrompt: systemPrompt,
                                 toolName: programToolName,
                                 toolSchema: toolSchema,
                                 issues: issues,
@@ -1019,6 +1022,7 @@ extension ClaudeService {
                         if attempt < generationAttempts {
                             requestBody = correctionRequestBody(
                                 config: config,
+                                systemPrompt: systemPrompt,
                                 toolName: programToolName,
                                 toolSchema: toolSchema,
                                 issues: [issue],
@@ -1067,6 +1071,7 @@ extension ClaudeService {
                     if attempt < generationAttempts {
                         requestBody = correctionRequestBody(
                             config: config,
+                            systemPrompt: systemPrompt,
                             toolName: programToolName,
                             toolSchema: toolSchema,
                             issues: [correctionIssue(for: error)],
@@ -1407,6 +1412,7 @@ extension ClaudeService {
                         if attempt < generationAttempts {
                             requestBody = correctionRequestBody(
                                 config: config,
+                                systemPrompt: systemPrompt,
                                 toolName: weekToolName,
                                 toolSchema: toolSchema,
                                 issues: issues,
@@ -1431,6 +1437,7 @@ extension ClaudeService {
                         if attempt < generationAttempts {
                             requestBody = correctionRequestBody(
                                 config: config,
+                                systemPrompt: systemPrompt,
                                 toolName: weekToolName,
                                 toolSchema: toolSchema,
                                 issues: [issue],
@@ -1477,6 +1484,7 @@ extension ClaudeService {
                     if attempt < generationAttempts {
                         requestBody = correctionRequestBody(
                             config: config,
+                            systemPrompt: systemPrompt,
                             toolName: weekToolName,
                             toolSchema: toolSchema,
                             issues: [correctionIssue(for: error)],

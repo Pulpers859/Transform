@@ -378,34 +378,92 @@ struct WorkoutView: View {
         }
     }
 
+    /// Validator findings, translated for the person training.
+    ///
+    /// This used to render the raw validator strings, which are written as instructions to the
+    /// model ("Trim redundant filler instead of stacking volume", "BASE-001 requires…"). That
+    /// put generator diagnostics in a product surface and asked the owner to act on sentences
+    /// addressed to Claude. The raw text still drives retry policy and the correction prompt —
+    /// only the presentation changes here. See `WorkoutValidatorNotice`.
     @ViewBuilder
     func validatorWarningsBanner(_ program: WorkoutProgram) -> some View {
-        let warnings = program.validatorWarnings
-            .components(separatedBy: "\n")
-            .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-        if !warnings.isEmpty {
+        let notices = WorkoutValidatorNotice.notices(fromWarningsText: program.validatorWarnings)
+        if !notices.isEmpty {
+            let severity = WorkoutValidatorNotice.summarySeverity(for: notices)
             DisclosureGroup {
-                VStack(alignment: .leading, spacing: 6) {
-                    ForEach(Array(warnings.enumerated()), id: \.offset) { index, warning in
-                        Text("\(index + 1). \(warning)")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: TFSpacing.innerGap) {
+                    ForEach(notices) { notice in
+                        VStack(alignment: .leading, spacing: 3) {
+                            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                                Image(systemName: noticeIcon(notice.severity))
+                                    .font(.caption2)
+                                    .foregroundStyle(noticeTint(notice.severity))
+                                Text(notice.displayHeadline)
+                                    .font(.caption.bold())
+                                    .foregroundStyle(.primary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            Text(notice.detail)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .accessibilityElement(children: .combine)
+                        .accessibilityLabel("\(noticeAccessibilityPrefix(notice.severity)). \(notice.displayHeadline). \(notice.detail)")
                     }
+
+                    Text("Full technical detail is in the Generator Lab.")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
                 }
-                .padding(.top, 4)
+                .padding(.top, TFSpacing.tightGap)
             } label: {
                 HStack(spacing: 6) {
-                    Image(systemName: "exclamationmark.triangle.fill")
+                    Image(systemName: noticeIcon(severity))
                         .font(.caption2)
-                        .foregroundStyle(TFColor.warning)
-                    Text("\(warnings.count) validator warning\(warnings.count == 1 ? "" : "s")")
+                        .foregroundStyle(noticeTint(severity))
+                    Text(noticeSummaryLabel(severity, count: notices.count))
                         .font(.caption.bold())
-                        .foregroundStyle(TFColor.warning)
+                        .foregroundStyle(noticeTint(severity))
                 }
             }
             .padding(10)
-            .background(TFColor.warning.opacity(0.08))
-            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .background(noticeTint(severity).opacity(0.08))
+            .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
+        }
+    }
+
+    func noticeIcon(_ severity: WorkoutValidatorNotice.Severity) -> String {
+        switch severity {
+        case .tuning: return "slider.horizontal.3"
+        case .headsUp: return "exclamationmark.circle.fill"
+        case .attention: return "exclamationmark.triangle.fill"
+        }
+    }
+
+    func noticeTint(_ severity: WorkoutValidatorNotice.Severity) -> Color {
+        switch severity {
+        case .tuning: return TFColor.info
+        case .headsUp: return TFColor.warning
+        case .attention: return TFColor.danger
+        }
+    }
+
+    func noticeSummaryLabel(_ severity: WorkoutValidatorNotice.Severity, count: Int) -> String {
+        let noun = count == 1 ? "note" : "notes"
+        switch severity {
+        case .tuning: return "\(count) plan \(noun)"
+        case .headsUp: return "\(count) thing\(count == 1 ? "" : "s") worth knowing"
+        case .attention: return count == 1 ? "1 note needs a look" : "\(count) notes, one needs a look"
+        }
+    }
+
+    func noticeAccessibilityPrefix(_ severity: WorkoutValidatorNotice.Severity) -> String {
+        switch severity {
+        case .tuning: return "Plan note"
+        case .headsUp: return "Worth knowing"
+        case .attention: return "Needs a look"
         }
     }
 

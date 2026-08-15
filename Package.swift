@@ -109,7 +109,14 @@ let package = Package(
                 "WorkoutGeneratorService+FocusCoachingContext.swift",
                 "WorkoutGeneratorService+ParsingValidation.swift",
                 "WorkoutGeneratorService+FallbackCore.swift",
-                "WorkoutGeneratorService+Requests.swift"
+                "WorkoutGeneratorService+Requests.swift",
+                // Presentation-side translation of validator findings into user-facing copy.
+                // Foundation-only. It is here because its correctness is a BRANCH-ORDER
+                // property: every rule matches on a raw-string substring, so a generic pattern
+                // sitting ahead of a specific one silently shows confidently wrong advice
+                // rather than degrading to the unclassified notice. That is only provable by
+                // running the real validator strings through it.
+                "WorkoutValidatorNotice.swift"
             ]
         ),
         .testTarget(
