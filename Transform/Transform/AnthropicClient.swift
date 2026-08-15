@@ -20,6 +20,15 @@ struct AnthropicRequestContext {
 final class AnthropicClient {
     static let shared = AnthropicClient()
     private let maxAttempts = 3
+
+    /// Upper bound on concurrent requests this client will keep on the wire at once.
+    /// Callers that fan out (the generator's parallel candidates) must stay at or below it —
+    /// see `ClaudeService.parallelCandidates`, which clamps itself to this value. Anything
+    /// above it gets queued by URLSession while its `timeoutIntervalForResource` clock is
+    /// already running, which surfaces as a transport timeout that looks like an Anthropic
+    /// fault. Keeping the constant here (rather than a bare literal in the session builder)
+    /// is what stops the two from drifting apart silently.
+    static let maxConcurrentRequests = 4
     private lazy var session: URLSession = {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.timeoutIntervalForRequest = 240
@@ -29,7 +38,14 @@ final class AnthropicClient {
         configuration.urlCache = nil
         configuration.httpShouldSetCookies = false
         configuration.httpCookieAcceptPolicy = .never
-        configuration.httpMaximumConnectionsPerHost = 1
+        // The week generators fire `parallelCandidates` requests concurrently inside a task
+        // group. A pool of 1 silently SERIALIZED them: candidate 2 sat queued until candidate 1
+        // finished, so "parallel candidates" cost double the wall clock while the diagnostics
+        // still reported a parallel fan-out. Worse, `timeoutIntervalForResource` starts when the
+        // task is resumed, not when it reaches the wire — a queued candidate burned its resource
+        // budget waiting and could fail with a transport timeout that had nothing to do with
+        // Anthropic. Keep the ceiling small (this is a single-user app) but above the fan-out.
+        configuration.httpMaximumConnectionsPerHost = Self.maxConcurrentRequests
         configuration.allowsExpensiveNetworkAccess = true
         configuration.allowsConstrainedNetworkAccess = true
         return URLSession(configuration: configuration)
@@ -452,10 +468,18 @@ final class AnthropicClient {
         print("[AnthropicClient][\(requestID)][\(event)] \(payload)")
     }
 
+    /// Exponential backoff with a lower-bounded jitter window (half the nominal delay to the
+    /// full delay — deliberately not AWS-style "full jitter", which can collapse toward an
+    /// immediate retry). The generator fires several candidates concurrently; without jitter
+    /// every one that hits the same 429/5xx retries at the identical instant, reproducing the
+    /// burst that caused the throttle on every round instead of spreading it out.
     private func backoff(attempt: Int) -> UInt64 {
         let baseNanos: UInt64 = 1_000_000_000
         let multiplier = UInt64(1 << min(attempt - 1, 4))
-        return baseNanos * multiplier
+        let ceiling = baseNanos * multiplier
+        // Never drop below half the nominal delay — jitter should spread a burst, not defeat
+        // the backoff.
+        return UInt64.random(in: (ceiling / 2)...ceiling)
     }
 
     /// Honor the server's `retry-after` header (capped at 30s) when present, so a
@@ -465,7 +489,10 @@ final class AnthropicClient {
         if let retryAfter = response.value(forHTTPHeaderField: "retry-after"),
            let seconds = Double(retryAfter.trimmingCharacters(in: .whitespaces)),
            seconds > 0 {
-            return UInt64(min(seconds, 30) * 1_000_000_000)
+            let directive = UInt64(min(seconds, 30) * 1_000_000_000)
+            // Wait at least as long as the server asked, plus up to 1s of spread so
+            // concurrent candidates do not all resume on the same tick.
+            return directive + UInt64.random(in: 0...1_000_000_000)
         }
         return backoff(attempt: attempt)
     }

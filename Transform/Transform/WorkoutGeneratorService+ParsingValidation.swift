@@ -17,14 +17,38 @@ extension ClaudeService {
             .trimmingCharacters(in: .whitespacesAndNewlines)
 
         let candidates = jsonCandidates(from: cleaned)
+        // Report the failure from whichever candidate got FURTHEST, not a positional pick.
+        // Reporting the last one blamed a synthetic repair candidate for a brace the model
+        // never emitted; reporting the first one is just as wrong in the opposite direction —
+        // when the model wraps valid JSON in prose, the raw candidate fails with a generic
+        // "not JSON" while the extracted candidate carries the real schema mismatch. Rank by
+        // how deep the decoder got: a key/type/value error means the JSON parsed and only the
+        // shape was wrong, which is the actionable message.
         var decodeError: Error?
+        var decodeErrorRank = Int.min
+
+        // `if case` rather than a switch: DecodingError is a non-frozen stdlib enum, and an
+        // exhaustive switch over it would need an `@unknown default` whose availability is a
+        // detail of the toolchain rather than of this file.
+        func informativeness(of error: Error) -> Int {
+            guard let decodingError = error as? DecodingError else { return 1 }
+            // .dataCorrupted is "this was not JSON at all"; keyNotFound / typeMismatch /
+            // valueNotFound all mean the JSON parsed and only the shape was wrong, which is
+            // the message that actually names the offending field.
+            if case .dataCorrupted = decodingError { return 0 }
+            return 3
+        }
 
         for candidate in candidates {
             guard let data = candidate.data(using: .utf8) else { continue }
             do {
                 return try JSONDecoder().decode(type, from: data)
             } catch {
-                decodeError = error
+                let rank = informativeness(of: error)
+                if rank > decodeErrorRank {
+                    decodeErrorRank = rank
+                    decodeError = error
+                }
             }
         }
 
@@ -51,8 +75,10 @@ extension ClaudeService {
         append(raw)
         append(ClaudeService.extractJSON(from: raw))
 
+        // `"{" + raw` with no closing brace can never parse as an object; it only burned a
+        // decode attempt and produced a misleading error. The balanced repair below is the
+        // one that actually recovers an unwrapped payload.
         if !raw.hasPrefix("{") && raw.contains(":") {
-            append("{\(raw)")
             append("{\(raw)}")
         }
 
@@ -677,7 +703,14 @@ extension ClaudeService {
 
         issues.append(contentsOf: validateDayPlans(days: days, blueprint: blueprint, dayStart: dayStart))
 
-        for (dayNumber, fatigue) in stimulusReport.dailyFatigue where fatigue > maxDailyFatigueThreshold(for: days, dayNumber: dayNumber) {
+        // Sorted, not raw dictionary order: this list is rendered to the owner in the validator
+        // banner and the generation bundle, and it seeds the correction prompt. Dictionary
+        // iteration order is unspecified, so the same week produced a differently-ordered issue
+        // list run to run — which makes bundles non-comparable and the correction pass
+        // non-reproducible.
+        for dayNumber in stimulusReport.dailyFatigue.keys.sorted() {
+            let fatigue = stimulusReport.dailyFatigue[dayNumber] ?? 0
+            guard fatigue > maxDailyFatigueThreshold(for: days, dayNumber: dayNumber) else { continue }
             issues.append(
                 "Day \(dayNumber) carries too much total fatigue load for a hypertrophy week (\(fatigue)). Reduce redundant compounds or redistribute work."
             )
@@ -1080,8 +1113,11 @@ extension ClaudeService {
         let currentByStyle = groupedTrainingDaysByStyle(currentWeekDays)
         let previousByStyle = groupedTrainingDaysByStyle(previousWeekDays)
 
-        for (style, currentDays) in currentByStyle {
-            guard let previousDays = previousByStyle[style] else { continue }
+        // Same reasoning as the daily-fatigue loop: substitute-quality findings reach the user
+        // and the correction prompt, so they must not be ordered by dictionary hashing.
+        for style in currentByStyle.keys.sorted() {
+            guard let currentDays = currentByStyle[style],
+                  let previousDays = previousByStyle[style] else { continue }
 
             for index in 0..<min(currentDays.count, previousDays.count) {
                 comparableDayCount += 1
@@ -1102,7 +1138,9 @@ extension ClaudeService {
                     continuityDayCount += 1
                 }
 
-                let droppedKeys = previousKeys.subtracting(currentKeys)
+                // Set iteration order is unspecified; sort so repeated runs emit the same
+                // substitute findings in the same order.
+                let droppedKeys = previousKeys.subtracting(currentKeys).sorted()
                 for droppedKey in droppedKeys {
                     guard let previousExercise = previousAnchors.first(where: {
                         normalizeExerciseName($0.exerciseName) == droppedKey

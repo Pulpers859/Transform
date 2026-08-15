@@ -8,7 +8,21 @@ import os
 extension ClaudeService {
 
     var generationAttempts: Int { 3 }
-    var parallelCandidates: Int { 2 }
+    /// Clamped to the client's connection ceiling. Above it URLSession queues the surplus while
+    /// its resource timer is already running, so an over-wide fan-out degrades into candidates
+    /// that fail with a transport timeout they never actually spent on the wire.
+    ///
+    /// The clamp is announced when it bites. Silently dropping from candidate racing to a
+    /// single serial request is exactly the invisible regression the connection-pool fix above
+    /// exists to remove; it must not come back through this door.
+    var parallelCandidates: Int {
+        let desired = 2
+        let allowed = min(desired, AnthropicClient.maxConcurrentRequests)
+        if allowed < desired {
+            print("[WorkoutGeneratorService] Parallel candidates clamped \(desired) -> \(allowed) by AnthropicClient.maxConcurrentRequests.")
+        }
+        return max(1, allowed)
+    }
     var aiSourceLabel: String { "[AI Coach]" }
     var fallbackSourceLabel: String { "[Recovery Engine]" }
     var evidenceProfile: HypertrophyEvidenceProfile { Self.evidenceProfileCache }
@@ -788,12 +802,21 @@ extension ClaudeService {
             throw ClaudeError.parseError("Last Generation mode is handled by the Lab view and does not use the generator service.")
 
         case .procedural:
+            // Production fallback consumes the locked menu (INC-3 / INC-8). The Lab must build
+            // and score the SAME week, or the owner audits a procedural week the app can never
+            // actually ship — different exercises, different set counts, and a validator run
+            // that skips menu adherence entirely.
             let response = buildProceduralWeekOneProgram(
                 from: analysisResult,
                 trainingIntent: trainingIntent,
-                blueprint: blueprint
+                blueprint: blueprint,
+                exerciseMenus: exerciseMenus
             )
-            let finalIssues = validateProgramResponse(response, blueprint: blueprint)
+            let finalIssues = validateProgramResponse(
+                response,
+                blueprint: blueprint,
+                expectedExerciseMenus: exerciseMenus
+            )
             return try debugProgramReport(
                 stage: .weekOne,
                 mode: mode,
@@ -1059,9 +1082,14 @@ extension ClaudeService {
                 from: analysisResult,
                 trainingIntent: trainingIntent,
                 blueprint: blueprint,
+                exerciseMenus: exerciseMenus,
                 diagnostic: lastIssues.joined(separator: " | ")
             )
-            let fallbackIssues = validateProgramResponse(fallback, blueprint: blueprint)
+            let fallbackIssues = validateProgramResponse(
+                fallback,
+                blueprint: blueprint,
+                expectedExerciseMenus: exerciseMenus
+            )
             let warning = lastIssues.isEmpty
                 ? "Live AI exited into procedural fallback without a specific issue trace."
                 : "Live AI fell back after: \(lastIssues.joined(separator: " | "))"
@@ -1168,6 +1196,7 @@ extension ClaudeService {
             throw ClaudeError.parseError("Last Generation mode is handled by the Lab view and does not use the generator service.")
 
         case .procedural:
+            // Same menu-locked parity as Week 1: audit the week production would really build.
             let response = buildProceduralWeek(
                 weekNumber: weekNumber,
                 dayStart: dayStart,
@@ -1176,14 +1205,16 @@ extension ClaudeService {
                 programName: programName,
                 trainingIntent: trainingIntent,
                 blueprint: blueprint,
-                previousWeekDays: hasValidPreviousWeek ? previousWeekDays : nil
+                previousWeekDays: hasValidPreviousWeek ? previousWeekDays : nil,
+                exerciseMenus: exerciseMenus
             )
             let finalIssues = validateWeekResponse(
                 response,
                 dayStart: dayStart,
                 dayEnd: dayEnd,
                 previousWeekDays: hasValidPreviousWeek ? previousWeekDays : nil,
-                blueprint: blueprint
+                blueprint: blueprint,
+                expectedExerciseMenus: exerciseMenus
             )
 
             return try debugWeekReport(
@@ -1466,6 +1497,7 @@ extension ClaudeService {
                 trainingIntent: trainingIntent,
                 blueprint: blueprint,
                 previousWeekDays: hasValidPreviousWeek ? previousWeekDays : nil,
+                exerciseMenus: exerciseMenus,
                 diagnostic: lastIssues.joined(separator: " | ")
             )
             let fallbackIssues = validateWeekResponse(
@@ -1473,7 +1505,8 @@ extension ClaudeService {
                 dayStart: dayStart,
                 dayEnd: dayEnd,
                 previousWeekDays: hasValidPreviousWeek ? previousWeekDays : nil,
-                blueprint: blueprint
+                blueprint: blueprint,
+                expectedExerciseMenus: exerciseMenus
             )
             let fallbackWarning = lastIssues.isEmpty
                 ? "Live AI exited into procedural fallback without a specific issue trace."

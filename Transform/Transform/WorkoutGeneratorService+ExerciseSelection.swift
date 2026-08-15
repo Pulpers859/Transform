@@ -1122,8 +1122,13 @@ extension ClaudeService {
         let previousByStyle = groupedTrainingDaysByStyle(previousDays)
         var entries: [WeekDiffEntry] = []
 
-        for (style, currentStyleDays) in currentByStyle {
-            guard let previousStyleDays = previousByStyle[style] else { continue }
+        // This list is rendered as the week-over-week change log. Dictionary/Set iteration order
+        // is unspecified, and the closing `sorted(by: dayNumber)` is not a stable sort, so rows
+        // within a day previously shuffled between reads of the same two weeks. Walk every
+        // collection in a defined order instead.
+        for style in currentByStyle.keys.sorted() {
+            guard let currentStyleDays = currentByStyle[style],
+                  let previousStyleDays = previousByStyle[style] else { continue }
 
             for index in 0..<min(currentStyleDays.count, previousStyleDays.count) {
                 let current = currentStyleDays[index]
@@ -1138,7 +1143,8 @@ extension ClaudeService {
                     uniquingKeysWith: { first, _ in first }
                 )
 
-                for (key, exercise) in previousKeys where currentKeys[key] == nil {
+                for key in previousKeys.keys.sorted() where currentKeys[key] == nil {
+                    guard let exercise = previousKeys[key] else { continue }
                     entries.append(WeekDiffEntry(
                         dayNumber: current.dayNumber,
                         dayName: current.dayName,
@@ -1148,7 +1154,8 @@ extension ClaudeService {
                     ))
                 }
 
-                for (key, exercise) in currentKeys where previousKeys[key] == nil {
+                for key in currentKeys.keys.sorted() where previousKeys[key] == nil {
+                    guard let exercise = currentKeys[key] else { continue }
                     entries.append(WeekDiffEntry(
                         dayNumber: current.dayNumber,
                         dayName: current.dayName,
@@ -1158,8 +1165,9 @@ extension ClaudeService {
                     ))
                 }
 
-                for (key, currentExercise) in currentKeys {
-                    guard let previousExercise = previousKeys[key] else { continue }
+                for key in currentKeys.keys.sorted() {
+                    guard let currentExercise = currentKeys[key],
+                          let previousExercise = previousKeys[key] else { continue }
                     if currentExercise.sets != previousExercise.sets {
                         entries.append(WeekDiffEntry(
                             dayNumber: current.dayNumber,
@@ -1182,7 +1190,17 @@ extension ClaudeService {
             }
         }
 
-        return entries.sorted { $0.dayNumber < $1.dayNumber }
+        // Insertion order is the tiebreak, because Swift's sort is not stable: rows sharing a
+        // dayNumber otherwise had unspecified relative order even from identical input.
+        return entries
+            .enumerated()
+            .sorted { lhs, rhs in
+                if lhs.element.dayNumber != rhs.element.dayNumber {
+                    return lhs.element.dayNumber < rhs.element.dayNumber
+                }
+                return lhs.offset < rhs.offset
+            }
+            .map(\.element)
     }
 
     // MARK: - Pre-Selected Exercise Menu (deterministic selection layer)
