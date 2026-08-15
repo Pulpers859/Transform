@@ -1581,19 +1581,62 @@ struct ExercisePrescriptionPillRow: View {
     /// one closes any other.
     @State private var explainingID: String?
 
+    /// At accessibility sizes a chip cannot hold its line in half the card width, so the grid
+    /// drops to one column rather than shrinking text toward illegibility.
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    private var columnCount: Int { dynamicTypeSize >= .accessibility1 ? 1 : 2 }
+
+    /// Fixed columns, not a greedy flow.
+    ///
+    /// The previous layout packed chips left to right and wrapped when full. With four chips
+    /// that always produced three on the first row and RIR ALONE on the second — an orphan on
+    /// every exercise, spending a full row of height on one small chip. Worse, because chip
+    /// widths follow their content ("6-10 reps" is narrower than "10-14 reps"), the wrap point
+    /// and every x-position shifted from card to card, so nothing lined up while scrolling the
+    /// day. That is the "misaligned" part: not one bad card, but no two cards agreeing.
+    ///
+    /// Equal-width columns make position independent of content, so the second column starts
+    /// at the same x on every card in the list. The pairing is meaningful rather than
+    /// arbitrary: the first row is the dose (how many sets, how many reps), the second is how
+    /// to execute it (tempo, effort).
+    ///
+    /// Cramming all four onto one line was the other option and was rejected — it would mean
+    /// shrinking type and padding on the one screen used mid-set, and it would undo the 44pt
+    /// tap targets the explainer chips need.
     var body: some View {
-        ExercisePillFlowLayout(spacing: 7, rowSpacing: 7) {
-            ForEach(items) { item in
-                chip(for: item)
+        VStack(alignment: .leading, spacing: 7) {
+            ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                HStack(spacing: 7) {
+                    ForEach(row) { item in
+                        chip(for: item)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    // Keeps a short final row's cells the same width as every other row's, so
+                    // a 3-chip prescription still aligns with a 4-chip one. At most one
+                    // filler is ever needed (two columns, so a short row holds exactly one),
+                    // which avoids a ForEach over a computed range.
+                    if row.count < columnCount {
+                        Color.clear.frame(maxWidth: .infinity)
+                    }
+                }
             }
+        }
+    }
+
+    private var rows: [[ExercisePrescriptionPillData]] {
+        stride(from: 0, to: items.count, by: columnCount).map { start in
+            Array(items[start..<min(start + columnCount, items.count)])
         }
     }
 
     @ViewBuilder
     private func chip(for item: ExercisePrescriptionPillData) -> some View {
         let content = HStack(spacing: 5) {
+            // Scales with Dynamic Type. A fixed 9pt glyph stayed put while its label grew,
+            // so the chip drifted out of proportion at larger text sizes.
             Image(systemName: item.icon)
-                .font(.system(size: 9, weight: .bold))
+                .font(.caption2.bold())
                 .foregroundStyle(TFColor.accent)
             Text(item.label)
                 .font(.caption2.bold())
@@ -1647,47 +1690,6 @@ struct ExercisePrescriptionPillRow: View {
     }
 }
 
-struct ExercisePillFlowLayout: Layout {
-    var spacing: CGFloat = 8
-    var rowSpacing: CGFloat = 8
-
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        arrangeSubviews(proposal: proposal, subviews: subviews).size
-    }
-
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        let arrangement = arrangeSubviews(proposal: ProposedViewSize(width: bounds.width, height: proposal.height), subviews: subviews)
-        for item in arrangement.items {
-            subviews[item.index].place(
-                at: CGPoint(x: bounds.minX + item.origin.x, y: bounds.minY + item.origin.y),
-                proposal: ProposedViewSize(width: item.size.width, height: item.size.height)
-            )
-        }
-    }
-
-    private func arrangeSubviews(proposal: ProposedViewSize, subviews: Subviews) -> (items: [(index: Int, origin: CGPoint, size: CGSize)], size: CGSize) {
-        let maxWidth = proposal.width ?? .greatestFiniteMagnitude
-        var items: [(index: Int, origin: CGPoint, size: CGSize)] = []
-        var cursor = CGPoint.zero
-        var rowHeight: CGFloat = 0
-        var usedWidth: CGFloat = 0
-
-        for index in subviews.indices {
-            let size = subviews[index].sizeThatFits(.unspecified)
-            if cursor.x > 0, cursor.x + size.width > maxWidth {
-                cursor.x = 0
-                cursor.y += rowHeight + rowSpacing
-                rowHeight = 0
-            }
-            items.append((index, cursor, size))
-            cursor.x += size.width + spacing
-            rowHeight = max(rowHeight, size.height)
-            usedWidth = max(usedWidth, cursor.x - spacing)
-        }
-
-        return (items, CGSize(width: min(usedWidth, maxWidth), height: cursor.y + rowHeight))
-    }
-}
 
 struct LastSessionCompactRow: View {
     let summary: String
