@@ -670,7 +670,11 @@ struct WorkoutView: View {
         SleepTrendStore.refresh(using: modelContext)
 
         do {
-            let performanceHistory = compactPerformanceHistory(from: exerciseWeightEntries, performanceLogs: exercisePerformanceLogs)
+            // Derived once and shared: the prompt history and the validator's structured
+            // verdicts read the same decision for the same entry, so building it twice was
+            // both wasted work and a chance for the two halves to disagree.
+            let progressionLookup = makeProgressionLookup(performanceLogs: exercisePerformanceLogs)
+            let performanceHistory = compactPerformanceHistory(from: exerciseWeightEntries, lookup: progressionLookup)
             let history = exerciseHistoryContext(from: programs)
             // `programs` includes archived mesocycles, so skip/pain patterns persist
             // across program boundaries.
@@ -679,7 +683,7 @@ struct WorkoutView: View {
                 performanceHistory: performanceHistory,
                 skipHistory: recurringSkipHistory(across: programs),
                 exerciseHistory: history,
-                progressionVerdicts: progressionVerdictContexts(from: exerciseWeightEntries, performanceLogs: exercisePerformanceLogs)
+                progressionVerdicts: progressionVerdictContexts(from: exerciseWeightEntries, lookup: progressionLookup)
             )
             let response = generationResult.response
             try Task.checkCancellation()
@@ -775,7 +779,8 @@ struct WorkoutView: View {
 
         do {
             WorkoutGenerationDiagnostics.markStage("requesting week \(nextWeek) program from AI")
-            let performanceHistory = compactPerformanceHistory(from: exerciseWeightEntries, performanceLogs: exercisePerformanceLogs)
+            let progressionLookup = makeProgressionLookup(performanceLogs: exercisePerformanceLogs)
+            let performanceHistory = compactPerformanceHistory(from: exerciseWeightEntries, lookup: progressionLookup)
             let history = exerciseHistoryContext(from: programs)
             let generationResult = try await ClaudeService.shared.generateNextWeek(
                 weekNumber: nextWeek,
@@ -790,7 +795,7 @@ struct WorkoutView: View {
                 ),
                 skipHistory: recurringSkipHistory(across: programs),
                 exerciseHistory: history,
-                progressionVerdicts: progressionVerdictContexts(from: exerciseWeightEntries, performanceLogs: exercisePerformanceLogs)
+                progressionVerdicts: progressionVerdictContexts(from: exerciseWeightEntries, lookup: progressionLookup)
             )
             let response = generationResult.response
             try Task.checkCancellation()
@@ -1203,9 +1208,52 @@ struct WorkoutView: View {
         return recent
     }
 
+    /// Everything the deterministic verdict engine needs, derived ONCE per generation.
+    ///
+    /// Both inputs used to be rebuilt per logged exercise: `decodedSetLogs` runs a full
+    /// `JSONDecoder` pass on every access, and `prescribedRepRange` re-walked every program,
+    /// day and exercise (recomputing canonical keys) for every lookup. Because
+    /// `compactPerformanceHistory` also called `progressionVerdict`, which independently
+    /// recomputed the same decision, tapping Generate did on the order of thirty full passes
+    /// over the entire training history — synchronously, on the main actor, before the request
+    /// was even sent. The cost grew with every workout the owner logged, which is exactly the
+    /// kind of hitch that only shows up months in.
+    struct ProgressionLookup {
+        let snapshots: [WorkoutPerformanceLogSnapshot]
+        let repRangesByKey: [String: RepRange]
+    }
+
+    func makeProgressionLookup(performanceLogs: [ExercisePerformanceLog]) -> ProgressionLookup {
+        let snapshots = performanceLogs.map {
+            WorkoutPerformanceLogSnapshot(
+                canonicalExerciseKey: $0.canonicalExerciseKey,
+                loggedAt: $0.loggedAt,
+                setLogs: $0.decodedSetLogs
+            )
+        }
+
+        // Same traversal and same first-match-wins semantics the per-key scan had: `programs`
+        // is newest-first and includes archived mesocycles, so the winning range is the one the
+        // most recent program that ran the exercise prescribed. Unparseable reps are skipped
+        // rather than claimed, exactly as before.
+        var repRangesByKey: [String: RepRange] = [:]
+        for program in programs {
+            for day in program.sortedDays {
+                for exercise in day.sortedExercises {
+                    let key = ExerciseWeightEntry.canonicalLookupKey(exercise.exerciseName)
+                    guard repRangesByKey[key] == nil,
+                          let range = RepRange.parse(exercise.reps) else { continue }
+                    repRangesByKey[key] = range
+                }
+            }
+        }
+
+        return ProgressionLookup(snapshots: snapshots, repRangesByKey: repRangesByKey)
+    }
+
     func compactPerformanceHistory(
         from entries: [ExerciseWeightEntry],
-        performanceLogs: [ExercisePerformanceLog],
+        lookup: ProgressionLookup,
         limit: Int = 10
     ) -> String? {
         let recent = recentPerformanceEntries(from: entries, limit: limit)
@@ -1214,13 +1262,13 @@ struct WorkoutView: View {
         formatter.dateStyle = .short
         formatter.timeStyle = .none
         return recent.map { entry in
-            let decision = progressionDecision(for: entry, performanceLogs: performanceLogs)
+            let decision = progressionDecision(for: entry, lookup: lookup)
             let weight = decision?.workingWeight ?? entry.weightLbs
             let reps = decision?.minimumWorkingReps ?? entry.repsCompleted
             var line = "- \(entry.exerciseName): \(Int(weight)) lb"
             if let reps { line += " x \(reps)" }
             line += " (\(formatter.string(from: entry.loggedAt)))"
-            if let verdict = progressionVerdict(for: entry, performanceLogs: performanceLogs) {
+            if let verdict = progressionVerdict(for: entry, decision: decision, lookup: lookup) {
                 line += " — app verdict: \(verdict)"
             }
             return line
@@ -1232,11 +1280,11 @@ struct WorkoutView: View {
     /// and the same verdict logic that feed the prompt.
     func progressionVerdictContexts(
         from entries: [ExerciseWeightEntry],
-        performanceLogs: [ExercisePerformanceLog],
+        lookup: ProgressionLookup,
         limit: Int = 10
     ) -> [ClaudeService.ExerciseProgressionVerdict] {
         recentPerformanceEntries(from: entries, limit: limit).compactMap { entry in
-            guard let decision = progressionDecision(for: entry, performanceLogs: performanceLogs) else { return nil }
+            guard let decision = progressionDecision(for: entry, lookup: lookup) else { return nil }
             return ClaudeService.ExerciseProgressionVerdict(
                 canonicalKey: entry.canonicalExerciseKey,
                 exerciseName: entry.exerciseName,
@@ -1254,12 +1302,16 @@ struct WorkoutView: View {
     /// the latest usable per-set log when one exists, falling back to the summary reps for
     /// legacy records, and the rep range prescribed by the most recent program that ran
     /// the exercise.
+    /// `decision` is passed in rather than recomputed: the caller already derived it for the
+    /// same entry, and re-deriving it was half of the duplicated work described on
+    /// `ProgressionLookup`.
     func progressionVerdict(
         for entry: ExerciseWeightEntry,
-        performanceLogs: [ExercisePerformanceLog]
+        decision: WorkoutProgressionDecision?,
+        lookup: ProgressionLookup
     ) -> String? {
-        guard let decision = progressionDecision(for: entry, performanceLogs: performanceLogs),
-              let range = prescribedRepRange(forCanonicalKey: entry.canonicalExerciseKey)
+        guard let decision,
+              let range = lookup.repRangesByKey[entry.canonicalExerciseKey]
         else { return nil }
 
         let weight = formatWeight(decision.workingWeight)
@@ -1282,17 +1334,11 @@ struct WorkoutView: View {
     /// structured validator verdicts cannot drift apart.
     func progressionDecision(
         for entry: ExerciseWeightEntry,
-        performanceLogs: [ExercisePerformanceLog]
+        lookup: ProgressionLookup
     ) -> WorkoutProgressionDecision? {
-        guard let range = prescribedRepRange(forCanonicalKey: entry.canonicalExerciseKey) else { return nil }
         let key = entry.canonicalExerciseKey
-        let snapshots = performanceLogs.map {
-            WorkoutPerformanceLogSnapshot(
-                canonicalExerciseKey: $0.canonicalExerciseKey,
-                loggedAt: $0.loggedAt,
-                setLogs: $0.decodedSetLogs
-            )
-        }
+        guard let range = lookup.repRangesByKey[key] else { return nil }
+        let snapshots = lookup.snapshots
         let latestSetLogs = WorkoutProgressionEngine.latestUsableSetLogs(
             for: key,
             from: snapshots
@@ -1308,20 +1354,6 @@ struct WorkoutView: View {
             repRange: range,
             effortSignal: effortSignal
         )
-    }
-
-    /// Rep range last prescribed for this exercise, matched by canonical key across the
-    /// newest-first `programs` query (which includes archived mesocycles).
-    func prescribedRepRange(forCanonicalKey key: String) -> RepRange? {
-        for program in programs {
-            for day in program.sortedDays {
-                for exercise in day.sortedExercises
-                where ExerciseWeightEntry.canonicalLookupKey(exercise.exerciseName) == key {
-                    if let range = RepRange.parse(exercise.reps) { return range }
-                }
-            }
-        }
-        return nil
     }
 
     func encodeJSONString<T: Encodable>(_ value: T, failureMessage: String) -> String? {
