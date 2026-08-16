@@ -930,21 +930,12 @@ struct ExerciseCard: View {
         return kept
     }
 
+    /// Shared with the validator so the card and the checker agree on where a sentence ends.
+    /// The local copy split on every period, including the one in `22.5` — which, once the
+    /// trailing half of the sentence was stripped as progression prose, rendered the cue as
+    /// "Work at 22." and showed the lifter a load half a pound under the written one.
     private func splitSentences(_ text: String) -> [String] {
-        let collapsed = text
-            .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !collapsed.isEmpty else { return [] }
-
-        let pattern = #"[^.!?]+[.!?]?"#
-        guard let regex = try? NSRegularExpression(pattern: pattern) else { return [collapsed] }
-        let range = NSRange(collapsed.startIndex..<collapsed.endIndex, in: collapsed)
-
-        return regex.matches(in: collapsed, range: range).compactMap { match in
-            guard let matchRange = Range(match.range, in: collapsed) else { return nil }
-            let sentence = collapsed[matchRange].trimmingCharacters(in: .whitespacesAndNewlines)
-            return sentence.isEmpty ? nil : sentence
-        }
+        CoachingProse.sentences(in: text)
     }
 
     private func containsAny(_ text: String, _ fragments: [String]) -> Bool {
@@ -2414,7 +2405,11 @@ struct ExercisePrescription {
         let weekString = firstCapture(in: trimmed, pattern: #"(?i)\bweek\s*(\d+)\b"#)
         let week = weekString.flatMap(Int.init)
 
-        let intensity = firstCapture(in: trimmed, pattern: #"(?i)\b(light|moderate|heavy)\b"#)
+        // Only the LABEL form ("Moderate Weight:", "Week 2 Heavy Weight") is a prescription.
+        // A bare adjective is ordinary coaching prose — "use a moderate load", "don't go heavy
+        // here" — and reading it as a prescription both mislabels the exercise and, worse, used
+        // to license the unconditional strip below that deleted the word out of the sentence.
+        let intensity = firstCapture(in: trimmed, pattern: #"(?i)\b(light|moderate|heavy)\s+weight\b"#)
             .flatMap { WorkoutIntensity(rawValue: $0.lowercased()) }
 
         // Range-aware ("2-3 RIR", "2-3 reps in reserve"): capturing only the single
@@ -2433,7 +2428,11 @@ struct ExercisePrescription {
         cleaned = cleaned.replacingOccurrences(of: #"(?i)\bweek\s*\d+\s*(light|moderate|heavy)\s+weight\b\s*[:\-]?\s*"#, with: "", options: .regularExpression)
         cleaned = cleaned.replacingOccurrences(of: #"(?i)\b(light|moderate|heavy)\s+weight\b\s*[:\-]?\s*"#, with: "", options: .regularExpression)
         cleaned = cleaned.replacingOccurrences(of: #"(?i)\bweek\s*\d+\b\s*[:\-]?\s*"#, with: "", options: .regularExpression)
-        cleaned = cleaned.replacingOccurrences(of: #"(?i)\b(light|moderate|heavy)\b"#, with: "", options: .regularExpression)
+        // NO bare-adjective strip here. The two label forms above already remove the
+        // prescription header. Deleting every "light"/"moderate"/"heavy" from the note body
+        // rewrote real coaching into nonsense on the card — "Use a moderate load and control
+        // the eccentric" rendered as "Use a load and control the eccentric", and "Don't go
+        // heavy here" rendered as "Don't go here", which inverts a caution into an instruction.
         cleaned = cleaned.replacingOccurrences(of: "(?i)\\bRIR\\b\\s*[:\\-]?\\s*\(rirNumber)\\b", with: "", options: .regularExpression)
         cleaned = cleaned.replacingOccurrences(of: "(?i)\\b\(rirNumber)\\s*RIR\\b", with: "", options: .regularExpression)
         cleaned = cleaned.replacingOccurrences(of: "(?i)\\b\(rirNumber)\\s*reps?\\s+in\\s+reserve\\b", with: "", options: .regularExpression)

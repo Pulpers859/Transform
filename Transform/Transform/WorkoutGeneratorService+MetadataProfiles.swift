@@ -1738,8 +1738,13 @@ extension ClaudeService {
             ),
             PriorityFocusProfile(
                 label: "Posterior Deltoids",
-                triggerKeywords: ["posterior deltoids", "posterior delt", "rear delts", "rear delt"],
-                coverageKeywords: ["posterior deltoids", "posterior delt", "rear delts", "rear delt", "reverse pec deck", "reverse fly", "face pull"],
+                // "rear deltoids" is the spelling the exercise catalogs use for this muscle
+                // target, and it matched NONE of the old triggers. It must stay listed here so
+                // this two-token profile out-ranks the broader Shoulders profile in the
+                // specificity sort — otherwise a rear-delt priority resolves to Shoulders,
+                // whose preferredStyles omit Pull, and loses the very days it belongs on.
+                triggerKeywords: ["posterior deltoids", "posterior delt", "rear deltoids", "rear delts", "rear delt"],
+                coverageKeywords: ["posterior deltoids", "posterior delt", "rear deltoids", "rear delts", "rear delt", "reverse pec deck", "reverse fly", "face pull"],
                 preferredStyles: ["Pull", "Upper"],
                 accessoryCatalog: [
                     ("Reverse Pec Deck", "Rear Deltoids"),
@@ -1789,7 +1794,13 @@ extension ClaudeService {
             ),
             PriorityFocusProfile(
                 label: "Shoulders",
-                triggerKeywords: ["shoulder", "delt", "deltoid"],
+                // Plurals are REQUIRED, not decoration. `containsPriorityPhrase` compares whole
+                // tokens, so "shoulder" does not match the area string "Shoulders" — and the
+                // body analysis names priorities in the plural. Without these the profile never
+                // matched its own muscle: "Shoulders" fell through to the generic default whose
+                // preferredStyles is all six styles, which is how a Lower day could end up
+                // labelled "focus: Shoulders" with a lateral raise appended to it.
+                triggerKeywords: ["shoulder", "shoulders", "delt", "delts", "deltoid", "deltoids"],
                 coverageKeywords: ["shoulder", "delt", "deltoid", "lateral raise", "rear delt", "shoulder press", "face pull"],
                 preferredStyles: ["Push", "Upper", "Arms"],
                 accessoryCatalog: [
@@ -1809,7 +1820,8 @@ extension ClaudeService {
             ),
             PriorityFocusProfile(
                 label: "Arms",
-                triggerKeywords: ["arm", "bicep", "tricep", "triceps", "biceps", "forearm"],
+                // Same whole-token rule as Shoulders above: "arm" never matched "Arms".
+                triggerKeywords: ["arm", "arms", "bicep", "tricep", "triceps", "biceps", "forearm", "forearms"],
                 coverageKeywords: ["arm", "bicep", "tricep", "triceps", "biceps", "curl", "pressdown", "triceps extension", "skull crusher", "close-grip", "hammer curl", "forearm", "brachialis"],
                 preferredStyles: ["Arms", "Upper", "Push", "Pull"],
                 accessoryCatalog: [

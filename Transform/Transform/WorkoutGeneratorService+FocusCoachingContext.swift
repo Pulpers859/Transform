@@ -211,9 +211,28 @@ extension ClaudeService {
     /// Narrow, high-precision detector for load/rep-progression prose in EXERCISE
     /// notes. The validator uses it to keep notes execution-only, so keep fragments
     /// unambiguous — a false positive here burns a paid retry.
+    /// Whole-word matching, unlike `containsAny`, and deliberately so.
+    ///
+    /// This is the most expensive predicate in the app: a true here is a HARD failure that
+    /// discards every paid AI candidate for the week AND skips the correction pass. Raw
+    /// substring matching made two innocent, prompt-encouraged execution cues detonate it,
+    /// because a banned fragment can be the PREFIX of an unrelated word:
+    ///
+    ///   "increase to"    is inside  "increase total time under tension"
+    ///   "when you clear" is inside  "Stop when you clearly feel the chest lengthen"
+    ///
+    /// Both are exactly the ROM/control phrasing the system prompt asks for. A trailing "s"
+    /// still counts as the same phrase, so "progression targets" and "add loads" stay banned.
+    ///
+    /// The display filter in `coachingSentences` intentionally keeps plain substring matching:
+    /// over-stripping there only shortens a note, while under-stripping puts a second voice on
+    /// the card next to the progression banner. The consequences are not symmetric, so the
+    /// rules are not either.
     func notesContainProgressionInstruction(_ notes: String) -> Bool {
         let normalized = normalizedPriorityText(notes)
-        return containsAny(normalized, keywords: ProgressionProseFragments.validatorBanned)
+        return ProgressionProseFragments.validatorBanned.contains {
+            CoachingProse.containsPhrase(normalized, $0)
+        }
     }
 
     func polishedExerciseNotes(

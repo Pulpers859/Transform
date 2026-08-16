@@ -333,7 +333,7 @@ struct WorkoutView: View {
                         foreground: .blue,
                         background: TFColor.info.opacity(0.15)
                     )
-                    if let sourceBadge = generationSourceBadge(for: program.programSummary) {
+                    if let sourceBadge = generationSourceBadge(for: sourceSummaryForSelectedWeek(program)) {
                         programHeaderBadge(
                             sourceBadge.label,
                             foreground: sourceBadge.foreground,
@@ -1225,11 +1225,24 @@ struct WorkoutView: View {
             .lineLimit(1)
     }
 
-    func summaryForSelectedWeek(_ program: WorkoutProgram) -> String {
+    /// The stored summary the header is describing, WITH its source label intact.
+    ///
+    /// The badge and the summary text sit next to each other and must describe the same thing.
+    /// They did not: the text was per-week while the badge read `programSummary`, which is
+    /// written once when week 1 is created and never updated afterwards. So a week whose AI
+    /// call failed and fell back to the training engine still wore a green "AI Coach" badge —
+    /// and the per-week summary that would have said otherwise had its label stripped before
+    /// display. Every honest signal was destroyed at the presentation boundary, on a screen
+    /// where the exercise cards underneath simultaneously said "Built by the training engine".
+    func sourceSummaryForSelectedWeek(_ program: WorkoutProgram) -> String {
         if let perWeek = program.weekSummary(for: selectedWeek), !perWeek.isEmpty {
-            return summaryWithoutSourcePrefix(perWeek)
+            return perWeek
         }
-        return summaryWithoutSourcePrefix(program.programSummary)
+        return program.programSummary
+    }
+
+    func summaryForSelectedWeek(_ program: WorkoutProgram) -> String {
+        summaryWithoutSourcePrefix(sourceSummaryForSelectedWeek(program))
     }
 
     func syncSelectedWeekWithCurrentProgram() {

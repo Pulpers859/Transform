@@ -171,6 +171,10 @@ extension ClaudeService {
             rules.append("- Rewrite only the flagged coaching cue text so it agrees with the app's logged progression verdict quoted in the issue. Do not change sets, reps, or exercises to resolve a cue contradiction.")
         }
 
+        if issues.contains(where: { $0.contains("notes contain load/rep progression instructions") }) {
+            rules.append("- Rewrite ONLY the flagged exercise's note so it is execution-only: a form/setup cue plus a control, ROM, or bracing cue. Remove every load- or rep-progression phrase; if that note stated working-set effort, move it to the structured targetRIR field. Change nothing else about that exercise.")
+        }
+
         if issues.contains(where: { $0.contains("session budget") || $0.contains("too crowded") || $0.contains("fatigue load") }) {
             rules.append("- Set counts are locked. Bring the session inside its time budget by correcting excessive rest periods within the role-specific ranges.")
         }
@@ -585,26 +589,47 @@ extension ClaudeService {
 
     func phaseGuidance(for weekNumber: Int) -> String {
         switch weekNumber {
+        // The volume arc is NOT yours to write — the deterministic allocator has already
+        // applied it to the Pre-Selected Exercise Menu you are given (week 2 lands ~26% above
+        // week 1, week 3 peaks, week 4 drops ~46% off week 3 and also carries one fewer
+        // exercise). These strings therefore describe the phase's INTENT and the fields you
+        // actually control: reps, targetRIR, tempo, rest, and what the coaching emphasizes.
+        //
+        // They used to instruct set changes ("Add ~15-25% productive sets", "drop sets") while
+        // five other lines of the same prompt forbade touching set counts. Two ways that cost
+        // real money: obeying it trips "did not follow the Pre-Selected Exercise Menu", and
+        // merely writing about it trips "notes contradict the actual programming" — both are
+        // correction-worthy, i.e. a second full billable call. Obeying it on week 4 would also
+        // stack a second deload on top of the ~46% cut already in the menu.
         case 2:
             return """
-            Week 2 — Volume accumulation. Add ~15-25% productive sets to the priority muscles
-            identified in the analysis (not evenly across everything). Target RPE 7-8. Use the
-            previous week's performance to pick loads that let the user beat last week's reps.
+            Week 2 — Volume accumulation. The menu has already raised the set count on the
+            priority muscles; do not restate that arithmetic or claim credit for it. Your job is
+            to make those sets productive: target RPE 7-8, and use the previous week's logged
+            performance to pick rep prescriptions the user can beat at the same or slightly
+            higher load.
             """
         case 3:
             return """
-            Week 3 — Peak training stress. Highest productive volume of the mesocycle for the
-            priority muscles. Top sets at RPE 8-9. Keep postural/injury-driven warm-ups non-
-            negotiable — this is the week form breaks down first.
+            Week 3 — Peak training stress. The menu carries the highest set count of the
+            mesocycle for the priority muscles. Program top sets at RPE 8-9 and tighten rep
+            targets accordingly. Keep postural/injury-driven warm-ups non-negotiable — this is
+            the week form breaks down first, so bias the notes toward bracing and control.
             """
         case 4:
             return """
-            Week 4 — Deload / realization. Reduce hard-set volume by ~35-45%. Keep the movements
-            familiar; drop sets, not technique quality. Use this week to cement the postural /
-            mobility work from the analysis rather than pushing load.
+            Week 4 — Deload / realization. The menu has ALREADY cut the volume for you: fewer
+            exercises and fewer sets on each. Do not cut anything further. Deload the INTENSITY
+            instead — raise targetRIR (roughly 3), keep rep targets comfortably inside the
+            range, and prescribe loads that stop well short of failure. Use the notes to cement
+            the postural / mobility work from the analysis rather than pushing load.
             """
         default:
-            return "Apply sensible progressive overload based on the previous week's performance and the analysis priorities."
+            return """
+            Apply sensible progressive overload through reps, targetRIR, tempo, and rest based
+            on the previous week's logged performance and the analysis priorities. Exercise
+            selection and set counts are fixed by the Pre-Selected Exercise Menu.
+            """
         }
     }
 

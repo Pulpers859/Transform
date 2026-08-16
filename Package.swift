@@ -83,6 +83,12 @@ let package = Package(
                 // Single source of truth for the banned-prose fragment lists. Previously
                 // retyped in three places, one of which had already drifted.
                 "ProgressionProseFragments.swift",
+                // The two operations performed ON those fragment lists: whole-phrase matching
+                // and decimal-safe sentence splitting. Here because both defects it fixes were
+                // invisible without execution — a banned fragment matching as the prefix of an
+                // innocent word discards a paid AI week, and a sentence split inside "22.5"
+                // both shows the lifter a wrong load and blinds the contradiction check.
+                "CoachingProse.swift",
                 // One resolved answer to "what happened on this exercise?". Replaces four
                 // independently-read data sources on different time windows, which is how the
                 // card came to contradict itself on screen (a Best set TODAY presented beside

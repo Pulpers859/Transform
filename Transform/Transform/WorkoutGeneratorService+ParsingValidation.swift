@@ -829,8 +829,12 @@ extension ClaudeService {
             }
         }
 
+        // Splitting on every "." used to cut "hold at 22.5 lb" into "hold at 22" and "5 lb",
+        // which made the numeric hold/add patterns above unmatchable for ANY decimal load —
+        // and 2.5 lb increments are routine here. Semicolons still separate clauses.
         let sentences = notes
-            .split(whereSeparator: { ".;!?".contains($0) })
+            .split(separator: ";")
+            .flatMap { CoachingProse.sentences(in: String($0)) }
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
 
@@ -1040,6 +1044,14 @@ extension ClaudeService {
             "session budget",
             "session notes are empty or too short",
             "session notes are generic",
+            // Rewriting one sentence is the textbook correction-pass repair: it touches no
+            // set, exercise, or day structure, and `correctionTactics` scopes the edit to the
+            // offending note. It used to fall through to .hardFailure, which sets
+            // hasPlannerOrStructuralFailure and SKIPS the correction pass outright — so a
+            // single stray phrase in one note out of ~30 discarded every paid candidate for
+            // the week and dropped to the procedural generator without ever attempting the
+            // cheap fix. Structural invariants deserve that treatment; a sentence does not.
+            "notes contain load/rep progression instructions",
             "notes are empty or too short",
             "notes do not include a concrete progression cue",
             "the generated day reads as",

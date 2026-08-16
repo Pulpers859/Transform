@@ -201,7 +201,7 @@ extension ClaudeService {
             }
 
             let dayName = focus.isEmpty ? "\(style) Session" : "\(style) - \(focus) Focus"
-            let groups = proceduralMuscleGroups(for: style)
+            let groups = proceduralMuscleGroups(for: style, exercises: exercises)
             let notes = proceduralDayNotes(
                 style: style,
                 weekNumber: weekNumber,
@@ -233,7 +233,12 @@ extension ClaudeService {
             )
         }
 
-        let summary = "Week \(weekNumber) for \(programName) (\(splitType)) applies phase-aware progression and shift-work-friendly session design."
+        // "shift-work-friendly session design" used to be asserted here unconditionally. There
+        // is no shift-work flag anywhere on the calibration profile to justify it, and in the
+        // menu-locked path this generator does not choose session design at all — the shared
+        // allocator did. It was one person's circumstances hardcoded into a generic default,
+        // which the project standards rule out. Claim only what this path actually did.
+        let summary = "Week \(weekNumber) for \(programName) (\(splitType)) follows the planned exercises and set counts, with phase-appropriate reps, tempo, rest, and effort targets."
         return WorkoutWeekResponse(
             weekSummary: withSourceLabel(summary, sourceLabel: fallbackSourceLabel),
             days: days
@@ -1691,7 +1696,30 @@ extension ClaudeService {
         }
     }
 
-    func proceduralMuscleGroups(for style: String) -> String {
+    /// The day's subtitle, read off the exercises the day ACTUALLY contains.
+    ///
+    /// This used to be a fixed string per split style, chosen without ever looking at the
+    /// session. The Arms table said "Biceps, Triceps, Deltoids" while the Arms catalog holds
+    /// twelve movements and not one of them trains a deltoid — so every fallback Arms day told
+    /// the lifter it trained delts and then trained none. Deriving it from the exercises makes
+    /// the claim true by construction instead of by maintenance.
+    ///
+    /// Order follows the exercises, so it is deterministic, and the style table survives only
+    /// for a day with nothing in it.
+    func proceduralMuscleGroups(for style: String, exercises: [WorkoutExerciseResponse]) -> String {
+        var seen = Set<String>()
+        var ordered: [String] = []
+        for exercise in exercises {
+            let target = exercise.muscleTarget.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !target.isEmpty,
+                  seen.insert(normalizedPriorityText(target)).inserted else { continue }
+            ordered.append(target)
+        }
+        guard !ordered.isEmpty else { return styleMuscleGroups(for: style) }
+        return ordered.prefix(4).joined(separator: ", ")
+    }
+
+    private func styleMuscleGroups(for style: String) -> String {
         switch style {
         case "Push": return "Chest, Shoulders, Triceps"
         case "Pull": return "Back, Rear Delts, Biceps"
@@ -1741,22 +1769,35 @@ extension ClaudeService {
 
         var items: [String] = []
 
-        if anchorTargets.contains(where: { containsPriorityPhrase(in: $0, keywords: ["quad", "glute", "hamstring", "legs", "posterior chain"]) }) {
+        // These keywords must be spelled the way the exercise catalogs actually spell muscle
+        // targets. `containsPriorityPhrase` compares WHOLE tokens, so the singular forms this
+        // list used to carry ("quad", "glute", "hamstring", "delt", "lat") matched none of the
+        // real targets — every one of them is plural ("Quads", "Glutes", "Hamstrings",
+        // "Deltoids", "Lats"). The leg, shoulder and lat lines could therefore essentially
+        // never fire, and a fallback lower-body or shoulder day fell through to the generic
+        // "joint prep for primary movers" — dropping exactly the joint-specific prep the
+        // programming standard says postural and injury notes must drive.
+        // Only the SPELLING changes here. The two leg lists stay deliberately different: the
+        // cardio selector also fires for a generic "Legs" or "Posterior Chain" day, while the
+        // hip-flexor/ankle drill stays scoped to the three specific groups it was written for.
+        let legMuscleTargets = ["quad", "quads", "glute", "glutes", "hamstring", "hamstrings"]
+
+        if anchorTargets.contains(where: { containsPriorityPhrase(in: $0, keywords: legMuscleTargets + ["legs", "posterior chain"]) }) {
             items.append("5-7 min bike or incline walk")
         } else {
             items.append("3-5 min light cardio")
         }
 
-        if anchorTargets.contains(where: { containsPriorityPhrase(in: $0, keywords: ["chest", "upper chest", "pec", "anterior deltoid"]) }) {
+        if anchorTargets.contains(where: { containsPriorityPhrase(in: $0, keywords: ["chest", "upper chest", "pec", "pecs", "anterior deltoid", "anterior deltoids"]) }) {
             items.append("band pull-aparts and pec stretch")
         }
-        if anchorTargets.contains(where: { containsPriorityPhrase(in: $0, keywords: ["delt", "deltoid", "shoulder", "lateral deltoid"]) }) {
+        if anchorTargets.contains(where: { containsPriorityPhrase(in: $0, keywords: ["delt", "delts", "deltoid", "deltoids", "shoulder", "shoulders", "lateral deltoid", "lateral deltoids", "rear deltoid", "rear deltoids"]) }) {
             items.append("shoulder external rotation and scapular activation")
         }
-        if anchorTargets.contains(where: { containsPriorityPhrase(in: $0, keywords: ["lat", "back", "upper back", "mid back"]) }) {
+        if anchorTargets.contains(where: { containsPriorityPhrase(in: $0, keywords: ["lat", "lats", "back", "upper back", "mid back"]) }) {
             items.append("lat stretch and scapular setting drills")
         }
-        if anchorTargets.contains(where: { containsPriorityPhrase(in: $0, keywords: ["quad", "glute", "hamstring"]) }) {
+        if anchorTargets.contains(where: { containsPriorityPhrase(in: $0, keywords: legMuscleTargets) }) {
             items.append("hip flexor stretch and ankle dorsiflexion drills")
         }
 
