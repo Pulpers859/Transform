@@ -863,6 +863,54 @@ extension ClaudeService {
         return nil
     }
 
+    /// Why the procedurally-built days could not be trained at all — `nil` when they can.
+    ///
+    /// The procedural generator is the LAST resort. When `validatedProceduralWeek*` throws, the
+    /// owner does not get a degraded program; they get no program and an engineering string in
+    /// place of a workout. That gate used to reuse `validationDisposition`, which answers a
+    /// different question — "is this worth another paid AI call?" — and whose default arm is
+    /// `.hardFailure`. So every validator finding not explicitly listed as acceptable or
+    /// correction-worthy erased the week, including findings the deterministic builder cannot
+    /// repair, and including any rule added to the validator later. Fail-closed is right for
+    /// paid AI output, where a retry exists; it is wrong here, where nothing comes next.
+    ///
+    /// This asks the only question the last resort should ask, and asks it of the data rather
+    /// than of message text, so a reworded or newly-added validator rule cannot silently change
+    /// what counts as unusable.
+    ///
+    /// This is only safe because the findings it stops blocking on still REACH the owner, so that
+    /// path is named here rather than left to be re-derived: the caller re-validates the accepted
+    /// fallback and returns the findings as `validatorWarnings`
+    /// (`generateWeekOne` / `generateNextWeek`), `WorkoutView` persists
+    /// them onto `WorkoutProgram.validatorWarnings`, and `validatorWarningsBanner` renders them
+    /// through `WorkoutValidatorNotice`, which states each one in plain language. A coverage gap
+    /// therefore arrives as "Hamstrings has no direct work this week" above a usable program,
+    /// instead of as a parse error in place of one. If that chain is ever broken, this check
+    /// becomes silent tolerance and must be revisited.
+    func proceduralOutputBlockingDefect(in days: [WorkoutDayResponse]) -> String? {
+        let trainingDays = days.filter { !$0.isRestDay }
+        guard !trainingDays.isEmpty else { return "no training days were produced" }
+
+        for day in trainingDays {
+            guard !day.exercises.isEmpty else {
+                return "day \(day.dayNumber) is a training day with no exercises"
+            }
+            for exercise in day.exercises {
+                if exercise.exerciseName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    return "day \(day.dayNumber) contains an exercise with no name"
+                }
+                if exercise.sets <= 0 {
+                    return "day \(day.dayNumber) prescribes \(exercise.sets) sets for \(exercise.exerciseName)"
+                }
+                if exercise.reps.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    return "day \(day.dayNumber) prescribes no reps for \(exercise.exerciseName)"
+                }
+            }
+        }
+
+        return nil
+    }
+
     func validateDaySet(_ days: [WorkoutDayResponse], dayStart: Int, dayEnd: Int) -> [String] {
         var issues: [String] = []
 
@@ -1117,7 +1165,22 @@ extension ClaudeService {
             "opens its",
             "is supposed to emphasize quads",
             "stacks too many",
-            "the generated day reads as"
+            "the generated day reads as",
+            // BASE-001 zero-coverage. This is a property of the MENU, and in a locked-menu flow
+            // the menu is already final: the AI is forbidden from changing it and the procedural
+            // fallback consumes the same one, so no downstream consumer can add the missing
+            // movement. `enforceBaselineMuscleCoverage` is the pass that owns this floor, and it
+            // gives up honestly when no style-compatible, non-avoided candidate fits — usually
+            // because the lifter's pain flags removed every direct option for that muscle.
+            //
+            // Leaving it a hard failure cost the owner twice over: it set
+            // hasPlannerOrStructuralFailure (discarding every paid candidate AND skipping the
+            // correction pass that would have fixed the week's other, repairable findings), and
+            // then it made `validatedProceduralWeek*` throw, so the week ended as a raw parse
+            // error instead of a program. `WorkoutValidatorNotice` already carries the
+            // plain-language `.attention` notice for this exact string — a notice that could
+            // never be reached while the finding hard-failed.
+            "receives zero direct sets this week"
         ]
     }
 

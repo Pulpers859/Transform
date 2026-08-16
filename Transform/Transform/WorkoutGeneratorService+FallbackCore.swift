@@ -22,17 +22,18 @@ extension ClaudeService {
             blueprint: blueprint,
             expectedExerciseMenus: exerciseMenus ?? []
         )
-        let hasHardFailure = issues.contains {
-            validationDisposition(for: $0, menuLocked: exerciseMenus != nil) == .hardFailure
-        }
-        guard issues.isEmpty || !hasHardFailure else {
+        // Only a genuinely untrainable week may end the run here — see
+        // `proceduralOutputBlockingDefect`. Everything else ships and is reported.
+        if let blockingDefect = proceduralOutputBlockingDefect(in: fallback.days) {
             throw ClaudeError.parseError(
-                "Procedural fallback generated an invalid Week 1 program: \(issues.joined(separator: " | "))"
+                "Procedural fallback generated an unusable Week 1 program: \(blockingDefect)."
             )
         }
 
         if !issues.isEmpty {
-            print("[WorkoutGeneratorService] Procedural Week 1 fallback accepted with heuristic warnings: \(issues.joined(separator: " | "))")
+            // "heuristic warnings" was accurate only while anything stronger threw. It no
+            // longer is: findings of every severity can reach here now, and the log has to say so.
+            print("[WorkoutGeneratorService] Procedural Week 1 fallback shipped with validator findings (none blocking): \(issues.joined(separator: " | "))")
         }
 
         return fallback
@@ -70,17 +71,16 @@ extension ClaudeService {
             blueprint: blueprint,
             expectedExerciseMenus: exerciseMenus ?? []
         )
-        let hasHardFailure = issues.contains {
-            validationDisposition(for: $0, menuLocked: exerciseMenus != nil) == .hardFailure
-        }
-        guard issues.isEmpty || !hasHardFailure else {
+        // Only a genuinely untrainable week may end the run here — see
+        // `proceduralOutputBlockingDefect`. Everything else ships and is reported.
+        if let blockingDefect = proceduralOutputBlockingDefect(in: fallback.days) {
             throw ClaudeError.parseError(
-                "Procedural fallback generated an invalid week \(weekNumber): \(issues.joined(separator: " | "))"
+                "Procedural fallback generated an unusable week \(weekNumber): \(blockingDefect)."
             )
         }
 
         if !issues.isEmpty {
-            print("[WorkoutGeneratorService] Procedural week \(weekNumber) fallback accepted with heuristic warnings: \(issues.joined(separator: " | "))")
+            print("[WorkoutGeneratorService] Procedural week \(weekNumber) fallback shipped with validator findings (none blocking): \(issues.joined(separator: " | "))")
         }
 
         return fallback
