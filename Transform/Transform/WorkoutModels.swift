@@ -101,6 +101,31 @@ class WorkoutProgram {
     }
 }
 
+/// Which week of the mesocycle is the deload — in ONE place.
+///
+/// This was previously an unwritten convention: the phase prescription table, the exercise-count
+/// target, and the rest-day pattern each tested `weekNumber == 4` independently, and the training
+/// card did not test the week at all. It searched the day name, the day notes, and the exercise
+/// notes for the literal word "deload", which failed in both directions:
+///
+/// * A week-3 note reading "the deload doesn't come until next week" flipped EVERY card on the
+///   app's designated peak-stress day into "keep load light", discarding the real progression
+///   banner on the hardest session of the block.
+/// * A genuine week-4 note usually does not contain the word at all, because the prompt tells
+///   the model not to repeat deload language in every note — so the deload week showed ordinary
+///   "add load" coaching.
+///
+/// The phase is a structural fact about the program, not something to infer from prose.
+enum MesocyclePhase {
+    /// The week the generator programs as the deload: reduced sets, one fewer exercise, higher
+    /// target RIR. Kept as a constant so the planner and the training card cannot drift apart.
+    static let deloadWeek = 4
+
+    static func isDeloadWeek(_ weekNumber: Int) -> Bool {
+        weekNumber == deloadWeek
+    }
+}
+
 // MARK: - Workout Day
 
 @Model
@@ -152,6 +177,10 @@ class WorkoutDay {
 
     var weekNumber: Int {
         ((dayNumber - 1) / 7) + 1
+    }
+
+    var isDeloadWeek: Bool {
+        MesocyclePhase.isDeloadWeek(weekNumber)
     }
 
     var performanceRating: WorkoutPerformanceRating? {

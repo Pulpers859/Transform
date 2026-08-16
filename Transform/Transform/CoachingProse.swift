@@ -18,6 +18,18 @@ import Foundation
 /// same for the two operations performed on them.
 enum CoachingProse {
 
+    /// Where a session note stops being a briefing and starts being a warm-up checklist.
+    ///
+    /// One list, because two consumers depend on cutting at the SAME place: the card renders the
+    /// briefing and the checklist as separate blocks, and the validator polices the briefing for
+    /// load instructions while deliberately leaving the checklist alone (ramping load is what a
+    /// warm-up is). If these drifted apart the validator would start policing text the lifter
+    /// never reads as a briefing.
+    static let warmupSectionMarkers = [
+        "Warm-up checklist:", "Warm up checklist:", "Warm-up:", "Warm up:",
+        "Mobility/activation:", "Mobility:", "Activation:", "Prime with:"
+    ]
+
     /// True when `phrase` appears in `text` as a whole phrase rather than as the prefix of a
     /// longer word.
     ///
@@ -68,6 +80,58 @@ enum CoachingProse {
             let sentence = collapsed[matchRange].trimmingCharacters(in: .whitespacesAndNewlines)
             return sentence.isEmpty ? nil : sentence
         }
+    }
+
+    /// The card's display filter: drop the sentences another element of the screen already owns,
+    /// then de-duplicate. Shared by the exercise cue AND the day's session-note summary, which
+    /// previously had no filter of any kind — the whole two-voices architecture was built for
+    /// exercise notes, and the day note rendered raw above cards that could say the opposite.
+    ///
+    /// Matching here is plain substring, unlike `containsPhrase`. That asymmetry is deliberate:
+    /// over-stripping only shortens a note, while under-stripping leaves a second voice giving
+    /// load advice next to the deterministic banner. The validator, whose false positives cost a
+    /// paid generation, gets the strict rule instead.
+    static func filteredSentences(
+        in text: String,
+        hideProgressionCue: Bool,
+        hideDeloadCue: Bool
+    ) -> [String] {
+        let all = sentences(in: text)
+        guard !all.isEmpty else { return [] }
+
+        var seen = Set<String>()
+        var kept: [String] = []
+
+        for sentence in all {
+            let normalized = sentence
+                .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+                .lowercased()
+
+            if hideDeloadCue, containsAnySubstring(normalized, ProgressionProseFragments.deloadContext) {
+                continue
+            }
+            if hideProgressionCue, containsAnySubstring(normalized, ProgressionProseFragments.progressionOwnedByBanner) {
+                continue
+            }
+            // The Last panel and the progression badge already show what you did, so
+            // narrating it again never belongs in the execution cue.
+            if containsAnySubstring(normalized, ProgressionProseFragments.sessionRecap) {
+                continue
+            }
+
+            let key = normalized
+                .replacingOccurrences(of: #"[^a-z0-9]+"#, with: " ", options: .regularExpression)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard seen.insert(key).inserted else { continue }
+
+            kept.append(sentence)
+        }
+
+        return kept
+    }
+
+    private static func containsAnySubstring(_ text: String, _ fragments: [String]) -> Bool {
+        fragments.contains { text.contains($0) }
     }
 
     // MARK: - Boundaries

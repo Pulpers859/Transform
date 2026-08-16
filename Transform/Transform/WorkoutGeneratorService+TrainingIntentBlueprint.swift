@@ -275,11 +275,11 @@ extension ClaudeService {
         case 4:
             return [false, false, true, false, true, false, true]
         case 6:
-            return weekNumber == 4
+            return MesocyclePhase.isDeloadWeek(weekNumber)
                 ? [false, false, false, true, false, false, true]
                 : [false, false, false, true, false, false, false]
         default:
-            return weekNumber == 4
+            return MesocyclePhase.isDeloadWeek(weekNumber)
                 ? [false, false, true, false, false, true, false]
                 : [false, false, true, false, false, false, true]
         }

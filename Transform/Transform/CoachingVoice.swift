@@ -93,7 +93,14 @@ enum CoachingVoice {
     ///
     /// - Parameter exercises: `(name, muscleTarget)` pairs in day order.
     /// - Returns: cues parallel to `exercises`.
-    static func assignCues(for exercises: [(name: String, muscleTarget: String)]) -> [String] {
+    /// - Parameter avoidEndRangeShoulder: set when the analysis flagged the shoulder. Cue text
+    ///   was previously a pure function of pattern and equipment, so a lifter with a flagged
+    ///   shoulder could be told to "descend until the upper arms break parallel" on a dip while
+    ///   the exercise-selection layer was busy penalising that exact joint position.
+    static func assignCues(
+        for exercises: [(name: String, muscleTarget: String)],
+        avoidEndRangeShoulder: Bool = false
+    ) -> [String] {
         var spoken = Set<String>()
         var assigned: [String] = []
         assigned.reserveCapacity(exercises.count)
@@ -102,7 +109,11 @@ enum CoachingVoice {
             let pattern = pattern(forName: exercise.name, muscleTarget: exercise.muscleTarget)
             let equipment = equipment(forName: exercise.name)
             let cue = firstUnspoken(
-                from: candidates(pattern: pattern, equipment: equipment),
+                from: candidates(
+                    pattern: pattern,
+                    equipment: equipment,
+                    avoidEndRangeShoulder: avoidEndRangeShoulder
+                ),
                 spoken: spoken
             )
             spoken.insert(cue)
@@ -118,12 +129,14 @@ enum CoachingVoice {
     static func cue(
         forName name: String,
         muscleTarget: String,
-        avoiding spoken: Set<String> = []
+        avoiding spoken: Set<String> = [],
+        avoidEndRangeShoulder: Bool = false
     ) -> String {
         firstUnspoken(
             from: candidates(
                 pattern: pattern(forName: name, muscleTarget: muscleTarget),
-                equipment: equipment(forName: name)
+                equipment: equipment(forName: name),
+                avoidEndRangeShoulder: avoidEndRangeShoulder
             ),
             spoken: spoken
         )
@@ -148,13 +161,47 @@ enum CoachingVoice {
     /// general cues, then the universal pool. `assignCues` walks this until it finds
     /// something unspoken, so a second incline press on the same day naturally slides to a
     /// different rung rather than repeating the first.
-    private static func candidates(pattern: Pattern, equipment: Equipment) -> [String] {
+    private static func candidates(
+        pattern: Pattern,
+        equipment: Equipment,
+        avoidEndRangeShoulder: Bool = false
+    ) -> [String] {
         var ladder: [String] = []
         ladder.append(contentsOf: equipmentCues[Key(pattern: pattern, equipment: equipment)] ?? [])
         ladder.append(contentsOf: patternCues[pattern] ?? [])
+
+        // Removing, not replacing. The protective phrasing a flagged shoulder needs is ALREADY
+        // written one rung down — "keep the shoulders pulled away from your ears" on a dip,
+        // "raise through the scapular plane" on a lateral raise, "stop the negative when your
+        // hands reach chest depth" on a machine press. Dropping the end-range cue promotes the
+        // cue that was going to be second choice anyway, so this adds no new sentences to
+        // maintain and every remaining candidate is already audited content.
+        if avoidEndRangeShoulder {
+            ladder.removeAll { endRangeShoulderCues.contains($0) }
+        }
+
+        // Appended after the filter: the universal pool carries no joint-specific range
+        // instruction, so it is always safe and always keeps the ladder non-empty.
         ladder.append(contentsOf: universalCues)
         return ladder
     }
+
+    /// Cues that deliberately drive the shoulder toward end range — deep humeral extension under
+    /// load, a loaded stretch at the bottom of a press, or abduction past shoulder height. Sound
+    /// coaching for an uninjured lifter, and the classic aggravators for an impinged one.
+    ///
+    /// Every entry must appear VERBATIM in `equipmentCues` or `patternCues`;
+    /// `CoachingVoiceAudit.orphanedEndRangeShoulderCues()` fails the tests if one drifts, so this
+    /// cannot rot into a list of strings that no longer match anything.
+    static let endRangeShoulderCues: Set<String> = [
+        "Lower until your upper arms sit just below the torso line, then press without letting the dumbbells drift back over your face.",
+        "Let the carriage come back far enough to feel a stretch across the top of the chest before reversing it.",
+        "Descend until the upper arms break parallel, then drive up without letting the shoulders roll forward.",
+        "Stop just past shoulder height and lower slowly — the pad makes it easy to fall out of tension at the bottom.",
+        "Take three seconds to lower and stay in contact with the stretch before you reverse.",
+        "Control the lowering phase and let the chest stretch before reversing the rep.",
+        "Control the descent rather than dropping into the stretch."
+    ]
 
     /// `Sendable` explicitly: the cue tables are `static let` dictionaries keyed by this type,
     /// and under Swift 6 strict concurrency a static stored property must be of a Sendable
@@ -497,6 +544,16 @@ enum CoachingVoiceAudit {
         return forbiddenFragments.filter { normalized.contains($0) }
     }
 
+    /// Entries of `endRangeShoulderCues` that no longer match any cue the voice can emit.
+    ///
+    /// A filter keyed on exact strings is only as good as its strings. If a cue is reworded and
+    /// this set is not, the filter silently stops protecting a flagged shoulder — a safety rule
+    /// that fails open and looks fine. Non-empty here means exactly that has happened.
+    static func orphanedEndRangeShoulderCues() -> [String] {
+        let emittable = Set(allCues())
+        return CoachingVoice.endRangeShoulderCues.subtracting(emittable).sorted()
+    }
+
     /// Every cue string the voice can emit, for exhaustive testing.
     static func allCues() -> [String] {
         var cues: [String] = []
@@ -515,7 +572,11 @@ extension CoachingVoice {
     /// Test-only reach-through to the candidate ladder. `CoachingVoiceAudit` needs to see
     /// every emittable string, and routing it through the real ladder means the audit cannot
     /// drift from production content.
-    static func cueLadderForAudit(pattern: Pattern, equipment: Equipment) -> [String] {
-        candidates(pattern: pattern, equipment: equipment)
+    static func cueLadderForAudit(
+        pattern: Pattern,
+        equipment: Equipment,
+        avoidEndRangeShoulder: Bool = false
+    ) -> [String] {
+        candidates(pattern: pattern, equipment: equipment, avoidEndRangeShoulder: avoidEndRangeShoulder)
     }
 }

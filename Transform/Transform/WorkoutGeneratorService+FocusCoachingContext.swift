@@ -267,10 +267,25 @@ extension ClaudeService {
             // `coachingSource` separately records that this cue was substituted, so a mixed
             // day stays auditable rather than silently indistinguishable from AI output.
             return evidenceTunedCoachingLanguage(
+                // `avoidEndRangeShoulder: true` unconditionally, and deliberately.
+                //
+                // This is the AI-repair path: it fires when the model returned nothing usable
+                // for one exercise. The injury flag lives on the blueprint, which does not
+                // reach here — `sanitizeWeekResponse` takes only the decoded week, so wiring
+                // the real signal in means threading a parameter through four signatures and
+                // eight call sites in the async generation flow.
+                //
+                // The trade being made, stated plainly: an uninjured lifter loses the
+                // end-range phrasing ("descend until the upper arms break parallel") on
+                // SUBSTITUTED notes only, and gets the protective cue sitting one rung below
+                // it instead — coaching that is still specific and still true. That is a small
+                // price for never handing a flagged shoulder an aggravating cue on a path that
+                // cannot currently tell whether the shoulder is flagged.
                 CoachingVoice.cue(
                     forName: exerciseName,
                     muscleTarget: muscleTarget,
-                    avoiding: cuesAlreadyOnDay
+                    avoiding: cuesAlreadyOnDay,
+                    avoidEndRangeShoulder: true
                 )
             )
         }

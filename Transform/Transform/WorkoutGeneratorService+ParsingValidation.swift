@@ -907,6 +907,14 @@ extension ClaudeService {
                 let sampleExercise = day.exercises.first?.exerciseName ?? "the primary compound"
                 issues.append("Day \(day.dayNumber) session notes are generic — rewrite with an analysis-anchored intent line and a 'Warm-up:' section with specific prep items tied to this day's lifts (e.g. ramp sets into \(sampleExercise), relevant mobility).")
             }
+            // The same execution-only rule the exercise notes have always had. Day notes were
+            // exempt from it, so the briefing at the top of the screen could carry a load
+            // instruction that contradicted the deterministic banner on every card below it.
+            // Phrased to contain the exercise-note wording so it shares that issue's
+            // correction-pass disposition — rewriting a sentence, not restructuring a day.
+            if notesContainProgressionInstruction(dayBriefingProse(in: day.notes)) {
+                issues.append("Day \(day.dayNumber) session notes contain load/rep progression instructions — session notes are for intent and warm-up; the app derives progression from logged performance.")
+            }
 
             totalTrainingExercises += day.exercises.count
 
@@ -956,6 +964,26 @@ extension ClaudeService {
 
         var seen = Set<String>()
         return issues.filter { seen.insert($0).inserted }
+    }
+
+    /// The briefing prose of a session note, with the warm-up checklist removed.
+    ///
+    /// The execution-only rule is about the BRIEFING — the sentence that frames the day. The
+    /// warm-up section is a list of ramp sets and mobility drills that the prompt explicitly
+    /// asks for ("2-3 progressive ramp sets into Back Squat"), and ramping load is what a warm-up
+    /// IS. Checking it for load language would burn a correction pass on a note that did exactly
+    /// what it was told.
+    ///
+    /// Split on the same markers the card's `SessionNoteSections` uses, so the validator polices
+    /// precisely the text the lifter reads as the briefing.
+    func dayBriefingProse(in notes: String) -> String {
+        var briefing = notes
+        for marker in CoachingProse.warmupSectionMarkers {
+            if let range = briefing.range(of: marker, options: .caseInsensitive) {
+                briefing = String(briefing[..<range.lowerBound])
+            }
+        }
+        return briefing.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     func shouldAcceptAIOutput(despite issues: [String], menuLocked: Bool = false) -> Bool {

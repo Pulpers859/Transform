@@ -34,6 +34,25 @@ struct WorkoutDayDetailView: View {
         SessionNoteSections.parse(day.notes)
     }
 
+    /// The day briefing, with load/rep progression sentences removed.
+    ///
+    /// This note sits at the TOP of the screen, above cards whose deterministic banners can say
+    /// the opposite — and it was the one piece of coaching text in the app that no filter and no
+    /// validator rule ever touched. A briefing reading "put 5 lb on the top set today" rendered
+    /// directly above a card reading "Hold 100 lb", with nothing anywhere to prevent it.
+    ///
+    /// Only the prose summary is filtered; `warmupSteps` is a checklist of movements, never load
+    /// advice, and must survive intact. Deload phrasing is also left alone here on purpose: at
+    /// the day level "keep it light this week" is useful framing, not a competing instruction
+    /// about a specific lift's load, which is the only thing the banner actually owns.
+    var filteredSessionSummary: String {
+        CoachingProse.filteredSentences(
+            in: sessionNoteSections.summary,
+            hideProgressionCue: true,
+            hideDeloadCue: false
+        ).joined(separator: " ")
+    }
+
     /// Accent while there is work left, success once the day was genuinely trained. A full bar
     /// still painted in the in-progress accent reads as "not finished" against every other
     /// done-signal in the app, which are all green.
@@ -56,7 +75,10 @@ struct WorkoutDayDetailView: View {
             VStack(alignment: .leading, spacing: 20) {
                 dayHeader
                 sessionTimingBadge
-                if !day.notes.isEmpty {
+                // Gated on what will actually RENDER, not on the raw note: a briefing made
+                // entirely of progression sentences now filters down to nothing, and the old
+                // `!day.notes.isEmpty` guard would have drawn an empty card around it.
+                if !filteredSessionSummary.isEmpty || !sessionNoteSections.warmupSteps.isEmpty {
                     sessionNotes
                 }
                 if day.hasReviewableSession {
@@ -250,8 +272,8 @@ struct WorkoutDayDetailView: View {
                 .font(.headline)
                 .foregroundStyle(TFColor.accent)
 
-            if !sessionNoteSections.summary.isEmpty {
-                Text(sessionNoteSections.summary)
+            if !filteredSessionSummary.isEmpty {
+                Text(filteredSessionSummary)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
@@ -782,13 +804,21 @@ struct ExerciseCard: View {
     }
 
     /// True when this exercise sits inside a deload block. Deload weeks intentionally pull
-    /// load back (the program notes call for roughly 10% under the prior block and stopping
-    /// shy of failure), so the "add load / go heavier" cue is wrong here and is replaced by
-    /// hold-back coaching. Detected from the day or exercise notes, where the generator
-    /// states the deload intent.
+    /// load back (roughly 10% under the prior block, stopping shy of failure), so the
+    /// "add load / go heavier" cue is wrong here and is replaced by hold-back coaching.
+    ///
+    /// Read from the PROGRAM STRUCTURE, never from prose. This used to search the day name,
+    /// the day notes, and the exercise notes for the word "deload", which meant a week-3 note
+    /// saying "the deload doesn't come until next week" silenced the real progression banner on
+    /// every card of the block's hardest day — and a genuine week-4 note, which the prompt asks
+    /// NOT to label as a deload, left the deload week coaching ordinary load increases.
+    ///
+    /// A missing `day` resolves to false. Every exercise reaching this card was loaded THROUGH
+    /// its day, so the nil case is a broken object graph rather than a real training state —
+    /// and of the two wrong answers, "not a deload" at least leaves the evidence-based banner
+    /// in charge instead of overriding it with hold-back coaching derived from nothing.
     var isDeloadContext: Bool {
-        let sources = [exercise.day?.notes ?? "", exercise.day?.dayName ?? "", exercise.notes]
-        return sources.contains { $0.range(of: "deload", options: .caseInsensitive) != nil }
+        exercise.day?.isDeloadWeek ?? false
     }
 
     /// The set count the coaching note explicitly prescribes for THIS exercise, if any
@@ -885,61 +915,19 @@ struct ExerciseCard: View {
         )
     }
 
+    /// Lives in `CoachingProse` so the day's session-note summary runs the SAME filter this
+    /// card does. It previously existed only here, which is why the day note — rendered at the
+    /// top of the very same screen — was the one piece of coaching text with no filter at all.
     private func coachingSentences(
         from note: String,
         hideProgressionCue: Bool,
         hideDeloadCue: Bool
     ) -> [String] {
-        let sentences = splitSentences(note)
-        guard !sentences.isEmpty else { return [] }
-
-        var seen = Set<String>()
-        var kept: [String] = []
-
-        for sentence in sentences {
-            let normalized = sentence
-                .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
-                .lowercased()
-
-            if hideDeloadCue, containsAny(normalized, ProgressionProseFragments.deloadContext) {
-                continue
-            }
-
-            // Fragment lists live in ProgressionProseFragments. They were previously
-            // written out here AND in the validator AND in CoachingVoiceAudit; the audit copy
-            // had already drifted out of step, which is how a cue could pass its own safety
-            // check and still hard-fail generation.
-            if hideProgressionCue, containsAny(normalized, ProgressionProseFragments.progressionOwnedByBanner) {
-                continue
-            }
-
-            // The Last panel and the progression badge already show what you did, so
-            // narrating it again never belongs in the execution Cue.
-            if containsAny(normalized, ProgressionProseFragments.sessionRecap) {
-                continue
-            }
-
-            let key = normalized
-                .replacingOccurrences(of: #"[^a-z0-9]+"#, with: " ", options: .regularExpression)
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            guard seen.insert(key).inserted else { continue }
-
-            kept.append(sentence)
-        }
-
-        return kept
-    }
-
-    /// Shared with the validator so the card and the checker agree on where a sentence ends.
-    /// The local copy split on every period, including the one in `22.5` — which, once the
-    /// trailing half of the sentence was stripped as progression prose, rendered the cue as
-    /// "Work at 22." and showed the lifter a load half a pound under the written one.
-    private func splitSentences(_ text: String) -> [String] {
-        CoachingProse.sentences(in: text)
-    }
-
-    private func containsAny(_ text: String, _ fragments: [String]) -> Bool {
-        fragments.contains { text.contains($0) }
+        CoachingProse.filteredSentences(
+            in: note,
+            hideProgressionCue: hideProgressionCue,
+            hideDeloadCue: hideDeloadCue
+        )
     }
 
     var progressionSuggestion: ProgressionSuggestion? {
@@ -2262,15 +2250,13 @@ struct SessionNoteSections {
     }
 
     private static func parseDelimitedWarmupSections(from text: String) -> SessionNoteSections? {
-        let normalized = text
-            .replacingOccurrences(of: "Warm-up checklist:", with: "|", options: .caseInsensitive)
-            .replacingOccurrences(of: "Warm up checklist:", with: "|", options: .caseInsensitive)
-            .replacingOccurrences(of: "Warm-up:", with: "|", options: .caseInsensitive)
-            .replacingOccurrences(of: "Warm up:", with: "|", options: .caseInsensitive)
-            .replacingOccurrences(of: "Mobility/activation:", with: "|", options: .caseInsensitive)
-            .replacingOccurrences(of: "Mobility:", with: "|", options: .caseInsensitive)
-            .replacingOccurrences(of: "Activation:", with: "|", options: .caseInsensitive)
-            .replacingOccurrences(of: "Prime with:", with: "|", options: .caseInsensitive)
+        // Markers come from `CoachingProse` so the validator cuts the briefing at exactly the
+        // place this card does. Listed longest-first there, which matters: replacing "Warm-up:"
+        // before "Warm-up checklist:" would leave a stray "checklist:" in the warm-up text.
+        var normalized = text
+        for marker in CoachingProse.warmupSectionMarkers {
+            normalized = normalized.replacingOccurrences(of: marker, with: "|", options: .caseInsensitive)
+        }
 
         let chunks = normalized
             .split(separator: "|")

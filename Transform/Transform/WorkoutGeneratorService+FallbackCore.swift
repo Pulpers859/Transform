@@ -172,7 +172,11 @@ extension ClaudeService {
                 exercises = programMenuExercises(
                     menu: menu!,
                     weekNumber: weekNumber,
-                    focus: focus
+                    focus: focus,
+                    // The exercise-selection layer already penalises shoulder-risky movements
+                    // from this same signal. The execution CUE was the one layer it never
+                    // reached, so a flagged shoulder could still be coached into end range.
+                    avoidEndRangeShoulder: hasShoulderRisk(injuryRiskFocus: blueprint.injuryRiskFocus)
                 )
             } else {
                 let styleKey = canonicalTrainingStyle(style)
@@ -1187,7 +1191,7 @@ extension ClaudeService {
         selectionContext: ExerciseSelectionContext,
         previousExercises: [WorkoutExerciseResponse]
     ) -> [WorkoutExerciseResponse] {
-        let targetCount = weekNumber == 4 ? 5 : 6
+        let targetCount = MesocyclePhase.isDeloadWeek(weekNumber) ? 5 : 6
         let focus = focusIntent?.area ?? ""
 
         var selected: [(name: String, target: String)] = []
@@ -1294,6 +1298,10 @@ extension ClaudeService {
 
         // Cues last: balancing can drop, add or reorder exercises, and cue uniqueness is a
         // property of the final on-screen list, not of the pre-balance draft.
+        //
+        // The injury flag rides in on `selectionContext`, the same value that already drives
+        // shoulder-risk penalties during selection here — so this branch cannot end up coaching
+        // end range on a joint the selection logic was actively protecting.
         return withDayScopedCues(
             balancedProceduralExercises(
                 mapped,
@@ -1302,14 +1310,16 @@ extension ClaudeService {
                 supportIntents: supportIntents,
                 targetFatigueCap: targetFatigueCap,
                 targetSessionMinutes: targetSessionMinutes
-            )
+            ),
+            avoidEndRangeShoulder: hasShoulderRisk(injuryRiskFocus: selectionContext.injuryRiskFocus)
         )
     }
 
     func programMenuExercises(
         menu: [PreSelectedExercise],
         weekNumber: Int,
-        focus: String
+        focus: String,
+        avoidEndRangeShoulder: Bool = false
     ) -> [WorkoutExerciseResponse] {
         let mapped = menu.enumerated().map { index, item in
             let reps = proceduralRepRange(
@@ -1340,7 +1350,7 @@ extension ClaudeService {
             )
         }
 
-        return withDayScopedCues(mapped)
+        return withDayScopedCues(mapped, avoidEndRangeShoulder: avoidEndRangeShoulder)
     }
 
     func exerciseCatalog(for style: String) -> [(name: String, target: String)] {
@@ -1677,9 +1687,16 @@ extension ClaudeService {
     /// Runs AFTER any balancing/reordering pass so the cue order matches the order the lifter
     /// actually reads, and rebuilds each response because `WorkoutExerciseResponse` is
     /// immutable.
-    func withDayScopedCues(_ exercises: [WorkoutExerciseResponse]) -> [WorkoutExerciseResponse] {
+    /// `avoidEndRangeShoulder` defaults to false so no existing caller changes behaviour by
+    /// accident; the menu-locked path, which is the one that actually ships, passes the real
+    /// flag from `blueprint.injuryRiskFocus`.
+    func withDayScopedCues(
+        _ exercises: [WorkoutExerciseResponse],
+        avoidEndRangeShoulder: Bool = false
+    ) -> [WorkoutExerciseResponse] {
         let cues = CoachingVoice.assignCues(
-            for: exercises.map { (name: $0.exerciseName, muscleTarget: $0.muscleTarget) }
+            for: exercises.map { (name: $0.exerciseName, muscleTarget: $0.muscleTarget) },
+            avoidEndRangeShoulder: avoidEndRangeShoulder
         )
         return zip(exercises, cues).map { exercise, cue in
             WorkoutExerciseResponse(

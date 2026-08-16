@@ -1381,7 +1381,7 @@ extension ClaudeService {
                 style: style
             )
 
-            let targetCount = weekNumber == 4 ? 5 : 6
+            let targetCount = MesocyclePhase.isDeloadWeek(weekNumber) ? 5 : 6
             var selected: [(name: String, target: String)] = []
             var used = usedAcrossDays
 

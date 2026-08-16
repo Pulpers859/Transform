@@ -239,6 +239,11 @@ extension ClaudeService {
           The warm-up must be tied to THIS day's lifts and THIS person's posture/injury notes.
           Keep session notes concise: 2-3 short sentences, ideally under 70 words total.
           No template language. No phrases like "progressive overload session."
+        - Session Notes are subject to the SAME execution-only rule as exercise notes: state the
+          day's intent and the warm-up, never a load or rep progression instruction ("put 5 lb on
+          the top set", "beat last week's reps", "add weight today"). The app computes progression
+          from logged performance and renders it on each exercise card; a load instruction in the
+          day briefing contradicts the card directly underneath it.
         - Exercise notes must be exactly 2 short sentences of real coaching, ideally under 45
           words total: (a) a form/technique cue for THIS movement and (b) a setup, ROM,
           control, or bracing cue. Fold in a brief "why this is here for you" phrase tied to
@@ -366,7 +371,11 @@ extension ClaudeService {
 
         Session Notes still must be personal, specific, analysis-anchored, and include a "Warm-up:"
         line (on its own line) with specific warm-up and mobility items separated by commas, tied
-        to this day's lifts AND the user's posture/injury notes. Exercise notes still must be
+        to this day's lifts AND the user's posture/injury notes. They are execution-only too:
+        state the day's intent and the warm-up, never a load or rep progression instruction
+        ("put 5 lb on the top set", "beat last week's reps") — the app renders progression on each
+        exercise card and a load instruction in the briefing contradicts the card below it.
+        Exercise notes still must be
         execution-only: a form cue + a setup/ROM/control cue, with NO load- or rep-progression
         instructions (the app computes and displays progression from logs; state effort intent in
         the structured `targetRIR` field). Add a "why this is here for you" phrase only when it is
