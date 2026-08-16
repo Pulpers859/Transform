@@ -1244,7 +1244,22 @@ struct ExerciseCard: View {
                     ProgressionSuggestionBadge(suggestion: suggestion)
                 }
 
-                if let anomaly = progressionAnalysis.anomalies.first {
+                // Ordered strongest signal first. An implausible load is decidable without
+                // any history, so it must not be shadowed by the two checks that need some.
+                //
+                // The consequence differs by case and the copy must not overstate it. With
+                // 3+ sets the mis-log is ALSO an anomaly, so it is already excluded from the
+                // working load and does NOT become the best — only a set that survived as
+                // `.working` is actually driving progression. Prefer that one when it exists
+                // so the sentence and the set it points at agree.
+                if let implausible = progressionAnalysis.implausibleSets.first(where: { $0.role == .working })
+                    ?? progressionAnalysis.implausibleSets.first {
+                    SetAnomalyNotice(
+                        text: implausible.role == .working
+                            ? "Check Set \(implausible.setNumber): \(formatLoad(implausible.weightLbs)) looks like a typing slip. Fix it — left as-is it becomes your best and your next target."
+                            : "Check Set \(implausible.setNumber): \(formatLoad(implausible.weightLbs)) looks like a typing slip. It's already being left out of your progression — fix it so your log reads right."
+                    )
+                } else if let anomaly = progressionAnalysis.anomalies.first {
                     let reference = progressionAnalysis.workingWeight ?? anomaly.weightLbs
                     SetAnomalyNotice(
                         text: "Check Set \(anomaly.setNumber): \(formatLoad(anomaly.weightLbs)) is well above your \(formatLoad(reference)) working sets. Confirm or fix the entry — it isn't used for progression."

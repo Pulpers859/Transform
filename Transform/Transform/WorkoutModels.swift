@@ -792,6 +792,44 @@ extension WorkingSetAnalysis {
         Dictionary(sets.map { ($0.id, $0.role) }, uniquingKeysWith: { first, _ in first })
     }
 
+    /// A load this high is far more likely to be a typing slip — a 175 entered as 1755, or a
+    /// dropped decimal — than a lift. Chosen to sit above ordinary loaded-sled work rather
+    /// than above every conceivable load: a heavily plate-loaded leg press or calf machine
+    /// CAN read this high, which is exactly why crossing it only ever raises a question and
+    /// never changes, blocks, or discards what was logged.
+    static let implausibleLoadLbs: Double = 1200
+
+    /// The single predicate both consumers ask. The pre-save sheet judges a typed draft and
+    /// the exercise card judges a saved set, so the comparison lives here rather than being
+    /// written out at each call site where the two could drift apart.
+    static func isImplausibleLoad(_ weightLbs: Double) -> Bool {
+        weightLbs >= implausibleLoadLbs
+    }
+
+    /// Sets whose load is implausible on its own terms, with no history required.
+    ///
+    /// SCOPE — read this before assuming mis-logs are handled. This closes the EXTREME TAIL
+    /// of one specific hole, not mis-logging in general:
+    ///
+    /// - Once an exercise has one prior session, `historicalLoadAnomaly` already catches
+    ///   ordinary-magnitude typos (a 25 lb curl entered as 250 is a >=25% and >=10 lb jump).
+    /// - With 3+ sets in the session, the center-based `anomalies` rule catches a lone
+    ///   outlier and keeps it out of `workingWeight`.
+    /// - Neither can run on the FIRST session of an exercise logged with 1-2 sets: there is
+    ///   no center and nothing to compare against, yet that entry still becomes the stored
+    ///   best and the next session's target. This rule is the only guard in that case.
+    ///
+    /// Because a first-ever session carries no reference load, only an absolute ceiling is
+    /// decidable there — so a first-ever 25 lb curl entered as 250 is still NOT caught and
+    /// cannot be without inventing a per-exercise expectation the app does not have. That is
+    /// a known, accepted limit, not an oversight.
+    ///
+    /// Surfaced for confirmation only; like the other two it never blocks a save, because
+    /// "implausible" is a judgement the lifter gets to overrule.
+    var implausibleSets: [AnalyzedSet] {
+        sets.filter { Self.isImplausibleLoad($0.weightLbs) }
+    }
+
     /// Anomaly-aware summary stats for a session: the qualified working top when it
     /// exists, otherwise the raw heaviest set. `nil` only when `logs` is empty, so
     /// callers supply their own final fallback. This is the single place the

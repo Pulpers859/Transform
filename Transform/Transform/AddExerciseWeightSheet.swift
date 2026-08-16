@@ -380,6 +380,7 @@ struct AddExerciseWeightSheet: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(saveSummaryText)
                         .font(.headline)
+                        .foregroundStyle(topLoadLooksImplausible ? TFColor.warning : .primary)
                     Text("\(validSetCount) of \(setLogs.count) sets logged")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -411,14 +412,28 @@ struct AddExerciseWeightSheet: View {
         setLogs.filter { parsedWeight(from: $0.weightText) != nil && parsedReps(from: $0.repsText) != nil }.count
     }
 
-    var saveSummaryText: String {
-        let valid = setLogs.compactMap { draft -> (Double, Int)? in
+    /// The heaviest entry currently drafted, if it is one at all.
+    var draftTopSet: (weight: Double, reps: Int)? {
+        setLogs.compactMap { draft -> (weight: Double, reps: Int)? in
             guard let w = parsedWeight(from: draft.weightText),
                   let r = parsedReps(from: draft.repsText) else { return nil }
-            return (w, r)
+            return (weight: w, reps: r)
+        }.max(by: { $0.weight < $1.weight })
+    }
+
+    /// Caught here, before the save, rather than only in the card afterwards — this sheet is
+    /// where the number is typed, and an entry saved from here becomes the stored best and
+    /// the next session's target the moment it lands.
+    var topLoadLooksImplausible: Bool {
+        WorkingSetAnalysis.isImplausibleLoad(draftTopSet?.weight ?? 0)
+    }
+
+    var saveSummaryText: String {
+        guard let top = draftTopSet else { return "Enter weight to save" }
+        if topLoadLooksImplausible {
+            return "\(formatWeight(top.weight)) lb — check this entry"
         }
-        guard let top = valid.max(by: { $0.0 < $1.0 }) else { return "Enter weight to save" }
-        return "\(formatWeight(top.0)) lb \u{00D7} \(top.1) top set"
+        return "\(formatWeight(top.weight)) lb \u{00D7} \(top.reps) top set"
     }
 
     // MARK: - Actions
