@@ -172,7 +172,8 @@ struct ExerciseSessionSummary: Equatable {
     ///   - plannedSets: prescribed set count.
     ///   - reps: the prescribed rep string, parsed into a range when it is parseable.
     ///   - targetRIR: structured effort target.
-    ///   - loggedSets: sets logged today.
+    ///   - loggedSets: sets logged for the session on screen — today's while training, that
+    ///     day's when looking back at a day already trained.
     ///   - previousSets: sets logged in the most recent EARLIER session.
     ///   - bestWeightLbs / bestReps / bestLoggedAt: the all-time record.
     ///   - now: injectable for deterministic tests.

@@ -581,7 +581,7 @@ struct AddExerciseWeightSheet: View {
                 repsCompleted: topReps,
                 notes: trimmedNotes,
                 muscleTarget: exercise.muscleTarget,
-                workoutDayNumber: dayNumber,
+                workoutDayNumber: exercise.day?.dayNumber ?? 0,
                 setLogs: validSets
             )
             modelContext.insert(performanceLog)
