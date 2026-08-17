@@ -605,6 +605,15 @@ extension ClaudeService {
         ]
     }
 
+    /// The movement patterns that count as a knee-dominant quad anchor on a broad lower-body
+    /// day. Shared with the menu-level repair (`enforceLowerSessionKneeAnchor`) so the pass
+    /// that fixes the session and the check that judges it can never disagree about what an
+    /// anchor is — the menu is locked by the time this validator runs, so a drift between the
+    /// two would be an unfixable finding rather than a repairable one.
+    var kneeDominantAnchorPatterns: Set<String> {
+        ["Squat", "Press", "Extension"]
+    }
+
     func validateLowerSessionBalance(
         on day: WorkoutDayResponse,
         expectedStyle: String,
@@ -621,7 +630,7 @@ extension ClaudeService {
         let metadataByExercise = day.exercises.map { exerciseMetadata(for: $0) }
 
         let kneeDominantAnchorCount = metadataByExercise.filter { metadata in
-            ["Squat", "Press", "Extension"].contains(metadata.movementPattern)
+            kneeDominantAnchorPatterns.contains(metadata.movementPattern)
         }.count
         let unilateralLowerCount = metadataByExercise.filter { metadata in
             ["Split Squat", "Lunge"].contains(metadata.movementPattern)

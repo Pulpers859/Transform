@@ -177,6 +177,37 @@ final class CoachingVoiceTests: XCTestCase {
         XCTAssertNotEqual(first, second)
     }
 
+    // MARK: - Nordic curl
+
+    /// A Nordic is a kneeling bodyweight lowering with the ankles anchored. It has no pad under
+    /// the hips and no stack to stop short of, so every machine-curl cue is describing a
+    /// different exercise. Shipped live as "Keep the hips pinned to the pad so the movement
+    /// stays at the knee." on a Nordic Hamstring Curl.
+    func testTheNordicIsNotCoachedAsAMachineLegCurl() {
+        let cue = CoachingVoice.cue(forName: "Nordic Hamstring Curl", muscleTarget: "Hamstrings")
+
+        XCTAssertFalse(cue.lowercased().contains("pad"), "Nordic coached off machine hardware: \(cue)")
+        XCTAssertFalse(cue.lowercased().contains("stack"), "Nordic coached off machine hardware: \(cue)")
+    }
+
+    /// The Glute-Ham Raise deliberately stays on the machine family: a GHD really does put the
+    /// hips on a pad, so that cue is literally true there. Splitting it out would be a change
+    /// with no defect behind it.
+    func testTheGluteHamRaiseKeepsTheMachineFamily() {
+        XCTAssertEqual(CoachingVoice.pattern(forName: "Glute-Ham Raise", muscleTarget: "Hamstrings"), .legCurl)
+    }
+
+    /// A Nordic and a machine curl can legitimately share a lower-body day, and they must not
+    /// end up reading like the same instruction.
+    func testANordicAndAMachineCurlOnOneDayGetDifferentCues() {
+        let cues = CoachingVoice.assignCues(for: [
+            (name: "Nordic Hamstring Curl", muscleTarget: "Hamstrings"),
+            (name: "Machine Leg Curl", muscleTarget: "Hamstrings")
+        ])
+
+        XCTAssertEqual(Set(cues).count, 2, cues.joined(separator: "\n"))
+    }
+
     // MARK: - Classification
 
     /// Equipment keying is what separates two movements that share a muscle and a pattern —
@@ -192,6 +223,9 @@ final class CoachingVoiceTests: XCTestCase {
     /// leg curl must not be read as a bicep curl and a leg press must not be a chest press.
     func testNarrowPatternsWinOverTheBroadOnesTheyContain() {
         XCTAssertEqual(CoachingVoice.pattern(forName: "Seated Leg Curl", muscleTarget: "Hamstrings"), .legCurl)
+        // "Nordic Hamstring Curl" contains "hamstring curl", so it must be tested before the
+        // machine family it sits inside — the machine cues describe hardware it does not use.
+        XCTAssertEqual(CoachingVoice.pattern(forName: "Nordic Hamstring Curl", muscleTarget: "Hamstrings"), .nordicCurl)
         XCTAssertEqual(CoachingVoice.pattern(forName: "Barbell Curl", muscleTarget: "Biceps"), .bicepCurl)
         XCTAssertEqual(CoachingVoice.pattern(forName: "Leg Press", muscleTarget: "Quads"), .legPress)
         XCTAssertEqual(CoachingVoice.pattern(forName: "Machine Chest Press", muscleTarget: "Chest"), .horizontalPress)

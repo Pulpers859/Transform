@@ -65,6 +65,11 @@ enum CoachingVoice {
         case lunge
         case legPress
         case legCurl
+        /// Ankle-anchored bodyweight knee flexion (the Nordic). Split off `.legCurl` because
+        /// every machine-curl cue starts from hardware the lifter does not have here: there is
+        /// no pad under the hips to pin and no stack to stop short of. A lifter told to "keep
+        /// the hips pinned to the pad" on a Nordic is being coached on a different exercise.
+        case nordicCurl
         case legExtension
         case calfRaise
         case core
@@ -236,7 +241,12 @@ enum CoachingVoice {
         // "seated curl" / "lying curl" are deliberately NOT here: a seated dumbbell curl is a
         // biceps movement, and matching them would classify it as a hamstring curl and coach
         // the lifter to pin their hips to a pad.
-        if matches(text, ["leg curl", "nordic", "hamstring curl", "glute ham", "glute-ham"]) { return .legCurl }
+        // Nordic before the leg-curl family it sits inside: "Nordic Hamstring Curl" also
+        // contains "hamstring curl", and the machine cues are wrong for it. The Glute-Ham
+        // Raise deliberately stays with `.legCurl` — a GHD really does put the hips on a pad,
+        // so that cue is literally true there.
+        if matches(text, ["nordic"]) { return .nordicCurl }
+        if matches(text, ["leg curl", "hamstring curl", "glute ham", "glute-ham"]) { return .legCurl }
         if matches(text, ["leg extension", "quad extension"]) { return .legExtension }
         // Calf before leg press: "Leg Press Calf Raise" is a calf raise performed on a sled.
         if matches(text, ["calf", "calves"]) { return .calfRaise }
@@ -489,6 +499,10 @@ enum CoachingVoice {
         .legCurl: [
             "Keep the hips pinned to the pad so the movement stays at the knee.",
             "Control the return and stop just short of the weight resting between reps."
+        ],
+        .nordicCurl: [
+            "Hold a straight line from knees to shoulders so the knee is the only joint that bends.",
+            "Lower yourself as slowly as you can hold, then push off the floor with your hands to return."
         ],
         .legExtension: [
             "Keep the back against the pad and extend without kicking the weight up.",

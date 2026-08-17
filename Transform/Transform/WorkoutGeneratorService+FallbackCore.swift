@@ -1822,10 +1822,30 @@ extension ClaudeService {
             items.append("joint prep for primary movers")
         }
 
-        let rampTarget = anchorNames.first ?? "your first compound"
+        // Ramp sets belong on the first LOADED movement, not simply on whatever sits at the
+        // top of the card list. On a day whose focus is Core/Abs the builder legitimately opens
+        // with the core movement, and the old `exercises.first` produced "2-3 progressive ramp
+        // sets into Hanging Knee Raise" — a bodyweight movement with nothing to ramp. Prefer the
+        // day's first anchor, then its first secondary, and only then fall back to the opener.
+        let rampTarget = rampSetTarget(in: exercises) ?? anchorNames.first ?? "your first compound"
         items.append("then 2-3 progressive ramp sets into \(rampTarget)")
 
         return items.joined(separator: ", ") + "."
+    }
+
+    /// The movement a warm-up should actually ramp into: the day's first anchor, else its first
+    /// secondary. Returns nil when the session carries only accessory and core work, where there
+    /// is no meaningful load to build up to and the caller keeps its existing wording.
+    func rampSetTarget(in exercises: [WorkoutExerciseResponse]) -> String? {
+        let ramped: [ProceduralExerciseRole] = [.anchor, .secondary]
+        for role in ramped {
+            if let match = exercises.first(where: {
+                proceduralExerciseRole(for: $0.exerciseName, muscleTarget: $0.muscleTarget) == role
+            }) {
+                return match.exerciseName
+            }
+        }
+        return nil
     }
 
     func posturalPrepCue(

@@ -1631,11 +1631,221 @@ extension ClaudeService {
             finalCoverageMenus = repairedMenus
             guard gapsAfter != gapsBefore else { break }
         }
-        return allocateWeeklySetPrescription(
+        let balancedMenus = enforceLowerSessionKneeAnchor(
             finalCoverageMenus,
+            blueprint: blueprint,
+            trainingIntent: trainingIntent,
+            avoidedExercises: avoidedExercises
+        )
+        return allocateWeeklySetPrescription(
+            balancedMenus,
             blueprint: blueprint,
             weekNumber: weekNumber
         )
+    }
+
+    // MARK: - Lower-Session Knee-Dominant Anchor (menu-level)
+
+    /// Repairs a broad lower-body day that the builder filled with glute/posterior-chain work
+    /// and no knee-dominant quad anchor, BEFORE the menu is locked and handed to the AI.
+    ///
+    /// `validateLowerSessionBalance` rejects exactly that shape, and the rejection is a pure
+    /// EXERCISE-SELECTION verdict. In a locked-menu flow nothing downstream can act on it: the
+    /// AI is explicitly forbidden from adding, removing or substituting movements, and the
+    /// procedural fallback consumes the same menu. So the finding survived every retry AND the
+    /// correction pass, then failed the whole candidate set. Seen live on a 5-day block whose
+    /// Legs day was Trap Bar Deadlift / Bulgarian Split Squat / Nordic Curl / Barbell Hip
+    /// Thrust / Single-Leg Hip Thrust: two paid candidates plus a paid correction pass, all
+    /// scored 5 on the identical unfixable issue, all discarded, and the week shipped from the
+    /// procedural fallback with generic cues.
+    ///
+    /// The validator was also RIGHT about the programming — that day carried two hip-thrust
+    /// variants and no bilateral quad stimulus at all. So the repair belongs here, in the one
+    /// layer that is allowed to choose exercises, not in a looser validator.
+    ///
+    /// Driven by `validateLowerSessionBalance` itself rather than a re-statement of its rule,
+    /// so the repair and the check cannot drift apart. Every swap must strictly reduce that
+    /// day's findings while preserving BASE-001 coverage and each priority's exposure-day
+    /// count, so this can never trade one validator failure for another.
+    func enforceLowerSessionKneeAnchor(
+        _ menus: [[PreSelectedExercise]],
+        blueprint: ProgramBlueprint,
+        trainingIntent: TrainingIntentPlan,
+        avoidedExercises: Set<String>
+    ) -> [[PreSelectedExercise]] {
+        var updated = menus
+
+        for (dayOffset, plan) in blueprint.dayPlans.enumerated()
+        where !plan.isRestDay && dayOffset < updated.count && !updated[dayOffset].isEmpty {
+            let style = canonicalTrainingStyle(plan.style)
+            guard style == "Lower" || style == "Legs" else { continue }
+
+            let focusIntent = focusIntentForArea(plan.focusArea, within: trainingIntent)
+            let supportIntents = plan.supportAreas.compactMap { focusIntentForArea($0, within: trainingIntent) }
+
+            // One swap clears the anchor finding; the bound lets a day carrying more than one
+            // balance finding keep repairing, and guarantees termination if a swap is a no-op.
+            for _ in 0..<2 {
+                let currentIssues = Set(
+                    lowerSessionBalanceIssues(in: updated[dayOffset], dayOffset: dayOffset, plan: plan)
+                )
+                guard !currentIssues.isEmpty else { break }
+                guard let repaired = kneeAnchorRepairedMenus(
+                    updated,
+                    dayOffset: dayOffset,
+                    plan: plan,
+                    currentIssues: currentIssues,
+                    blueprint: blueprint,
+                    trainingIntent: trainingIntent,
+                    focusIntent: focusIntent,
+                    supportIntents: supportIntents,
+                    avoidedExercises: avoidedExercises
+                ) else { break }
+                updated = repaired
+            }
+        }
+
+        return updated
+    }
+
+    /// One accepted swap, or nil when no candidate/slot pairing improves the day safely.
+    private func kneeAnchorRepairedMenus(
+        _ menus: [[PreSelectedExercise]],
+        dayOffset: Int,
+        plan: BlueprintDayPlan,
+        currentIssues: Set<String>,
+        blueprint: ProgramBlueprint,
+        trainingIntent: TrainingIntentPlan,
+        focusIntent: MusclePriorityIntent?,
+        supportIntents: [MusclePriorityIntent],
+        avoidedExercises: Set<String>
+    ) -> [[PreSelectedExercise]]? {
+        let style = canonicalTrainingStyle(plan.style)
+        // Tuple members have no key paths in Swift, so these stay closures throughout.
+        let usedElsewhere = Set(
+            menus.indices
+                .filter { $0 != dayOffset }
+                .flatMap { menus[$0] }
+                .map { normalizeExerciseName($0.exerciseName) }
+        )
+        let gapsBefore = Set(baselineCoverageGaps(in: menus, blueprint: blueprint).map { $0.seed })
+        let exposureBefore = priorityExposureDayCounts(in: menus, trainingIntent: trainingIntent)
+
+        // Lowest fatigue cost first: on a session that is already posterior-heavy, the cheapest
+        // honest quad stimulus (a leg extension or a machine squat pattern) buys the missing
+        // anchor without pushing the day past its fatigue cap.
+        for candidate in metadataFocusExerciseCatalog(for: "quads") {
+            let key = normalizeExerciseName(candidate.name)
+            guard !avoidedExercises.contains(ExerciseWeightEntry.canonicalLookupKey(candidate.name)) else { continue }
+            guard !usedElsewhere.contains(key) else { continue }
+            guard !menus[dayOffset].contains(where: { normalizeExerciseName($0.exerciseName) == key }) else { continue }
+
+            let metadata = exerciseMetadata(forExerciseName: candidate.name, muscleTarget: candidate.target)
+            guard kneeDominantAnchorPatterns.contains(metadata.movementPattern) else { continue }
+
+            let probe = WorkoutExerciseResponse(
+                exerciseName: candidate.name,
+                sets: 3,
+                reps: "10-12",
+                tempo: "",
+                restSeconds: 60,
+                notes: "",
+                muscleTarget: candidate.target
+            )
+            guard exerciseMatchesDayStyle(probe, style: style) else { continue }
+
+            let candidateMenu = PreSelectedExercise(
+                exerciseName: candidate.name,
+                muscleTarget: candidate.target,
+                movementPattern: metadata.movementPattern,
+                role: proceduralExerciseRole(for: candidate.name, muscleTarget: candidate.target),
+                prescribedSets: 1
+            )
+
+            // Same expendability order BASE-001 uses: duplicated-pattern non-anchor slots that
+            // serve neither the day's focus nor its support areas go first, so the priority
+            // work and the day's anchors are never the thing that gets traded away.
+            for replaceIndex in baselineCoverageReplacementIndices(
+                in: menus[dayOffset],
+                focusIntent: focusIntent,
+                supportIntents: supportIntents
+            ) {
+                var proposed = menus
+                proposed[dayOffset].remove(at: replaceIndex)
+                proposed[dayOffset].insert(candidateMenu, at: replaceIndex)
+
+                let proposedIssues = Set(
+                    lowerSessionBalanceIssues(in: proposed[dayOffset], dayOffset: dayOffset, plan: plan)
+                )
+                guard proposedIssues.isStrictSubset(of: currentIssues) else { continue }
+
+                let gapsAfter = Set(baselineCoverageGaps(in: proposed, blueprint: blueprint).map { $0.seed })
+                guard gapsAfter.isSubset(of: gapsBefore) else { continue }
+
+                let exposureAfter = priorityExposureDayCounts(in: proposed, trainingIntent: trainingIntent)
+                guard exposureBefore.allSatisfy({ exposureAfter[$0.key, default: 0] >= $0.value }) else { continue }
+
+                return proposed
+            }
+        }
+
+        return nil
+    }
+
+    /// Runs the real validator over a menu by projecting it into the day shape the validator
+    /// reads. Reps/tempo/rest are placeholders: `validateLowerSessionBalance` inspects only
+    /// exercise identity and movement pattern.
+    func lowerSessionBalanceIssues(
+        in menu: [PreSelectedExercise],
+        dayOffset: Int,
+        plan: BlueprintDayPlan
+    ) -> [String] {
+        let probeDay = WorkoutDayResponse(
+            dayNumber: dayOffset + 1,
+            dayName: plan.style,
+            muscleGroups: "",
+            isRestDay: false,
+            notes: "",
+            exercises: menu.map { item in
+                WorkoutExerciseResponse(
+                    exerciseName: item.exerciseName,
+                    sets: max(1, item.prescribedSets),
+                    reps: "10-12",
+                    tempo: "",
+                    restSeconds: 60,
+                    notes: "",
+                    muscleTarget: item.muscleTarget
+                )
+            }
+        )
+        return validateLowerSessionBalance(
+            on: probeDay,
+            expectedStyle: canonicalTrainingStyle(plan.style),
+            focusArea: plan.focusArea
+        )
+    }
+
+    /// Distinct training days on which each priority has a directly-crediting exercise. The
+    /// knee-anchor swap must never lower one of these — that is the ceiling
+    /// `enforcePriorityDirectSetFeasibility` just finished raising, and dropping it here would
+    /// hand the user the "missed its direct-set target" finding instead.
+    func priorityExposureDayCounts(
+        in menus: [[PreSelectedExercise]],
+        trainingIntent: TrainingIntentPlan
+    ) -> [String: Int] {
+        var counts: [String: Int] = [:]
+        for priority in trainingIntent.priorities {
+            counts[priority.area] = menus.filter { menu in
+                menu.contains { exercise in
+                    focusStimulusKind(
+                        exerciseName: exercise.exerciseName,
+                        muscleTarget: exercise.muscleTarget,
+                        focusArea: priority.area
+                    ) == .prime
+                }
+            }.count
+        }
+        return counts
     }
 
     // MARK: - BASE-001 Baseline Muscle Coverage (menu-level floor)

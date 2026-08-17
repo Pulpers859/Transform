@@ -1166,6 +1166,21 @@ extension ClaudeService {
             "is supposed to emphasize quads",
             "stacks too many",
             "the generated day reads as",
+            // Lower-body balance. Like its two siblings above (both already demoted), this is a
+            // verdict on WHICH EXERCISES the day contains — the one thing a locked menu forbids
+            // every downstream consumer from touching. The AI cannot swap in a squat, and the
+            // procedural fallback reads the same menu, so as a correction-worthy issue it
+            // survived the retry AND the correction pass and then failed the whole candidate
+            // set. Live cost on one Week 1: two paid candidates plus a paid correction pass,
+            // all scoring 5 on this identical finding, all discarded, week shipped from the
+            // fallback with generic cues.
+            //
+            // `enforceLowerSessionKneeAnchor` now repairs this at the menu, where exercise
+            // selection is actually allowed to happen, so reaching here means the repair found
+            // no affordable, non-avoided, unused quad anchor at all. That is an honest warning
+            // — `WorkoutValidatorNotice` already carries the plain-language copy for it — not a
+            // reason to throw away work the user paid for and cannot get repaired.
+            "reads as a broad lower-body session",
             // BASE-001 zero-coverage. This is a property of the MENU, and in a locked-menu flow
             // the menu is already final: the AI is forbidden from changing it and the procedural
             // fallback consumes the same one, so no downstream consumer can add the missing
