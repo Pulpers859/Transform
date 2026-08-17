@@ -30,7 +30,13 @@ final class SleepHealthKitService {
 
     /// Trailing window imported on each sync. Matches the ~7-day trend window with a few
     /// days of slack so a couple of missed syncs still backfill.
-    static let importWindowDays = 14
+    ///
+    /// `nonisolated` because this is read as a DEFAULT ARGUMENT (`days: Int =
+    /// SleepHealthKitService.importWindowDays`), and default-argument expressions are evaluated
+    /// in the caller's context rather than the callee's — so a main-actor-isolated constant
+    /// cannot be reached there. That is a warning today and an error in the Swift 6 language
+    /// mode. Safe to expose: an immutable `Int` is Sendable, so there is nothing to race on.
+    nonisolated static let importWindowDays = 14
 
     private init() {}
 

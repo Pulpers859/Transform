@@ -223,6 +223,14 @@ nonisolated struct StructuredTrainingIntent: Codable {
 }
 
 extension StructuredTrainingIntent {
+    // `nonisolated` is load-bearing, not decoration. The type is declared nonisolated, but this
+    // extension is not, so under the project's default main-actor isolation the initializer
+    // inside it becomes main-actor-isolated — while `Decodable` requires a nonisolated
+    // `init(from:)`. That mismatch is a warning today and an ERROR in the Swift 6 language mode,
+    // which would stop this file compiling at all. It applies to every decoder init written in
+    // an extension; the ones declared in a struct body inherit the type's nonisolation and are
+    // unaffected.
+    //
     // Resilient decode (custom init lives in an extension so the memberwise init the
     // tests/generator use is preserved). A single missing sub-field must NOT throw away
     // the whole machine-readable training contract and silently demote the generator to
@@ -230,7 +238,7 @@ extension StructuredTrainingIntent {
     // with no usable area are dropped rather than fed to the blueprint as empty slots.
     // Numeric targets are kept RAW (not clamped here) so BodyAnalysisValidator can still
     // flag out-of-range values — the generator already clamps them at consumption.
-    init(from decoder: Decoder) throws {
+    nonisolated init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         splitRecommendation = try c.decodeIfPresent(String.self, forKey: .splitRecommendation) ?? ""
         weeklyTrainingDays = try c.decodeIfPresent(Int.self, forKey: .weeklyTrainingDays) ?? 5
@@ -261,7 +269,7 @@ extension StructuredTrainingPriority {
     // Resilient decode: one omitted field (e.g. directWorkBias) no longer discards the
     // entire priority list. Defaults are conservative middles; raw targets preserved for
     // the validator (see StructuredTrainingIntent note).
-    init(from decoder: Decoder) throws {
+    nonisolated init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         area = try c.decodeIfPresent(String.self, forKey: .area) ?? ""
         priorityLevel = try c.decodeIfPresent(String.self, forKey: .priorityLevel) ?? "Medium"
@@ -1179,7 +1187,7 @@ extension RegionAssessment {
     // analysis decode (which is uncaught in BodyAnalysisResult.init, so it becomes a hard
     // parse failure that can lose the whole run after photos were shot and uploaded).
     // Missing priority defaults to Medium; empty-region entries are filtered by the parent.
-    init(from decoder: Decoder) throws {
+    nonisolated init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         region = try c.decodeIfPresent(String.self, forKey: .region) ?? ""
         assessment = try c.decodeIfPresent(String.self, forKey: .assessment) ?? ""

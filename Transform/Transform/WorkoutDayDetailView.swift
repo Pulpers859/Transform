@@ -590,7 +590,12 @@ struct WorkoutDayDetailView: View {
             // somewhere to land — otherwise a mis-tap and an undo leaves six closed cards and
             // no indication of which one just re-opened.
             withAnimation(.easeInOut(duration: 0.25)) {
-                expandedExerciseIDs.insert(exercise.persistentModelID)
+                // Discarded explicitly: `Set.insert` returns (inserted:memberAfterInsert:), and
+                // as the closure's only statement that tuple becomes `withAnimation`'s return
+                // value — which nothing reads, hence "result of call is unused". Whether the ID
+                // was already present is genuinely irrelevant here; the card ends up open either
+                // way.
+                _ = expandedExerciseIDs.insert(exercise.persistentModelID)
             }
         }
     }
