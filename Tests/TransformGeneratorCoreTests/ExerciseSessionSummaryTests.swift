@@ -35,7 +35,7 @@ final class ExerciseSessionSummaryTests: XCTestCase {
             plannedSets: plannedSets,
             reps: reps,
             targetRIR: targetRIR,
-            todaysSets: today,
+            loggedSets: today,
             previousSets: previous,
             bestWeightLbs: bestWeight,
             bestReps: bestReps,

@@ -183,6 +183,21 @@ class WorkoutDay {
         MesocyclePhase.isDeloadWeek(weekNumber)
     }
 
+    /// The calendar dates this day's logged work can carry, most authoritative first.
+    ///
+    /// A set log is stamped with the wall-clock moment it was entered, but a card needs the
+    /// sets belonging to THIS session. For a session being trained now that is today, which is
+    /// why reading "today" worked for as long as anyone only ever looked at the day they were
+    /// training. For a session trained last week it is that week's date, and asking for today
+    /// there is why a finished day reported nothing logged while its sets sat in the database.
+    ///
+    /// Both stamps are offered, end first, because a session that runs past midnight ends on a
+    /// different calendar day than it started and its later sets carry the later date.
+    /// Empty for a day that was never opened — callers fall back to the date they were given.
+    var sessionCalendarDates: [Date] {
+        [sessionEndedAt, sessionStartedAt].compactMap { $0 }
+    }
+
     var performanceRating: WorkoutPerformanceRating? {
         get { WorkoutPerformanceRating(rawValue: performanceRatingRaw) }
         set { performanceRatingRaw = newValue?.rawValue ?? "" }

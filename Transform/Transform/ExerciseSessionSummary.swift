@@ -131,12 +131,12 @@ struct ExerciseSessionSummary: Equatable {
     let plannedSets: Int
     let repRange: RepRange?
     let targetRIR: Int?
-    let todaysSets: [SetLogEntry]
+    let loggedSets: [SetLogEntry]
     let previous: PreviousSession?
     let best: BestRecord?
     let adherence: [AdherenceFlag]
 
-    var loggedSetCount: Int { todaysSets.count }
+    var loggedSetCount: Int { loggedSets.count }
 
     /// The single label the card shows under the pill row, or `nil` when the plain completion
     /// check already says everything.
@@ -172,7 +172,7 @@ struct ExerciseSessionSummary: Equatable {
     ///   - plannedSets: prescribed set count.
     ///   - reps: the prescribed rep string, parsed into a range when it is parseable.
     ///   - targetRIR: structured effort target.
-    ///   - todaysSets: sets logged today.
+    ///   - loggedSets: sets logged today.
     ///   - previousSets: sets logged in the most recent EARLIER session.
     ///   - bestWeightLbs / bestReps / bestLoggedAt: the all-time record.
     ///   - now: injectable for deterministic tests.
@@ -182,7 +182,7 @@ struct ExerciseSessionSummary: Equatable {
         plannedSets: Int,
         reps: String,
         targetRIR: Int?,
-        todaysSets: [SetLogEntry],
+        loggedSets: [SetLogEntry],
         previousSets: [SetLogEntry],
         bestWeightLbs: Double?,
         bestReps: Int?,
@@ -195,7 +195,7 @@ struct ExerciseSessionSummary: Equatable {
             isCompleted: isCompleted,
             completionStatus: completionStatus,
             plannedSets: plannedSets,
-            loggedCount: todaysSets.count
+            loggedCount: loggedSets.count
         )
 
         let best: BestRecord? = bestWeightLbs.map { weight in
@@ -216,12 +216,12 @@ struct ExerciseSessionSummary: Equatable {
             plannedSets: plannedSets,
             repRange: range,
             targetRIR: targetRIR,
-            todaysSets: todaysSets,
+            loggedSets: loggedSets,
             previous: previousSets.isEmpty ? nil : PreviousSession(sets: previousSets),
             best: best,
             adherence: adherenceFlags(
                 state: state,
-                todaysSets: todaysSets,
+                loggedSets: loggedSets,
                 repRange: range,
                 targetRIR: targetRIR
             )
@@ -258,7 +258,7 @@ struct ExerciseSessionSummary: Equatable {
 
     private static func adherenceFlags(
         state: State,
-        todaysSets: [SetLogEntry],
+        loggedSets: [SetLogEntry],
         repRange: RepRange?,
         targetRIR: Int?
     ) -> [AdherenceFlag] {
@@ -268,7 +268,7 @@ struct ExerciseSessionSummary: Equatable {
             flags.append(.setsIncomplete(logged: logged, planned: planned))
         }
 
-        for set in todaysSets {
+        for set in loggedSets {
             if let repRange {
                 if set.repsCompleted > repRange.high {
                     flags.append(.repsAboveRange(setNumber: set.setNumber, reps: set.repsCompleted, high: repRange.high))

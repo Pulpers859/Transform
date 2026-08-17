@@ -101,7 +101,7 @@ struct WorkoutDayDetailView: View {
                 exercise: exercise,
                 weightSummary: weightSummary(for: exercise),
                 latestSetLogs: latestSetLogs(for: exercise),
-                todaysSetLogs: todaysSetLogs(for: exercise)
+                sessionSetLogs: sessionSetLogs(for: exercise)
             )
         }
         .sheet(item: $feedbackDay) { selectedDay in
@@ -411,7 +411,7 @@ struct WorkoutDayDetailView: View {
                 // handed down rather than recomputed inside the card.
                 let entry = weightSummary(for: exercise)
                 let previous = latestSetLogs(for: exercise)
-                let today = todaysSetLogs(for: exercise)
+                let today = sessionSetLogs(for: exercise)
 
                 ExerciseCard(
                     exercise: exercise,
@@ -423,7 +423,7 @@ struct WorkoutDayDetailView: View {
                     ),
                     weightSummary: entry,
                     latestSetLogs: previous,
-                    todaysSetLogs: today,
+                    sessionSetLogs: today,
                     // Only this exercise's history. The card's single consumer
                     // (`WorkoutProgressionEngine.effortSignal`) filters to one canonical key
                     // and keeps three sessions, so handing it the whole database was work
@@ -464,7 +464,7 @@ struct WorkoutDayDetailView: View {
             plannedSets: exercise.sets,
             reps: exercise.reps,
             targetRIR: exercise.targetRIR,
-            todaysSets: today,
+            loggedSets: today,
             previousSets: previous,
             bestWeightLbs: entry.map { $0.hasBestRecord ? $0.bestWeightLbs : $0.weightLbs },
             bestReps: entry.flatMap { $0.hasBestRecord ? ($0.bestRepsCompleted ?? $0.repsCompleted) : $0.repsCompleted },
@@ -500,7 +500,7 @@ struct WorkoutDayDetailView: View {
         guard let exercise = completionPromptExercise else {
             return "Finish as modified?"
         }
-        let logged = todaysSetLogs(for: exercise).count
+        let logged = sessionSetLogs(for: exercise).count
         return logged > 0 ? "Finish \(logged)/\(exercise.sets) sets?" : "Complete without logged sets?"
     }
 
@@ -508,7 +508,7 @@ struct WorkoutDayDetailView: View {
         guard let exercise = completionPromptExercise else {
             return "Finish Modified"
         }
-        let logged = todaysSetLogs(for: exercise).count
+        let logged = sessionSetLogs(for: exercise).count
         return logged > 0 ? "Finish \(logged)/\(exercise.sets)" : "Finish Modified"
     }
 
@@ -516,7 +516,7 @@ struct WorkoutDayDetailView: View {
         guard let exercise = completionPromptExercise else {
             return "Logging sets improves future progression cues."
         }
-        let logged = todaysSetLogs(for: exercise).count
+        let logged = sessionSetLogs(for: exercise).count
         if logged > 0 {
             return "\(logged) of \(exercise.sets) planned sets are logged. This marks the exercise as Modified; progression will use only the sets you actually logged."
         }
@@ -525,7 +525,7 @@ struct WorkoutDayDetailView: View {
 
     func toggleExercise(_ exercise: WorkoutExercise) {
         if !exercise.isCompleted, exercise.sets > 0 {
-            let logged = todaysSetLogs(for: exercise).count
+            let logged = sessionSetLogs(for: exercise).count
             if logged < exercise.sets {
                 completionPromptExercise = exercise
                 TFHaptics.impact(.soft)
@@ -672,14 +672,16 @@ struct WorkoutDayDetailView: View {
         ExerciseWeightStore.summary(for: exercise, within: allWeightLogs)
     }
 
-    /// The most recent completed session before today — the "last session" reference.
+    /// The most recent completed session before the one on screen — the "last session"
+    /// reference.
     func latestSetLogs(for exercise: WorkoutExercise) -> [SetLogEntry] {
         SetLoggingService.previousSets(for: exercise, in: allPerformanceLogs)
     }
 
-    /// Sets already logged for today's in-progress session.
-    func todaysSetLogs(for exercise: WorkoutExercise) -> [SetLogEntry] {
-        SetLoggingService.todaysSets(for: exercise, in: allPerformanceLogs)
+    /// Sets logged for the session on screen: today's while training, that day's when looking
+    /// back at a day already trained.
+    func sessionSetLogs(for exercise: WorkoutExercise) -> [SetLogEntry] {
+        SetLoggingService.loggedSets(for: exercise, in: allPerformanceLogs)
     }
 
     /// Performance history sliced by canonical exercise key, built ONCE per render.
@@ -726,7 +728,7 @@ struct ExerciseCard: View {
     /// panel and the progression suggestion.
     let latestSetLogs: [SetLogEntry]
     /// Sets already logged for today's in-progress session — drives the inline logger.
-    let todaysSetLogs: [SetLogEntry]
+    let sessionSetLogs: [SetLogEntry]
     /// All decoded performance sessions, used for the exercise-specific effort signal.
     let performanceHistory: [WorkoutPerformanceLogSnapshot]
     /// Whether this card is open. Ownership lives in the parent so the default (only the
@@ -779,7 +781,7 @@ struct ExerciseCard: View {
     /// coaching off a session you've already beaten (the live bug: a 135 lb × 15 set that
     /// was told to "try 105 lb next session" because the cue was frozen on last week's 100).
     var progressionReferenceSets: [SetLogEntry] {
-        todaysSetLogs.isEmpty ? latestSetLogs : todaysSetLogs
+        sessionSetLogs.isEmpty ? latestSetLogs : sessionSetLogs
     }
 
     var progressionAnalysis: WorkingSetAnalysis {
@@ -794,7 +796,7 @@ struct ExerciseCard: View {
     /// (it never blocks). The ~10 lb floor keeps tiny-weight ratios (5→10) from over-firing;
     /// a ≥25% single-session jump is far beyond any step the engine would ever recommend.
     var historicalLoadAnomaly: (setNumber: Int, weight: Double, reference: Double)? {
-        let today = WorkingSetAnalysis.analyze(todaysSetLogs)
+        let today = WorkingSetAnalysis.analyze(sessionSetLogs)
         guard let todayWeight = today.workingWeight, todayWeight > 0,
               let top = today.topWorkingSet else { return nil }
         let prior = WorkingSetAnalysis.analyze(latestSetLogs)
@@ -995,13 +997,12 @@ struct ExerciseCard: View {
 
     var prescriptionItems: [ExercisePrescriptionPillData] {
         var items = [
-            ExercisePrescriptionPillData(icon: "square.stack.3d.up", label: setsLabel(exercise.sets)),
-            ExercisePrescriptionPillData(icon: "arrow.up.arrow.down", label: "\(exercise.reps) reps")
+            ExercisePrescriptionPillData(label: setsLabel(exercise.sets)),
+            ExercisePrescriptionPillData(label: "\(exercise.reps) reps")
         ]
         if let tempo = displayTempo {
             items.append(
                 ExercisePrescriptionPillData(
-                    icon: "metronome",
                     label: "Tempo \(tempo)",
                     explanation: tempoExplanation(tempo)
                 )
@@ -1010,7 +1011,6 @@ struct ExerciseCard: View {
         if let rir = displayTargetRIR {
             items.append(
                 ExercisePrescriptionPillData(
-                    icon: "gauge",
                     label: "RIR \(rir)",
                     explanation: rirExplanation(rir)
                 )
@@ -1188,7 +1188,7 @@ struct ExerciseCard: View {
 
                 InlineSetLogger(
                     exercise: exercise,
-                    loggedSets: todaysSetLogs,
+                    loggedSets: sessionSetLogs,
                     suggestedWeight: workingSetAnalysis.workingWeight,
                     suggestedReps: workingSetAnalysis.topWorkingSet?.reps,
                     targetRepsPlaceholder: RepRange.parse(exercise.reps)?.high,
@@ -1586,7 +1586,6 @@ struct ExerciseCard: View {
 // MARK: - Exercise Compact Components
 
 struct ExercisePrescriptionPillData: Identifiable {
-    let icon: String
     let label: String
     /// Plain-language meaning, shown on tap. `nil` for chips that need no gloss — a set count
     /// and a rep range explain themselves.
@@ -1596,7 +1595,10 @@ struct ExercisePrescriptionPillData: Identifiable {
     /// and for that same person on a lift they have not touched in three months.
     var explanation: String? = nil
 
-    var id: String { "\(icon)-\(label)" }
+    /// Labels are unique within one prescription (one sets chip, one reps chip, one tempo,
+    /// one RIR), so the label is the identity. This used to be keyed by the leading SF Symbol
+    /// as well, which no longer exists.
+    var id: String { label }
 }
 
 struct ExercisePrescriptionPillRow: View {
@@ -1612,31 +1614,76 @@ struct ExercisePrescriptionPillRow: View {
 
     private var columnCount: Int { dynamicTypeSize >= .accessibility1 ? 1 : 2 }
 
-    /// Fixed columns, not a greedy flow.
+    /// One line at normal text sizes; the stacked grid only at accessibility sizes.
     ///
-    /// The previous layout packed chips left to right and wrapped when full. With four chips
-    /// that always produced three on the first row and RIR ALONE on the second — an orphan on
-    /// every exercise, spending a full row of height on one small chip. Worse, because chip
-    /// widths follow their content ("6-10 reps" is narrower than "10-14 reps"), the wrap point
-    /// and every x-position shifted from card to card, so nothing lined up while scrolling the
-    /// day. That is the "misaligned" part: not one bad card, but no two cards agreeing.
+    /// HISTORY — read before "restoring" the grid
+    /// ------------------------------------------
+    /// Three layouts have shipped here. The first packed chips left-to-right and wrapped when
+    /// full, which stranded RIR alone on a second row and — because chip widths follow their
+    /// content ("6-10 reps" is narrower than "10-14 reps") — moved the wrap point and every
+    /// x-position from card to card, so no two cards lined up while scrolling a day.
     ///
-    /// Equal-width columns make position independent of content, so the second column starts
-    /// at the same x on every card in the list. The pairing is meaningful rather than
-    /// arbitrary: the first row is the dose (how many sets, how many reps), the second is how
-    /// to execute it (tempo, effort).
+    /// The fix was a fixed two-column grid, which made position independent of content. That
+    /// solved alignment but spent two 44pt rows plus spacing (~95pt) on four short values, on
+    /// the one screen used mid-set. On a real day — see the Day 16 report — the prescription
+    /// alone pushed the log button, the last-session panel and the cue below the fold, so
+    /// reading what to do required scrolling away from the thing being read.
     ///
-    /// Cramming all four onto one line was the other option and was rejected — it would mean
-    /// shrinking type and padding on the one screen used mid-set, and it would undo the 44pt
-    /// tap targets the explainer chips need.
+    /// This is the third: a single row, leading SF Symbols removed (they cost roughly 20pt of
+    /// width each and carried no information the label did not already carry). It costs the
+    /// cross-card column alignment the grid bought, which is a real loss but a smaller one —
+    /// with a single row the chips still share a left edge, and only the interior boundaries
+    /// drift. It buys back ~51pt on every exercise card.
+    ///
+    /// The 44pt tap target on the explainer chips is NOT part of the trade and must survive
+    /// any future tightening here: it is what makes Tempo and RIR learnable rather than inert
+    /// notation. Height is unchanged at 44pt; only the second row is gone.
+    ///
+    /// Accessibility sizes keep the stacked layout. One row cannot hold four chips once the
+    /// text is that large, and shrinking to fit is precisely the wrong response to someone
+    /// asking for bigger text.
+    ///
+    /// `ViewThatFits` rather than a width guess. A four-chip prescription carrying a full tempo
+    /// string ("Tempo 3-0-1-0") measures within a few points of the card's content width on a
+    /// standard phone and over it on a small one, so committing unconditionally to one row would
+    /// buy the height back by scaling caption2 toward 8pt — unreadable at arm's length, mid-set,
+    /// which is the only moment this row is ever read. One row when it genuinely fits, the
+    /// stacked pair when it does not.
     var body: some View {
+        if dynamicTypeSize >= .accessibility1 {
+            stackedRows
+        } else {
+            ViewThatFits(in: .horizontal) {
+                singleRow
+                stackedRows
+            }
+        }
+    }
+
+    /// Natural widths, not equal cells: four equal columns would size every chip to the widest
+    /// ("Tempo 3-0-1-0") and overflow the card, while natural widths let the short values stay
+    /// short and leave the slack where it is needed.
+    ///
+    /// `fixedSize` on the horizontal axis is what makes `ViewThatFits` able to reject this
+    /// layout: without it the chips would compress to fit any width offered, the row would
+    /// always "fit", and the stacked fallback would be dead code.
+    private var singleRow: some View {
+        HStack(spacing: 6) {
+            ForEach(items) { item in
+                chip(for: item, fillsCell: false)
+            }
+        }
+        .fixedSize(horizontal: true, vertical: false)
+    }
+
+    private var stackedRows: some View {
         VStack(alignment: .leading, spacing: 7) {
             ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
                 HStack(spacing: 7) {
                     // Cell sizing lives in `chip(for:)` so it applies uniformly rather than
                     // being reapplied here per placement.
                     ForEach(row) { item in
-                        chip(for: item)
+                        chip(for: item, fillsCell: true)
                     }
                     // Keeps a short final row's cells the same width as every other row's, so
                     // a 3-chip prescription still aligns with a 4-chip one. At most one
@@ -1657,17 +1704,16 @@ struct ExercisePrescriptionPillRow: View {
     }
 
     @ViewBuilder
-    private func chip(for item: ExercisePrescriptionPillData) -> some View {
-        let content = HStack(spacing: 5) {
-            // Scales with Dynamic Type. A fixed 9pt glyph stayed put while its label grew,
-            // so the chip drifted out of proportion at larger text sizes.
-            Image(systemName: item.icon)
-                .font(.caption2.bold())
-                .foregroundStyle(TFColor.accent)
+    private func chip(for item: ExercisePrescriptionPillData, fillsCell: Bool) -> some View {
+        let content = HStack(spacing: 4) {
             Text(item.label)
                 .font(.caption2.bold())
                 .foregroundStyle(.primary)
                 .lineLimit(1)
+                // The single row does NOT get a lower floor. `ViewThatFits` hands the row to
+                // the stacked layout when it will not fit at this size, so scaling stays a
+                // rounding allowance rather than the mechanism that makes one row possible —
+                // which is what would have driven caption2 toward 8pt on a small phone.
                 .minimumScaleFactor(0.82)
             // A quiet affordance: without it a tappable chip is indistinguishable from an
             // inert one, which is the state the whole row was in.
@@ -1677,7 +1723,7 @@ struct ExercisePrescriptionPillRow: View {
                     .foregroundStyle(.tertiary)
             }
         }
-        .padding(.horizontal, 9)
+        .padding(.horizontal, fillsCell ? 9 : 8)
         .padding(.vertical, 6)
         .background(Color.primary.opacity(0.04))
         .clipShape(Capsule())
@@ -1697,8 +1743,22 @@ struct ExercisePrescriptionPillRow: View {
         // Filling the cell width also gives the interactive chips a target of roughly the
         // half-card width rather than the glyph — comfortably past the 44pt minimum in the
         // dimension that is hard to hit — without adding any height to do it.
+        //
+        // In the single row there is no cell to fill: `maxWidth: .infinity` there would force
+        // four equal columns and blow past the card's width. The chip takes its natural width
+        // instead, which is still well past 44pt horizontally for every label shown here
+        // ("RIR 1", the shortest, is ~68pt with its "?" and padding). The 44pt MINIMUM HEIGHT
+        // stays on every chip in both layouts — that is the part that is load-bearing for
+        // touch, and dropping it to save a few more points would re-break the tap target and
+        // the top-alignment defect described above.
         let cell = content
-            .frame(maxWidth: .infinity, minHeight: TFTapTarget.minimum, alignment: .leading)
+            .frame(
+                // Spelled `CGFloat.infinity` rather than `.infinity`: the parameter is
+                // `CGFloat?`, and the leading-dot form does not infer through the Optional.
+                maxWidth: fillsCell ? CGFloat.infinity : nil,
+                minHeight: TFTapTarget.minimum,
+                alignment: .leading
+            )
 
         if let explanation = item.explanation {
             Button {
@@ -2639,13 +2699,16 @@ extension Notification.Name {
 // MARK: - Set Logging Service
 
 /// Incremental, session-aware set logging. A "session" is a single
-/// `ExercisePerformanceLog` for one exercise, scoped to one calendar day *and* one
-/// program day (`WorkoutDay.dayNumber`) so a same-named exercise on a different day —
-/// or stray same-day data — never shows up as the current card's progress. Inline
-/// set-by-set logging and the bulk sheet both funnel through here so they share one log
-/// per session instead of fragmenting it — which would skew the summary, the personal
-/// best, and the anomaly analysis. The "previous session" lookup deliberately stays
+/// `ExercisePerformanceLog` for one exercise, scoped to one program day
+/// (`WorkoutDay.dayNumber`) and to that day's own calendar date, so a same-named exercise
+/// on a different day — or stray data from another date — never shows up as this card's
+/// progress. Inline set-by-set logging and the bulk sheet both funnel through here so they
+/// share one log per session instead of fragmenting it — which would skew the summary, the
+/// personal best, and the anomaly analysis. The "previous session" lookup deliberately stays
 /// cross-day so progression continuity tracks the exercise across the whole program.
+///
+/// "That day's own calendar date" is load-bearing, and it formerly read "today" instead. See
+/// `sessionLog` for what that cost: every finished day reported that nothing had been logged.
 ///
 /// Reads take a `@Query`-backed array (reactive UI). Writes fetch fresh from the
 /// context so two quick taps cannot create a duplicate session log before the query
@@ -2655,33 +2718,97 @@ enum SetLoggingService {
 
     // MARK: Reads (from a query-backed array)
 
-    static func todaysSets(
+    /// The one performance log holding this card's session, or nil when there is none.
+    ///
+    /// THE BUG THIS EXISTS TO FIX
+    /// --------------------------
+    /// This resolution used to be a single line — key, day number, and `loggedAt` on the same
+    /// calendar day as `.now` — which silently encoded "the session being trained right now".
+    /// Opening any day already trained therefore matched nothing, so a finished day showed
+    /// "0/3", the "marked done with no sets logged" warning, and "Done · nothing logged", while
+    /// the sets themselves sat untouched in the database. The giveaway on screen was the panel
+    /// directly beneath, which rendered those very sets as "Last" — `previousSets` deliberately
+    /// looks at other days, so the one lookup scoped to today found nothing and the one scoped
+    /// to everything else found the session.
+    ///
+    /// Reads and writes both come through here so a card can never display one session and
+    /// write into another.
+    static func sessionLog(
+        for exercise: WorkoutExercise,
+        among logs: [ExercisePerformanceLog],
+        on date: Date
+    ) -> ExercisePerformanceLog? {
+        let key = ExerciseWeightEntry.canonicalLookupKey(exercise.exerciseName)
+        let dayNumber = exercise.day?.dayNumber ?? 0
+        let matching = logs.filter {
+            $0.canonicalExerciseKey == key && $0.workoutDayNumber == dayNumber
+        }
+        guard !matching.isEmpty else { return nil }
+
+        // Sessions belong to a program; see `SessionLogResolution.belongsToProgram`.
+        //
+        // Empty means EMPTY — no falling back to the unscoped set. An earlier draft did, on the
+        // theory that a restored backup might predate its program's creation date, and that
+        // fallback was worse than the bug it guarded: on the first day of a new mesocycle every
+        // day is untrained, so the scoped set is empty for every carried-over exercise, and the
+        // fallback would hand back the ARCHIVED program's session — displaying old sets as
+        // today's, and then, because writes resolve through this same function, merging new sets
+        // into that old program's log and restamping it.
+        let programStart = exercise.day?.program?.createdDate
+        let pool = matching.filter {
+            SessionLogResolution.belongsToProgram(logDate: $0.loggedAt, programStart: programStart)
+        }
+        guard !pool.isEmpty else { return nil }
+
+        let index = SessionLogResolution.indexOfSession(
+            candidateDates: pool.map(\.loggedAt),
+            sessionDates: exercise.day?.sessionCalendarDates ?? [],
+            viewingDate: date
+        )
+        return index.map { pool[$0] }
+    }
+
+    /// Sets logged for this card's session — today's while training, that day's when looking
+    /// back at a day already trained.
+    static func loggedSets(
         for exercise: WorkoutExercise,
         in logs: [ExercisePerformanceLog],
         on date: Date = .now
     ) -> [SetLogEntry] {
-        let key = ExerciseWeightEntry.canonicalLookupKey(exercise.exerciseName)
-        let dayNumber = exercise.day?.dayNumber ?? 0
-        let cal = Calendar.current
-        let log = logs.first {
-            $0.canonicalExerciseKey == key
-                && $0.workoutDayNumber == dayNumber
-                && cal.isDate($0.loggedAt, inSameDayAs: date)
-        }
+        let log = sessionLog(for: exercise, among: logs, on: date)
         return (log?.decodedSetLogs ?? []).sorted { $0.setNumber < $1.setNumber }
     }
 
-    /// Most recent completed session strictly before `date` — used for the "last
+    /// Most recent completed session strictly before THIS card's session — used for the "last
     /// session" panel and the progression suggestion (which targets the next session).
+    ///
+    /// Anchored to the day being viewed rather than to today. Anchoring to today was harmless
+    /// only while the card could not show a past day's own sets: now that it can, a day trained
+    /// three weeks ago would otherwise show a session from LAST week as what came "last" —
+    /// a reference from that day's future, sitting under a progression suggestion built from it.
     static func previousSets(
         for exercise: WorkoutExercise,
         in logs: [ExercisePerformanceLog],
         on date: Date = .now
     ) -> [SetLogEntry] {
         let key = ExerciseWeightEntry.canonicalLookupKey(exercise.exerciseName)
-        let cal = Calendar.current
+        let current = sessionLog(for: exercise, among: logs, on: date)
+        let cutoff = SessionLogResolution.previousSessionCutoff(
+            currentSessionDate: current?.loggedAt,
+            sessionDates: exercise.day?.sessionCalendarDates ?? [],
+            viewingDate: date
+        )
         let prior = logs
-            .filter { $0.canonicalExerciseKey == key && !$0.setLogsJSON.isEmpty && !cal.isDate($0.loggedAt, inSameDayAs: date) }
+            .filter {
+                $0.canonicalExerciseKey == key
+                    && !$0.setLogsJSON.isEmpty
+                    // Identity is what guarantees the session on screen is never also the
+                    // session before it. The cutoff is a chronology test, not a self-exclusion
+                    // test; keeping the two jobs apart is what lets the cutoff stay tight
+                    // enough to admit a genuinely earlier session from the same evening.
+                    && $0 !== current
+                    && $0.loggedAt < cutoff
+            }
             .max { $0.loggedAt < $1.loggedAt }
         return (prior?.decodedSetLogs ?? []).sorted { $0.setNumber < $1.setNumber }
     }
@@ -2701,10 +2828,17 @@ enum SetLoggingService {
         // Weight 0 is an explicit bodyweight set; only negative weight or
         // non-positive reps are rejected.
         guard weightLbs >= 0, reps > 0 else { return false }
-        let log = todaysLogOrCreate(for: exercise, modelContext: modelContext, date: date)
+        // Fetch first: whether this is the live session depends on what is already recorded
+        // here, so the log has to be resolved before anything is decided about it.
+        let dayLogs = storedDayLogs(for: exercise, modelContext: modelContext)
+        let existing = sessionLog(for: exercise, among: dayLogs, on: date)
+        let markers = sessionMarkers(for: exercise, dayLogs: dayLogs)
+        let isLive = sessionIsLive(for: exercise, markers: markers, date: date)
+        let stamp = sessionStamp(existing: existing, markers: markers, date: date, isLive: isLive)
+        let log = existing ?? insertSessionLog(for: exercise, at: stamp, modelContext: modelContext)
         var sets = log.decodedSetLogs.filter { $0.setNumber != setNumber }
         sets.append(SetLogEntry(setNumber: setNumber, weightLbs: weightLbs, repsCompleted: reps, rir: rir))
-        return apply(sets.sorted { $0.setNumber < $1.setNumber }, to: log, exercise: exercise, modelContext: modelContext, date: date)
+        return apply(sets.sorted { $0.setNumber < $1.setNumber }, to: log, exercise: exercise, modelContext: modelContext, date: stamp, liveClockDate: isLive ? date : nil)
     }
 
     @discardableResult
@@ -2714,52 +2848,116 @@ enum SetLoggingService {
         modelContext: ModelContext,
         on date: Date = .now
     ) -> Bool {
-        guard let log = todaysLog(for: exercise, modelContext: modelContext, date: date) else { return true }
+        let dayLogs = storedDayLogs(for: exercise, modelContext: modelContext)
+        guard let log = sessionLog(for: exercise, among: dayLogs, on: date) else { return true }
         let sets = log.decodedSetLogs.filter { $0.setNumber != setNumber }.sorted { $0.setNumber < $1.setNumber }
         if sets.isEmpty {
             modelContext.delete(log)
             return persist(modelContext)
         }
-        return apply(sets, to: log, exercise: exercise, modelContext: modelContext, date: date)
+        let markers = sessionMarkers(for: exercise, dayLogs: dayLogs)
+        let isLive = sessionIsLive(for: exercise, markers: markers, date: date)
+        let stamp = sessionStamp(existing: log, markers: markers, date: date, isLive: isLive)
+        return apply(sets, to: log, exercise: exercise, modelContext: modelContext, date: stamp, liveClockDate: isLive ? date : nil)
     }
 
-    /// Replace today's session with a full set list (the bulk sheet's save path).
+    /// Replace this card's session with a full set list (the bulk sheet's save path).
     @discardableResult
-    static func replaceTodaysSets(
+    static func replaceSessionSets(
         _ sets: [SetLogEntry],
         for exercise: WorkoutExercise,
         modelContext: ModelContext,
         on date: Date = .now
     ) -> Bool {
-        guard !sets.isEmpty else { return clearAllToday(for: exercise, modelContext: modelContext, date: date) }
-        let log = todaysLogOrCreate(for: exercise, modelContext: modelContext, date: date)
-        return apply(sets.sorted { $0.setNumber < $1.setNumber }, to: log, exercise: exercise, modelContext: modelContext, date: date)
+        guard !sets.isEmpty else { return clearAllSessionSets(for: exercise, modelContext: modelContext, date: date) }
+        let dayLogs = storedDayLogs(for: exercise, modelContext: modelContext)
+        let existing = sessionLog(for: exercise, among: dayLogs, on: date)
+        let markers = sessionMarkers(for: exercise, dayLogs: dayLogs)
+        let isLive = sessionIsLive(for: exercise, markers: markers, date: date)
+        let stamp = sessionStamp(existing: existing, markers: markers, date: date, isLive: isLive)
+        let log = existing ?? insertSessionLog(for: exercise, at: stamp, modelContext: modelContext)
+        return apply(sets.sorted { $0.setNumber < $1.setNumber }, to: log, exercise: exercise, modelContext: modelContext, date: stamp, liveClockDate: isLive ? date : nil)
     }
 
     // MARK: Internals
 
-    private static func clearAllToday(for exercise: WorkoutExercise, modelContext: ModelContext, date: Date) -> Bool {
-        if let log = todaysLog(for: exercise, modelContext: modelContext, date: date) {
+    private static func clearAllSessionSets(for exercise: WorkoutExercise, modelContext: ModelContext, date: Date) -> Bool {
+        if let log = storedSessionLog(for: exercise, modelContext: modelContext, date: date) {
             modelContext.delete(log)
         }
         return persist(modelContext)
     }
 
-    private static func todaysLog(for exercise: WorkoutExercise, modelContext: ModelContext, date: Date) -> ExercisePerformanceLog? {
-        let key = ExerciseWeightEntry.canonicalLookupKey(exercise.exerciseName)
+    /// Everything already recorded against this exercise's DAY, fetched fresh from the context
+    /// rather than from the query-backed array, so two quick taps cannot create a duplicate
+    /// session log before the query republishes.
+    ///
+    /// The whole day, not just this exercise: `sessionMarkers` needs day-level evidence of when
+    /// the session happened, and one fetch serves both that and the per-exercise lookup.
+    private static func storedDayLogs(for exercise: WorkoutExercise, modelContext: ModelContext) -> [ExercisePerformanceLog] {
         let dayNumber = exercise.day?.dayNumber ?? 0
         let descriptor = FetchDescriptor<ExercisePerformanceLog>(
-            predicate: #Predicate { $0.canonicalExerciseKey == key && $0.workoutDayNumber == dayNumber }
+            predicate: #Predicate { $0.workoutDayNumber == dayNumber }
         )
         let logs = (try? modelContext.fetch(descriptor)) ?? []
-        let cal = Calendar.current
-        return logs.first { cal.isDate($0.loggedAt, inSameDayAs: date) }
+        let programStart = exercise.day?.program?.createdDate
+        return logs.filter {
+            SessionLogResolution.belongsToProgram(logDate: $0.loggedAt, programStart: programStart)
+        }
     }
 
-    private static func todaysLogOrCreate(for exercise: WorkoutExercise, modelContext: ModelContext, date: Date) -> ExercisePerformanceLog {
-        if let existing = todaysLog(for: exercise, modelContext: modelContext, date: date) { return existing }
+    private static func storedSessionLog(for exercise: WorkoutExercise, modelContext: ModelContext, date: Date) -> ExercisePerformanceLog? {
+        sessionLog(for: exercise, among: storedDayLogs(for: exercise, modelContext: modelContext), on: date)
+    }
+
+    /// Everything known about when this day's session happened — see
+    /// `SessionLogResolution.sessionMarkers`.
+    private static func sessionMarkers(for exercise: WorkoutExercise, dayLogs: [ExercisePerformanceLog]) -> [Date] {
+        SessionLogResolution.sessionMarkers(
+            clockStamps: exercise.day?.sessionCalendarDates ?? [],
+            recordedLogDates: dayLogs.map(\.loggedAt)
+        )
+    }
+
+    /// Whether the write is landing on the session being trained right now.
+    ///
+    /// Computed ONCE per write and threaded into everything that depends on it, so the stamp and
+    /// the session clock can never disagree about which session this is.
+    private static func sessionIsLive(
+        for exercise: WorkoutExercise,
+        markers: [Date],
+        date: Date
+    ) -> Bool {
+        guard let day = exercise.day else { return false }
+        // Open means "not deliberately finished and not yet rated" — necessary for a session to
+        // be live, but nowhere near sufficient on its own. `SessionLogResolution.sessionIsLive`
+        // explains why recency has to carry the rest.
+        return SessionLogResolution.sessionIsLive(
+            dayIsOpen: !day.isSessionClosed && day.feedbackSubmittedAt == nil,
+            sessionDates: markers,
+            writeDate: date
+        )
+    }
+
+    /// When the work being recorded actually happened — see `SessionLogResolution.stamp` for
+    /// the cases and why this is not simply `date`.
+    private static func sessionStamp(
+        existing: ExercisePerformanceLog?,
+        markers: [Date],
+        date: Date,
+        isLive: Bool
+    ) -> Date {
+        SessionLogResolution.stamp(
+            existingDate: existing?.loggedAt,
+            sessionDates: markers,
+            writeDate: date,
+            sessionIsLive: isLive
+        )
+    }
+
+    private static func insertSessionLog(for exercise: WorkoutExercise, at stamp: Date, modelContext: ModelContext) -> ExercisePerformanceLog {
         let log = ExercisePerformanceLog(
-            loggedAt: date,
+            loggedAt: stamp,
             exerciseName: exercise.exerciseName,
             weightLbs: 0,
             repsCompleted: nil,
@@ -2781,12 +2979,35 @@ enum SetLoggingService {
         return entry
     }
 
+    /// - Parameters:
+    ///   - date: WHEN THE WORK HAPPENED — the session's stamp. Drives the log's own date and the
+    ///     weight-summary record, so correcting a set on an old session leaves that session
+    ///     where it belongs in the history.
+    ///   - liveClockDate: WHEN THE TAP HAPPENED — real wall-clock — or nil when this write is not
+    ///     landing on the session being trained right now.
+    ///
+    /// Two separate values because the session clock and the history stamp answer different
+    /// questions, and each is wrong for the other's job:
+    ///
+    ///  * Passing the STAMP to `SessionLifecycle.noteSetLogged` freezes a live session's duration
+    ///    the moment it crosses midnight — `noteSetLogged` ignores any date that is not today,
+    ///    and a live session's stamp sits on yesterday from midnight onward.
+    ///  * Passing the wall clock UNCONDITIONALLY corrupts old sessions. `noteSetLogged`'s own
+    ///    guards are "not rated, not closed, date is today" — and the wall clock is always today,
+    ///    while a day trained three weeks ago and never rated or finished passes the other two.
+    ///    Correcting one of its sets would push its `sessionEndedAt` to now and report the
+    ///    session as three weeks long. That path was hard to reach before, because a finished
+    ///    day showed nothing logged to correct; this change is exactly what makes it ordinary.
+    ///
+    /// So liveness is decided once, by `sessionIsLive`, and the clock is only touched when the
+    /// answer is yes.
     private static func apply(
         _ sets: [SetLogEntry],
         to log: ExercisePerformanceLog,
         exercise: WorkoutExercise,
         modelContext: ModelContext,
-        date: Date
+        date: Date,
+        liveClockDate: Date?
     ) -> Bool {
         // Summary / best come from the qualified working set so an anomalous entry never
         // becomes a false PR; raw per-set data is preserved on the log.
@@ -2802,7 +3023,9 @@ enum SetLoggingService {
         let summary = summaryEntryOrCreate(for: exercise, weight: topWeight, reps: topReps, date: date, modelContext: modelContext)
         summary.applyLog(loggedAt: date, exerciseName: exercise.exerciseName, weightLbs: topWeight, repsCompleted: topReps, notes: summary.notes)
 
-        SessionLifecycle.noteSetLogged(for: exercise, at: date)
+        if let liveClockDate {
+            SessionLifecycle.noteSetLogged(for: exercise, at: liveClockDate)
+        }
 
         return persist(modelContext)
     }

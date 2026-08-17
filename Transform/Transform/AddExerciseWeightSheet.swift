@@ -9,7 +9,7 @@ struct AddExerciseWeightSheet: View {
     let exercise: WorkoutExercise
     let weightSummary: ExerciseWeightEntry?
     var latestSetLogs: [SetLogEntry] = []
-    var todaysSetLogs: [SetLogEntry] = []
+    var sessionSetLogs: [SetLogEntry] = []
 
     @State private var setLogs: [SetLogDraft] = []
     @State private var notes = ""
@@ -438,13 +438,45 @@ struct AddExerciseWeightSheet: View {
 
     // MARK: - Actions
 
+    /// The log already holding this card's session, if any.
+    ///
+    /// Resolved through `SetLoggingService` so the sheet and the inline logger cannot disagree
+    /// about which log belongs to this card. They used to: this sheet matched on its own date
+    /// field while the inline logger matched on today, so the two could write to different rows
+    /// for the same exercise on the same day.
+    func resolvedSessionLog(on date: Date = .now) -> ExercisePerformanceLog? {
+        let key = ExerciseWeightEntry.canonicalLookupKey(exercise.exerciseName)
+        let dayNumber = exercise.day?.dayNumber ?? 0
+        let descriptor = FetchDescriptor<ExercisePerformanceLog>(
+            predicate: #Predicate { $0.canonicalExerciseKey == key && $0.workoutDayNumber == dayNumber }
+        )
+        let storedLogs = (try? modelContext.fetch(descriptor)) ?? []
+        return SetLoggingService.sessionLog(for: exercise, among: storedLogs, on: date)
+    }
+
     func initializeSets() {
         guard setLogs.isEmpty else { return }
 
-        // Resume today's in-progress session if it exists, so the sheet shows the sets
+        // Default the date to when this work happened, not to now. Reached from a day trained
+        // last week ("Log what you did"), a today-stamped save would file that work under
+        // today's date and leave a second session hanging off the same program day.
+        //
+        // An already-recorded session's OWN date wins over the day's stamps, and both win over
+        // now. Without the first branch a day that predates the session clock — no stamps at all
+        // — would keep the `.now` default, and since the save path overwrites `loggedAt`
+        // unconditionally (the date picker below is a deliberate user choice and must be
+        // honoured), merely opening this sheet on such a day and saving would drag a
+        // weeks-old session forward to today.
+        if let existing = resolvedSessionLog() {
+            loggedAt = existing.loggedAt
+        } else if let sessionDate = exercise.day?.sessionCalendarDates.first {
+            loggedAt = sessionDate
+        }
+
+        // Resume the session already in progress if it exists, so the sheet shows the sets
         // already logged (e.g. via the inline logger) instead of overwriting them on save.
-        if !todaysSetLogs.isEmpty {
-            setLogs = todaysSetLogs
+        if !sessionSetLogs.isEmpty {
+            setLogs = sessionSetLogs
                 .sorted { $0.setNumber < $1.setNumber }
                 .map {
                     SetLogDraft(
@@ -532,18 +564,9 @@ struct AddExerciseWeightSheet: View {
         let topReps = top?.reps
         let trimmedNotes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        // Resume the same-day session if one already exists (e.g. started via the inline
-        // logger) instead of inserting a duplicate log for the same exercise and day.
-        let key = ExerciseWeightEntry.canonicalLookupKey(exercise.exerciseName)
-        let dayNumber = exercise.day?.dayNumber ?? 0
-        let descriptor = FetchDescriptor<ExercisePerformanceLog>(
-            predicate: #Predicate { $0.canonicalExerciseKey == key && $0.workoutDayNumber == dayNumber }
-        )
-        let sameDayLog = (try? modelContext.fetch(descriptor))?.first {
-            Calendar.current.isDate($0.loggedAt, inSameDayAs: loggedAt)
-        }
-
-        if let existing = sameDayLog {
+        // Resume the session already recorded for this card if one exists (e.g. started via the
+        // inline logger) instead of inserting a duplicate log for the same exercise and day.
+        if let existing = resolvedSessionLog(on: loggedAt) {
             existing.loggedAt = loggedAt
             existing.weightLbs = topWeight
             existing.repsCompleted = topReps

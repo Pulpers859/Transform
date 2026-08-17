@@ -95,6 +95,12 @@ let package = Package(
                 // a Last that excludes today, a zero-set Modified lift wearing the same green
                 // check as one actually performed). Foundation-only.
                 "ExerciseSessionSummary.swift",
+                // Which recorded session belongs to the day on screen. Extracted from
+                // SetLoggingService (a SwiftUI file, outside this closure) precisely because
+                // its one-line predecessor — "same calendar day as now" — made every day
+                // already trained report that nothing had been logged. Foundation-only, so
+                // the rule that broke is pinned by tests rather than by inspection.
+                "SessionLogResolution.swift",
                 // Session completion / clock state machine. Foundation + SwiftData only
                 // (all its UI callers stay out of this closure), so the rules that decide
                 // when a day is finished and when the clock closes get real regression
