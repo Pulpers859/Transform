@@ -192,6 +192,8 @@ class ClaudeService {
         - Each structuredTrainingIntent priority must describe a real programming need, not generic filler
         - weeklyDayTarget, weeklyExerciseTarget, volumeBias, and directWorkBias should reflect realistic recoverable hypertrophy exposure for this client
         - preferredStyles should use only: Push, Pull, Legs, Lower, Upper, Arms
+        - Each priority's "area" must be exactly one of these recognized training areas: \(recognizedPriorityAreaLabels.joined(separator: ", ")). Any other value — an invented region, a compound like "Biceps and Triceps", or a broad label like "Posterior Chain" — cannot be resolved to a muscle and forces the program builder onto a generic exercise list.
+        - Prefer the most specific area that fits. "Biceps" and "Triceps" are separate areas from "Arms"; naming the specific one gets that muscle its own dedicated exercise selection and its own weekly volume.
         - weeklyDayTarget and weeklyExerciseTarget should reflect realistic weekly exposure for hypertrophy, not arbitrary numbers
         - For any single priority, weeklyDayTarget must not exceed 3 and weeklyExerciseTarget must not exceed 5, even for a top-priority lagging area — spreading beyond that is not recoverable
         - analysisLimitations must explicitly state what this photo-only assessment can and cannot support confidently

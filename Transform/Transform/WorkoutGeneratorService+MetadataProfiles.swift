@@ -1627,6 +1627,49 @@ extension ClaudeService {
         return Array(Set(profileKeywords + areaTokens + [normalizedArea]))
     }
 
+    /// Every area name the profile table can actually resolve, for prompts and error messages.
+    var recognizedPriorityAreaLabels: [String] {
+        priorityProfiles.map(\.label)
+    }
+
+    /// Whether `focusArea` resolves to a real profile instead of the synthesized generic one
+    /// below.
+    ///
+    /// `priorityProfile(for:)` cannot fail — an unrecognized area silently produces a profile
+    /// carrying the 8-movement `genericExerciseCatalog()` and every training style — so "did this
+    /// resolve?" has to be a separate question from "give me a profile". The body-analysis AI
+    /// writes `StructuredTrainingPriority.area` freely (the prompt constrains `preferredStyles`
+    /// but never the area itself), which makes an unrecognized name a live possibility on every
+    /// generation. It used to degrade exercise selection with nothing shown to the owner.
+    ///
+    /// This deliberately reuses the trigger-keyword match below rather than comparing labels, so
+    /// the check and the lookup can never disagree about what counts as recognized.
+    func isRecognizedPriorityArea(_ focusArea: String) -> Bool {
+        let normalizedArea = normalizedPriorityText(focusArea)
+        guard !normalizedArea.trimmingCharacters(in: .whitespaces).isEmpty else { return false }
+        return priorityProfiles.contains { profile in
+            profile.triggerKeywords.contains { containsPriorityPhrase(in: normalizedArea, keywords: [$0]) }
+        }
+    }
+
+    /// Whether an area string names several muscles at once, e.g. "Biceps and Triceps".
+    ///
+    /// `priorityProfile(for:)` can only return ONE profile, so every muscle after the winner is
+    /// dropped with nothing surfaced — the same silent volume loss that the Arms/Biceps trigger
+    /// separation removed, arriving by a different route. `isRecognizedPriorityArea` cannot catch
+    /// it, because a compound string does resolve to a real profile.
+    ///
+    /// Deliberately syntactic. Asking "does this match more than one profile?" does not work:
+    /// broad profiles legitimately overlap specific ones, so "Upper Chest" fires both Upper Chest
+    /// and Chest, and "Lateral Deltoids" fires both Lateral Deltoids and Shoulders — correctly in
+    /// both cases. A conjunction is the thing that actually distinguishes a compound request, and
+    /// no name in `recognizedPriorityAreaLabels` contains one.
+    func priorityAreaNamesMultipleMuscles(_ focusArea: String) -> Bool {
+        let tokens = priorityTextTokens(focusArea)
+        if tokens.contains("and") || tokens.contains("plus") { return true }
+        return focusArea.contains(",") || focusArea.contains("&") || focusArea.contains("+")
+    }
+
     func priorityProfile(for focusArea: String) -> PriorityFocusProfile {
         let normalizedArea = normalizedPriorityText(focusArea)
         if let matchedProfile = priorityProfiles
@@ -1830,7 +1873,25 @@ extension ClaudeService {
             PriorityFocusProfile(
                 label: "Arms",
                 // Same whole-token rule as Shoulders above: "arm" never matched "Arms".
-                triggerKeywords: ["arm", "arms", "bicep", "tricep", "triceps", "biceps", "forearm", "forearms"],
+                //
+                // Sub-muscle names are deliberately NOT triggers here, only coverage. A trigger
+                // decides *identity* — which profile a requested area IS — while coverage decides
+                // what counts as training it. Listing "biceps" as an Arms trigger made both true
+                // at once, and `priorityProfileSpecificitySort` handed the tie to Arms because its
+                // longest keyword ("forearms", 8) beats "biceps" (6) and "triceps" (7). The Biceps
+                // and Triceps profiles below were therefore unreachable code, and worse: a request
+                // for Biceps AND a request for Triceps both canonicalized to "Arms", so
+                // `mergedPriorityIntents` keyed them the same and folded two priorities into one
+                // with `max()` (not sum) of their set targets — roughly half the intended arm
+                // volume, silently. A curl still *covers* arms; asking for biceps is not asking
+                // for arms. Same reasoning removes "oblique" from Core/Abs below.
+                //
+                // Known edge: a single compound area string ("Biceps and Triceps") now resolves to
+                // Triceps rather than Arms, dropping the other muscle. That is not silent —
+                // `priorityAreaNamesMultipleMuscles` makes BodyAnalysisValidator warn and name the
+                // muscle that actually won — but it is still a real loss, so the analysis prompt
+                // also tells the model to name one muscle per priority.
+                triggerKeywords: ["arm", "arms", "forearm", "forearms"],
                 coverageKeywords: ["arm", "bicep", "tricep", "triceps", "biceps", "curl", "pressdown", "triceps extension", "skull crusher", "close-grip", "hammer curl", "forearm", "brachialis"],
                 preferredStyles: ["Arms", "Upper", "Push", "Pull"],
                 accessoryCatalog: [
@@ -1840,7 +1901,10 @@ extension ClaudeService {
             ),
             PriorityFocusProfile(
                 label: "Core/Abs",
-                triggerKeywords: ["core", "abs", "abdominal", "oblique", "serratus", "midsection", "rectus"],
+                // "oblique" is coverage, not identity — see the Arms note above. It previously
+                // shadowed the dedicated Obliques profile for the singular form only, so
+                // "Obliques" and "Oblique" resolved to two different profiles.
+                triggerKeywords: ["core", "abs", "abdominal", "serratus", "midsection", "rectus"],
                 coverageKeywords: ["core", "abs", "abdominal", "oblique", "serratus", "crunch", "plank", "pallof", "rollout", "leg raise", "knee raise"],
                 preferredStyles: ["Legs", "Lower", "Upper"],
                 accessoryCatalog: coreExerciseCatalog()

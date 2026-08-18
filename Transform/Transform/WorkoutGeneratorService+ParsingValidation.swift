@@ -1040,39 +1040,112 @@ extension ClaudeService {
     }
 
     func validationDisposition(for issue: String, menuLocked: Bool = false) -> ValidationIssueDisposition {
-        // In a locked-menu flow the deterministic allocator owns dosage and meaningful
-        // frequency. Another AI call cannot repair these findings because set counts are locked.
-        // Only OVER-delivery / cap-exceed findings hard-fail a locked menu: those are real
-        // fatigue/safety problems the deterministic allocator should have avoided. Priority
-        // UNDER-delivery findings (missed direct-set / frequency / minimum-stimulus) are
-        // handled below as menu-locked warnings — see menuLockedDemotionPatterns — because
-        // the allocator already funded them to its feasible maximum and no downstream
-        // consumer can add locked sets, so hard-failing there only denies the user a program.
-        let lockedPlanningPatterns = [
+        let isPrimeHypertrophyMiss = issue.contains("targets") && issue.contains("but never includes a prime")
+
+        if menuLocked {
+            // Only two kinds of finding may discard a locked-menu week — see
+            // `lockedMenuHardFailurePatterns`. Everything below that line is a quality verdict,
+            // and the ordering here answers one question: can the layer being judged actually
+            // act on it?
+            //
+            // This check stays FIRST, ahead of `acceptableWarningIssuePatterns`, so the allow-list
+            // is genuinely authoritative. Putting the warning list first made it the real
+            // authority: any future finding whose wording matched both lists would resolve to
+            // `.acceptableWarning`, and a structurally broken or over-volume week would ship. The
+            // two lists do not overlap today, and this ordering is what keeps that from being a
+            // fact anyone has to re-verify by hand.
+            if matchesValidationIssue(issue, patterns: lockedMenuHardFailurePatterns) {
+                return .hardFailure
+            }
+            if matchesValidationIssue(issue, patterns: acceptableWarningIssuePatterns) {
+                return .acceptableWarning
+            }
+            if matchesValidationIssue(issue, patterns: menuLockedDemotionPatterns) || isPrimeHypertrophyMiss {
+                return .acceptableWarning
+            }
+            if matchesValidationIssue(issue, patterns: correctionWorthyIssuePatterns) {
+                return .correctionPass
+            }
+            // The inverted default, and the point of this whole branch.
+            //
+            // This used to fall through to `.hardFailure`, which meant every quality rule anyone
+            // wrote was a coin flip: if its wording was not already listed above, it set
+            // `hasPlannerOrStructuralFailure`, skipped the correction pass, and discarded every
+            // paid candidate — and the only way to discover that was to pay for a generation and
+            // watch it happen. That is how the BASE-001 zero-coverage finding and the
+            // lower-body-balance finding each cost a full week of paid candidates before being
+            // added to the demotion list by hand.
+            //
+            // An unclassified finding is by definition one nobody has reasoned about, so we
+            // cannot claim the AI is able to fix it. `.correctionPass` is not the safe guess
+            // either: a finding that survives the correction pass still fails
+            // `shouldAcceptAIOutput` and discards the week, so guessing wrong there costs an
+            // extra paid call AND the candidates. Shipping it as a visible warning — it reaches
+            // `validatorWarnings` and the Generator Lab either way — is the honest failure mode.
+            // A new rule that IS repairable belongs in `correctionWorthyIssuePatterns`; that is
+            // now an opt-in for spending money rather than the default.
+            return .acceptableWarning
+        }
+
+        // Unlocked path, unchanged: the generator can still change exercise selection here, so a
+        // finding nobody has classified stays strict.
+        if matchesValidationIssue(issue, patterns: acceptableWarningIssuePatterns) {
+            return .acceptableWarning
+        }
+        if matchesValidationIssue(issue, patterns: correctionWorthyIssuePatterns) || isPrimeHypertrophyMiss {
+            return .correctionPass
+        }
+        return .hardFailure
+    }
+
+    /// The only findings allowed to throw away a locked-menu week. Deliberately an ALLOW-list.
+    ///
+    /// Two kinds qualify:
+    ///
+    ///  * **Shape** — the response is not a usable program at all (wrong day count, duplicate day
+    ///    numbers, empty required fields, invalid sets/reps/rest). Accepting these ships something
+    ///    broken rather than something mediocre, and they are genuinely the AI's output.
+    ///  * **Safety** — the deterministic allocator OVER-delivered volume or fatigue. Too much work
+    ///    is a real risk to the lifter, and it means the planner itself produced a bad week, so
+    ///    falling back to the procedural build is the right answer rather than shipping it.
+    ///
+    /// Priority UNDER-delivery is deliberately absent: the allocator already funds priorities to
+    /// its feasible maximum, no downstream consumer may add locked sets, and hard-failing there
+    /// only denies the owner a program he paid for.
+    var lockedMenuHardFailurePatterns: [String] {
+        [
+            // Safety — the planner over-delivered.
             "severely overshot its direct-set target",
             "overshot its direct-set target enough to create avoidable fatigue",
             "exceeds its focus-day direct-set cap",
             "exceeds its per-session direct-set cap",
-            "exceeds the maintenance weekly volume ceiling"
+            "exceeds the maintenance weekly volume ceiling",
+
+            // Shape — not a usable week.
+            "Must contain exactly 7 days.",
+            "dayNumber values must exactly match",
+            "Duplicate dayNumber values found.",
+            "Training days must be between 4 and 6.",
+            "Rest days must be between 1 and 3.",
+            "daysPerWeek should be between 4 and 6.",
+            "must have 5-8 exercises.",
+            "has empty dayName.",
+            "has an exercise with empty exerciseName.",
+            "has invalid sets.",
+            "has invalid restSeconds.",
+            "has empty reps.",
+            "Total training exercises are too low.",
+            "is rest day but has exercises.",
+            "All days are rest days.",
+            "programName is empty.",
+            "programSummary is empty.",
+            "weekSummary is empty.",
+            // Anchored to the template's unique opening rather than the mid-sentence fragment
+            // "but the generated week has" — that phrasing is generic enough that an unrelated
+            // count-mismatch message could pick it up and hard-fail a week this list exists to
+            // protect. Every other blueprint finding starts "Blueprint priority '...'".
+            "Blueprint calls for"
         ]
-        if menuLocked && matchesValidationIssue(issue, patterns: lockedPlanningPatterns) {
-            return .hardFailure
-        }
-        if matchesValidationIssue(issue, patterns: acceptableWarningIssuePatterns) {
-            return .acceptableWarning
-        }
-        if menuLocked && matchesValidationIssue(issue, patterns: menuLockedDemotionPatterns) {
-            return .acceptableWarning
-        }
-        let isPrimeHypertrophyMiss = issue.contains("targets") && issue.contains("but never includes a prime")
-        if menuLocked && isPrimeHypertrophyMiss {
-            return .acceptableWarning
-        }
-        if matchesValidationIssue(issue, patterns: correctionWorthyIssuePatterns)
-            || isPrimeHypertrophyMiss {
-            return .correctionPass
-        }
-        return .hardFailure
     }
 
     func matchesValidationIssue(_ issue: String, patterns: [String]) -> Bool {
@@ -1129,6 +1202,11 @@ extension ClaudeService {
             // cheap fix. Structural invariants deserve that treatment; a sentence does not.
             "notes contain load/rep progression instructions",
             "notes are empty or too short",
+            // A missing targetRIR is squarely AI-owned — it is a field the model writes and the
+            // menu lock does not touch — so it earns the cheap repair. Listed explicitly because
+            // the locked-menu default is now `.acceptableWarning`: without this it would ship as
+            // a warning rather than be fixed.
+            "is missing targetRIR",
             "notes do not include a concrete progression cue",
             "the generated day reads as",
             "is supposed to emphasize quads",

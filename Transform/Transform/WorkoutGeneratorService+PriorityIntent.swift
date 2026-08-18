@@ -120,10 +120,19 @@ extension ClaudeService {
     func bestMatchingRegionAssessment(for area: String, within regionBreakdown: [RegionAssessment]) -> RegionAssessment? {
         let profile = priorityProfile(for: area)
 
-        return regionBreakdown.first { region in
-            let combined = normalizedPriorityText("\(region.region) \(region.assessment)")
-            return profile.triggerKeywords.contains(where: { containsPriorityPhrase(in: combined, keywords: [$0]) })
+        func firstRegion(matching keywords: [String]) -> RegionAssessment? {
+            regionBreakdown.first { region in
+                let combined = normalizedPriorityText("\(region.region) \(region.assessment)")
+                return keywords.contains { containsPriorityPhrase(in: combined, keywords: [$0]) }
+            }
         }
+
+        // Triggers first (the profile's own identity), then coverage. Coverage is the fallback
+        // because sub-muscle names are no longer Arms/Core triggers — without it an "Arms"
+        // priority would stop finding a region titled "Biceps" and silently lose the sentence of
+        // rationale that region supplies. `matchingWorkoutRecommendation` already works this way.
+        return firstRegion(matching: profile.triggerKeywords)
+            ?? firstRegion(matching: profile.coverageKeywords)
     }
 
     func priorityRationale(

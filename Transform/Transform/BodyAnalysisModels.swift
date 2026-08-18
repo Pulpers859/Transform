@@ -1555,6 +1555,31 @@ enum BodyAnalysisValidator {
                     message: "'\(area)' has no preferredMovementPatterns — exercise selection will be less targeted."
                 ))
             }
+
+            // The area string is the ONLY handle the generator has on what was actually asked
+            // for, and until now nothing checked it. `priorityProfile(for:)` cannot fail: an
+            // unrecognized name quietly returns a synthesized profile backed by an 8-movement
+            // generic catalog, so a typo or an invented region ("Posterior Chain", "V-Taper")
+            // produced a plausible-looking week built off generic exercises with no signal
+            // anywhere. Warning, not error — the week is still usable, it is just no longer
+            // silently generic.
+            if !ClaudeService.shared.isRecognizedPriorityArea(area) {
+                let recognized = ClaudeService.shared.recognizedPriorityAreaLabels.joined(separator: ", ")
+                issues.append(AnalysisValidationIssue(
+                    severity: .warning, field: "structuredTrainingIntent.priorities",
+                    message: "'\(area)' is not a recognized training area, so exercise selection falls back to a generic list. Use one of: \(recognized)."
+                ))
+            } else if ClaudeService.shared.priorityAreaNamesMultipleMuscles(area) {
+                // A compound area still resolves — to exactly one of the muscles it names — so the
+                // unrecognized check above cannot see it. The rest are dropped silently, which is
+                // the same halved-volume failure that made "Biceps" and "Triceps" collapse into
+                // one "Arms" priority. Say which muscle actually won.
+                let resolved = ClaudeService.shared.canonicalPriorityAreaName(area)
+                issues.append(AnalysisValidationIssue(
+                    severity: .warning, field: "structuredTrainingIntent.priorities",
+                    message: "'\(area)' names more than one muscle, so only '\(resolved)' receives the emphasis and the rest are dropped. Split it into separate priorities."
+                ))
+            }
         }
 
         return issues

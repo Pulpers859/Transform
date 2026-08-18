@@ -1209,15 +1209,44 @@ extension ClaudeService {
     /// meaningful two-set floor, an 8-set recovery-tight budget can support at most four
     /// movements for a non-priority group; selecting more creates fragmented token work before
     /// the set allocator even runs.
+    /// `meaningfulDoseSets` is the per-movement dose the weekly ceiling must be able to pay for.
+    /// It drops to 2 only on the last-resort sweeps that rescue a menu shorter than five
+    /// exercises: a short menu is a validator hard failure and a deterministic dead-end, which
+    /// outranks dose hygiene exactly as it already outranks the pattern cap and the priority-dose
+    /// gate. Normal selection never passes anything but the default.
     func maintenanceSlotBudgetsAreFeasible(
         existingMenus: [[PreSelectedExercise]],
         selectedToday: [(name: String, target: String)],
-        blueprint: ProgramBlueprint
+        blueprint: ProgramBlueprint,
+        meaningfulDoseSets: Int = 3
     ) -> Bool {
         let recoveryTight = blueprint.calibration.recoveryConstrained
             || blueprint.calibration.poorNutritionAdherence
         let maintenanceCeiling = recoveryTight ? 8 : 10
-        let maxMeaningfulSlots = maintenanceCeiling / 2
+        // How many DISTINCT movements a non-priority group may hold is decided by what its
+        // weekly ceiling can pay for at a dose worth programming. That dose is three sets, not
+        // two.
+        //
+        // This divisor used to be 2, and it is the direct cause of the fragmentation the owner
+        // reported: a recovery-tight ceiling of 8 admitted 4 movements, the maintenance loop
+        // fills round-robin from a seed of 1, and 4 movements hit 2 sets apiece exactly as the
+        // ceiling closes. Every quad, hamstring, glute, back and triceps movement in that week
+        // read 2×8-12. The tell was calves — the only group that drew fewer movements — landing
+        // on 3 sets each.
+        //
+        // Two hard sets is below what drives hypertrophy on a movement, and it is also too thin
+        // for the app's own progression tracker to read a trend from, so the fragmentation cost
+        // the owner twice. At a 3-set divisor the same ceiling admits 3 movements and the loop
+        // lands 3/3/2 — same total, two movements at a real dose instead of none.
+        //
+        // Rounds UP so the ceiling still gets spent: floor(8/3) would admit only 2 movements and
+        // strand 2 of the 8 available sets.
+        //
+        // At the default dose of 3 this yields 3 movements for a ceiling of 8 and 4 for a ceiling
+        // of 10 — one fewer than before in both cases. The rescue sweeps pass 2, which reproduces
+        // the previous numbers exactly (4 and 5), so tightening dose quality can never be the
+        // reason a day menu ends up too short to ship.
+        let maxMeaningfulSlots = (maintenanceCeiling + meaningfulDoseSets - 1) / meaningfulDoseSets
         for group in majorMuscleGroups {
             let aliases = normalizedGroupAliases(forSeed: group.seed)
             guard !isMajorMuscleGroupPrioritized(seed: group.seed, blueprint: blueprint) else { continue }
@@ -1294,32 +1323,40 @@ extension ClaudeService {
         existingMenus: [[PreSelectedExercise]],
         selectedToday: [(name: String, target: String)],
         blueprint: ProgramBlueprint,
-        enforcePriorityDose: Bool = true
+        enforcePriorityDose: Bool = true,
+        enforceMaintenanceDose: Bool = true
     ) -> Bool {
         menuPlanningBudgetsAreFeasible(
             existingMenus: existingMenus,
             selectedToday: selectedToday + [(name: candidateName, target: candidateTarget)],
             blueprint: blueprint,
-            enforcePriorityDose: enforcePriorityDose
+            enforcePriorityDose: enforcePriorityDose,
+            enforceMaintenanceDose: enforceMaintenanceDose
         )
     }
 
-    /// `enforcePriorityDose` is a QUALITY guard, not a safety one: fragmenting a small-muscle
-    /// priority across too many one-set movements is a warning, never a menu-locked hard failure.
-    /// The maintenance ceiling below IS a safety guard (over-ceiling maintenance hard-fails), so it
-    /// always holds. The last-resort "avoid a <5-exercise menu" sweeps pass `false` here, exactly as
+    /// `enforcePriorityDose` and `enforceMaintenanceDose` are QUALITY guards, not safety ones:
+    /// fragmenting a muscle across too many thin movements is a warning, never a menu-locked hard
+    /// failure. The last-resort "avoid a <5-exercise menu" sweeps pass `false` for both, exactly as
     /// they already drop the within-day pattern cap — a short menu is a deterministic dead-end that
     /// outranks dose hygiene, and the allocation floor pass still doses whatever survives.
+    ///
+    /// The maintenance CEILING itself is the safety guard and is unaffected by either flag: it is
+    /// enforced in `allocateWeeklySetPrescription`'s `canAddSet`, which never lets a non-priority
+    /// group exceed its weekly total no matter how many movements reached the menu. What relaxes
+    /// here is only how many movements that fixed budget may be spread across.
     func menuPlanningBudgetsAreFeasible(
         existingMenus: [[PreSelectedExercise]],
         selectedToday: [(name: String, target: String)],
         blueprint: ProgramBlueprint,
-        enforcePriorityDose: Bool = true
+        enforcePriorityDose: Bool = true,
+        enforceMaintenanceDose: Bool = true
     ) -> Bool {
         guard maintenanceSlotBudgetsAreFeasible(
             existingMenus: existingMenus,
             selectedToday: selectedToday,
-            blueprint: blueprint
+            blueprint: blueprint,
+            meaningfulDoseSets: enforceMaintenanceDose ? 3 : 2
         ) else {
             return false
         }
@@ -1519,7 +1556,8 @@ extension ClaudeService {
                         existingMenus: allMenus,
                         selectedToday: selected,
                         blueprint: blueprint,
-                        enforcePriorityDose: false
+                        enforcePriorityDose: false,
+                        enforceMaintenanceDose: false
                     ) else { continue }
                     selected.append((candidate.name, candidate.target))
                 }
@@ -1532,7 +1570,8 @@ extension ClaudeService {
                         existingMenus: allMenus,
                         selectedToday: selected,
                         blueprint: blueprint,
-                        enforcePriorityDose: false
+                        enforcePriorityDose: false,
+                        enforceMaintenanceDose: false
                     ) else { continue }
                     selected.append((candidate.name, candidate.target))
                 }
