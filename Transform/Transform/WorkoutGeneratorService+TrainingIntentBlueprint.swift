@@ -571,29 +571,22 @@ extension ClaudeService {
             .first
     }
 
-    /// Per-focus-day slot count for one priority. Applied to EVERY focus day, so the weekly total
-    /// this implies is `result * targetFrequency` — and that product, not `targetExerciseSlots`,
-    /// is what the menu actually seats.
+    /// Per-focus-day slot count for one priority, applied to every focus day.
     ///
-    /// Rounding UP inflated it. Four weekly slots across three focus days became ceil(1.33) = 2 per
-    /// day = SIX exposures, half again as many as planned. Each exposure needs its own two-set
-    /// floor, so six of them demand twelve sets from a priority whose whole recoverable budget was
-    /// 11.5 before the menu-locked over-volume line. The plan was infeasible the moment it was
-    /// drawn, and the allocator resolved it the only way it could: one exposure shipped at a single
-    /// working set. That is the "Behind-the-Back Cable Lateral Raise#1" the owner's week carried.
+    /// Rounding DOWN was tried here and reverted. It looked right — the weekly exposures this
+    /// implies are `result * targetFrequency`, and rounding up can exceed `targetExerciseSlots` —
+    /// but it breaks the invariant `minimumExerciseSlots` exists to hold: a 10-set priority with
+    /// `targetFrequency` 2 fell to ONE slot per day, two exposures, five working sets apiece,
+    /// which is well past the ~4-set ceiling the slot math is built on.
+    /// `ResidueMuscleDoseTests.testReducedExposuresCanStillCarryTheWeeklySetTarget` is what caught
+    /// it, and it stays as the guard on any future attempt.
     ///
-    /// Rounding DOWN undershoots instead: three exposures where four were wanted. That miss is
-    /// real, and the validator reports it — as "undershot its targeted exercise-slot goal", an
-    /// acceptable warning that never discards a week. The direct-set target is unchanged and is
-    /// still reachable, because `minimumExerciseSlots` sizes the slot count so no exercise is
-    /// forced above ~4 working sets: ten sets across three exposures is 3-4 apiece, a real dose.
-    ///
-    /// Undershooting costs variety. Overshooting costs a movement its minimum dose AND can leave a
-    /// focus day unable to seat the work its own plan promised. Fewer, properly dosed exposures is
-    /// the better trade.
+    /// A single per-session number genuinely cannot express three slots across two days. The
+    /// correct shape is an uneven 2/1 split with the remainder distributed, which is a real change
+    /// to how `dayPlans` are built, not a rounding tweak. Not attempted here.
     func prioritySlotsPerSession(for allocation: BlueprintPriorityAllocation) -> Int {
         let rawSlots = Double(allocation.targetExerciseSlots) / Double(max(1, allocation.targetFrequency))
-        return max(1, min(3, Int(rawSlots.rounded(.down))))
+        return max(1, min(3, Int(ceil(rawSlots))))
     }
 
     func companionSupportAreas(
