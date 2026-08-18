@@ -731,6 +731,12 @@ extension ClaudeService {
         // EvidenceProfile.md MAINT-001 [confidence: low-moderate]
         let maintenanceCeiling = recoveryTight ? 8.0 : 10.0
 
+        // Prioritized groups stay exempt here ON PURPOSE, even though `allocateWeeklySetPrescription`
+        // now keeps a residue ledger for them (see `exerciseCountsTowardMaintenance`). The allocator
+        // enforces the residue ceiling while building the locked menu, so a validator rule would be
+        // a second opinion on a number the planner already owns — and this rule's finding is on the
+        // menu-locked HARD-FAILURE list, so a disagreement would discard a week the owner paid for
+        // rather than repair anything. Deliberate silence, not an oversight.
         for group in majorMuscleGroups {
             let aliases = normalizedGroupAliases(forSeed: group.seed)
             guard !isMajorMuscleGroupPrioritized(seed: group.seed, blueprint: blueprint) else { continue }

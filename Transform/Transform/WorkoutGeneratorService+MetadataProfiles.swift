@@ -73,7 +73,14 @@ extension ClaudeService {
             return ["Anterior Deltoids", "Front Deltoids"]
         }
         if normalized.contains("bicep") {
-            return ["Biceps"]
+            // Brachialis belongs here. Hammer curls carry `primaryAreas: ["Brachialis"]`, and
+            // "Brachialis" matched no major muscle group's alias set — only the broad "arms" area
+            // listed it. A hammer curl therefore counted as zero direct work everywhere that
+            // matters: it drew no maintenance funding in `allocateWeeklySetPrescription`, debited
+            // no weekly ceiling, and did not satisfy BASE-001, so a week could program four sets
+            // of hammer curls and still be told the Biceps group received no direct sets at all.
+            // It is elbow-flexor work under load and is accounted as such.
+            return ["Biceps", "Brachialis"]
         }
         if normalized.contains("tricep") {
             return ["Triceps"]

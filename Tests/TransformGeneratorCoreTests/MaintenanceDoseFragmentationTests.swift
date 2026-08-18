@@ -185,15 +185,21 @@ final class MaintenanceDoseFragmentationTests: XCTestCase {
         )
     }
 
-    /// Priorities are deliberately exempt from this gate — they have their own dose budget in
-    /// `priorityDoseBudgetsAreFeasible`. If the maintenance cap started applying to them it would
+    /// Priority-FUNDED work is deliberately exempt from this gate — it has its own dose budget in
+    /// `priorityDoseBudgetsAreFeasible`. If the maintenance cap started applying to it, it would
     /// starve the very muscles the analysis asked to emphasise.
+    ///
+    /// The exemption is per MOVEMENT, not per bucket. It used to be per bucket, and that is what
+    /// starved the rear delts: a Lateral Deltoids priority marked the whole "shoulders" bucket
+    /// prioritized, so rear-delt work — which no priority allocation pays for — escaped this cap
+    /// AND the allocator's maintenance funding, and shipped at the bare two-set floor. See
+    /// `ResidueMuscleDoseTests`. This test now pins the narrower, correct exemption.
     ///
     /// Asserted against the REAL gate, not against `maintenanceDoses`. An earlier version checked
     /// that prioritized groups were absent from that helper's output — which the helper guarantees
     /// by construction, since it skips prioritized groups before writing anything. That assertion
     /// could not fail and proved nothing.
-    func testPrioritizedGroupsAreExemptFromTheMaintenanceBreadthCap() throws {
+    func testPriorityFundedMovementsAreExemptFromTheMaintenanceBreadthCap() throws {
         let (blueprint, menus) = try fixtureBlueprintAndMenus()
 
         let prioritized = service.majorMuscleGroups.filter {
@@ -204,7 +210,7 @@ final class MaintenanceDoseFragmentationTests: XCTestCase {
             "Premise: this fixture prioritizes Upper Chest / Lateral Deltoids / Core-Abs, so at least one major group must read as prioritized."
         )
 
-        // Only a group carrying MORE movements than the non-priority cap allows can demonstrate
+        // Only a group carrying MORE priority-funded movements than the cap allows can demonstrate
         // the exemption. Skip loudly rather than pass vacuously if the fixture has none.
         var provedExemption = false
         for group in prioritized {
@@ -216,6 +222,12 @@ final class MaintenanceDoseFragmentationTests: XCTestCase {
                 exerciseName: exercise.exerciseName,
                 muscleTarget: exercise.muscleTarget
             ) {
+                // Residue is NOT exempt any more, so it cannot be part of this proof.
+                guard service.earnsDirectPriorityCredit(
+                    exerciseName: exercise.exerciseName,
+                    muscleTarget: exercise.muscleTarget,
+                    blueprint: blueprint
+                ) else { continue }
                 let key = service.normalizeExerciseName(exercise.exerciseName)
                 guard seen.insert(key).inserted else { continue }
                 movements.append((name: exercise.exerciseName, target: exercise.muscleTarget))
@@ -229,13 +241,13 @@ final class MaintenanceDoseFragmentationTests: XCTestCase {
                     selectedToday: movements,
                     blueprint: blueprint
                 ),
-                "'\(group.label)' is prioritized and carries \(movements.count) movements — the maintenance cap must not apply to it."
+                "'\(group.label)' carries \(movements.count) priority-funded movements — the maintenance cap must not apply to work a priority budget already pays for."
             )
         }
 
         try XCTSkipUnless(
             provedExemption,
-            "No prioritized group in this fixture exceeded the 3-movement maintenance cap, so the exemption could not be demonstrated."
+            "No prioritized group in this fixture exceeded the 3-movement cap with priority-funded movements alone, so the exemption could not be demonstrated."
         )
     }
 

@@ -1247,21 +1247,30 @@ extension ClaudeService {
         // the previous numbers exactly (4 and 5), so tightening dose quality can never be the
         // reason a day menu ends up too short to ship.
         let maxMeaningfulSlots = (maintenanceCeiling + meaningfulDoseSets - 1) / meaningfulDoseSets
+
+        // Prioritized groups are no longer skipped outright. They are counted on their RESIDUE —
+        // the movements no priority allocation pays for — because that residue is funded from the
+        // maintenance ceiling in `allocateWeeklySetPrescription` and is subject to exactly the
+        // same arithmetic. Without this the residue could seat more movements than the ceiling can
+        // dose, and the allocator would strand the surplus below the two-set floor.
         for group in majorMuscleGroups {
             let aliases = normalizedGroupAliases(forSeed: group.seed)
-            guard !isMajorMuscleGroupPrioritized(seed: group.seed, blueprint: blueprint) else { continue }
             var distinctNames = existingMenus.joined().reduce(into: Set<String>()) { result, exercise in
-                guard exerciseDirectlyTargets(
+                guard exerciseCountsTowardMaintenance(
+                    groupSeed: group.seed,
                     groupAliases: aliases,
                     exerciseName: exercise.exerciseName,
-                    muscleTarget: exercise.muscleTarget
+                    muscleTarget: exercise.muscleTarget,
+                    blueprint: blueprint
                 ) else { return }
                 result.insert(normalizeExerciseName(exercise.exerciseName))
             }
-            for exercise in selectedToday where exerciseDirectlyTargets(
+            for exercise in selectedToday where exerciseCountsTowardMaintenance(
+                groupSeed: group.seed,
                 groupAliases: aliases,
                 exerciseName: exercise.name,
-                muscleTarget: exercise.target
+                muscleTarget: exercise.target,
+                blueprint: blueprint
             ) {
                 distinctNames.insert(normalizeExerciseName(exercise.name))
             }
@@ -2278,10 +2287,18 @@ extension ClaudeService {
         let recoveryTight = blueprint.calibration.recoveryConstrained
             || blueprint.calibration.poorNutritionAdherence
         let maintenanceCeiling = recoveryTight ? 8.0 : 10.0
-        let maintenanceGroups = majorMuscleGroups.compactMap { group -> (label: String, aliases: Set<String>)? in
-            let aliases = normalizedGroupAliases(forSeed: group.seed)
-            guard !isMajorMuscleGroupPrioritized(seed: group.seed, blueprint: blueprint) else { return nil }
-            return (group.label, aliases)
+        // Every major group keeps a ledger. A prioritized group keeps a RESIDUE ledger — only the
+        // work in it that no priority allocation pays for. Dropping prioritized groups entirely
+        // (the previous behaviour) left that residue funded by nothing and capped by nothing: the
+        // maintenance loop below skips any exercise whose `groupTargets` are all false, so a
+        // rear-delt movement under a Lateral Deltoids priority never received a set from any loop
+        // and shipped at the `minimumSetFloor` of 2 by default. See `exerciseCountsTowardMaintenance`.
+        let maintenanceGroups = majorMuscleGroups.map { group in
+            (
+                label: group.label,
+                aliases: normalizedGroupAliases(forSeed: group.seed),
+                residueOnly: isMajorMuscleGroupPrioritized(seed: group.seed, blueprint: blueprint)
+            )
         }
 
         let allocations = blueprint.priorityAllocations
@@ -2331,12 +2348,27 @@ extension ClaudeService {
                     case .none: qualityScore.append(0)
                     }
                 }
-                let groupTargets = maintenanceGroups.map { group in
-                    exerciseDirectlyTargets(
+                // Equivalent to `earnsDirectPriorityCredit(...)`, reusing the values just computed
+                // rather than re-probing every allocation. The equivalence is not obvious and is
+                // worth stating exactly: `unitDirect[i]` is `stimulusCredit(...).directSets`, and
+                // `stimulusCredit` computes that field as literally `directSetCredit(for:area:)` —
+                // the SAME call `earnsDirectPriorityCredit` makes. The secondary/quality credit
+                // `stimulusCredit` also computes lands in `unitWeighted`, never here, so no
+                // indirect work can leak into this classification.
+                //
+                // Do not "simplify" this to `unitWeighted` or to a `stimulusCredit(...)` truthiness
+                // check: weighted credit includes secondary and support work, and using it would
+                // pull genuinely un-funded residue OUT of the maintenance ledger and re-create the
+                // starvation this fix exists to end. `ResidueMuscleDoseTests
+                // .testAllocatorAndCanonicalPriorityCreditChecksAgree` pins the equivalence.
+                let earnsPriorityCredit = unitDirect.contains { $0 > 0 }
+                let groupTargets = maintenanceGroups.map { group -> Bool in
+                    guard exerciseDirectlyTargets(
                         groupAliases: group.aliases,
                         exerciseName: exercise.exerciseName,
                         muscleTarget: exercise.muscleTarget
-                    )
+                    ) else { return false }
+                    return group.residueOnly ? !earnsPriorityCredit : true
                 }
                 return ExerciseAccounting(
                     unitDirect: unitDirect,

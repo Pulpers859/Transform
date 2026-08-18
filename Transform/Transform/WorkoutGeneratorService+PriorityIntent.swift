@@ -592,6 +592,75 @@ extension ClaudeService {
         }
     }
 
+    /// A major muscle group is a bookkeeping BUCKET, not a muscle. `stimulusAreaAliases` folds all
+    /// three deltoid heads into "shoulders", both chest regions into "chest", and Lats/Upper
+    /// Back/Mid Back into "back". Prioritizing one member therefore marks the whole bucket
+    /// prioritized, and every call site that skipped prioritized buckets stopped seeing the other
+    /// members with it.
+    ///
+    /// In `allocateWeeklySetPrescription` that was silent starvation. An exercise targeting only
+    /// the un-prioritized members of a prioritized bucket — rear delts under a Lateral Deltoids
+    /// priority, sternal chest under an Upper Chest priority, mid back under a Lats priority —
+    /// belonged to no maintenance ledger AND earned no priority credit, so neither funding loop
+    /// would ever raise it. It shipped at the bare `minimumSetFloor` of 2: not because two sets
+    /// were chosen for it, but because nothing in the allocator ever looked at it. The owner's
+    /// Week 1 carried three rear-delt movements at 2x apiece for exactly this reason, next to a
+    /// back group that the same week dosed 3/3/2 because Back was not prioritized and therefore
+    /// still had a ledger.
+    ///
+    /// Nine of the twenty selectable priority labels sit inside a bucket with siblings (Upper
+    /// Chest, the three deltoid heads, Lats, Upper Back, Lower Abs, Obliques, Anterior Core), so
+    /// this was the common case rather than an edge one.
+    ///
+    /// The RESIDUE of a prioritized bucket is the work in it that no priority allocation pays for.
+    /// It is ordinary maintenance work for a real muscle and is now funded and ceilinged as such.
+    func earnsDirectPriorityCredit(
+        exerciseName: String,
+        muscleTarget: String,
+        blueprint: ProgramBlueprint
+    ) -> Bool {
+        let probe = WorkoutExerciseResponse(
+            exerciseName: exerciseName,
+            sets: 1,
+            reps: "",
+            tempo: "",
+            restSeconds: 0,
+            notes: "",
+            muscleTarget: muscleTarget
+        )
+        // `directSetCredit`, not `stimulusCredit`: the question is only whether a priority budget
+        // already pays for this movement directly. That is the same number the allocator caches as
+        // `unitDirect`, so the two paths agree exactly, and it skips the quality/secondary work
+        // `stimulusCredit` would also do on a path that runs per candidate during menu planning.
+        return blueprint.priorityAllocations.contains { allocation in
+            directSetCredit(for: probe, area: allocation.area) > 0
+        }
+    }
+
+    /// Whether an exercise debits `groupSeed`'s maintenance ledger.
+    ///
+    /// Un-prioritized groups behave exactly as before. A prioritized group counts only its
+    /// residue, so a movement the priority budget already pays for is never governed twice.
+    func exerciseCountsTowardMaintenance(
+        groupSeed: String,
+        groupAliases: Set<String>,
+        exerciseName: String,
+        muscleTarget: String,
+        blueprint: ProgramBlueprint
+    ) -> Bool {
+        guard exerciseDirectlyTargets(
+            groupAliases: groupAliases,
+            exerciseName: exerciseName,
+            muscleTarget: muscleTarget
+        ) else { return false }
+        guard isMajorMuscleGroupPrioritized(seed: groupSeed, blueprint: blueprint) else { return true }
+        return !earnsDirectPriorityCredit(
+            exerciseName: exerciseName,
+            muscleTarget: muscleTarget,
+            blueprint: blueprint
+        )
+    }
+
     func exerciseDirectlyTargets(
         groupAliases: Set<String>,
         exerciseName: String,
