@@ -2315,6 +2315,7 @@ extension ClaudeService {
             var unitWeighted: [Double] // indexed by allocation index
             var qualityScore: [Int]    // indexed by allocation index (prime 30 / sec 20 / support 10 / none 0)
             var groupTargets: [Bool]   // indexed by maintenance-group index
+            var setFloor: Int          // `minimumSetFloor`, constant per exercise (role, not sets)
         }
         let accounting: [[ExerciseAccounting]] = allocated.map { day in
             day.map { exercise -> ExerciseAccounting in
@@ -2370,11 +2371,28 @@ extension ClaudeService {
                     ) else { return false }
                     return group.residueOnly ? !earnsPriorityCredit : true
                 }
+                // Precomputed for the same reason as everything else here: `minimumSetFloor`
+                // resolves the exercise's ROLE, which depends only on name and target, so it is
+                // constant across allocation. Reading it per candidate per iteration would mean
+                // rebuilding rep/tempo/rest strings inside the funding loops — the exact cost this
+                // accounting struct exists to avoid.
+                let setFloor = minimumSetFloor(
+                    for: WorkoutExerciseResponse(
+                        exerciseName: exercise.exerciseName,
+                        sets: 1,
+                        reps: "",
+                        tempo: "",
+                        restSeconds: 0,
+                        notes: "",
+                        muscleTarget: exercise.muscleTarget
+                    )
+                )
                 return ExerciseAccounting(
                     unitDirect: unitDirect,
                     unitWeighted: unitWeighted,
                     qualityScore: qualityScore,
-                    groupTargets: groupTargets
+                    groupTargets: groupTargets,
+                    setFloor: setFloor
                 )
             }
         }
@@ -2583,7 +2601,24 @@ extension ClaudeService {
                         let acct = accounting[dayIndex][exerciseIndex]
                         guard acct.unitDirect[allocIndex] > 0 || acct.unitWeighted[allocIndex] > 0 else { return nil }
                         let focusBonus = focusMatch[dayIndex][allocIndex] ? 5 : 0
-                        return (dayIndex, exerciseIndex, acct.qualityScore[allocIndex] + focusBonus - allocated[dayIndex][exerciseIndex].prescribedSets)
+                        // Floor first, quality second. This loop optimizes WEEKLY AGGREGATE volume
+                        // and is otherwise indifferent to how that volume lands per movement, so
+                        // quality score decides everything: a prime movement already at three sets
+                        // scores 30-3=27 and beats an accessory still sitting at its seed of one,
+                        // which scores 10-1=9. The prime keeps winning until the weekly target is
+                        // met, the budget is gone, and the accessory is stranded at ONE SET — below
+                        // `minimumSetFloor`, and unfixable by the floor pass afterwards because
+                        // lifting it would cross the over-volume hard-fail line the earlier sets
+                        // already spent. The recovery-tight regression fixture shipped exactly that:
+                        // "Behind-the-Back Cable Lateral Raise#1" on day 1, four distinct lateral
+                        // raises sharing an ~11.5-set budget.
+                        //
+                        // A bonus larger than any quality score guarantees every movement reaches a
+                        // dose worth performing before any movement is pushed beyond it. Nothing is
+                        // spent that would not have been spent anyway — only the order changes —
+                        // and `canAddSet` still owns every ceiling.
+                        let belowFloorBonus = allocated[dayIndex][exerciseIndex].prescribedSets < acct.setFloor ? 100 : 0
+                        return (dayIndex, exerciseIndex, acct.qualityScore[allocIndex] + focusBonus + belowFloorBonus - allocated[dayIndex][exerciseIndex].prescribedSets)
                     }
                 }
                 guard let target = candidates.max(by: { $0.2 < $1.2 }) else { break }

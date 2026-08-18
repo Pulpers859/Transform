@@ -137,10 +137,23 @@ final class ResidueMuscleDoseTests: XCTestCase {
         }
     }
 
-    /// Nothing may ship at a single set. The residue previously had no ceiling at all, so adding
-    /// one could in principle strand the last movement below `minimumSetFloor`; the breadth cap in
-    /// `maintenanceSlotBudgetsAreFeasible` is what keeps the floor reachable, and this is the
-    /// end-to-end proof that the two agree.
+    /// Nothing may ship at a single set.
+    ///
+    /// Written as a guard on the residue change — adding a ceiling where none existed could in
+    /// principle strand a movement below `minimumSetFloor` — this immediately caught a DIFFERENT
+    /// and PRE-EXISTING defect on its first CI run: "Behind-the-Back Cable Lateral Raise#1" on day
+    /// one. That single set was already in the pinned snapshot at 57fe9bf, shipping to the owner,
+    /// with nothing in the suite asserting against it.
+    ///
+    /// Cause: the priority funding loop optimizes weekly aggregate volume and ranks candidates by
+    /// quality score, so a prime movement at three sets (30-3=27) always outbid an accessory still
+    /// at its seed of one (10-1=9). Four distinct lateral raises shared an ~11.5-set budget; the
+    /// primes drank it, and the floor pass afterwards could not lift the last movement to two
+    /// without crossing the over-volume hard-fail line. The loop now funds every movement to its
+    /// floor before pushing any movement beyond it.
+    ///
+    /// Kept deliberately broad — every day, every exercise, not just residue — because the defect
+    /// it found was not the one it was written for.
     func testNoMovementInTheWeekShipsAtOneSet() throws {
         let (_, menus) = try fixtureBlueprintAndMenus()
 
@@ -151,6 +164,60 @@ final class ResidueMuscleDoseTests: XCTestCase {
                     "Day \(dayIndex + 1) '\(exercise.exerciseName)' ships at \(exercise.prescribedSets) set(s) — below the minimum worth programming."
                 )
             }
+        }
+    }
+
+    /// The ranking change stated directly: an exercise below its floor must outrank a
+    /// higher-quality exercise that has already reached its own, or the stranding returns.
+    ///
+    /// Expressed as the arithmetic because the ranking is local to `allocateWeeklySetPrescription`
+    /// and has no seam to call. The bonus must exceed any reachable quality score (prime 30 plus a
+    /// focus bonus of 5, minus the set count) by a margin no realistic set count can close.
+    func testBelowFloorBonusOutranksEveryQualityScore() {
+        func rank(quality: Int, focus: Bool, sets: Int, floor: Int) -> Int {
+            let belowFloorBonus = sets < floor ? 100 : 0
+            return quality + (focus ? 5 : 0) + belowFloorBonus - sets
+        }
+
+        // The fixture's actual collision: a prime, focus-day lateral raise at three sets versus a
+        // support-quality one still sitting at its seed.
+        XCTAssertGreaterThan(
+            rank(quality: 10, focus: false, sets: 1, floor: 2),
+            rank(quality: 30, focus: true, sets: 3, floor: 2),
+            "A movement below its minimum dose must be funded before a prime movement is pushed further."
+        )
+
+        // Once it reaches the floor, normal quality ordering resumes — the bonus must not turn
+        // accessories into permanent winners.
+        XCTAssertLessThan(
+            rank(quality: 10, focus: false, sets: 2, floor: 2),
+            rank(quality: 30, focus: true, sets: 3, floor: 2),
+            "Past the floor, quality must decide again."
+        )
+    }
+
+    /// `minimumSetFloor` depends only on the exercise's ROLE, so caching it per exercise in the
+    /// allocator's accounting struct is safe. If it ever started varying with set count, the cached
+    /// value would go stale and the floor-first rule would fund the wrong movements.
+    func testMinimumSetFloorDoesNotVaryWithSetCount() {
+        for name in ["Behind-the-Back Cable Lateral Raise", "Incline Barbell Press", "Cable Crunch"] {
+            let floors = [1, 2, 3, 5].map { sets in
+                service.minimumSetFloor(
+                    for: WorkoutExerciseResponse(
+                        exerciseName: name,
+                        sets: sets,
+                        reps: "8-12",
+                        tempo: "",
+                        restSeconds: 90,
+                        notes: "",
+                        muscleTarget: ""
+                    )
+                )
+            }
+            XCTAssertEqual(
+                Set(floors).count, 1,
+                "'\(name)' reports floors \(floors) across set counts — the allocator caches this value once."
+            )
         }
     }
 
