@@ -64,6 +64,23 @@
   He cares about the app's behavior, his data, and his money (API spend), not the internals.
 - This applies to chat summaries and reports. Code comments and commit messages stay technical
   for future maintainers.
+- THIS RULE IS PERMANENT AND HAS NO EXCEPTIONS. It applies to every message, including short
+  replies, status updates, mid-task asides, and answers to follow-up questions — not just to
+  end-of-task summaries. He has had to ask for it more than once; asking again is a failure.
+
+## Never Hand Him A Task Without The Answer
+- Do not tell him to "go check" something (CI, a dashboard, a log, a screen) and stop there.
+  Go look yourself first with the tools available, then tell him what it says.
+- The GitHub Actions results are readable from here via the `mcp__github__*` tools: list the
+  workflow runs, read the job logs, download artifacts. Do that instead of delegating it.
+- If he must do something himself because no tool here can reach it, then in the same message say:
+  the exact place to look, the exact thing to look for, what a good result looks like, what a bad
+  result looks like, and what you will do about each. Never assume he knows where a green
+  check-mark lives or what it covers.
+- Naming a workflow, a file, or a test is not an explanation. Say what it actually proves in
+  ordinary words ("this one really builds the app, so it proves the code isn't broken").
+- A green check-mark is not automatically good news. Confirm the run actually did work — that
+  tests were discovered and executed — before reporting it as a pass.
 
 ## Context Discipline
 - Read this file first, then only the one repo skill and files needed for the task.
