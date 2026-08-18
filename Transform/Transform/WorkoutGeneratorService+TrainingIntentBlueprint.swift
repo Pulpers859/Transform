@@ -571,9 +571,29 @@ extension ClaudeService {
             .first
     }
 
+    /// Per-focus-day slot count for one priority. Applied to EVERY focus day, so the weekly total
+    /// this implies is `result * targetFrequency` — and that product, not `targetExerciseSlots`,
+    /// is what the menu actually seats.
+    ///
+    /// Rounding UP inflated it. Four weekly slots across three focus days became ceil(1.33) = 2 per
+    /// day = SIX exposures, half again as many as planned. Each exposure needs its own two-set
+    /// floor, so six of them demand twelve sets from a priority whose whole recoverable budget was
+    /// 11.5 before the menu-locked over-volume line. The plan was infeasible the moment it was
+    /// drawn, and the allocator resolved it the only way it could: one exposure shipped at a single
+    /// working set. That is the "Behind-the-Back Cable Lateral Raise#1" the owner's week carried.
+    ///
+    /// Rounding DOWN undershoots instead: three exposures where four were wanted. That miss is
+    /// real, and the validator reports it — as "undershot its targeted exercise-slot goal", an
+    /// acceptable warning that never discards a week. The direct-set target is unchanged and is
+    /// still reachable, because `minimumExerciseSlots` sizes the slot count so no exercise is
+    /// forced above ~4 working sets: ten sets across three exposures is 3-4 apiece, a real dose.
+    ///
+    /// Undershooting costs variety. Overshooting costs a movement its minimum dose AND can leave a
+    /// focus day unable to seat the work its own plan promised. Fewer, properly dosed exposures is
+    /// the better trade.
     func prioritySlotsPerSession(for allocation: BlueprintPriorityAllocation) -> Int {
         let rawSlots = Double(allocation.targetExerciseSlots) / Double(max(1, allocation.targetFrequency))
-        return max(1, min(3, Int(ceil(rawSlots))))
+        return max(1, min(3, Int(rawSlots.rounded(.down))))
     }
 
     func companionSupportAreas(

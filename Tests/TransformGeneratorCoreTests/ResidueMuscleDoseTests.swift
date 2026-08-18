@@ -650,6 +650,63 @@ final class ResidueMuscleDoseTests: XCTestCase {
         )
     }
 
+    // MARK: - The blueprint must not plan more exposures than it can dose
+
+    /// `prioritySlotsPerSession` is applied to EVERY focus day, so the weekly exposures it implies
+    /// are `result * targetFrequency`. Rounding up made that product exceed the planned slot count:
+    /// four weekly slots over three days became 2/2/2 = six exposures. Six exposures need twelve
+    /// sets at the floor; the priority could spend 11.5. Infeasible on paper, and the allocator
+    /// resolved it by shipping one exposure at a single set.
+    ///
+    /// Pinned as arithmetic because the failure is in the ROUNDING, and a fixture only ever
+    /// exercises whichever ratio it happens to produce.
+    func testPerSessionSlotsNeverImplyMoreWeeklyExposuresThanPlanned() {
+        func perSession(slots: Int, frequency: Int) -> Int {
+            max(1, min(3, Int((Double(slots) / Double(max(1, frequency))).rounded(.down))))
+        }
+
+        for slots in 1...5 {
+            for frequency in 1...3 {
+                let implied = perSession(slots: slots, frequency: frequency) * frequency
+                // Bounded by `frequency` as well as `slots` because every focus day is guaranteed
+                // at least one slot, so a priority planned for fewer slots than focus days still
+                // gets one exposure per day. Exceeding BOTH is the infeasible case.
+                XCTAssertLessThanOrEqual(
+                    implied, max(slots, frequency),
+                    "\(slots) weekly slots over \(frequency) days implies \(implied) exposures — more than either the plan or the day count justifies, and each exposure needs its own floor."
+                )
+            }
+        }
+
+        // The exact case that stranded a set.
+        XCTAssertEqual(perSession(slots: 4, frequency: 3), 1, "Four slots over three days is one per day, not two.")
+        XCTAssertEqual(perSession(slots: 4, frequency: 3) * 3, 3)
+    }
+
+    /// The undershoot the rounding change accepts must stay an ACCEPTABLE WARNING. If it were ever
+    /// promoted to a hard failure it would discard a paid week for a deliberate planning choice.
+    func testSlotUndershootIsAWarningNotAHardFailure() {
+        let undershoot = "Blueprint priority 'Lateral Deltoids' undershot its targeted exercise-slot goal (3/4), but may still be acceptable if the direct stimulus is strong."
+
+        XCTAssertEqual(service.validationDisposition(for: undershoot, menuLocked: true), .acceptableWarning)
+        XCTAssertEqual(service.validationDisposition(for: undershoot, menuLocked: false), .acceptableWarning)
+    }
+
+    /// Fewer exposures must not put the direct-set target out of reach. `minimumExerciseSlots`
+    /// sizes the slot count so no exercise is forced above ~4 working sets, so the reduced exposure
+    /// count still has to be able to carry the whole weekly target.
+    func testReducedExposuresCanStillCarryTheWeeklySetTarget() throws {
+        let (blueprint, _) = try fixtureBlueprintAndMenus()
+
+        for allocation in blueprint.priorityAllocations {
+            let exposures = service.prioritySlotsPerSession(for: allocation) * allocation.targetFrequency
+            XCTAssertGreaterThanOrEqual(
+                Double(exposures) * 4.0, allocation.directSetTarget,
+                "'\(allocation.area)' plans \(exposures) exposures for \(allocation.directSetTarget) sets — that forces an exercise above four working sets."
+            )
+        }
+    }
+
     // MARK: - Hammer curls counted as nothing at all
 
     /// A second orphan of the same family, found while sweeping for the first. Hammer curls carry
