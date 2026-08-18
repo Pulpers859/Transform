@@ -333,6 +333,14 @@ extension ClaudeService {
             }
         }
 
+        ensurePullingDayPresence(
+            in: &selected,
+            trainingDays: trainingDays,
+            allocations: allocations,
+            demandByStyle: demandByStyle,
+            template: template
+        )
+
         return arrangeStyleSequence(
             selected,
             demandByStyle: demandByStyle,
@@ -444,6 +452,104 @@ extension ClaudeService {
             demandByStyle: demandByStyle,
             template: template
         )
+    }
+
+    /// Guarantees the week keeps a dedicated pulling day.
+    ///
+    /// `styleDemandScore` is computed purely from the priority allocations, so a lifter whose
+    /// priorities are all pressing or core areas scores "Pull" at exactly zero. With six allowed
+    /// styles and only four or five training days the ranked list is truncated, and the pulling
+    /// day is the one that falls off. A real audited week came back with three back sets and zero
+    /// rear-delt sets against eighteen chest sets — for a lifter whose own analysis asked for
+    /// continued upper-back and rear-delt emphasis, and who reported anterior shoulder pain.
+    ///
+    /// Baseline coverage (BASE-001) cannot catch this. It is satisfied by a single directly
+    /// targeting movement anywhere in the week, so one isolation lat slot clears "back", and it
+    /// skips prioritized groups entirely, so a lateral-raise priority makes the whole shoulder
+    /// bucket — rear delts included — invisible to it.
+    ///
+    /// The donor is chosen by feasibility, not by demand alone. Dropping the lowest-demand style
+    /// is exactly what strands a priority: in the audited week that was "Legs", the only day
+    /// besides "Upper" that Core/Abs could live on, and Core/Abs cannot reach six weekly sets from
+    /// a single day at a focus cap of five. Any style whose removal would put a priority further
+    /// from its weekly direct-set target is disqualified, and if nothing is left the guarantee
+    /// backs off rather than trading one hole for another.
+    ///
+    /// This runs AFTER the `trainingDays >= 5` Legs/Arms block on purpose. Run before it, that
+    /// block re-inserts Arms by evicting the lowest-demand style — which is exactly the Legs day
+    /// Core/Abs needs — and undoes the feasibility check below. Running after, it may displace a
+    /// style that block just placed; that is intended. The structural lower-body guarantee is
+    /// `ensureStylePresence("Lower")`, and "Lower" is preserved here, so a lower-body day always
+    /// survives. The Legs/Arms block only decides which style rounds out the week.
+    func ensurePullingDayPresence(
+        in selected: inout [String],
+        trainingDays: Int,
+        allocations: [BlueprintPriorityAllocation],
+        demandByStyle: [String: Int],
+        template: [String]
+    ) {
+        guard trainingDays >= 4 else { return }
+        guard evidenceProfile.allowedStyles.contains("Pull") else { return }
+        if selected.contains("Pull") { return }
+
+        if selected.count < trainingDays {
+            selected.append("Pull")
+            return
+        }
+
+        // "Push" and "Lower" are structurally guaranteed elsewhere; trading either of them for a
+        // pulling day would just move the hole.
+        let preserved: Set<String> = ["Push", "Lower", "Pull"]
+        let current = selected
+
+        let donorIndex = current.enumerated()
+            .filter { !preserved.contains($0.element) }
+            .filter { candidate in
+                var remaining = current
+                remaining[candidate.offset] = "Pull"
+                return allocations.allSatisfy { allocation in
+                    let after = reachableWeeklyDirectSets(for: allocation, within: remaining)
+                    if after >= allocation.directSetTarget { return true }
+                    // A priority that is already squeezed must not be squeezed further.
+                    return after >= reachableWeeklyDirectSets(for: allocation, within: current)
+                }
+            }
+            .min { lhs, rhs in
+                let lhsDemand = demandByStyle[lhs.element, default: 0]
+                let rhsDemand = demandByStyle[rhs.element, default: 0]
+                if lhsDemand != rhsDemand { return lhsDemand < rhsDemand }
+                return templateIndex(for: lhs.element, within: template) > templateIndex(for: rhs.element, within: template)
+            }?.offset
+
+        if let donorIndex {
+            selected[donorIndex] = "Pull"
+        }
+    }
+
+    /// The most direct sets `allocation` could still receive if the week only offered `styles`.
+    ///
+    /// One compatible day can be the priority's focus day and carries the higher focus cap; any
+    /// others carry the evenly distributed per-session cap. The day count is bounded by
+    /// `targetFrequency` because the blueprint never plans more focus days than that, so counting
+    /// every compatible style would overstate what the week can actually deliver.
+    ///
+    /// Deliberately per-allocation: two priorities that both prefer the same single style each
+    /// count that style's focus cap as their own, so contention between them is not modelled and
+    /// the number can read high. That is acceptable because this is a SCREEN for disqualifying a
+    /// donor, not a scheduler — and because `enforcePriorityExposureCoverage` draws its candidate
+    /// days from every training day, not only style-compatible ones, so a preferred style is a
+    /// placement preference rather than a hard limit on where a priority's work can land.
+    func reachableWeeklyDirectSets(
+        for allocation: BlueprintPriorityAllocation,
+        within styles: [String]
+    ) -> Double {
+        let compatibleCount = min(
+            styles.filter { allocation.preferredStyles.contains($0) }.count,
+            max(1, allocation.targetFrequency)
+        )
+        guard compatibleCount > 0 else { return 0 }
+        return allocation.maxFocusSessionDirectSets
+            + allocation.maxPerSessionDirectSets * Double(compatibleCount - 1)
     }
 
     func replaceLowestDemandStyle(
