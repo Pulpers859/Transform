@@ -155,15 +155,88 @@ final class ResidueMuscleDoseTests: XCTestCase {
     /// Kept deliberately broad — every day, every exercise, not just residue — because the defect
     /// it found was not the one it was written for.
     func testNoMovementInTheWeekShipsAtOneSet() throws {
-        let (_, menus) = try fixtureBlueprintAndMenus()
+        let (blueprint, menus) = try fixtureBlueprintAndMenus()
+        diagnosisMenus = menus
 
         for (dayIndex, menu) in menus.enumerated() {
-            for exercise in menu {
-                XCTAssertGreaterThanOrEqual(
-                    exercise.prescribedSets, 2,
-                    "Day \(dayIndex + 1) '\(exercise.exerciseName)' ships at \(exercise.prescribedSets) set(s) — below the minimum worth programming."
+            for exercise in menu where exercise.prescribedSets < 2 {
+                XCTFail(
+                    "Day \(dayIndex + 1) '\(exercise.exerciseName)' ships at \(exercise.prescribedSets) set(s) — below the minimum worth programming.\n"
+                        + blockedSetDiagnosis(dayIndex: dayIndex, menu: menu, blueprint: blueprint, exercise: exercise)
                 )
             }
+        }
+    }
+
+    /// Every ceiling in `canAddSet`, printed for the exercise that could not be lifted. Without
+    /// this the failure says only "1 set" and the reason has to be guessed — and guessing it wrong
+    /// costs a full CI round trip per attempt.
+    private func blockedSetDiagnosis(
+        dayIndex: Int,
+        menu: [ClaudeService.PreSelectedExercise],
+        blueprint: ClaudeService.ProgramBlueprint,
+        exercise: ClaudeService.PreSelectedExercise
+    ) -> String {
+        let responses = menu.map {
+            WorkoutExerciseResponse(
+                exerciseName: $0.exerciseName,
+                sets: $0.prescribedSets,
+                reps: "8-12",
+                tempo: "",
+                restSeconds: 90,
+                notes: "",
+                muscleTarget: $0.muscleTarget
+            )
+        }
+        var lines: [String] = []
+        lines.append("  role=\(service.proceduralExerciseRole(for: exercise.exerciseName, muscleTarget: exercise.muscleTarget))"
+            + " roleDefaultSets=\(service.proceduralSets(for: 1, exerciseName: exercise.exerciseName, muscleTarget: exercise.muscleTarget))")
+
+        if blueprint.dayPlans.indices.contains(dayIndex) {
+            let plan = blueprint.dayPlans[dayIndex]
+            lines.append("  day fatigue \(service.estimatedDayFatigue(for: responses))/\(plan.targetFatigueCap)"
+                + "  minutes \(service.estimatedSessionMinutes(for: service.proceduralTrainingDay(from: responses)))/\(plan.targetSessionMinutes)"
+                + "  focusArea=\(plan.focusArea ?? "nil")")
+        }
+
+        for allocation in blueprint.priorityAllocations {
+            let unit = WorkoutExerciseResponse(
+                exerciseName: exercise.exerciseName,
+                sets: 1,
+                reps: "",
+                tempo: "",
+                restSeconds: 0,
+                notes: "",
+                muscleTarget: exercise.muscleTarget
+            )
+            guard service.directSetCredit(for: unit, area: allocation.area) > 0 else { continue }
+            let weekly = menus_directSets(for: allocation.area)
+            let today = responses.reduce(0.0) { $0 + service.directSetCredit(for: $1, area: allocation.area) }
+            lines.append("  priority '\(allocation.area)': weekly \(weekly)/\(allocation.directSetTarget)"
+                + " (hard-fail line ~\(allocation.directSetTarget * 1.15))"
+                + "  thisDay \(today) vs perSession \(allocation.maxPerSessionDirectSets) / focusSession \(allocation.maxFocusSessionDirectSets)"
+                + "  kind=\(service.focusStimulusKind(exerciseName: exercise.exerciseName, muscleTarget: exercise.muscleTarget, focusArea: allocation.area))")
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    /// Weekly direct sets for one area across the whole fixture week.
+    private var diagnosisMenus: [[ClaudeService.PreSelectedExercise]] = []
+
+    private func menus_directSets(for area: String) -> Double {
+        diagnosisMenus.joined().reduce(0.0) { total, exercise in
+            total + service.directSetCredit(
+                for: WorkoutExerciseResponse(
+                    exerciseName: exercise.exerciseName,
+                    sets: exercise.prescribedSets,
+                    reps: "",
+                    tempo: "",
+                    restSeconds: 0,
+                    notes: "",
+                    muscleTarget: exercise.muscleTarget
+                ),
+                area: area
+            )
         }
     }
 
