@@ -94,7 +94,14 @@
       "Non-priority muscle group 'Hamstrings' exceeds the maintenance weekly volume ceiling",
       "Non-priority muscle group 'Glutes' exceeds the maintenance weekly volume ceiling"
     ],
-    "menuSignatureNote": "Cleared deliberately. The residue-ledger fix (rear-delt / sternal-chest starvation) moves the allocated set counts, and this container has no Swift toolchain to recompute them. The Generator Tests workflow writes the regenerated snapshot to the generator-fixture-snapshot artifact on every push; re-pin it from there. Until then GeneratorTroubleshootingTests skips the exact-snapshot comparison, and ResidueMuscleDoseTests + MaintenanceDoseFragmentationTests assert the PROPERTIES the snapshot exists to protect.",
-    "menuSignature": []
+    "menuSignature": [
+      "Day 1: Incline Barbell Press#4#Upper Chest | Machine Incline Press#3#Upper Chest | Cable Fly#3#Chest | Cable Lateral Raise#2#Lateral Deltoids | Behind-the-Back Cable Lateral Raise#1#Lateral Deltoids | Cable Crunch#2#Abs",
+      "Day 2: Hanging Knee Raise#4#Lower Abs | Leg Press#3#Quads | Seated Leg Curl#3#Hamstrings | Machine Leg Extension#3#Quads | Cable Pull-Through#3#Glutes | Standing Calf Raise#3#Calves",
+      "Day 3: REST",
+      "Day 4: Leaning Dumbbell Lateral Raise#2#Lateral Deltoids | Machine Lateral Raise#2#Lateral Deltoids | Incline Dumbbell Press#3#Upper Chest | Machine Chest Press#3#Chest | Rope Triceps Pressdown#2#Triceps | V-Bar Pressdown#2#Triceps",
+      "Day 5: Pull-Up (Weighted or Assisted)#3#Lats | Lat Pulldown#3#Lats | Chest-Supported Row#2#Upper Back | Reverse Pec Deck#3#Rear Deltoids | Cable Face Pull#3#Rear Deltoids | Prone Incline Dumbbell Rear Delt Raise#2#Rear Deltoids",
+      "Day 6: Cable Lateral Raise#2#Lateral Deltoids | Machine Lateral Raise#2#Lateral Deltoids | Bayesian Cable Curl#3#Biceps | Cable Kickback#2#Triceps | EZ-Bar Curl#3#Biceps | Rope Triceps Pressdown#2#Triceps",
+      "Day 7: REST"
+    ]
   }
 }
