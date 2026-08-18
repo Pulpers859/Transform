@@ -880,7 +880,17 @@ extension ClaudeService {
     }
 
     func minimumSetFloor(for exercise: WorkoutExerciseResponse) -> Int {
-        switch proceduralExerciseRole(for: exercise.exerciseName, muscleTarget: exercise.muscleTarget) {
+        minimumSetFloor(
+            forExerciseName: exercise.exerciseName,
+            muscleTarget: exercise.muscleTarget
+        )
+    }
+
+    /// The floor depends only on the exercise's ROLE, so the set count is irrelevant. The dose
+    /// gates need it per candidate and must not pay to build a full `WorkoutExerciseResponse`
+    /// (rep/tempo/rest strings) just to read a name and a target.
+    func minimumSetFloor(forExerciseName exerciseName: String, muscleTarget: String) -> Int {
+        switch proceduralExerciseRole(for: exerciseName, muscleTarget: muscleTarget) {
         case .anchor:
             return 3
         case .secondary:
@@ -1253,28 +1263,67 @@ extension ClaudeService {
         // maintenance ceiling in `allocateWeeklySetPrescription` and is subject to exactly the
         // same arithmetic. Without this the residue could seat more movements than the ceiling can
         // dose, and the allocator would strand the surplus below the two-set floor.
+        //
+        // Two counts, answering two different questions:
+        //   - distinct NAMES, against `maxMeaningfulSlots`: how thinly may this group's weekly
+        //     volume be spread across different movements before none of them gets a real dose.
+        //     A movement programmed on two days is ONE movement carrying the sum of both.
+        //   - SLOTS, against the two-set floor: can the ceiling actually pay every exposure the
+        //     minimum worth performing. Here the same movement on two days is TWO exposures, each
+        //     needing its own floor — "one set of lateral raises" is a wasted slot, not half a
+        //     dose. The priority side of this gate counted names only, and that is exactly how
+        //     "Behind-the-Back Cable Lateral Raise#1" shipped: six slots needing twelve sets
+        //     against a budget of 11.5. No funding ORDER can rescue an infeasible plan, so the
+        //     feasibility check is where it has to be caught.
+        //
+        // The slot floor is skipped in the last-resort sweeps alongside the breadth cap: a menu
+        // under five exercises is a hard failure and outranks dose hygiene, and relaxing the
+        // breadth cap while keeping an un-relaxable slot floor would just move the dead end.
+        // Summed ACTUAL floors, not slots x 2. `minimumSetFloor` is 3 for an anchor and 2 for
+        // everything else, so a group carrying two anchors costs 6 before any accessory is paid
+        // for. Assuming 2 per slot would under-count exactly that case and re-admit a menu the
+        // ceiling cannot dose — the same stranding, one role up.
+        let enforcesSlotFloor = meaningfulDoseSets > 2
         for group in majorMuscleGroups {
             let aliases = normalizedGroupAliases(forSeed: group.seed)
-            var distinctNames = existingMenus.joined().reduce(into: Set<String>()) { result, exercise in
-                guard exerciseCountsTowardMaintenance(
+            let countsForGroup: (String, String) -> Bool = { name, target in
+                self.exerciseCountsTowardMaintenance(
                     groupSeed: group.seed,
                     groupAliases: aliases,
-                    exerciseName: exercise.exerciseName,
-                    muscleTarget: exercise.muscleTarget,
+                    exerciseName: name,
+                    muscleTarget: target,
                     blueprint: blueprint
-                ) else { return }
-                result.insert(normalizeExerciseName(exercise.exerciseName))
+                )
             }
-            for exercise in selectedToday where exerciseCountsTowardMaintenance(
-                groupSeed: group.seed,
-                groupAliases: aliases,
-                exerciseName: exercise.name,
-                muscleTarget: exercise.target,
-                blueprint: blueprint
-            ) {
+
+            var distinctNames = Set<String>()
+            var slots = 0
+            var requiredSets = 0
+            for exercise in existingMenus.joined()
+            where countsForGroup(exercise.exerciseName, exercise.muscleTarget) {
+                distinctNames.insert(normalizeExerciseName(exercise.exerciseName))
+                slots += 1
+                requiredSets += minimumSetFloor(
+                    forExerciseName: exercise.exerciseName,
+                    muscleTarget: exercise.muscleTarget
+                )
+            }
+            for exercise in selectedToday where countsForGroup(exercise.name, exercise.target) {
                 distinctNames.insert(normalizeExerciseName(exercise.name))
+                slots += 1
+                requiredSets += minimumSetFloor(
+                    forExerciseName: exercise.name,
+                    muscleTarget: exercise.target
+                )
             }
+
             guard distinctNames.count <= maxMeaningfulSlots else { return false }
+            // `slots <= 1` keeps a single exposure always legal: a lone anchor costs 3 and must
+            // never be rejected for it, or a group whose only catalog entry is an anchor could not
+            // be trained at all.
+            guard !enforcesSlotFloor || slots <= 1 || requiredSets <= maintenanceCeiling else {
+                return false
+            }
         }
         return true
     }
@@ -1308,7 +1357,25 @@ extension ClaudeService {
             // Whole two-set doses the recoverable budget can pay for. Never below one so a
             // priority can always seat at least one movement even on a tiny budget.
             let maxDosedMovements = max(1, Int((spendableDirectSets / 2.0).rounded(.down)))
-            let distinctDirect = identities.reduce(into: Set<String>()) { result, exercise in
+            // SLOTS, not distinct names. This counted distinct movement names, and that is what
+            // stranded "Behind-the-Back Cable Lateral Raise" at a single working set: four distinct
+            // lateral raises occupied SIX slots across three days (two of the names were programmed
+            // twice), the gate read 4 <= 5 and admitted them, and the allocator then had to find a
+            // two-set floor for every one of the six. Six slots need twelve sets; the priority
+            // could spend 11.5 before the menu-locked over-volume line hard-fails. One slot was
+            // always going to lose, and no funding order can fix an infeasible plan.
+            //
+            // A slot is a session's worth of work: the same movement on two days is two separate
+            // exposures, and each has to clear the floor on its own. "One set of lateral raises"
+            // is not half a dose, it is a wasted slot. Counting names let the second exposure ride
+            // free on the first one's budget.
+            //
+            // Slots >= distinct names always, so this subsumes the old check rather than sitting
+            // beside it. `maxDosedMovements` keeps the same arithmetic and the same never-below-one
+            // floor so a small priority can still seat one movement on a tiny budget.
+            var directSlots = 0
+            var requiredSets = 0
+            for exercise in identities {
                 let probe = WorkoutExerciseResponse(
                     exerciseName: exercise.name,
                     sets: 1,
@@ -1318,10 +1385,21 @@ extension ClaudeService {
                     notes: "",
                     muscleTarget: exercise.target
                 )
-                guard stimulusCredit(for: probe, area: allocation.area).directSets > 0 else { return }
-                result.insert(normalizeExerciseName(exercise.name))
+                guard directSetCredit(for: probe, area: allocation.area) > 0 else { continue }
+                directSlots += 1
+                requiredSets += minimumSetFloor(
+                    forExerciseName: exercise.name,
+                    muscleTarget: exercise.target
+                )
             }
-            guard distinctDirect.count <= maxDosedMovements else { return false }
+            // Summed ACTUAL floors rather than slots x 2, for the same reason as the maintenance
+            // gate: an anchor exposure costs 3. `maxDosedMovements` is retained only as the
+            // never-below-one guarantee it always was — a lone exposure stays legal whatever it
+            // costs, so a small priority can always seat one movement.
+            guard directSlots <= max(1, maxDosedMovements) else { return false }
+            guard directSlots <= 1 || Double(requiredSets) <= spendableDirectSets + 0.01 else {
+                return false
+            }
         }
         return true
     }

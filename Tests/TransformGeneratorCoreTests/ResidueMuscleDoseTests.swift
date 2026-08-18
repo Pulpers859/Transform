@@ -490,6 +490,166 @@ final class ResidueMuscleDoseTests: XCTestCase {
         )
     }
 
+    // MARK: - Slots vs distinct names
+
+    /// The counting mismatch that stranded a set. Both gates used to ask "how many distinct
+    /// MOVEMENTS", but the allocator has to find a two-set floor for every SLOT, and the same
+    /// movement programmed on two days is two slots. Four distinct lateral raises filling six
+    /// slots read as "4 <= 5, fine" and then needed twelve sets from a budget of 11.5.
+    ///
+    /// Both counts are kept, because they answer different questions: distinct names decide how
+    /// thinly weekly volume may be spread, slots decide whether every exposure is affordable.
+    func testPriorityGateCountsSlotsNotDistinctNames() throws {
+        let (blueprint, _) = try fixtureBlueprintAndMenus()
+
+        let lateralRaise = ("Cable Lateral Raise", "Lateral Deltoids")
+        let behindTheBack = ("Behind-the-Back Cable Lateral Raise", "Lateral Deltoids")
+        let machine = ("Machine Lateral Raise", "Lateral Deltoids")
+        let leaning = ("Leaning Dumbbell Lateral Raise", "Lateral Deltoids")
+
+        // The fixture's shape: FOUR distinct names, SIX slots. The old name-count read 4 and let
+        // it through.
+        let sixSlots: [(name: String, target: String)] = [
+            lateralRaise, behindTheBack, leaning, machine, lateralRaise, machine
+        ].map { (name: $0.0, target: $0.1) }
+        XCTAssertEqual(Set(sixSlots.map { $0.name }).count, 4, "Premise: fewer names than slots.")
+
+        XCTAssertFalse(
+            service.priorityDoseBudgetsAreFeasible(
+                existingMenus: [],
+                selectedToday: sixSlots,
+                blueprint: blueprint
+            ),
+            "Six exposures need twelve sets at the floor; the priority cannot spend that much without hard-failing on volume."
+        )
+
+        XCTAssertTrue(
+            service.priorityDoseBudgetsAreFeasible(
+                existingMenus: [],
+                selectedToday: Array(sixSlots.prefix(5)),
+                blueprint: blueprint
+            ),
+            "Five exposures at two sets is exactly what the budget can pay for and must stay legal."
+        )
+    }
+
+    /// Same rule on the maintenance side, which had the same latent hole. Expressed with a
+    /// repeated name so the two counts disagree: three distinct movements, five exposures.
+    ///
+    /// `selectedToday` carries all five rather than splitting them across `existingMenus` because
+    /// the gate sums both lists — the arithmetic is identical and the intent stays readable.
+    func testMaintenanceGateAlsoCountsSlotsNotDistinctNames() throws {
+        let (blueprint, _) = try fixtureBlueprintAndMenus()
+
+        let triceps: [(name: String, target: String)] = [
+            ("Rope Triceps Pressdown", "Triceps"),
+            ("V-Bar Pressdown", "Triceps"),
+            ("Overhead Cable Triceps Extension", "Triceps")
+        ]
+        XCTAssertTrue(
+            service.maintenanceSlotBudgetsAreFeasible(
+                existingMenus: [],
+                selectedToday: triceps + [triceps[0]],
+                blueprint: blueprint
+            ),
+            "Four exposures at two sets spends the whole ceiling of 8 and must stay legal."
+        )
+        XCTAssertFalse(
+            service.maintenanceSlotBudgetsAreFeasible(
+                existingMenus: [],
+                selectedToday: triceps + [triceps[0], triceps[1]],
+                blueprint: blueprint
+            ),
+            "Five exposures need ten sets against a recovery-tight ceiling of 8 — one would be stranded below the floor."
+        )
+    }
+
+    /// The floor is 3 for an ANCHOR and 2 for everything else, so "slots x 2" under-counts what a
+    /// heavy group actually costs. Three squat-pattern anchors need nine sets against a
+    /// recovery-tight ceiling of eight; a flat two-set assumption reads that as six and admits a
+    /// menu one of whose exposures can never be dosed — the same stranding as the lateral raise,
+    /// one role up. The gates sum the real floors.
+    ///
+    /// Discriminating by construction: all three cases below hold distinct names at or under the
+    /// breadth cap of 3 and slot COUNT at or under 4, so neither the name check nor a flat
+    /// slots-times-two check could tell them apart. Only the summed floors can.
+    func testAffordabilityUsesRealRoleFloorsNotATwoSetAssumption() throws {
+        let (blueprint, _) = try fixtureBlueprintAndMenus()
+
+        let anchor = 3, other = 2
+        XCTAssertEqual(service.minimumSetFloor(forExerciseName: "Back Squat", muscleTarget: "Quads"), anchor)
+        XCTAssertEqual(service.minimumSetFloor(forExerciseName: "Front Squat", muscleTarget: "Quads"), anchor)
+        XCTAssertEqual(service.minimumSetFloor(forExerciseName: "Trap Bar Deadlift", muscleTarget: "Quads"), anchor)
+        XCTAssertEqual(service.minimumSetFloor(forExerciseName: "Leg Press", muscleTarget: "Quads"), other)
+        XCTAssertEqual(service.minimumSetFloor(forExerciseName: "Machine Leg Extension", muscleTarget: "Quads"), other)
+
+        // 3 + 2 + 2 = 7 against a ceiling of 8.
+        XCTAssertTrue(
+            service.maintenanceSlotBudgetsAreFeasible(
+                existingMenus: [],
+                selectedToday: [
+                    ("Back Squat", "Quads"),
+                    ("Leg Press", "Quads"),
+                    ("Machine Leg Extension", "Quads")
+                ],
+                blueprint: blueprint
+            ),
+            "One anchor plus two lighter movements costs seven sets and fits."
+        )
+
+        // 3 + 3 + 3 = 9 against a ceiling of 8. Three slots, three names — invisible to both older
+        // checks.
+        XCTAssertFalse(
+            service.maintenanceSlotBudgetsAreFeasible(
+                existingMenus: [],
+                selectedToday: [
+                    ("Back Squat", "Quads"),
+                    ("Front Squat", "Quads"),
+                    ("Trap Bar Deadlift", "Quads")
+                ],
+                blueprint: blueprint
+            ),
+            "Three anchors need nine sets against a recovery-tight ceiling of eight — one could not reach its floor."
+        )
+    }
+
+    /// A single exposure must never be rejected for costing more than the budget, or a group whose
+    /// only viable catalog entry is an anchor could not be trained at all. The affordability rule
+    /// is about sharing a budget, not about vetoing the first movement.
+    func testALoneAnchorExposureIsAlwaysLegal() throws {
+        let (blueprint, _) = try fixtureBlueprintAndMenus()
+
+        XCTAssertTrue(
+            service.maintenanceSlotBudgetsAreFeasible(
+                existingMenus: [],
+                selectedToday: [("Back Squat", "Quads")],
+                blueprint: blueprint
+            ),
+            "One anchor is always allowed whatever it costs."
+        )
+    }
+
+    /// The slot floor must relax in the last-resort sweeps exactly as the breadth cap does, or it
+    /// becomes a new way to dead-end menu planning — trading a warning for a hard failure.
+    func testSlotFloorRelaxesInRescueSweeps() throws {
+        let (blueprint, _) = try fixtureBlueprintAndMenus()
+
+        let triceps: [(name: String, target: String)] = [
+            ("Rope Triceps Pressdown", "Triceps"),
+            ("V-Bar Pressdown", "Triceps"),
+            ("Overhead Cable Triceps Extension", "Triceps")
+        ]
+        XCTAssertTrue(
+            service.maintenanceSlotBudgetsAreFeasible(
+                existingMenus: [],
+                selectedToday: triceps + [triceps[0], triceps[1]],
+                blueprint: blueprint,
+                meaningfulDoseSets: 2
+            ),
+            "A short menu is a hard failure and outranks dose hygiene; the rescue path must still get through."
+        )
+    }
+
     // MARK: - Hammer curls counted as nothing at all
 
     /// A second orphan of the same family, found while sweeping for the first. Hammer curls carry
