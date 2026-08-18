@@ -434,6 +434,7 @@ struct WorkoutDayDetailView: View {
                     isExpanded: expandedExerciseIDs.contains(exercise.persistentModelID),
                     onToggle: { toggleExercise(exercise) },
                     onToggleExpanded: { toggleExpanded(exercise) },
+                    onFinalSetLogged: { autoCompleteAfterFinalSet(exercise) },
                     onLogWeight: { exerciseForWeightLogging = exercise },
                     onSetStatus: { setStatus($0, on: exercise) },
                     onClearStatus: { clearStatus(on: exercise) }
@@ -543,6 +544,28 @@ struct WorkoutDayDetailView: View {
         commitDisposition(of: exercise, operation: "exercise completion toggle", restoring: snapshot)
     }
 
+    /// Ticks the completion check the instant the last prescribed set is logged.
+    ///
+    /// Deliberately NOT routed through `toggleExercise`: that is a toggle, so a stray call on
+    /// an already-finished lift would UN-finish it. This only ever moves an exercise forward.
+    /// It also skips the partial-completion alert on purpose — the alert exists to ask about
+    /// missing sets, and by definition none are missing here.
+    func autoCompleteAfterFinalSet(_ exercise: WorkoutExercise) {
+        guard !exercise.isCompleted else { return }
+        let snapshot = DispositionSnapshot(exercise: exercise, day: day, status: exercise.completionStatus)
+        exercise.isCompleted = true
+        commitDisposition(
+            of: exercise,
+            operation: "final set auto-completion",
+            restoring: snapshot,
+            // Stated rather than looked up. The set that triggered this is already persisted,
+            // but `allPerformanceLogs` is a `@Query` and republishes on its own schedule, so
+            // re-reading it here can still come back empty — which on a single-set exercise
+            // would leave the card sitting open on work it has just finished.
+            knownToHaveLoggedWork: true
+        )
+    }
+
     func completeExerciseAsModified(_ exercise: WorkoutExercise) {
         let snapshot = DispositionSnapshot(exercise: exercise, day: day, status: exercise.completionStatus)
         exercise.isCompleted = true
@@ -554,10 +577,14 @@ struct WorkoutDayDetailView: View {
     /// the caller has already applied, then re-derives the day through the one funnel that
     /// owns that decision. Every path that can finish a day lands here, so skipping the
     /// last lift closes the session exactly like ticking it off does.
+    /// - Parameter knownToHaveLoggedWork: set by callers that know a set was just written and
+    ///   cannot rely on the `@Query` having caught up yet. Only affects whether the card
+    ///   closes itself; it never changes what is stored.
     func commitDisposition(
         of exercise: WorkoutExercise,
         operation: String,
-        restoring snapshot: DispositionSnapshot
+        restoring snapshot: DispositionSnapshot,
+        knownToHaveLoggedWork: Bool = false
     ) {
         let transition = SessionLifecycle.syncDayCompletion(for: day)
 
@@ -570,6 +597,23 @@ struct WorkoutDayDetailView: View {
 
         DataBackupManager.shared.writeAutomaticBackupCoalesced(using: modelContext)
         TFHaptics.impact(.light)
+
+        // A settled exercise with work behind it has nothing left to operate, so it closes
+        // itself. Ticking the check used to leave a full-height card open — set logger, rest
+        // band and all — and the lifter had to tap the same card a second time to get past it.
+        //
+        // The logged-sets condition is the exception that keeps this honest. A lift finished
+        // with NOTHING logged renders a "Log what you did" remedy inside the open card and
+        // nowhere else; collapsing it would hide the only way out of a state the app itself
+        // just flagged as incomplete. Same for a skip cleared later — "Clear" lives in that
+        // row too. So: resolved AND something to show for it collapses; resolved and empty
+        // stays open holding its own fix.
+        if exercise.isCompleted && (knownToHaveLoggedWork || !sessionSetLogs(for: exercise).isEmpty) {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                expandedExerciseIDs.remove(exercise.persistentModelID)
+            }
+        }
+
         if transition == .justFinished {
             // Training is over, so the day becomes something to review rather than operate.
             //
@@ -741,6 +785,10 @@ struct ExerciseCard: View {
     let isExpanded: Bool
     let onToggle: () -> Void
     let onToggleExpanded: () -> Void
+    /// Fired once, on the log that fills the last outstanding set. The parent owns the
+    /// completion decision (it has to re-derive the whole day from it), so the card only
+    /// reports that the exercise ran out of work to do.
+    let onFinalSetLogged: () -> Void
     let onLogWeight: () -> Void
     /// Skip / substitute / modified selections are applied by the parent, not here: the
     /// day's completion state has to be re-derived from the same funnel that the
@@ -1073,47 +1121,14 @@ struct ExerciseCard: View {
         return "Reps In Reserve: how many reps you should still have left when you rack the set.\n\n\(tail)"
     }
 
-    var compactLastSessionText: String? {
-        guard !latestSetLogs.isEmpty else {
-            guard let latestWeightLog else { return nil }
-            var text = formatLoad(latestWeightLog.weightLbs)
-            if let reps = latestWeightLog.repsCompleted {
-                text += " x \(reps)"
-            }
-            return text
-        }
-
-        let compactSets = workingSetAnalysis.workingSets
-        if let first = compactSets.first,
-           compactSets.allSatisfy({ abs($0.weightLbs - first.weightLbs) < 0.05 }) {
-            let reps = compactSets.map { "\($0.reps)" }.joined(separator: ", ")
-            return "\(formatLoad(first.weightLbs)) x \(reps)"
-        }
-
-        if !compactSets.isEmpty {
-            return compactSets
-                .map { "\(compactLoad($0.weightLbs))x\($0.reps)" }
-                .joined(separator: ", ")
-        }
-
-        return latestSetLogs
-            .map { "\(compactLoad($0.weightLbs))x\($0.repsCompleted)" }
-            .joined(separator: ", ")
-    }
-
-    /// Shorthand load for dense set lists: "BW" or the bare number ("90x12").
-    private func compactLoad(_ weightLbs: Double) -> String {
-        WorkoutProgressionEngine.isBodyweightEquivalent(weightLbs) ? "BW" : formatWeight(weightLbs)
-    }
-
-    /// The all-time best, marked when it was set in THIS session.
+    /// The all-time best, with its reps, marked when it was set in THIS session.
     ///
-    /// "Last" deliberately excludes today and "Best" includes it. Each is defensible alone and
-    /// incoherent stacked in one box: a live card read "Last 40 lb x 15" above "Best 50 lb ·
-    /// 14 reps" where the 50 lb had been logged minutes earlier, while a notice four lines
-    /// below asked the lifter to confirm that same 50 lb was not a mis-log. Saying which one
-    /// it is costs three words and removes the contradiction.
-    var compactBestText: String? {
+    /// The marker is load-bearing and was nearly lost when the card-face strip that carried it
+    /// was removed. "Last" excludes today and "Best" includes it, which is incoherent unless
+    /// stated: a live card read "Last 40 lb x 15" above "Best 50 lb · 14 reps" where the 50 lb
+    /// had been logged minutes earlier, while a notice four lines below asked the lifter to
+    /// confirm that same 50 lb was not a mis-log. Saying which one it is costs three words.
+    var bestSummaryText: String? {
         guard let bestWeightText else { return nil }
         let value = bestRepsTileText.map { "\(bestWeightText) · \($0)" } ?? bestWeightText
         return summary.best?.wasSetToday == true ? "\(value) — set today" : value
@@ -1184,9 +1199,10 @@ struct ExerciseCard: View {
             VStack(alignment: .leading, spacing: 10) {
                 ExercisePrescriptionPillRow(items: prescriptionItems)
 
-                // A finished exercise has no rest left to run — hide the timer band. It
-                // still shows through the last set (completion is a separate, explicit
-                // toggle, so logging the final set does not flip isCompleted on its own).
+                // A finished exercise has no rest left to run — hide the timer band. The
+                // last set now completes the exercise on its own, so the band disappears
+                // as that final rest would have started — which is correct: there is no
+                // next set to rest for.
                 if exercise.restSeconds > 0 && !exercise.isCompleted {
                     ExerciseRestTimerView(exercise: exercise)
                 }
@@ -1205,6 +1221,7 @@ struct ExerciseCard: View {
                                 name: .tfWorkoutSetLogged,
                                 object: exercise.persistentModelID
                             )
+                            reportFinalSetIfComplete(setNumber: setNumber)
                         }
                     },
                     onClear: { setNumber in
@@ -1212,20 +1229,23 @@ struct ExerciseCard: View {
                     }
                 )
 
-                if let compactLastSessionText {
-                    LastSessionCompactRow(
-                        summary: compactLastSessionText,
-                        best: compactBestText,
-                        // Only when it disagrees with the current prescription; annotating a
-                        // match would be noise.
-                        previousSetCount: summary.previous.map(\.setCount).flatMap {
-                            $0 == summary.plannedSets ? nil : $0
-                        }
-                    )
-                }
+                // Last session's loads and the personal best deliberately do NOT appear on
+                // the card face. They were a third tinted strip under the set logger saying
+                // what `Details` already says in full — per-set, with warm-up and anomaly
+                // roles marked — so the card face repeated the weaker version of it. Details
+                // covers both shapes: `setLogBreakdown` when previous sets exist, and
+                // `ExerciseWeightSnapshotTile` when only a summary row does.
 
-                if let suggestion = progressionSuggestion {
-                    ProgressionSuggestionBadge(suggestion: suggestion)
+                // One guidance tile, not two banners: what to do about load, and how to
+                // execute the reps. See `ExerciseGuidanceCard`.
+                if progressionSuggestion != nil || !conciseCoachingNote.isEmpty {
+                    ExerciseGuidanceCard(
+                        suggestion: progressionSuggestion,
+                        // Expanded view gets the filtered full note, not the raw one: the raw
+                        // note can carry a generation-time progression cue that contradicts
+                        // the live progression bullet rendered directly above it.
+                        coachingText: showDetails ? detailedCoachingNote : conciseCoachingNote
+                    )
                 }
 
                 // Ordered strongest signal first. An implausible load is decidable without
@@ -1255,20 +1275,11 @@ struct ExerciseCard: View {
                 }
 
                 // How today's work departed from what was prescribed. Descriptive only — the
-                // progression banner above owns every statement about what to load next.
+                // progression bullet in the guidance tile above owns every statement about
+                // what to load next.
                 // Capped so a set-by-set list cannot bury the card.
                 ForEach(Array(summary.adherence.prefix(2).enumerated()), id: \.offset) { _, flag in
                     SetAnomalyNotice(text: flag.noticeText)
-                }
-
-                if !conciseCoachingNote.isEmpty {
-                    // Expanded view gets the filtered full note, not the raw one: the raw
-                    // note can carry a generation-time progression cue that contradicts
-                    // the live ProgressionSuggestion banner rendered just above.
-                    CoachingInsightCard(
-                        text: showDetails ? detailedCoachingNote : conciseCoachingNote,
-                        isExpanded: showDetails
-                    )
                 }
             }
             .padding(14)
@@ -1298,6 +1309,32 @@ struct ExerciseCard: View {
             Divider().padding(.horizontal, 14)
             exerciseActionRow
         }
+    }
+
+    /// Reports the log that fills the last outstanding set, so the exercise can tick itself
+    /// off instead of asking the lifter to confirm what they just told the app.
+    ///
+    /// The count is derived from the set NUMBERS already on screen plus the one just written,
+    /// not from a re-read: `sessionSetLogs` is the parent's `@Query`-backed array and does not
+    /// yet include this set. That also makes the trigger idempotent — re-logging a set that
+    /// was already filled leaves the union unchanged, so the "was it incomplete before?" test
+    /// fails and nothing fires.
+    private func reportFinalSetIfComplete(setNumber: Int) {
+        // Never re-open a decision that is already made. A skipped lift is resolved too, and
+        // logging a set on it must not silently convert the skip into a completion.
+        guard !summary.state.isResolved else { return }
+
+        // Mirrors `InlineSetLogger.programmedCount` so the tick lands exactly when the badge
+        // reads N/N. Logging a set beyond the prescription raises the bar rather than leaving
+        // a visibly unfinished counter on a card that has closed itself.
+        func required(_ setNumbers: Set<Int>) -> Int {
+            max(exercise.sets, setNumbers.max() ?? 0, 1)
+        }
+
+        let before = Set(sessionSetLogs.map { $0.setNumber })
+        let after = before.union([setNumber])
+        guard before.count < required(before), after.count >= required(after) else { return }
+        onFinalSetLogged()
     }
 
     private var exerciseHeader: some View {
@@ -1568,7 +1605,7 @@ struct ExerciseCard: View {
                 }
             }
 
-            if let best = bestWeightText {
+            if let best = bestSummaryText {
                 HStack(spacing: 4) {
                     Image(systemName: "trophy.fill")
                         .font(.system(size: 8))
@@ -1797,77 +1834,6 @@ struct ExercisePrescriptionPillRow: View {
     }
 }
 
-
-struct LastSessionCompactRow: View {
-    let summary: String
-    let best: String?
-    /// Set count from the previous session, shown only when it differs from what is
-    /// prescribed now. A "3 sets" chip above a four-number history reads as a bug; it is
-    /// simply what happened last time, and saying so is cheaper than leaving it ambiguous.
-    var previousSetCount: Int? = nil
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            HStack(alignment: .firstTextBaseline, spacing: 5) {
-                Text(previousSetCount.map { "LAST · \($0) SETS" } ?? "Last")
-                    .font(.system(size: 9, weight: .bold, design: .monospaced))
-                    .foregroundStyle(.tertiary)
-                    .tracking(1)
-                    .fixedSize()
-                Text(summary)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
-                Spacer(minLength: 0)
-            }
-
-            if let best {
-                HStack(spacing: 4) {
-                    Image(systemName: "trophy.fill")
-                        .font(.system(size: 8))
-                        .foregroundStyle(TFColor.warning)
-                    Text("Best \(best)")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-            }
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .background(Color.primary.opacity(0.04))
-        .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
-    }
-}
-
-struct CoachingInsightCard: View {
-    let text: String
-    let isExpanded: Bool
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 7) {
-            Image(systemName: "lightbulb.fill")
-                .font(.caption2)
-                .foregroundStyle(TFColor.warning)
-                .padding(.top, 1)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(isExpanded ? "Coaching" : "Cue")
-                    .font(.system(size: 9, weight: .bold, design: .monospaced))
-                    .foregroundStyle(TFColor.warning.opacity(0.8))
-                    .tracking(1)
-                Text(text)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(TFColor.warning.opacity(0.08))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-    }
-}
 
 // MARK: - Exercise Stat
 
@@ -2654,23 +2620,80 @@ struct ProgressionSuggestion {
     }
 }
 
-struct ProgressionSuggestionBadge: View {
-    let suggestion: ProgressionSuggestion
+/// The two things the card says about *how to train this lift*, in one tile: what to do
+/// about load next time, and how to execute the reps.
+///
+/// They used to be two separately tinted banners with the last-session strip between them.
+/// Under a single set logger that read as three competing coloured boxes mid-set, which is
+/// exactly when the lifter has the least attention to spend deciding which one matters.
+/// Nothing was cut — each sentence still gets its own bulleted line and its own icon — the
+/// card just presents one block of guidance instead of a stack.
+///
+/// The tile is deliberately neutral rather than tinted. Two bullets that mean different
+/// things cannot share one honest tint, and the icon still carries the colour signal:
+/// green for "add load", amber for "hold", the lightbulb for the cue.
+struct ExerciseGuidanceCard: View {
+    /// Absent when there is not enough history to say anything about load yet.
+    let suggestion: ProgressionSuggestion?
+    /// Empty when the exercise carries no usable coaching note; the bullet is then omitted.
+    let coachingText: String
 
     var body: some View {
-        HStack(spacing: 6) {
-            Image(systemName: suggestion.icon)
+        VStack(alignment: .leading, spacing: 0) {
+            if let suggestion {
+                bullet(
+                    kind: "Progression",
+                    icon: suggestion.icon,
+                    tint: suggestion.color,
+                    text: suggestion.text
+                )
+            }
+
+            if !coachingText.isEmpty {
+                // Only between two bullets — a leading or trailing rule on a single-bullet
+                // tile would be a divider dividing nothing. Inset past the icon column so it
+                // separates the sentences rather than boxing them.
+                if suggestion != nil {
+                    Divider().padding(.leading, 32)
+                }
+                bullet(
+                    kind: "Coaching cue",
+                    icon: "lightbulb.fill",
+                    tint: TFColor.warning,
+                    text: coachingText
+                )
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.primary.opacity(0.04))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    /// Fixed-width icon column so both bullets hang their text off the same left edge no
+    /// matter how wide the two glyphs are.
+    ///
+    /// - Parameter kind: what this bullet IS — spoken by VoiceOver, never drawn. The two
+    ///   sentences used to sit in separately tinted boxes with written headings ("Cue",
+    ///   "Coaching"), which is how a screen reader told them apart. Sighted users get that
+    ///   from the icon and the divider once they share a tile; a screen reader gets nothing
+    ///   from either, so the heading has to survive as a label or the distinction is lost.
+    private func bullet(kind: String, icon: String, tint: Color, text: String) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: icon)
                 .font(.caption2)
-                .foregroundStyle(suggestion.color)
-            Text(suggestion.text)
+                .foregroundStyle(tint)
+                .frame(width: 14, alignment: .center)
+                .padding(.top, 1)
+            Text(text)
                 .font(.caption2)
                 .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
         }
         .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(suggestion.color.opacity(0.08))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .padding(.vertical, 8)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(kind): \(text)")
     }
 }
 
