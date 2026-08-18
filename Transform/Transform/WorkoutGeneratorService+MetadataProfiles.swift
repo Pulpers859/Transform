@@ -2055,18 +2055,26 @@ extension ClaudeService {
         }
     }
 
+    /// NOTE ON MATCHING: these are raw substring tests against "<name> <muscleTarget>" lowercased,
+    /// so a keyword can match inside a longer word. "back" matches "kick*back*", which is how a
+    /// `Cable Glute Kickback` passed as legitimate Upper-day work — it hit the "back" PREFERRED
+    /// keyword and nothing in the forbidden list stopped it. Glute wording is now forbidden
+    /// outright on every upper-body style, which closes that hole for the case that can actually
+    /// reach a menu. The general substring weakness is untouched here on purpose: widening it to
+    /// word-boundary matching moves every selection in the app and is not a change to make while
+    /// fixing something else.
     func forbiddenKeywords(for style: String) -> [String] {
         switch style.lowercased() {
         case "arms":
-            return ["squat", "deadlift", "lunge", "leg press", "leg extension", "leg curl", "calf raise", "hip thrust", "lat pulldown", "pull-up", "pull up", "row", "rear delt row"]
+            return ["squat", "deadlift", "lunge", "leg press", "leg extension", "leg curl", "calf raise", "hip thrust", "glute", "lat pulldown", "pull-up", "pull up", "row", "rear delt row"]
         case "legs", "lower":
             return ["bench", "chest press", "row", "pulldown", "pull-up", "triceps", "biceps", "lateral raise", "shoulder press"]
         case "push":
-            return ["squat", "deadlift", "lunge", "leg press", "leg extension", "leg curl", "calf raise"]
+            return ["squat", "deadlift", "lunge", "leg press", "leg extension", "leg curl", "calf raise", "glute"]
         case "pull":
-            return ["squat", "deadlift", "lunge", "leg press", "leg extension", "leg curl", "calf raise", "bench press"]
+            return ["squat", "deadlift", "lunge", "leg press", "leg extension", "leg curl", "calf raise", "glute", "bench press"]
         case "upper":
-            return ["squat", "leg press", "leg extension", "leg curl", "walking lunge", "calf raise", "hip thrust"]
+            return ["squat", "leg press", "leg extension", "leg curl", "walking lunge", "calf raise", "hip thrust", "glute"]
         default:
             return []
         }

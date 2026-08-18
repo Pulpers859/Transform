@@ -1847,6 +1847,12 @@ extension ClaudeService {
         // they cannot create the shape the knee anchor repairs, but the knee anchor DOES evict
         // slots on lower-body days — letting it have the last word means a repair it considers
         // necessary is never blocked by a movement added for breadth.
+        //
+        // The row survives this ordering for a structural reason rather than by luck: "row" is a
+        // FORBIDDEN keyword on Lower and Legs styles, so `exerciseMatchesDayStyle` can never place
+        // a rowing movement on a lower-body day, and the knee anchor only ever touches those days.
+        // A maintenance slot for quads, hamstrings, glutes or calves genuinely can be evicted
+        // here, and that is the intended precedence: session balance outranks breadth.
         let rowCompleteMenus = enforceHorizontalPullCoverage(
             finalCoverageMenus,
             blueprint: blueprint,
@@ -2244,6 +2250,18 @@ extension ClaudeService {
 
     // MARK: - Menu-Level Balance Passes (shared additive placement)
 
+    /// How many movements a day may hold before adding another one makes the session worse.
+    ///
+    /// The validator permits 5-8 movements per training day, but `validateSessionFocusDiscipline`
+    /// applies a stricter rule to lower-body sessions: a Lower day with 7 or more movements is
+    /// "too crowded for a fatigue-managed Lower session". The first version of the balance passes
+    /// used the flat ceiling of 8 and promptly earned that finding — it added a second calf
+    /// movement to a six-movement Legs day, trading a thin muscle group for an overcrowded
+    /// session. Buying breadth by making a day worse is not a fix.
+    func comfortableDayExerciseCeiling(forStyle style: String) -> Int {
+        canonicalTrainingStyle(style) == "Lower" ? 6 : 8
+    }
+
     /// Appends one catalogue exercise to a training day that has room for it, or returns nil when
     /// nothing fits anywhere.
     ///
@@ -2296,8 +2314,9 @@ extension ClaudeService {
             )
 
             for dayIndex in dayOrder {
-                // The validator permits 5-8 movements per training day; 8 is the hard ceiling.
-                guard menus[dayIndex].count < 8 else { continue }
+                guard menus[dayIndex].count < comfortableDayExerciseCeiling(
+                    forStyle: blueprint.dayPlans[dayIndex].style
+                ) else { continue }
                 guard exerciseMatchesDayStyle(
                     probe,
                     style: canonicalTrainingStyle(blueprint.dayPlans[dayIndex].style)
@@ -2538,6 +2557,13 @@ extension ClaudeService {
                   !blueprint.dayPlans[dayIndex].isRestDay,
                   day.count > 1
             else { return day }
+
+            // Re-keying below matches on name+target, so two slots sharing both would be
+            // interchangeable and could swap each other's `prescribedSets`. Nothing should
+            // produce that, and the day is left exactly as it is if anything ever does —
+            // a silent set-count swap is a far worse outcome than an unsorted day.
+            let identities = Set(day.map { "\($0.exerciseName)#\($0.muscleTarget)" })
+            guard identities.count == day.count else { return day }
 
             let arranged = arrangeProceduralSelection(
                 day.map { ($0.exerciseName, $0.muscleTarget) },

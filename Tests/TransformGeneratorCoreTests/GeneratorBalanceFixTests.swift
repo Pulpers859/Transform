@@ -465,6 +465,46 @@ final class GeneratorBalanceFixTests: XCTestCase {
         }
     }
 
+    /// The trimmed plan must still obey the arithmetic every other layer assumes: slots-per-session
+    /// x sessions x ~4 working sets has to cover the printed weekly target. An earlier draft of the
+    /// clamp sized capacity from the SESSION caps alone and would have printed a target that forces
+    /// a movement above four working sets — the exact shape `minimumExerciseSlots` exists to stop,
+    /// and the invariant `ResidueMuscleDoseTests` already pins for un-clamped plans.
+    func testAClampedPlanStillCarriesItsPrintedTargetWithinTheFourSetCeiling() {
+        let plans = [
+            dayPlan(1, style: "Upper"), dayPlan(2, style: "Legs"),
+            dayPlan(3, style: "Recovery", isRestDay: true), dayPlan(4, style: "Lower"),
+            dayPlan(5, style: "Pull"), dayPlan(6, style: "Legs"),
+            dayPlan(7, style: "Recovery", isRestDay: true)
+        ]
+
+        // A generous focus-day cap is what made the session-only formula look sufficient.
+        let clamped = service.styleFeasibleAllocations(
+            [
+                allocation(
+                    area: "Lateral Deltoids",
+                    targetFrequency: 3,
+                    directSetTarget: 14,
+                    maxPerSessionDirectSets: 5,
+                    maxFocusSessionDirectSets: 10,
+                    preferredStyles: ["Upper"]
+                )
+            ],
+            dayPlans: plans
+        )
+
+        for allocation in clamped {
+            let exposures = service.prioritySlotsPerSession(for: allocation) * allocation.targetFrequency
+            XCTAssertGreaterThanOrEqual(
+                Double(exposures) * 4.0, allocation.directSetTarget,
+                """
+                '\(allocation.area)' plans \(exposures) exposures for \(allocation.directSetTarget) \
+                sets — that forces an exercise above four working sets.
+                """
+            )
+        }
+    }
+
     // MARK: - 5. Maintenance has a floor, not only a ceiling
 
     func testAGroupBelowTheMaintenanceFloorIsFlagged() throws {
@@ -520,20 +560,83 @@ final class GeneratorBalanceFixTests: XCTestCase {
         XCTAssertFalse(issues.contains { $0.contains("'Biceps' falls below") }, "\(issues)")
     }
 
-    /// The structural half: a group holding one slot is capped near its role default no matter how
-    /// much weekly budget remains, so the repair has to be a second slot.
-    func testCoveredNonPriorityGroupsReachTheExposureFloor() throws {
+    /// The outcome that matters, asserted end to end: a fully planned week leaves no muscle group
+    /// under the maintenance floor.
+    ///
+    /// Deliberately checks the VALIDATOR verdict rather than the slot count. The breadth pass is
+    /// best-effort by design — it will not overcrowd a session to buy a slot — so demanding two
+    /// slots unconditionally would assert something the planner is right to refuse. What must
+    /// hold is that the week it ships is not under-dosing anyone.
+    func testAPlannedWeekLeavesNoGroupBelowTheMaintenanceFloor() throws {
         let (blueprint, menus) = try plannedWeek()
 
-        for group in service.majorMuscleGroups {
-            guard !service.isMajorMuscleGroupPrioritized(seed: group.seed, blueprint: blueprint) else { continue }
-            let slots = service.maintenanceSlots(in: menus, forSeed: group.seed)
-            guard !slots.isEmpty else { continue }
-
-            XCTAssertGreaterThanOrEqual(
-                slots.count, service.maintenanceExposureFloor,
-                "'\(group.label)' holds \(slots.count) weekly slot(s); one slot cannot reach a maintenance dose"
+        let days = menus.indices.map { dayIndex in
+            WorkoutDayResponse(
+                dayNumber: dayIndex + 1,
+                dayName: menus[dayIndex].isEmpty ? "Rest" : "Training",
+                muscleGroups: "",
+                isRestDay: menus[dayIndex].isEmpty,
+                notes: "",
+                exercises: menus[dayIndex].map {
+                    exercise($0.exerciseName, $0.muscleTarget, sets: $0.prescribedSets)
+                }
             )
+        }
+        let recoveryTight = blueprint.calibration.recoveryConstrained
+            || blueprint.calibration.poorNutritionAdherence
+
+        let issues = service.validateNonPriorityMuscleVolume(
+            days: days,
+            blueprint: blueprint,
+            recoveryTight: recoveryTight
+        )
+
+        XCTAssertTrue(
+            issues.filter { $0.contains("falls below the maintenance weekly volume floor") }.isEmpty,
+            "\(issues.filter { $0.contains("falls below") })"
+        )
+    }
+
+    /// Breadth must never be bought by making a session worse. `validateSessionFocusDiscipline`
+    /// calls a Lower day with seven or more movements "too crowded for a fatigue-managed Lower
+    /// session", and the first version of the balance passes used a flat ceiling of eight and
+    /// earned exactly that finding by appending a second calf movement to a six-movement Legs day.
+    func testALowerDayIsNotFilledPastItsCrowdingLimit() {
+        XCTAssertEqual(service.comfortableDayExerciseCeiling(forStyle: "Lower"), 6)
+        XCTAssertEqual(service.comfortableDayExerciseCeiling(forStyle: "Legs"), 6)
+        XCTAssertEqual(service.comfortableDayExerciseCeiling(forStyle: "Push"), 8)
+        XCTAssertEqual(service.comfortableDayExerciseCeiling(forStyle: "Upper"), 8)
+    }
+
+    /// A latent substring bug the balance passes uncovered: day-style matching is a raw substring
+    /// test, and "back" matches "kick*back*", so `Cable Glute Kickback` read as legitimate
+    /// Upper-day work and was appended to a chest-and-delts session.
+    func testGluteWorkCannotBePlacedOnAnUpperBodyDay() {
+        let kickback = exercise("Cable Glute Kickback", "Glutes", sets: 3)
+
+        for style in ["Upper", "Push", "Pull", "Arms"] {
+            XCTAssertFalse(
+                service.exerciseMatchesDayStyle(kickback, style: style),
+                "Glute work must not be placeable on a \(style) day"
+            )
+        }
+        XCTAssertTrue(service.exerciseMatchesDayStyle(kickback, style: "Lower"))
+    }
+
+    func testAPlannedWeekPlacesNoLowerBodyWorkOnAnUpperBodyDay() throws {
+        let (blueprint, menus) = try plannedWeek()
+
+        for (dayIndex, day) in menus.enumerated() where !day.isEmpty {
+            guard dayIndex < blueprint.dayPlans.count else { continue }
+            let style = service.canonicalTrainingStyle(blueprint.dayPlans[dayIndex].style)
+            guard ["Upper", "Push", "Pull", "Arms"].contains(style) else { continue }
+
+            for slot in day {
+                XCTAssertFalse(
+                    "\(slot.exerciseName) \(slot.muscleTarget)".lowercased().contains("glute"),
+                    "Day \(dayIndex + 1) is a \(style) session but carries \(slot.exerciseName)"
+                )
+            }
         }
     }
 

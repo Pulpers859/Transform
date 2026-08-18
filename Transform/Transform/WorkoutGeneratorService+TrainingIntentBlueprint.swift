@@ -218,29 +218,59 @@ extension ClaudeService {
                 return allocation
             }
 
-            let capacity = allocation.maxFocusSessionDirectSets
+            // Two prime slots per session is the same ceiling `enforcePriorityDirectSetFeasibility`
+            // applies when it places them, so the printed plan matches what can be built.
+            let feasibleSlots = min(allocation.targetExerciseSlots, compatibleDays * 2)
+
+            func recut(directSetTarget: Double, weightedStimulusTarget: Double) -> BlueprintPriorityAllocation {
+                BlueprintPriorityAllocation(
+                    area: allocation.area,
+                    priorityLevel: allocation.priorityLevel,
+                    rationale: allocation.rationale,
+                    targetFrequency: compatibleDays,
+                    targetExerciseSlots: feasibleSlots,
+                    directSetTarget: directSetTarget,
+                    weightedStimulusTarget: weightedStimulusTarget,
+                    maxPerSessionDirectSets: allocation.maxPerSessionDirectSets,
+                    maxFocusSessionDirectSets: allocation.maxFocusSessionDirectSets,
+                    preferredStyles: allocation.preferredStyles,
+                    preferredMovementPatterns: allocation.preferredMovementPatterns,
+                    volumeBias: allocation.volumeBias,
+                    directWorkBias: allocation.directWorkBias
+                )
+            }
+
+            // TWO independent ceilings, and the plan may only promise the lower of them.
+            //
+            // The session ceiling is how much direct work the surviving sessions may carry. The
+            // SLOT ceiling is how much the surviving exercise slots may carry at the roughly
+            // four-working-set-per-movement limit the allocator enforces, and leaving it out was
+            // wrong: a priority trimmed to one session with two slots can hold 8 sets however
+            // generous its focus-day cap reads, so a capacity of 10 would have printed a target
+            // that forces a movement above four working sets — the exact shape
+            // `minimumExerciseSlots` exists to prevent.
+            //
+            // `prioritySlotsPerSession` is called on the re-cut allocation rather than restated
+            // here, so the trimmed plan and the planner's own slot arithmetic cannot disagree.
+            let sessionCapacity = allocation.maxFocusSessionDirectSets
                 + Double(compatibleDays - 1) * allocation.maxPerSessionDirectSets
-            let feasibleDirectSets = min(allocation.directSetTarget, capacity)
+            let slotCapacity = Double(
+                prioritySlotsPerSession(
+                    for: recut(
+                        directSetTarget: allocation.directSetTarget,
+                        weightedStimulusTarget: allocation.weightedStimulusTarget
+                    )
+                ) * compatibleDays
+            ) * 4.0
+
+            let feasibleDirectSets = min(allocation.directSetTarget, min(sessionCapacity, slotCapacity))
             let volumeRatio = allocation.directSetTarget > 0
                 ? feasibleDirectSets / allocation.directSetTarget
                 : 1.0
 
-            return BlueprintPriorityAllocation(
-                area: allocation.area,
-                priorityLevel: allocation.priorityLevel,
-                rationale: allocation.rationale,
-                targetFrequency: compatibleDays,
-                // Two prime slots per session is the same ceiling `enforcePriorityDirectSetFeasibility`
-                // applies when it places them, so the printed plan matches what can be built.
-                targetExerciseSlots: min(allocation.targetExerciseSlots, compatibleDays * 2),
+            return recut(
                 directSetTarget: feasibleDirectSets,
-                weightedStimulusTarget: allocation.weightedStimulusTarget * volumeRatio,
-                maxPerSessionDirectSets: allocation.maxPerSessionDirectSets,
-                maxFocusSessionDirectSets: allocation.maxFocusSessionDirectSets,
-                preferredStyles: allocation.preferredStyles,
-                preferredMovementPatterns: allocation.preferredMovementPatterns,
-                volumeBias: allocation.volumeBias,
-                directWorkBias: allocation.directWorkBias
+                weightedStimulusTarget: allocation.weightedStimulusTarget * volumeRatio
             )
         }
     }
