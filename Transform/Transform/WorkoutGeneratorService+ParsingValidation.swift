@@ -404,6 +404,7 @@ extension ClaudeService {
         issues.append(contentsOf: validateDaySet(days, dayStart: 1, dayEnd: 7))
         issues.append(contentsOf: validateBlueprint(days: days, blueprint: blueprint, dayStart: 1))
         issues.append(contentsOf: validateCoachingCueConsistency(days: days, verdicts: progressionVerdicts))
+        issues.append(contentsOf: validateBackPatternBalance(days: days))
         if let expectedExerciseMenus {
             issues.append(contentsOf: validateExerciseMenuAdherence(
                 days: days,
@@ -442,6 +443,7 @@ extension ClaudeService {
         issues.append(contentsOf: validateDaySet(days, dayStart: dayStart, dayEnd: dayEnd))
         issues.append(contentsOf: validateBlueprint(days: days, blueprint: blueprint, dayStart: dayStart))
         issues.append(contentsOf: validateCoachingCueConsistency(days: days, verdicts: progressionVerdicts))
+        issues.append(contentsOf: validateBackPatternBalance(days: days))
         if let expectedExerciseMenus {
             issues.append(contentsOf: validateExerciseMenuAdherence(
                 days: days,
@@ -730,6 +732,17 @@ extension ClaudeService {
         var issues: [String] = []
         // EvidenceProfile.md MAINT-001 [confidence: low-moderate]
         let maintenanceCeiling = recoveryTight ? 8.0 : 10.0
+        // The band has always had a bottom; only the top was ever enforced. This rule read
+        // "zero is a violation, ten is a violation, everything between is fine", so a week
+        // shipped Triceps on 2 weekly sets — one Dip — beside Calves on 6, and reported no
+        // issues at all. Calves appear nowhere in that lifter's analysis.
+        //
+        // The floor sits deliberately BELOW the 6-10 band MAINT-001 describes. Six is the
+        // target; four is the point past which the word "maintenance" stops meaning anything.
+        // A rule that fired on every group merely sitting low would fire on almost every honest
+        // week and teach the owner to skim past the list, which costs more than it catches.
+        // Constrained recovery lowers the whole band, floor included, per SLEEP-002.
+        let maintenanceFloor = recoveryTight ? 3.0 : 4.0
 
         // Prioritized groups stay exempt here ON PURPOSE, even though `allocateWeeklySetPrescription`
         // now keeps a residue ledger for them (see `exerciseCountsTowardMaintenance`). The allocator
@@ -751,10 +764,60 @@ extension ClaudeService {
                 issues.append(
                     "Muscle group '\(group.label)' receives zero direct sets this week. BASE-001 requires every major muscle group to keep at least a minimal weekly exposure — even maintenance is not zero."
                 )
+            } else if directSets + 0.01 < maintenanceFloor {
+                // EvidenceProfile.md MAINT-001 / BASE-001 [confidence: low-moderate]
+                issues.append(
+                    "Non-priority muscle group '\(group.label)' falls below the maintenance weekly volume floor (\(formatStimulusValue(directSets)) sets vs \(formatStimulusValue(maintenanceFloor))). MAINT-001 puts maintenance near 6-10 quality sets per week, and the allocator can only fill an exercise to its role default — so a group this low is short of exercise SLOTS, not sets, and needs a second weekly exposure rather than more sets on the one it already has."
+                )
             }
         }
 
         return issues
+    }
+
+    // MARK: - Back Pattern Balance (BASE-001, pattern half)
+
+    /// Flags a week that trains the back exclusively from overhead.
+    ///
+    /// BASE-001 accounting keeps ONE "back" ledger whose aliases span Lats, Upper Back and Mid
+    /// Back together, so a single pulldown marks the whole bucket covered and no volume rule ever
+    /// asks where the sets came from. A five-day week shipped `Lat Pulldown`, `Neutral-Grip Lat
+    /// Pulldown` and `Pull-Up` — eight back sets, every one of them vertical, no row anywhere —
+    /// and validated clean.
+    ///
+    /// Directional on purpose. Rows still load the lats through a full range, so a week built on
+    /// rowing is not flagged for lacking a pulldown; nothing in a vertical pull trains the
+    /// rhomboids and mid-traps at their shortened position, so the reverse IS a real gap.
+    /// Claiming symmetry here would look tidier and would not be supported.
+    ///
+    /// `enforceHorizontalPullCoverage` repairs this while the menu is being built. This rule is
+    /// what makes it visible on a week where the menu genuinely had no room.
+    func validateBackPatternBalance(days: [WorkoutDayResponse]) -> [String] {
+        let exercises = days.filter { !$0.isRestDay }.flatMap(\.exercises)
+        guard !exercises.isEmpty else { return [] }
+
+        let backAliases = normalizedGroupAliases(forSeed: "back")
+        let trainsBack = exercises.contains { exercise in
+            exerciseDirectlyTargets(
+                groupAliases: backAliases,
+                exerciseName: exercise.exerciseName,
+                muscleTarget: exercise.muscleTarget
+            )
+        }
+        guard trainsBack else { return [] }
+
+        let hasHorizontalPull = exercises.contains { exercise in
+            guard let pattern = menuMovementPattern(
+                forExerciseName: exercise.exerciseName,
+                muscleTarget: exercise.muscleTarget
+            ) else { return false }
+            return horizontalPullPatterns.contains(pattern)
+        }
+        guard !hasHorizontalPull else { return [] }
+
+        return [
+            "The week trains the back with no horizontal pull at all — every back movement pulls down from overhead. Vertical pulling does not load the rhomboids and mid-traps in their shortened position, so this needs a rowing movement, not another pulldown variation."
+        ]
     }
 
     // MARK: - Coaching Cue vs Logged History (enforcement half of 98349db)
@@ -1164,6 +1227,17 @@ extension ClaudeService {
             "undershot its weighted stimulus target",
             "Too few anchor lifts carried over",
             "substitution significantly increases shoulder risk",
+            // Both of the following are pure EXERCISE-SELECTION verdicts, and they are listed
+            // here rather than left to fall through because the two paths disagree by default:
+            // an unclassified finding is an acceptable warning under menu-lock and a HARD FAILURE
+            // unlocked. Neither layer being judged can act on either one. Under menu-lock the AI
+            // is forbidden from adding a movement, and on the procedural path the planner's own
+            // best-effort placement (`enforceHorizontalPullCoverage`,
+            // `enforceMaintenanceExposureBreadth`) has already run and found no room. Discarding
+            // a week over a slot that provably could not be placed repairs nothing and denies the
+            // owner a program he paid for — the same reasoning that demoted zero-coverage.
+            "no horizontal pull at all",
+            "falls below the maintenance weekly volume floor",
         ]
     }
 

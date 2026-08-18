@@ -44,6 +44,33 @@ extension ClaudeService {
             .map(\.element)
     }
 
+    /// Where an exercise sits in the session's coarse running order, per EvidenceProfile.md
+    /// ORD-001: anchor compounds first, the secondary/accessory body of the session next, direct
+    /// core last.
+    ///
+    /// This band is the OUTER sort key in `arrangeProceduralSelection`, and focus ordering only
+    /// applies WITHIN it. That relationship is the whole point. Focus ordering used to be the
+    /// outer key, so a day's focus area could hoist a small isolation ahead of the session's
+    /// heaviest lift: a Legs day carrying the week's Core/Abs focus shipped `Hanging Knee Raise`
+    /// in slot 1 and `Trap Bar Deadlift` in slot 2 — direct trunk flexion immediately before a
+    /// loaded hinge, for a lifter the same analysis had flagged for bracing and pelvic position.
+    /// The AI path inherits menu order verbatim (the menu is locked and the prompt says to keep
+    /// the order given), so nothing downstream could undo it.
+    ///
+    /// ORD-001's "unless the day is explicitly core-biased" clause survives as `dayHasAnchor`. A
+    /// session with no anchor compound genuinely IS built around its small work, so core may lead
+    /// there. A session containing a heavy compound is not that day, whatever its focus tag says.
+    func sessionOrderingBand(role: ProceduralExerciseRole, dayHasAnchor: Bool) -> Int {
+        switch role {
+        case .anchor:
+            return 0
+        case .secondary, .accessory:
+            return 1
+        case .core:
+            return dayHasAnchor ? 2 : 1
+        }
+    }
+
     func arrangeProceduralSelection(
         _ exercises: [(name: String, target: String)],
         lockedPrefixCount: Int,
@@ -54,9 +81,23 @@ extension ClaudeService {
         let locked = Array(exercises.prefix(safeLockedCount))
         let remaining = Array(exercises.dropFirst(safeLockedCount))
 
+        // Read from the WHOLE day, not just the sortable tail: a retained anchor sitting in the
+        // locked prefix still makes this a session with a heavy lift in it, and core must not be
+        // promoted to the front on the strength of the tail happening to look small.
+        let dayHasAnchor = exercises.contains { exercise in
+            proceduralExerciseRole(for: exercise.name, muscleTarget: exercise.target) == .anchor
+        }
+
         let orderedRemaining = remaining
             .enumerated()
             .sorted { lhs, rhs in
+                let lhsRole = proceduralExerciseRole(for: lhs.element.name, muscleTarget: lhs.element.target)
+                let rhsRole = proceduralExerciseRole(for: rhs.element.name, muscleTarget: rhs.element.target)
+
+                let lhsBand = sessionOrderingBand(role: lhsRole, dayHasAnchor: dayHasAnchor)
+                let rhsBand = sessionOrderingBand(role: rhsRole, dayHasAnchor: dayHasAnchor)
+                if lhsBand != rhsBand { return lhsBand < rhsBand }
+
                 if let focusIntent {
                     let lhsFocusPriority = focusOrderingPriority(
                         exerciseName: lhs.element.name,
@@ -71,8 +112,6 @@ extension ClaudeService {
                     if lhsFocusPriority != rhsFocusPriority { return lhsFocusPriority < rhsFocusPriority }
                 }
 
-                let lhsRole = proceduralExerciseRole(for: lhs.element.name, muscleTarget: lhs.element.target)
-                let rhsRole = proceduralExerciseRole(for: rhs.element.name, muscleTarget: rhs.element.target)
                 let lhsPriority = proceduralExerciseRolePriority(lhsRole)
                 let rhsPriority = proceduralExerciseRolePriority(rhsRole)
                 if lhsPriority != rhsPriority { return lhsPriority < rhsPriority }
@@ -123,6 +162,91 @@ extension ClaudeService {
         return !guidedOrImplementSignals.contains { name.contains($0) }
     }
 
+    /// Wording that changes only how you HOLD a movement, not what the movement is.
+    ///
+    /// Deliberately NOT a general "these names look similar" list, and the exclusions are the
+    /// load-bearing part. Stance words stay out because Standing and Seated Calf Raise train
+    /// different muscles (gastrocnemius vs soleus). Unilateral words stay out because a
+    /// single-leg or single-arm version is a genuinely different demand, not a relabelling.
+    /// Implement words ("machine", "dumbbell", "cable") stay out because swapping the implement
+    /// is normal, useful variation. Only grips and handles belong here.
+    var gripVariantQualifiers: [String] {
+        [
+            "neutral grip", "wide grip", "close grip", "narrow grip", "reverse grip",
+            "underhand", "overhand", "supinated", "pronated",
+            "rope", "v bar", "ez bar", "straight bar"
+        ]
+    }
+
+    /// An exercise name with its grip/handle wording removed, used ONLY to recognise two
+    /// spellings of one movement inside a single session.
+    func gripVariantStem(forExerciseName name: String) -> String {
+        var words = normalizeExerciseName(name)
+            .components(separatedBy: " ")
+            .filter { !$0.isEmpty }
+
+        for qualifier in gripVariantQualifiers {
+            let phrase = qualifier.components(separatedBy: " ").filter { !$0.isEmpty }
+            guard !phrase.isEmpty else { continue }
+            // Never strip a name down to nothing or to a single generic word: what survives has
+            // to still name a movement. "EZ-Bar Curl" reducing to "curl" would collide with
+            // every other curl in the catalogue, which is the opposite of the intent.
+            guard words.count > phrase.count + 1 else { continue }
+            let lastStart = words.count - phrase.count
+            guard let start = (0...lastStart).first(where: { index in
+                Array(words[index..<(index + phrase.count)]) == phrase
+            }) else { continue }
+            words.removeSubrange(start..<(start + phrase.count))
+        }
+
+        return words.joined(separator: " ")
+    }
+
+    /// Whether two exercises are the same movement wearing two labels: same movement pattern,
+    /// same primary muscles, and identical names once grip/handle wording is removed.
+    ///
+    /// Live example this exists for: a single Upper day shipped `Lat Pulldown` (3 sets) and
+    /// `Neutral-Grip Lat Pulldown` (3 sets) back to back with identical reps, rest, tempo and
+    /// effort target — six sets spent on one exercise while the same week contained no rowing
+    /// at all. The two-per-pattern cap allowed it because they are exactly two.
+    ///
+    /// All three conditions are required. Pattern alone would block Standing + Seated Calf
+    /// Raise; primary muscles alone would block a barbell and a machine version of the same
+    /// press. The stem comparison is what separates "another way to train this" from "the same
+    /// thing twice".
+    func isGripVariantDuplicate(
+        candidateName: String,
+        candidateTarget: String,
+        of otherName: String,
+        otherTarget: String
+    ) -> Bool {
+        guard let candidatePattern = menuMovementPattern(
+            forExerciseName: candidateName,
+            muscleTarget: candidateTarget
+        ), candidatePattern != "Unknown" else { return false }
+        guard let otherPattern = menuMovementPattern(
+            forExerciseName: otherName,
+            muscleTarget: otherTarget
+        ), candidatePattern == otherPattern else { return false }
+
+        let candidateMetadata = exerciseMetadata(
+            forExerciseName: candidateName,
+            muscleTarget: candidateTarget
+        )
+        let otherMetadata = exerciseMetadata(
+            forExerciseName: otherName,
+            muscleTarget: otherTarget
+        )
+        let candidateAreas = Set(candidateMetadata.primaryAreas.map(normalizedPriorityText))
+        guard !candidateAreas.isEmpty,
+              candidateAreas == Set(otherMetadata.primaryAreas.map(normalizedPriorityText))
+        else { return false }
+
+        let candidateStem = gripVariantStem(forExerciseName: candidateName)
+        guard !candidateStem.isEmpty else { return false }
+        return candidateStem == gripVariantStem(forExerciseName: otherName)
+    }
+
     /// A single session gets at most 2 exercises of the same movement pattern. This is the
     /// selection-time guard against menus like four vertical pulls or three flat presses in
     /// one day — previously only penalized during fatigue trimming, never prevented.
@@ -131,11 +255,24 @@ extension ClaudeService {
     /// squats back-to-back (e.g. Back Squat + Front Squat) are redundant quad stimulus at
     /// high skill and systemic-fatigue cost. Stable machine/guided squats and leg presses
     /// are exempt, so a barbell squat can still be paired with a hack squat or leg press.
+    ///
+    /// Grip variants of one movement are capped at ONE regardless of pattern budget — see
+    /// `isGripVariantDuplicate`. Two of them are not two exercises.
     func dayPatternCapAllows(
         candidateName: String,
         candidateTarget: String,
         in selected: [(name: String, target: String)]
     ) -> Bool {
+        let duplicatesAnExistingGrip = selected.contains { existing in
+            isGripVariantDuplicate(
+                candidateName: candidateName,
+                candidateTarget: candidateTarget,
+                of: existing.name,
+                otherTarget: existing.target
+            )
+        }
+        if duplicatesAnExistingGrip { return false }
+
         if isFreeBarbellSquat(exerciseName: candidateName, muscleTarget: candidateTarget) {
             let barbellSquatsAlready = selected.contains {
                 isFreeBarbellSquat(exerciseName: $0.name, muscleTarget: $0.target)
@@ -1706,14 +1843,35 @@ extension ClaudeService {
             finalCoverageMenus = repairedMenus
             guard gapsAfter != gapsBefore else { break }
         }
-        let balancedMenus = enforceLowerSessionKneeAnchor(
+        // Both balance passes run BEFORE the knee anchor on purpose. They are purely additive, so
+        // they cannot create the shape the knee anchor repairs, but the knee anchor DOES evict
+        // slots on lower-body days — letting it have the last word means a repair it considers
+        // necessary is never blocked by a movement added for breadth.
+        let rowCompleteMenus = enforceHorizontalPullCoverage(
             finalCoverageMenus,
+            blueprint: blueprint,
+            avoidedExercises: avoidedExercises
+        )
+        let breadthCompleteMenus = enforceMaintenanceExposureBreadth(
+            rowCompleteMenus,
+            blueprint: blueprint,
+            avoidedExercises: avoidedExercises
+        )
+        let balancedMenus = enforceLowerSessionKneeAnchor(
+            breadthCompleteMenus,
             blueprint: blueprint,
             trainingIntent: trainingIntent,
             avoidedExercises: avoidedExercises
         )
-        return allocateWeeklySetPrescription(
+        // Last, so every movement any pass above appended is placed in the session by its role
+        // rather than simply landing at the end of the day.
+        let orderedMenus = reorderedMenusForSessionFlow(
             balancedMenus,
+            blueprint: blueprint,
+            trainingIntent: trainingIntent
+        )
+        return allocateWeeklySetPrescription(
+            orderedMenus,
             blueprint: blueprint,
             weekNumber: weekNumber
         )
@@ -2084,6 +2242,329 @@ extension ClaudeService {
         }
     }
 
+    // MARK: - Menu-Level Balance Passes (shared additive placement)
+
+    /// Appends one catalogue exercise to a training day that has room for it, or returns nil when
+    /// nothing fits anywhere.
+    ///
+    /// Deliberately ADDITIVE ONLY — it never evicts an existing movement.
+    /// `enforceBaselineMuscleCoverage` owns the eviction path because a muscle with ZERO weekly
+    /// exposure is worth trading a slot for. The callers here are correcting a LOPSIDED week, not
+    /// an absent muscle, and buying breadth by deleting someone else's only exposure would just
+    /// move the problem to a different muscle. When there is no room the week ships as it is and
+    /// the validator says so out loud.
+    ///
+    /// - Parameter deprioritizedDays: days to consider only after every other day has been tried.
+    ///   Callers spreading a muscle across the week pass the days that already train it, so a
+    ///   second slot lands on a second day rather than stacking onto the first.
+    func menusByAppendingBalanceExercise(
+        to menus: [[PreSelectedExercise]],
+        blueprint: ProgramBlueprint,
+        avoidedExercises: Set<String>,
+        candidates: [(name: String, target: String)],
+        deprioritizedDays: Set<Int> = []
+    ) -> [[PreSelectedExercise]]? {
+        // Lightest day first. Every caller here is evening out a lopsided week, and the day
+        // carrying the fewest movements is both the likeliest to have slot, fatigue and time
+        // budget left and the one that most needs the work.
+        let dayOrder = blueprint.dayPlans.indices
+            .filter { dayIndex in
+                guard dayIndex < menus.count else { return false }
+                return !blueprint.dayPlans[dayIndex].isRestDay && !menus[dayIndex].isEmpty
+            }
+            .sorted { lhs, rhs in
+                let lhsDeferred = deprioritizedDays.contains(lhs)
+                let rhsDeferred = deprioritizedDays.contains(rhs)
+                if lhsDeferred != rhsDeferred { return !lhsDeferred }
+                if menus[lhs].count != menus[rhs].count { return menus[lhs].count < menus[rhs].count }
+                return lhs < rhs
+            }
+
+        for candidate in candidates {
+            guard !avoidedExercises.contains(ExerciseWeightEntry.canonicalLookupKey(candidate.name)) else { continue }
+            let key = normalizeExerciseName(candidate.name)
+            guard !key.isEmpty else { continue }
+
+            let probe = WorkoutExerciseResponse(
+                exerciseName: candidate.name,
+                sets: 3,
+                reps: "10-12",
+                tempo: "",
+                restSeconds: 60,
+                notes: "",
+                muscleTarget: candidate.target
+            )
+
+            for dayIndex in dayOrder {
+                // The validator permits 5-8 movements per training day; 8 is the hard ceiling.
+                guard menus[dayIndex].count < 8 else { continue }
+                guard exerciseMatchesDayStyle(
+                    probe,
+                    style: canonicalTrainingStyle(blueprint.dayPlans[dayIndex].style)
+                ) else { continue }
+                guard !menus[dayIndex].contains(where: {
+                    normalizeExerciseName($0.exerciseName) == key
+                }) else { continue }
+                guard dayPatternCapAllows(
+                    candidateName: candidate.name,
+                    candidateTarget: candidate.target,
+                    in: menus[dayIndex].map { ($0.exerciseName, $0.muscleTarget) }
+                ) else { continue }
+                guard menuPlanningBudgetAllows(
+                    candidateName: candidate.name,
+                    candidateTarget: candidate.target,
+                    existingMenus: menus,
+                    selectedToday: [],
+                    blueprint: blueprint
+                ) else { continue }
+
+                let metadata = exerciseMetadata(
+                    forExerciseName: candidate.name,
+                    muscleTarget: candidate.target
+                )
+                var updated = menus
+                updated[dayIndex].append(
+                    PreSelectedExercise(
+                        exerciseName: candidate.name,
+                        muscleTarget: candidate.target,
+                        movementPattern: metadata.movementPattern,
+                        role: proceduralExerciseRole(
+                            for: candidate.name,
+                            muscleTarget: candidate.target
+                        ),
+                        prescribedSets: 1
+                    )
+                )
+                return updated
+            }
+        }
+
+        return nil
+    }
+
+    // MARK: - Horizontal Pull Coverage (menu-level)
+
+    /// Movement patterns that pull a load toward the torso under real load — the job vertical
+    /// pulling does not do.
+    ///
+    /// "Face Pull" is deliberately NOT here, and the first draft of this fix got it wrong. A face
+    /// pull is light rear-delt and external-rotation work at head height; it does not load the
+    /// rhomboids and mid-traps through a rowing range. The very week that prompted this rule
+    /// contained a Cable Face Pull and still had no rowing anywhere, so counting it would have
+    /// left the gap unrepaired while reporting the week clean — worse than not having the rule.
+    /// "Upright Row" is out for the same reason: the name says row, the movement is a delt raise.
+    var horizontalPullPatterns: Set<String> { ["Row"] }
+
+    /// Whether any exercise in the week uses one of `patterns`.
+    func menusContainMovementPattern(
+        _ patterns: Set<String>,
+        in menus: [[PreSelectedExercise]]
+    ) -> Bool {
+        menus.joined().contains { exercise in
+            guard let pattern = menuMovementPattern(
+                forExerciseName: exercise.exerciseName,
+                muscleTarget: exercise.muscleTarget
+            ) else { return false }
+            return patterns.contains(pattern)
+        }
+    }
+
+    /// Guarantees the week contains at least one ROWING movement whenever it trains the back.
+    ///
+    /// BASE-001 accounting treats "back" as ONE bucket whose aliases cover Lats, Upper Back and
+    /// Mid Back together, so a single pulldown marks the entire bucket covered and no rule ever
+    /// asked for a horizontal pull. Seen live: a five-day week whose only back work was
+    /// `Lat Pulldown`, `Neutral-Grip Lat Pulldown` and `Pull-Up` — eight sets, all of them
+    /// overhead, zero rows — for a lifter whose own analysis said to keep chest-supported rows and
+    /// flagged thoracic rounding, which rowing addresses and pulldowns do not.
+    ///
+    /// The rule is deliberately DIRECTIONAL. A week of rows and no pulldown is not repaired here:
+    /// rows still load the lats through a full range, whereas nothing in a vertical pull trains
+    /// the rhomboids and mid-traps at their shortened position. Symmetry would look tidier and
+    /// would be a claim the evidence does not support.
+    ///
+    /// Purely additive: a week with no room simply ships without the row, and
+    /// `validateBackPatternBalance` reports it rather than the gap passing silently.
+    func enforceHorizontalPullCoverage(
+        _ menus: [[PreSelectedExercise]],
+        blueprint: ProgramBlueprint,
+        avoidedExercises: Set<String>
+    ) -> [[PreSelectedExercise]] {
+        let backAliases = normalizedGroupAliases(forSeed: "back")
+        let trainsBack = menus.joined().contains { exercise in
+            exerciseDirectlyTargets(
+                groupAliases: backAliases,
+                exerciseName: exercise.exerciseName,
+                muscleTarget: exercise.muscleTarget
+            )
+        }
+        guard trainsBack else { return menus }
+        guard !menusContainMovementPattern(horizontalPullPatterns, in: menus) else { return menus }
+
+        let rowCandidates = metadataFocusExerciseCatalog(for: "back").filter { candidate in
+            guard let pattern = menuMovementPattern(
+                forExerciseName: candidate.name,
+                muscleTarget: candidate.target
+            ) else { return false }
+            return horizontalPullPatterns.contains(pattern)
+        }
+
+        return menusByAppendingBalanceExercise(
+            to: menus,
+            blueprint: blueprint,
+            avoidedExercises: avoidedExercises,
+            candidates: rowCandidates
+        ) ?? menus
+    }
+
+    // MARK: - Maintenance Breadth (BASE-001 two-exposure floor)
+
+    /// The number of weekly slots a major muscle group needs before its maintenance dose is
+    /// reachable at all.
+    ///
+    /// EvidenceProfile.md BASE-001 asks for two weekly exposures per major group and MAINT-001
+    /// puts the maintenance band at roughly 6-10 sets. The allocator can only fill an exercise up
+    /// to its ROLE DEFAULT (about 3 sets), so a group holding one slot is structurally capped near
+    /// 3 sets no matter how much weekly budget is left — no set-level rule can repair it, because
+    /// the shortage is slots, not sets.
+    ///
+    /// That is exactly what shipped: Triceps held one slot (a single Dip) and received 2 sets for
+    /// the week, while Calves held two slots and received 6. Calves are not mentioned anywhere in
+    /// that lifter's analysis; triceps at 2 sets/week is below any maintenance definition.
+    var maintenanceExposureFloor: Int { 2 }
+
+    /// Every menu slot that directly trains `seed`, as (day index, exercise index) pairs.
+    func maintenanceSlots(
+        in menus: [[PreSelectedExercise]],
+        forSeed seed: String
+    ) -> [(day: Int, exercise: Int)] {
+        let aliases = normalizedGroupAliases(forSeed: seed)
+        return menus.indices.flatMap { dayIndex in
+            menus[dayIndex].indices
+                .filter { exerciseIndex in
+                    exerciseDirectlyTargets(
+                        groupAliases: aliases,
+                        exerciseName: menus[dayIndex][exerciseIndex].exerciseName,
+                        muscleTarget: menus[dayIndex][exerciseIndex].muscleTarget
+                    )
+                }
+                .map { (day: dayIndex, exercise: $0) }
+        }
+    }
+
+    /// Raises every already-covered non-priority major group to `maintenanceExposureFloor` weekly
+    /// slots, spread across distinct days where the week has room.
+    ///
+    /// Only groups that are ALREADY covered are touched — a group at zero belongs to
+    /// `enforceBaselineMuscleCoverage`, which is allowed to evict a slot for it and runs first.
+    /// Prioritized groups are skipped because their own allocation owns their volume.
+    ///
+    /// Best-effort by construction. Every placement still passes the day's slot ceiling, the
+    /// movement-pattern cap and the full menu budget, so a week with no room ships unchanged
+    /// rather than being forced over its recovery budget to satisfy a breadth rule.
+    func enforceMaintenanceExposureBreadth(
+        _ menus: [[PreSelectedExercise]],
+        blueprint: ProgramBlueprint,
+        avoidedExercises: Set<String>
+    ) -> [[PreSelectedExercise]] {
+        var updated = menus
+
+        for group in majorMuscleGroups {
+            guard !isMajorMuscleGroupPrioritized(seed: group.seed, blueprint: blueprint) else { continue }
+
+            // The loop counts SLOTS, not days, and that is the termination argument: a
+            // successful placement always adds exactly one slot, so the guard below is strictly
+            // closer to failing on every pass. Counting distinct DAYS instead would not
+            // terminate — a placement that landed on a day already training the group leaves the
+            // day count unchanged, and the loop would keep appending movements until it ran out
+            // of candidates. `deprioritizedDays` still steers the new slot onto a fresh day
+            // whenever one will take it, which is what BASE-001's two-exposure wording asks for;
+            // it is a preference here rather than a requirement precisely so that a week with
+            // only one style-compatible day still gets the dose instead of nothing.
+            while true {
+                let slots = maintenanceSlots(in: updated, forSeed: group.seed)
+                guard !slots.isEmpty, slots.count < maintenanceExposureFloor else { break }
+                let coveredDays = Set(slots.map { $0.day })
+
+                let alreadyInWeek = Set(updated.joined().map { normalizeExerciseName($0.exerciseName) })
+                let aliases = normalizedGroupAliases(forSeed: group.seed)
+                let candidates = metadataFocusExerciseCatalog(for: group.seed).filter { candidate in
+                    // A second slot has to be a DIFFERENT movement. Repeating the same exercise on
+                    // another day would add the exposure but not the variation, and the catalogue
+                    // lists the group's own movements first anyway.
+                    guard !alreadyInWeek.contains(normalizeExerciseName(candidate.name)) else { return false }
+                    return exerciseDirectlyTargets(
+                        groupAliases: aliases,
+                        exerciseName: candidate.name,
+                        muscleTarget: candidate.target
+                    )
+                }
+                guard let expanded = menusByAppendingBalanceExercise(
+                    to: updated,
+                    blueprint: blueprint,
+                    avoidedExercises: avoidedExercises,
+                    candidates: candidates,
+                    deprioritizedDays: coveredDays
+                ) else { break }
+
+                updated = expanded
+            }
+        }
+
+        return updated
+    }
+
+    // MARK: - Session Flow Re-Order
+
+    /// Re-applies ORD-001 running order to every day after the coverage and repair passes.
+    ///
+    /// Each day is ordered once, during selection. Every pass after that — baseline coverage,
+    /// priority feasibility, the knee anchor, and the two balance passes above — APPENDS to the
+    /// end of a day, so whatever they added landed last regardless of what it was: a heavy
+    /// compound injected to close a coverage gap sat after the isolation work. The menu is locked
+    /// before the AI ever sees it and the prompt requires the given order, so last is where it
+    /// stayed.
+    ///
+    /// Safe to run over an already-ordered day: the sort keys are the same ones selection used, so
+    /// a day nothing was appended to comes back unchanged.
+    func reorderedMenusForSessionFlow(
+        _ menus: [[PreSelectedExercise]],
+        blueprint: ProgramBlueprint,
+        trainingIntent: TrainingIntentPlan
+    ) -> [[PreSelectedExercise]] {
+        menus.indices.map { dayIndex -> [PreSelectedExercise] in
+            let day = menus[dayIndex]
+            guard dayIndex < blueprint.dayPlans.count,
+                  !blueprint.dayPlans[dayIndex].isRestDay,
+                  day.count > 1
+            else { return day }
+
+            let arranged = arrangeProceduralSelection(
+                day.map { ($0.exerciseName, $0.muscleTarget) },
+                lockedPrefixCount: 0,
+                focusIntent: focusIntentForArea(
+                    blueprint.dayPlans[dayIndex].focusArea,
+                    within: trainingIntent
+                )
+            )
+
+            // Re-key by identity rather than rebuilding the entries: `prescribedSets` and the
+            // recorded role travel with the exercise, and re-deriving them here would silently
+            // discard anything an earlier pass had already decided about this slot.
+            var remaining = day
+            let reordered = arranged.compactMap { item -> PreSelectedExercise? in
+                guard let index = remaining.firstIndex(where: {
+                    $0.exerciseName == item.name && $0.muscleTarget == item.target
+                }) else { return nil }
+                return remaining.remove(at: index)
+            }
+
+            // Ordering must never be able to LOSE a movement. If identity re-keying did not
+            // account for every slot, keep the day exactly as it was.
+            return reordered.count == day.count ? reordered : day
+        }
+    }
+
     // MARK: - Priority Direct-Set Feasibility (the "fight")
 
     /// Guarantees each priority actually has directly-crediting exercises spread across enough
@@ -2152,11 +2633,30 @@ extension ClaudeService {
                 })
             }
 
-            let candidateDays = blueprint.dayPlans.indices.filter { dayIndex in
+            let trainingDays = blueprint.dayPlans.indices.filter { dayIndex in
                 guard dayIndex < updated.count else { return false }
                 let plan = blueprint.dayPlans[dayIndex]
                 return !plan.isRestDay && !updated[dayIndex].isEmpty
             }
+            // The allocation names the session styles this priority belongs on, and this pass
+            // used to ignore them entirely — any non-rest day would do. That is how a Lateral
+            // Deltoids allocation declaring "Push, Upper, Arms" had its third exposure appended
+            // to a PULL day the blueprint had assigned no lateral-delt pattern at all. The
+            // `exerciseMatchesDayStyle` probe further down did not catch it, and could not: a
+            // lateral raise is not illegal on a pull day. What was violated is the plan's own
+            // statement about where this priority trains.
+            //
+            // Off-style days stay available as a last resort rather than being forbidden. A split
+            // with no compatible day must still receive its priority work somewhere, and silently
+            // dropping to zero coverage would be a worse answer than an imperfect placement.
+            // `styleFeasibleAllocations` now trims the frequency target to the compatible days, so
+            // in practice this fallback should only fire for a split with no compatible day at all.
+            let styleCompatibleDays = trainingDays.filter { dayIndex in
+                allocation.preferredStyles.contains(
+                    canonicalTrainingStyle(blueprint.dayPlans[dayIndex].style)
+                )
+            }
+            let candidateDays = styleCompatibleDays.isEmpty ? trainingDays : styleCompatibleDays
             guard !candidateDays.isEmpty else { continue }
 
             let neededDays = min(allocation.targetFrequency, candidateDays.count)

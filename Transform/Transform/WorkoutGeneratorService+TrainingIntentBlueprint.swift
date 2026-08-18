@@ -172,7 +172,7 @@ extension ClaudeService {
             evidenceVersion: evidenceProfile.version,
             splitRecommendation: trainingIntent.splitRecommendation,
             weeklyTrainingDays: trainingDays,
-            priorityAllocations: allocations,
+            priorityAllocations: styleFeasibleAllocations(allocations, dayPlans: dayPlans),
             dayPlans: dayPlans,
             topLeverageChange: trainingIntent.topLeverageChange,
             posturalFocus: trainingIntent.posturalFocus,
@@ -180,6 +180,69 @@ extension ClaudeService {
             programmingNotes: trainingIntent.programmingNotes,
             calibration: trainingIntent.calibration
         )
+    }
+
+    /// Re-cuts each priority's weekly frequency to the number of sessions it can legally train in.
+    ///
+    /// `blueprintAllocation` fixes `targetFrequency` from the evidence bands before a single day
+    /// exists, and `buildBlueprintDayPlans` then chooses the split. Nothing reconciled the two, so
+    /// a plan could promise a priority three exposures on "Push, Upper, Arms" days while choosing
+    /// a split — Upper / Legs / Push / Lower / Pull — containing only two such days. The promise
+    /// was not merely unmet: `enforcePriorityDirectSetFeasibility` chased it, ran out of legal
+    /// days, and appended the third exposure to the PULL day, against the plan's own style list.
+    /// Printing an unreachable number also makes the Generator Lab lie about what was attempted.
+    ///
+    /// Frequency is cut; the weekly set target is only cut when the surviving sessions genuinely
+    /// cannot hold it. A focus day may carry `maxFocusSessionDirectSets` and every other session
+    /// `maxPerSessionDirectSets`, so two sessions usually still fund the whole weekly dose — the
+    /// lifter loses a spread, not volume. Weighted stimulus is scaled by the same ratio as direct
+    /// sets so the funding loop cannot keep buying sets against a target the direct cap forbids.
+    ///
+    /// This deliberately does NOT rebuild the day plans. The plans are already built from these
+    /// allocations, and re-deriving them from the clamped copy would be circular; the honest
+    /// direction is plans first, then promises trimmed to fit the plans.
+    func styleFeasibleAllocations(
+        _ allocations: [BlueprintPriorityAllocation],
+        dayPlans: [BlueprintDayPlan]
+    ) -> [BlueprintPriorityAllocation] {
+        let trainingStyles = dayPlans
+            .filter { !$0.isRestDay }
+            .map { canonicalTrainingStyle($0.style) }
+
+        return allocations.map { allocation in
+            let compatibleDays = trainingStyles.filter { allocation.preferredStyles.contains($0) }.count
+            // Zero compatible days means the style list is unusable as a constraint for this
+            // split, not that the priority should stop training. Leave the allocation alone and
+            // let the feasibility pass place the work off-style rather than clamping to zero.
+            guard compatibleDays > 0, compatibleDays < allocation.targetFrequency else {
+                return allocation
+            }
+
+            let capacity = allocation.maxFocusSessionDirectSets
+                + Double(compatibleDays - 1) * allocation.maxPerSessionDirectSets
+            let feasibleDirectSets = min(allocation.directSetTarget, capacity)
+            let volumeRatio = allocation.directSetTarget > 0
+                ? feasibleDirectSets / allocation.directSetTarget
+                : 1.0
+
+            return BlueprintPriorityAllocation(
+                area: allocation.area,
+                priorityLevel: allocation.priorityLevel,
+                rationale: allocation.rationale,
+                targetFrequency: compatibleDays,
+                // Two prime slots per session is the same ceiling `enforcePriorityDirectSetFeasibility`
+                // applies when it places them, so the printed plan matches what can be built.
+                targetExerciseSlots: min(allocation.targetExerciseSlots, compatibleDays * 2),
+                directSetTarget: feasibleDirectSets,
+                weightedStimulusTarget: allocation.weightedStimulusTarget * volumeRatio,
+                maxPerSessionDirectSets: allocation.maxPerSessionDirectSets,
+                maxFocusSessionDirectSets: allocation.maxFocusSessionDirectSets,
+                preferredStyles: allocation.preferredStyles,
+                preferredMovementPatterns: allocation.preferredMovementPatterns,
+                volumeBias: allocation.volumeBias,
+                directWorkBias: allocation.directWorkBias
+            )
+        }
     }
 
     func blueprintAllocation(for intent: MusclePriorityIntent) -> BlueprintPriorityAllocation {
