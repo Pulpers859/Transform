@@ -1566,9 +1566,15 @@ extension ClaudeService {
         let deprioritizedExercises = exerciseHistory?.equipmentSkipExercises ?? []
         let catalogOffset = exerciseHistory.map { variationCatalogOffset(for: $0) } ?? 0
 
+        // How many leading slots each day pins for week-to-week continuity. Recorded here because
+        // the final re-order runs long after this loop and cannot re-derive it, and re-sorting a
+        // day with a lock of zero silently discards the continuity the lock exists to hold.
+        var lockedPrefixCounts: [Int] = []
+
         for plan in blueprint.dayPlans {
             guard !plan.isRestDay else {
                 allMenus.append([])
+                lockedPrefixCounts.append(0)
                 continue
             }
 
@@ -1809,6 +1815,7 @@ extension ClaudeService {
                     prescribedSets: 1
                 )
             })
+            lockedPrefixCounts.append(min(lockedPrefixCount, allMenus[allMenus.count - 1].count))
         }
 
         let coverageCompleteMenus = enforceBaselineMuscleCoverage(
@@ -1821,6 +1828,7 @@ extension ClaudeService {
             coverageCompleteMenus,
             blueprint: blueprint,
             trainingIntent: trainingIntent,
+            weekNumber: weekNumber,
             avoidedExercises: avoidedExercises
         )
         var finalCoverageMenus = feasibilityCompleteMenus
@@ -1876,7 +1884,8 @@ extension ClaudeService {
         let orderedMenus = reorderedMenusForSessionFlow(
             balancedMenus,
             blueprint: blueprint,
-            trainingIntent: trainingIntent
+            trainingIntent: trainingIntent,
+            lockedPrefixCounts: lockedPrefixCounts
         )
         return allocateWeeklySetPrescription(
             orderedMenus,
@@ -2647,12 +2656,20 @@ extension ClaudeService {
     /// before the AI ever sees it and the prompt requires the given order, so last is where it
     /// stayed.
     ///
-    /// Safe to run over an already-ordered day: the sort keys are the same ones selection used, so
-    /// a day nothing was appended to comes back unchanged.
+    /// `lockedPrefixCounts` carries each day's week-to-week continuity lock, and passing it is what
+    /// makes this pass safe to run over an already-ordered day.
+    ///
+    /// An earlier version re-sorted with a lock of zero and claimed a day nothing was appended to
+    /// "comes back unchanged". That was false. On a non-focus day in week 2 or later, selection
+    /// pins retained anchors to the leading slots AHEAD of role order, so a lifter keeps the same
+    /// session shape week to week. Re-sorting without the lock let a movement newly picked THIS
+    /// week — an anchor, and therefore band 0 — jump in front of last week's retained openers, and
+    /// the day the user recognised quietly changed order for no reason any later pass had caused.
     func reorderedMenusForSessionFlow(
         _ menus: [[PreSelectedExercise]],
         blueprint: ProgramBlueprint,
-        trainingIntent: TrainingIntentPlan
+        trainingIntent: TrainingIntentPlan,
+        lockedPrefixCounts: [Int]
     ) -> [[PreSelectedExercise]] {
         menus.indices.map { dayIndex -> [PreSelectedExercise] in
             let day = menus[dayIndex]
@@ -2660,6 +2677,13 @@ extension ClaudeService {
                   !blueprint.dayPlans[dayIndex].isRestDay,
                   day.count > 1
             else { return day }
+
+            // A lock only ever pins LEADING slots, and every later pass appends or swaps in place,
+            // so the recorded count still describes this day. Clamped anyway: a pass that shrank a
+            // day must not turn the lock into an out-of-range prefix.
+            let lockedPrefixCount = dayIndex < lockedPrefixCounts.count
+                ? min(max(0, lockedPrefixCounts[dayIndex]), day.count)
+                : 0
 
             // Re-keying below matches on name+target, so two slots sharing both would be
             // interchangeable and could swap each other's `prescribedSets`. Nothing should
@@ -2670,7 +2694,7 @@ extension ClaudeService {
 
             let arranged = arrangeProceduralSelection(
                 day.map { ($0.exerciseName, $0.muscleTarget) },
-                lockedPrefixCount: 0,
+                lockedPrefixCount: lockedPrefixCount,
                 focusIntent: focusIntentForArea(
                     blueprint.dayPlans[dayIndex].focusArea,
                     within: trainingIntent
@@ -2713,6 +2737,7 @@ extension ClaudeService {
         _ menus: [[PreSelectedExercise]],
         blueprint: ProgramBlueprint,
         trainingIntent: TrainingIntentPlan,
+        weekNumber: Int,
         avoidedExercises: Set<String>
     ) -> [[PreSelectedExercise]] {
         var updated = menus
@@ -2848,7 +2873,15 @@ extension ClaudeService {
                         // Priority coverage has the same capacity rule as BASE-001. Use an
                         // available validator-approved slot before asking a later fallback to
                         // trade away a baseline movement for another priority touch.
-                        if updated[dayIndex].count < 8,
+                        // Deload-aware. This pass exists to reach a priority's VOLUME target, and
+                        // the deload week reduces volume on purpose — growing a deload day to hit
+                        // a target the week is deliberately not chasing defeats the week. The
+                        // zero-coverage pass keeps the flat ceiling, because a muscle receiving no
+                        // work at all is worth one movement even on a deload.
+                        if updated[dayIndex].count < comfortableDayExerciseCeiling(
+                               forStyle: plan.style,
+                               weekNumber: weekNumber
+                           ),
                            !blueprint.calibration.recoveryConstrained,
                            !blueprint.calibration.poorNutritionAdherence,
                            !updated[dayIndex].contains(where: {

@@ -280,7 +280,11 @@ final class GeneratorBalanceFixTests: XCTestCase {
     /// for the case the catalogue does not cover: `inferredExerciseMetadata` hands the "Row"
     /// pattern to any unknown exercise whose NAME contains "row". This test pins the outcome, not
     /// which of the two conditions produced it.
-    func testAMovementMerelyNamedRowDoesNotSatisfyTheRowRequirement() {
+    /// Note precisely what this guards: the CATALOGUE's patterns, not the muscle condition. If the
+    /// muscle condition were deleted this test would still pass, because both fixtures are already
+    /// excluded a line earlier by their movement pattern.
+    /// `testNoCatalogueEntryCarriesTheRowPatternWithoutTrainingTheBack` is the muscle tripwire.
+    func testAMovementMerelyNamedRowIsExcludedByItsPattern() {
         for shoulderWork in [
             (name: "Cable Upright Row", target: "Lateral Deltoids"),
             (name: "Chest-Supported Rear Delt Row", target: "Rear Deltoids")
@@ -295,29 +299,39 @@ final class GeneratorBalanceFixTests: XCTestCase {
         }
     }
 
-    /// Every rowing movement the catalogue can offer must actually train the back, or the
-    /// requirement and the repair disagree: `enforceHorizontalPullCoverage` picks candidates from
-    /// the back catalogue, while the rule it satisfies also demands the muscle.
-    func testEveryCatalogueRowTrainsTheBack() {
+    /// The tripwire for the muscle half of the row rule, read off the RAW catalogue rather than
+    /// the back-filtered view of it.
+    ///
+    /// An earlier version of this test walked `metadataFocusExerciseCatalog(for: "back")`, which
+    /// SELECTS entries by the very property the test then asserted — it could not fail. This one
+    /// scans every entry in the catalogue, so adding a movement carrying the "Row" pattern that
+    /// does not train the back fails here.
+    ///
+    /// That is exactly the day the muscle condition in `validateBackPatternBalance` starts to
+    /// matter. It is unreachable today — all ten rowing entries train the back — and this test is
+    /// what will say so when that stops being true.
+    func testNoCatalogueEntryCarriesTheRowPatternWithoutTrainingTheBack() {
         let backAliases = service.normalizedGroupAliases(forSeed: "back")
-        let rows = service.metadataFocusExerciseCatalog(for: "back").filter { candidate in
-            service.menuMovementPattern(
-                forExerciseName: candidate.name,
-                muscleTarget: candidate.target
-            ).map { service.horizontalPullPatterns.contains($0) } ?? false
-        }
+        var rowCount = 0
 
-        XCTAssertFalse(rows.isEmpty, "The back catalogue must offer at least one rowing movement")
-        for row in rows {
+        for entry in service.exerciseMetadataEntries
+        where service.horizontalPullPatterns.contains(entry.movementPattern) {
+            rowCount += 1
             XCTAssertTrue(
                 service.exerciseDirectlyTargets(
                     groupAliases: backAliases,
-                    exerciseName: row.name,
-                    muscleTarget: row.target
+                    exerciseName: entry.canonicalName,
+                    muscleTarget: entry.primaryAreas.first ?? ""
                 ),
-                "\(row.name) is offered as a row but does not directly train the back"
+                """
+                \(entry.canonicalName) carries the Row pattern but does not train the back \
+                (primary: \(entry.primaryAreas)). The muscle condition in validateBackPatternBalance \
+                is now load-bearing — write a test that isolates it.
+                """
             )
         }
+
+        XCTAssertGreaterThan(rowCount, 0, "The catalogue must contain at least one rowing movement")
     }
 
     func testAWeekWithNoBackWorkIsNotFlagged() {
@@ -701,14 +715,41 @@ final class GeneratorBalanceFixTests: XCTestCase {
         )
     }
 
-    /// The size the planner builds and the size the balance passes respect must be one number.
-    func testTheDeloadDayTargetIsSharedWithTheMenuBuilder() throws {
+    /// A deload day may exceed its target for exactly ONE reason: `enforceBaselineMuscleCoverage`
+    /// placing the week's only exposure for a muscle that would otherwise receive nothing at all.
+    ///
+    /// The first version of this test simply demanded every deload day sit at or under the target,
+    /// and CI was right to fail it — a real deload week came back with six movements on day 2. The
+    /// cause was not the balance passes, which are capped, but the zero-coverage repair, which is
+    /// deliberately allowed to grow a deload day. A muscle receiving no work for a week is worse
+    /// than one extra light movement. This asserts that justification instead of pretending the
+    /// stricter rule holds.
+    func testADeloadDayGrowsOnlyToKeepAMuscleOffZero() throws {
         let (_, deloadMenus) = try plannedWeek(weekNumber: MesocyclePhase.deloadWeek)
 
-        for (dayIndex, day) in deloadMenus.enumerated() where !day.isEmpty {
-            XCTAssertLessThanOrEqual(
-                day.count, service.deloadDayExerciseTarget,
-                "Deload day \(dayIndex + 1) carries \(day.count) movements: \(day.map(\.exerciseName))"
+        let soleExposureGroups = service.majorMuscleGroups.filter { group in
+            service.maintenanceSlots(in: deloadMenus, forSeed: group.seed).count == 1
+        }
+
+        for (dayIndex, day) in deloadMenus.enumerated()
+        where day.count > service.deloadDayExerciseTarget {
+            let carriesASoleExposure = day.contains { slot in
+                soleExposureGroups.contains { group in
+                    service.exerciseDirectlyTargets(
+                        groupAliases: service.normalizedGroupAliases(forSeed: group.seed),
+                        exerciseName: slot.exerciseName,
+                        muscleTarget: slot.muscleTarget
+                    )
+                }
+            }
+
+            XCTAssertTrue(
+                carriesASoleExposure,
+                """
+                Deload day \(dayIndex + 1) grew to \(day.count) movements with nothing on it that \
+                is a muscle's only weekly exposure: \(day.map(\.exerciseName)). Something other \
+                than the zero-coverage repair is growing the deload week.
+                """
             )
         }
     }
