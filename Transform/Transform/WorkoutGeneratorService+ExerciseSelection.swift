@@ -2438,17 +2438,30 @@ extension ClaudeService {
     /// "Upright Row" is out for the same reason: the name says row, the movement is a delt raise.
     var horizontalPullPatterns: Set<String> { ["Row"] }
 
-    /// Whether any exercise in the week uses one of `patterns`.
+    /// Whether the week contains a movement that both uses one of `patterns` AND directly trains
+    /// `groupSeed`.
+    ///
+    /// The muscle condition is not decoration. For an exercise missing from the catalogue,
+    /// `inferredExerciseMetadata` assigns the "Row" pattern from the NAME — any name containing
+    /// "row" — so a movement carried forward from an earlier program could satisfy a rowing
+    /// requirement while training the shoulders. Requiring the movement to actually train the back
+    /// makes the rule mean what it says, and costs one condition.
     func menusContainMovementPattern(
         _ patterns: Set<String>,
+        trainingGroupSeed groupSeed: String,
         in menus: [[PreSelectedExercise]]
     ) -> Bool {
-        menus.joined().contains { exercise in
+        let aliases = normalizedGroupAliases(forSeed: groupSeed)
+        return menus.joined().contains { exercise in
             guard let pattern = menuMovementPattern(
                 forExerciseName: exercise.exerciseName,
                 muscleTarget: exercise.muscleTarget
-            ) else { return false }
-            return patterns.contains(pattern)
+            ), patterns.contains(pattern) else { return false }
+            return exerciseDirectlyTargets(
+                groupAliases: aliases,
+                exerciseName: exercise.exerciseName,
+                muscleTarget: exercise.muscleTarget
+            )
         }
     }
 
@@ -2483,7 +2496,11 @@ extension ClaudeService {
             )
         }
         guard trainsBack else { return menus }
-        guard !menusContainMovementPattern(horizontalPullPatterns, in: menus) else { return menus }
+        guard !menusContainMovementPattern(
+            horizontalPullPatterns,
+            trainingGroupSeed: "back",
+            in: menus
+        ) else { return menus }
 
         let rowCandidates = metadataFocusExerciseCatalog(for: "back").filter { candidate in
             guard let pattern = menuMovementPattern(

@@ -806,12 +806,20 @@ extension ClaudeService {
         }
         guard trainsBack else { return [] }
 
+        // The movement must BOTH row and train the back. For an exercise missing from the
+        // catalogue, `inferredExerciseMetadata` assigns the "Row" pattern from any name containing
+        // "row", so without the muscle condition a shoulder movement carried forward from an
+        // earlier program could stand in for the week's rowing.
         let hasHorizontalPull = exercises.contains { exercise in
             guard let pattern = menuMovementPattern(
                 forExerciseName: exercise.exerciseName,
                 muscleTarget: exercise.muscleTarget
-            ) else { return false }
-            return horizontalPullPatterns.contains(pattern)
+            ), horizontalPullPatterns.contains(pattern) else { return false }
+            return exerciseDirectlyTargets(
+                groupAliases: backAliases,
+                exerciseName: exercise.exerciseName,
+                muscleTarget: exercise.muscleTarget
+            )
         }
         guard !hasHorizontalPull else { return [] }
 

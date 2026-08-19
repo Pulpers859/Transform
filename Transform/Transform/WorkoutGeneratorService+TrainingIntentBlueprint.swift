@@ -198,9 +198,23 @@ extension ClaudeService {
     /// lifter loses a spread, not volume. Weighted stimulus is scaled by the same ratio as direct
     /// sets so the funding loop cannot keep buying sets against a target the direct cap forbids.
     ///
-    /// This deliberately does NOT rebuild the day plans. The plans are already built from these
-    /// allocations, and re-deriving them from the clamped copy would be circular; the honest
-    /// direction is plans first, then promises trimmed to fit the plans.
+    /// This deliberately does NOT rebuild the day plans, and the cost of that is worth stating
+    /// rather than leaving to be rediscovered.
+    ///
+    /// `buildBlueprintDayPlans` has already run on the UNCLAMPED allocations, so two things were
+    /// decided using a frequency this function is about to withdraw: which priority owns a
+    /// contested style day (`blueprintFocusAllocation` filters on `usageCounts[area] <
+    /// targetFrequency` and breaks ties by frequency, descending), and each day's
+    /// `targetPrioritySlots`. A priority whose promised frequency was never reachable can
+    /// therefore still out-rank an achievable one for a day it did not deserve.
+    ///
+    /// The blast radius is bounded and known: the only finding this can produce is "was planned
+    /// for N priority slots", which is correction-worthy rather than a hard failure, so the worst
+    /// case is one extra paid correction call — never a discarded week. Rebuilding the plans from
+    /// the clamped copy would cost far more than that: the split itself is chosen from allocation
+    /// demand, so clamped frequencies could select different styles, which changes the compatible
+    /// day count, which changes the clamp. That is a fixed-point search over split selection, and
+    /// it is not worth entering to improve a tiebreak. Plans first, promises trimmed to fit them.
     func styleFeasibleAllocations(
         _ allocations: [BlueprintPriorityAllocation],
         dayPlans: [BlueprintDayPlan]

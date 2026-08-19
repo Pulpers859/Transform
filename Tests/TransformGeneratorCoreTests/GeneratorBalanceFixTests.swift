@@ -270,6 +270,56 @@ final class GeneratorBalanceFixTests: XCTestCase {
         XCTAssertTrue(issues.isEmpty, "\(issues)")
     }
 
+    /// A movement named "row" that is not one. Both of these are shoulder work, and neither may
+    /// stand in for the week's rowing.
+    ///
+    /// Today the catalogue is what catches them: `Cable Upright Row` carries the "Upright Row"
+    /// pattern and `Chest-Supported Rear Delt Row` carries "Rear Delt Row", so neither reaches
+    /// `horizontalPullPatterns` at all. The rule ALSO requires a row to directly train the back,
+    /// which is redundant for every one of the ten catalogue rows — all of them do — and is there
+    /// for the case the catalogue does not cover: `inferredExerciseMetadata` hands the "Row"
+    /// pattern to any unknown exercise whose NAME contains "row". This test pins the outcome, not
+    /// which of the two conditions produced it.
+    func testAMovementMerelyNamedRowDoesNotSatisfyTheRowRequirement() {
+        for shoulderWork in [
+            (name: "Cable Upright Row", target: "Lateral Deltoids"),
+            (name: "Chest-Supported Rear Delt Row", target: "Rear Deltoids")
+        ] {
+            let issues = service.validateBackPatternBalance(days: week([
+                exercise("Lat Pulldown", "Lats", sets: 3),
+                exercise("Pull-Up (Weighted or Assisted)", "Lats", sets: 2),
+                exercise(shoulderWork.name, shoulderWork.target, sets: 3)
+            ]))
+
+            XCTAssertEqual(issues.count, 1, "\(shoulderWork.name) must not stand in for a row")
+        }
+    }
+
+    /// Every rowing movement the catalogue can offer must actually train the back, or the
+    /// requirement and the repair disagree: `enforceHorizontalPullCoverage` picks candidates from
+    /// the back catalogue, while the rule it satisfies also demands the muscle.
+    func testEveryCatalogueRowTrainsTheBack() {
+        let backAliases = service.normalizedGroupAliases(forSeed: "back")
+        let rows = service.metadataFocusExerciseCatalog(for: "back").filter { candidate in
+            service.menuMovementPattern(
+                forExerciseName: candidate.name,
+                muscleTarget: candidate.target
+            ).map { service.horizontalPullPatterns.contains($0) } ?? false
+        }
+
+        XCTAssertFalse(rows.isEmpty, "The back catalogue must offer at least one rowing movement")
+        for row in rows {
+            XCTAssertTrue(
+                service.exerciseDirectlyTargets(
+                    groupAliases: backAliases,
+                    exerciseName: row.name,
+                    muscleTarget: row.target
+                ),
+                "\(row.name) is offered as a row but does not directly train the back"
+            )
+        }
+    }
+
     func testAWeekWithNoBackWorkIsNotFlagged() {
         let issues = service.validateBackPatternBalance(days: week([
             exercise("Incline Barbell Press", "Upper Chest", sets: 3)
@@ -292,7 +342,11 @@ final class GeneratorBalanceFixTests: XCTestCase {
         try XCTSkipUnless(trainsBack, "This fixture's split trains no back at all")
 
         XCTAssertTrue(
-            service.menusContainMovementPattern(service.horizontalPullPatterns, in: menus),
+            service.menusContainMovementPattern(
+                service.horizontalPullPatterns,
+                trainingGroupSeed: "back",
+                in: menus
+            ),
             "A planned week that trains the back must contain a rowing movement"
         )
     }
