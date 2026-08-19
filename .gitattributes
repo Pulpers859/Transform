@@ -1,4 +1,5 @@
 *.swift text eol=lf
 *.md text eol=lf
+*.command text eol=lf
 .gitignore text eol=lf
 *.pbxproj text eol=lf
