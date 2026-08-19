@@ -1856,11 +1856,13 @@ extension ClaudeService {
         let rowCompleteMenus = enforceHorizontalPullCoverage(
             finalCoverageMenus,
             blueprint: blueprint,
+            weekNumber: weekNumber,
             avoidedExercises: avoidedExercises
         )
         let breadthCompleteMenus = enforceMaintenanceExposureBreadth(
             rowCompleteMenus,
             blueprint: blueprint,
+            weekNumber: weekNumber,
             avoidedExercises: avoidedExercises
         )
         let balancedMenus = enforceLowerSessionKneeAnchor(
@@ -2262,6 +2264,61 @@ extension ClaudeService {
         canonicalTrainingStyle(style) == "Lower" ? 6 : 8
     }
 
+    /// Whether a day can absorb one more movement without breaking the budgets its plan set.
+    ///
+    /// This is NOT the same question as "can the allocator afford another set", and the difference
+    /// is the whole point. `fatigueContribution` charges a movement its full `fatigueCost` at ONE
+    /// set — the multiplier only rises at four sets and again at five — so an appended movement
+    /// spends day fatigue and session minutes that no later pass can walk back.
+    /// `allocateWeeklySetPrescription` guarantees the finished day stays inside its cap only while
+    /// the SEEDED day, every movement at one set, already fits: past that line it can decline to
+    /// fund further sets, but it cannot remove the movement that broke the budget.
+    ///
+    /// So the seeded projection is exactly the right test — not the finished day, which is unknown
+    /// while the menu is still being built, and not the role-default projection, which the
+    /// allocator is free to stop short of.
+    ///
+    /// Without this, a balance pass could hand the lifter a session that earns "carries too much
+    /// total fatigue load" or a session-budget finding. Both are correction-worthy under menu-lock:
+    /// a paid correction call, and the whole paid candidate set discarded if the finding survives
+    /// it. A bad trade for one accessory.
+    func seededDayFitsItsBudgets(
+        adding candidate: (name: String, target: String),
+        to menu: [PreSelectedExercise],
+        plan: BlueprintDayPlan,
+        weekNumber: Int
+    ) -> Bool {
+        let seeded = (menu.map { (name: $0.exerciseName, target: $0.muscleTarget) } + [candidate])
+            .map { item -> WorkoutExerciseResponse in
+                let reps = proceduralRepRange(
+                    for: weekNumber,
+                    exerciseName: item.name,
+                    muscleTarget: item.target
+                )
+                return WorkoutExerciseResponse(
+                    exerciseName: item.name,
+                    sets: 1,
+                    reps: reps,
+                    tempo: proceduralTempo(
+                        for: weekNumber,
+                        exerciseName: item.name,
+                        muscleTarget: item.target,
+                        reps: reps
+                    ),
+                    restSeconds: proceduralRestSeconds(
+                        for: item.name,
+                        muscleTarget: item.target
+                    ),
+                    notes: "",
+                    muscleTarget: item.target
+                )
+            }
+
+        guard estimatedDayFatigue(for: seeded) <= plan.targetFatigueCap else { return false }
+        return estimatedSessionMinutes(for: proceduralTrainingDay(from: seeded))
+            <= plan.targetSessionMinutes + 3
+    }
+
     /// Appends one catalogue exercise to a training day that has room for it, or returns nil when
     /// nothing fits anywhere.
     ///
@@ -2278,6 +2335,7 @@ extension ClaudeService {
     func menusByAppendingBalanceExercise(
         to menus: [[PreSelectedExercise]],
         blueprint: ProgramBlueprint,
+        weekNumber: Int,
         avoidedExercises: Set<String>,
         candidates: [(name: String, target: String)],
         deprioritizedDays: Set<Int> = []
@@ -2335,6 +2393,12 @@ extension ClaudeService {
                     existingMenus: menus,
                     selectedToday: [],
                     blueprint: blueprint
+                ) else { continue }
+                guard seededDayFitsItsBudgets(
+                    adding: candidate,
+                    to: menus[dayIndex],
+                    plan: blueprint.dayPlans[dayIndex],
+                    weekNumber: weekNumber
                 ) else { continue }
 
                 let metadata = exerciseMetadata(
@@ -2407,6 +2471,7 @@ extension ClaudeService {
     func enforceHorizontalPullCoverage(
         _ menus: [[PreSelectedExercise]],
         blueprint: ProgramBlueprint,
+        weekNumber: Int,
         avoidedExercises: Set<String>
     ) -> [[PreSelectedExercise]] {
         let backAliases = normalizedGroupAliases(forSeed: "back")
@@ -2431,6 +2496,7 @@ extension ClaudeService {
         return menusByAppendingBalanceExercise(
             to: menus,
             blueprint: blueprint,
+            weekNumber: weekNumber,
             avoidedExercises: avoidedExercises,
             candidates: rowCandidates
         ) ?? menus
@@ -2484,6 +2550,7 @@ extension ClaudeService {
     func enforceMaintenanceExposureBreadth(
         _ menus: [[PreSelectedExercise]],
         blueprint: ProgramBlueprint,
+        weekNumber: Int,
         avoidedExercises: Set<String>
     ) -> [[PreSelectedExercise]] {
         var updated = menus
@@ -2521,6 +2588,7 @@ extension ClaudeService {
                 guard let expanded = menusByAppendingBalanceExercise(
                     to: updated,
                     blueprint: blueprint,
+                    weekNumber: weekNumber,
                     avoidedExercises: avoidedExercises,
                     candidates: candidates,
                     deprioritizedDays: coveredDays

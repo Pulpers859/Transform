@@ -61,14 +61,15 @@ final class GeneratorBalanceFixTests: XCTestCase {
         _ index: Int,
         style: String,
         focusArea: String? = nil,
-        isRestDay: Bool = false
+        isRestDay: Bool = false,
+        fatigueCap: Int = 20
     ) -> ClaudeService.BlueprintDayPlan {
         ClaudeService.BlueprintDayPlan(
             dayIndex: index,
             style: style,
             focusArea: focusArea,
             supportAreas: [],
-            targetFatigueCap: 20,
+            targetFatigueCap: fatigueCap,
             targetSessionMinutes: 70,
             targetPrioritySlots: 1,
             emphasisPatterns: [],
@@ -637,6 +638,72 @@ final class GeneratorBalanceFixTests: XCTestCase {
                     "Day \(dayIndex + 1) is a \(style) session but carries \(slot.exerciseName)"
                 )
             }
+        }
+    }
+
+    // MARK: - Budgets the balance passes must not break
+
+    /// `fatigueContribution` charges a movement its full `fatigueCost` at ONE set — the multiplier
+    /// only rises at four sets and again at five — so an appended movement spends day fatigue that
+    /// no later pass can walk back. `allocateWeeklySetPrescription` keeps a finished day inside its
+    /// cap only while the SEEDED day already fits; past that line it can decline to fund sets but
+    /// cannot remove the movement that broke the budget.
+    ///
+    /// Left unchecked a balance pass could earn "carries too much total fatigue load", which is
+    /// correction-worthy under menu-lock: a paid correction call, and the whole paid candidate set
+    /// discarded if it survives.
+    func testABalancePassWillNotPushADayPastItsFatigueCap() {
+        let menu = [
+            ClaudeService.PreSelectedExercise(
+                exerciseName: "Back Squat",
+                muscleTarget: "Quads",
+                movementPattern: "Squat",
+                role: .anchor,
+                prescribedSets: 1
+            )
+        ]
+        let candidate = (name: "Standing Calf Raise", target: "Calves")
+
+        let seededFatigue = service.estimatedDayFatigue(for: [
+            exercise("Back Squat", "Quads", sets: 1),
+            exercise("Standing Calf Raise", "Calves", sets: 1)
+        ])
+
+        XCTAssertFalse(
+            service.seededDayFitsItsBudgets(
+                adding: candidate,
+                to: menu,
+                plan: dayPlan(1, style: "Lower", fatigueCap: seededFatigue - 1),
+                weekNumber: 1
+            ),
+            "A day already at its fatigue cap must not accept another movement"
+        )
+        XCTAssertTrue(
+            service.seededDayFitsItsBudgets(
+                adding: candidate,
+                to: menu,
+                plan: dayPlan(1, style: "Lower", fatigueCap: seededFatigue),
+                weekNumber: 1
+            ),
+            "A day with room must still accept it"
+        )
+    }
+
+    /// The property that matters end to end: no planned day exceeds the fatigue cap its own plan
+    /// set for it, once every movement is seeded.
+    func testNoPlannedDayIsSeededPastItsFatigueCap() throws {
+        let (blueprint, menus) = try plannedWeek()
+
+        for (dayIndex, day) in menus.enumerated() where !day.isEmpty {
+            guard dayIndex < blueprint.dayPlans.count,
+                  !blueprint.dayPlans[dayIndex].isRestDay else { continue }
+
+            let seeded = day.map { exercise($0.exerciseName, $0.muscleTarget, sets: 1) }
+            XCTAssertLessThanOrEqual(
+                service.estimatedDayFatigue(for: seeded),
+                blueprint.dayPlans[dayIndex].targetFatigueCap,
+                "Day \(dayIndex + 1) is over its fatigue cap before a single set is funded"
+            )
         }
     }
 
