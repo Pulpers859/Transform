@@ -30,7 +30,7 @@ final class GeneratorBalanceFixTests: XCTestCase {
     /// The real planning pipeline on the audited priority shape (Upper Chest / Lateral Deltoids /
     /// Core-Abs), so these assertions describe a week the generator can actually produce rather
     /// than a hand-built one that flatters the rules.
-    private func plannedWeek() throws -> (
+    private func plannedWeek(weekNumber: Int = 1) throws -> (
         blueprint: ClaudeService.ProgramBlueprint,
         menus: [[ClaudeService.PreSelectedExercise]]
     ) {
@@ -40,11 +40,11 @@ final class GeneratorBalanceFixTests: XCTestCase {
         }
         let fixture = try JSONDecoder().decode(Fixture.self, from: Data(contentsOf: url))
         let intent = service.trainingIntentPlan(from: fixture.analysis)
-        let blueprint = service.programBlueprint(for: intent, weekNumber: 1)
+        let blueprint = service.programBlueprint(for: intent, weekNumber: weekNumber)
         let menus = service.preSelectedExerciseMenu(
             for: blueprint,
             trainingIntent: intent,
-            weekNumber: 1,
+            weekNumber: weekNumber,
             previousWeekDays: nil
         )
         return (blueprint, menus)
@@ -657,10 +657,60 @@ final class GeneratorBalanceFixTests: XCTestCase {
     /// session", and the first version of the balance passes used a flat ceiling of eight and
     /// earned exactly that finding by appending a second calf movement to a six-movement Legs day.
     func testALowerDayIsNotFilledPastItsCrowdingLimit() {
-        XCTAssertEqual(service.comfortableDayExerciseCeiling(forStyle: "Lower"), 6)
-        XCTAssertEqual(service.comfortableDayExerciseCeiling(forStyle: "Legs"), 6)
-        XCTAssertEqual(service.comfortableDayExerciseCeiling(forStyle: "Push"), 8)
-        XCTAssertEqual(service.comfortableDayExerciseCeiling(forStyle: "Upper"), 8)
+        for style in ["Lower", "Legs"] {
+            XCTAssertEqual(service.comfortableDayExerciseCeiling(forStyle: style, weekNumber: 1), 6)
+        }
+        for style in ["Push", "Upper"] {
+            XCTAssertEqual(service.comfortableDayExerciseCeiling(forStyle: style, weekNumber: 1), 8)
+        }
+    }
+
+    /// A deload week is BUILT smaller on purpose — `preSelectedExerciseMenu` drops its per-day
+    /// target from six movements to five to reduce the work. A pass that appends movements back
+    /// would undo the deload, and would do it more eagerly than in a loading week: a five-movement
+    /// day leaves more muscle groups holding a single slot for the breadth pass to notice.
+    func testADeloadWeekIsNeverGrownByTheBalancePasses() {
+        for style in ["Lower", "Legs", "Push", "Upper", "Pull", "Arms"] {
+            XCTAssertEqual(
+                service.comfortableDayExerciseCeiling(
+                    forStyle: style,
+                    weekNumber: MesocyclePhase.deloadWeek
+                ),
+                service.deloadDayExerciseTarget,
+                "A \(style) deload day must not be grown past the size the planner built"
+            )
+        }
+
+        // The planner builds deload days at exactly this size, so the ceiling forbids any
+        // addition rather than merely limiting it.
+        let deloadDay = (1...service.deloadDayExerciseTarget).map { index in
+            ClaudeService.PreSelectedExercise(
+                exerciseName: "Filler \(index)",
+                muscleTarget: "Chest",
+                movementPattern: "Horizontal Press",
+                role: .accessory,
+                prescribedSets: 1
+            )
+        }
+        XCTAssertFalse(
+            deloadDay.count < service.comfortableDayExerciseCeiling(
+                forStyle: "Push",
+                weekNumber: MesocyclePhase.deloadWeek
+            ),
+            "A deload day built to target must already be at its ceiling"
+        )
+    }
+
+    /// The size the planner builds and the size the balance passes respect must be one number.
+    func testTheDeloadDayTargetIsSharedWithTheMenuBuilder() throws {
+        let (_, deloadMenus) = try plannedWeek(weekNumber: MesocyclePhase.deloadWeek)
+
+        for (dayIndex, day) in deloadMenus.enumerated() where !day.isEmpty {
+            XCTAssertLessThanOrEqual(
+                day.count, service.deloadDayExerciseTarget,
+                "Deload day \(dayIndex + 1) carries \(day.count) movements: \(day.map(\.exerciseName))"
+            )
+        }
     }
 
     /// A latent substring bug the balance passes uncovered: day-style matching is a raw substring

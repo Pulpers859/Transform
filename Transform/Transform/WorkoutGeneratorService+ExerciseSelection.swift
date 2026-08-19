@@ -1591,7 +1591,7 @@ extension ClaudeService {
                 style: style
             )
 
-            let targetCount = MesocyclePhase.isDeloadWeek(weekNumber) ? 5 : 6
+            let targetCount = MesocyclePhase.isDeloadWeek(weekNumber) ? deloadDayExerciseTarget : 6
             var selected: [(name: String, target: String)] = []
             var used = usedAcrossDays
 
@@ -2260,9 +2260,26 @@ extension ClaudeService {
     /// used the flat ceiling of 8 and promptly earned that finding — it added a second calf
     /// movement to a six-movement Legs day, trading a thin muscle group for an overcrowded
     /// session. Buying breadth by making a day worse is not a fix.
-    func comfortableDayExerciseCeiling(forStyle style: String) -> Int {
-        canonicalTrainingStyle(style) == "Lower" ? 6 : 8
+    ///
+    /// A DELOAD week is capped at the size the planner deliberately built it, and this is the more
+    /// important half of the rule. `preSelectedExerciseMenu` drops `targetCount` from 6 to 5 on
+    /// the deload week precisely to reduce the work; a pass that then appends movements back would
+    /// undo the deload — and would do it MORE eagerly than in a normal week, because a
+    /// five-movement day leaves more muscle groups holding a single slot for the breadth pass to
+    /// notice. Reduction weeks do not grow. If that leaves a deload week without a row or with a
+    /// thin muscle group, the validator reports it and the three loading weeks around it carry the
+    /// coverage.
+    func comfortableDayExerciseCeiling(forStyle style: String, weekNumber: Int) -> Int {
+        if MesocyclePhase.isDeloadWeek(weekNumber) {
+            return deloadDayExerciseTarget
+        }
+        return canonicalTrainingStyle(style) == "Lower" ? 6 : 8
     }
+
+    /// Movements per training day on the deload week. Shared with `preSelectedExerciseMenu`'s
+    /// `targetCount` so the size the planner builds and the size the balance passes respect cannot
+    /// drift apart.
+    var deloadDayExerciseTarget: Int { 5 }
 
     /// Whether a day can absorb one more movement without breaking the budgets its plan set.
     ///
@@ -2373,7 +2390,8 @@ extension ClaudeService {
 
             for dayIndex in dayOrder {
                 guard menus[dayIndex].count < comfortableDayExerciseCeiling(
-                    forStyle: blueprint.dayPlans[dayIndex].style
+                    forStyle: blueprint.dayPlans[dayIndex].style,
+                    weekNumber: weekNumber
                 ) else { continue }
                 guard exerciseMatchesDayStyle(
                     probe,
