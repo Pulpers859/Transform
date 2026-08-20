@@ -1204,7 +1204,16 @@ struct ExerciseCard: View {
                 // as that final rest would have started — which is correct: there is no
                 // next set to rest for.
                 if exercise.restSeconds > 0 && !exercise.isCompleted {
-                    ExerciseRestTimerView(exercise: exercise)
+                    ExerciseRestTimerView(
+                        exercise: exercise,
+                        loggedSets: sessionSetLogs,
+                        suggestedWeight: workingSetAnalysis.workingWeight,
+                        suggestedReps: workingSetAnalysis.topWorkingSet?.reps,
+                        targetRepsPlaceholder: RepRange.parse(exercise.reps)?.high,
+                        onLogSet: { setNumber, weight, reps, rir in
+                            logSetFromCard(setNumber: setNumber, weight: weight, reps: reps, rir: rir)
+                        }
+                    )
                 }
 
                 InlineSetLogger(
@@ -1214,15 +1223,7 @@ struct ExerciseCard: View {
                     suggestedReps: workingSetAnalysis.topWorkingSet?.reps,
                     targetRepsPlaceholder: RepRange.parse(exercise.reps)?.high,
                     onLog: { setNumber, weight, reps, rir in
-                        if SetLoggingService.logSet(setNumber: setNumber, weightLbs: weight, reps: reps, rir: rir, for: exercise, modelContext: modelContext) {
-                            // A finished set is when rest begins — start the timer
-                            // without a second tap (the rest card can still pause/reset).
-                            NotificationCenter.default.post(
-                                name: .tfWorkoutSetLogged,
-                                object: exercise.persistentModelID
-                            )
-                            reportFinalSetIfComplete(setNumber: setNumber)
-                        }
+                        logSetFromCard(setNumber: setNumber, weight: weight, reps: reps, rir: rir)
                     },
                     onClear: { setNumber in
                         SetLoggingService.clearSet(setNumber: setNumber, for: exercise, modelContext: modelContext)
@@ -1309,6 +1310,28 @@ struct ExerciseCard: View {
             Divider().padding(.horizontal, 14)
             exerciseActionRow
         }
+    }
+
+    /// The single place a set reaches storage from this card, used by BOTH the inline
+    /// "Log sets" list and the full-screen rest timer's entry panel. Two entry points in the
+    /// UI must never mean two ways of writing training data: they differ only in where the
+    /// numbers were typed, so completion reporting and the rest-timer signal stay identical.
+    private func logSetFromCard(setNumber: Int, weight: Double, reps: Int, rir: Double?) {
+        guard SetLoggingService.logSet(
+            setNumber: setNumber,
+            weightLbs: weight,
+            reps: reps,
+            rir: rir,
+            for: exercise,
+            modelContext: modelContext
+        ) else { return }
+        // A finished set is when rest begins. The rest card decides what to do with this:
+        // it starts a timer that is sitting still and leaves a running one alone.
+        NotificationCenter.default.post(
+            name: .tfWorkoutSetLogged,
+            object: exercise.persistentModelID
+        )
+        reportFinalSetIfComplete(setNumber: setNumber)
     }
 
     /// Reports the log that fills the last outstanding set, so the exercise can tick itself
@@ -1913,6 +1936,14 @@ struct ExerciseWeightSnapshotTile: View {
 
 struct ExerciseRestTimerView: View {
     let exercise: WorkoutExercise
+    /// Handed straight through to the full-screen timer's set-entry panel: the panel shows
+    /// this session's sets and writes through `onLogSet`, which is the card's one and only
+    /// save path. Nothing about set logging is duplicated here.
+    let loggedSets: [SetLogEntry]
+    let suggestedWeight: Double?
+    let suggestedReps: Int?
+    let targetRepsPlaceholder: Int?
+    let onLogSet: (Int, Double, Int, Double?) -> Void
 
     @State private var isRestTimerActive = false
     @State private var remainingRestSeconds = 0
@@ -2044,10 +2075,14 @@ struct ExerciseRestTimerView: View {
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .tfWorkoutSetLogged)) { note in
-            // A confirmed set means a fresh rest period starts now — no second tap.
-            // Restarts from full even if a previous countdown was mid-flight.
+            // A confirmed set starts rest only if the clock is sitting still. It used to
+            // restart from full unconditionally, which broke the common order of events:
+            // finish the set, hit start yourself, then log the numbers a few seconds later
+            // — and watch the countdown you were already running jump back to the top.
+            // A timer that is already counting down is now left completely alone.
             guard let id = note.object as? PersistentIdentifier,
                   id == exercise.persistentModelID else { return }
+            guard !isRestTimerActive else { return }
             didCompleteRestTimer = false
             remainingRestSeconds = exercise.restSeconds
             restEndDate = Date().addingTimeInterval(Double(remainingRestSeconds))
@@ -2057,13 +2092,17 @@ struct ExerciseRestTimerView: View {
         .fullScreenCover(isPresented: $showExpandedRestTimer) {
             RestTimerFullscreen(
                 exerciseName: exercise.exerciseName,
-                exerciseNumber: exercise.order + 1,
                 prescriptionLabel: "\(exercise.sets) sets x \(exercise.reps) reps",
-                statusLabel: restStatusLabel,
                 timeText: restDisplayText,
                 accent: timerAccent,
                 isTimerActive: isRestTimerActive,
                 progress: restProgress,
+                programmedSets: exercise.sets,
+                loggedSets: loggedSets,
+                suggestedWeight: suggestedWeight,
+                suggestedReps: suggestedReps,
+                targetRepsPlaceholder: targetRepsPlaceholder,
+                onLogSet: onLogSet,
                 onToggle: { toggleRestTimer() },
                 onReset: { resetRestTimer() },
                 onClose: { showExpandedRestTimer = false }
@@ -2155,18 +2194,53 @@ struct ExerciseRestTimerView: View {
     }
 }
 
+/// Full-screen rest timer with an inline set-entry panel.
+///
+/// The panel exists so a working set never costs a swipe: the countdown stays on screen
+/// while the numbers for the set just finished are typed and confirmed. It writes through
+/// `onLogSet`, which is the card's SAME save path as the inline "Log sets" list — there is
+/// deliberately no second way for training data to reach storage. A set confirmed here is
+/// indistinguishable from one confirmed in the list, and appears there immediately.
+///
+/// Status text ("Paused"/"Running") and the "Exercise N" line are intentionally absent. The
+/// clock and its buttons already say what state it is in, and the exercise name says which
+/// lift it is; the space they used belongs to the set entry.
 struct RestTimerFullscreen: View {
     let exerciseName: String
-    let exerciseNumber: Int
     let prescriptionLabel: String
-    let statusLabel: String
     let timeText: String
     let accent: Color
     let isTimerActive: Bool
     let progress: Double
+    let programmedSets: Int
+    /// This session's sets, live from the card's query — so stepping back to an already
+    /// logged set shows what was actually stored, not a stale local copy.
+    let loggedSets: [SetLogEntry]
+    let suggestedWeight: Double?
+    let suggestedReps: Int?
+    let targetRepsPlaceholder: Int?
+    let onLogSet: (Int, Double, Int, Double?) -> Void
     let onToggle: () -> Void
     let onReset: () -> Void
     let onClose: () -> Void
+
+    @State private var currentSet = 1
+    @State private var didPickStartingSet = false
+    @State private var draftWeight: [Int: String] = [:]
+    @State private var draftReps: [Int: String] = [:]
+    @State private var draftRIR: [Int: String] = [:]
+    @FocusState private var focusedField: FieldKey?
+
+    enum FieldKey: Hashable {
+        case weight
+        case reps
+        case rir
+    }
+
+    /// Typing is the one state that reshapes this screen: the number pad covers the lower
+    /// half of the phone, so the clock shrinks and the transport controls stand down rather
+    /// than letting the countdown disappear behind the keyboard.
+    private var isEditing: Bool { focusedField != nil }
 
     var body: some View {
         ZStack {
@@ -2176,10 +2250,13 @@ struct RestTimerFullscreen: View {
                 endPoint: .bottom
             )
             .ignoresSafeArea()
+            .contentShape(Rectangle())
+            .onTapGesture { focusedField = nil }
 
-            VStack(spacing: 24) {
+            VStack(spacing: isEditing ? 12 : 20) {
                 HStack {
                     Button("Done") {
+                        focusedField = nil
                         onClose()
                     }
                     .font(.headline.bold())
@@ -2188,74 +2265,310 @@ struct RestTimerFullscreen: View {
                     Spacer()
                 }
 
-                Spacer()
-
-                Text("Exercise \(exerciseNumber)")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.white.opacity(0.55))
+                Spacer(minLength: 0)
 
                 Text(exerciseName)
                     .font(.title3.bold())
                     .foregroundStyle(.white.opacity(0.85))
                     .multilineTextAlignment(.center)
+                    .lineLimit(2)
 
                 Text(prescriptionLabel)
                     .font(.title2.weight(.semibold))
                     .foregroundStyle(accent)
 
-                Text(statusLabel.uppercased())
-                    .font(.system(size: 12, weight: .bold, design: .monospaced))
-                    .foregroundStyle(.white.opacity(0.65))
-                    .tracking(2)
+                setEntryPanel
 
                 Text(timeText)
-                    .font(.system(size: 92, weight: .black, design: .rounded))
+                    .font(.system(size: isEditing ? 34 : 92, weight: .medium))
                     .monospacedDigit()
                     .foregroundStyle(.white)
                     .minimumScaleFactor(0.6)
+                    .lineLimit(1)
 
-                GeometryReader { geo in
-                    ZStack(alignment: .leading) {
-                        Capsule()
-                            .fill(Color.white.opacity(0.14))
-                        Capsule()
-                            .fill(Color.white)
-                            .frame(width: geo.size.width * max(0, min(progress, 1)))
+                if !isEditing {
+                    GeometryReader { geo in
+                        ZStack(alignment: .leading) {
+                            Capsule()
+                                .fill(Color.white.opacity(0.14))
+                            Capsule()
+                                .fill(Color.white)
+                                .frame(width: geo.size.width * max(0, min(progress, 1)))
+                        }
+                    }
+                    .frame(height: 12)
+
+                    HStack(spacing: 12) {
+                        Button {
+                            onToggle()
+                        } label: {
+                            Label(isTimerActive ? "Pause" : "Start / Resume", systemImage: isTimerActive ? "pause.fill" : "play.fill")
+                                .font(.headline.bold())
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 18)
+                                .background(Color.white)
+                                .foregroundStyle(accent)
+                                .clipShape(RoundedRectangle(cornerRadius: 18))
+                        }
+
+                        Button {
+                            onReset()
+                        } label: {
+                            Label("Reset", systemImage: "arrow.counterclockwise")
+                                .font(.headline.bold())
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 18)
+                                .background(Color.white.opacity(0.12))
+                                .foregroundStyle(.white)
+                                .clipShape(RoundedRectangle(cornerRadius: 18))
+                        }
                     }
                 }
-                .frame(height: 12)
 
-                HStack(spacing: 12) {
-                    Button {
-                        onToggle()
-                    } label: {
-                        Label(isTimerActive ? "Pause" : "Start / Resume", systemImage: isTimerActive ? "pause.fill" : "play.fill")
-                            .font(.headline.bold())
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 18)
-                            .background(Color.white)
-                            .foregroundStyle(accent)
-                            .clipShape(RoundedRectangle(cornerRadius: 18))
-                    }
-
-                    Button {
-                        onReset()
-                    } label: {
-                        Label("Reset", systemImage: "arrow.counterclockwise")
-                            .font(.headline.bold())
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 18)
-                            .background(Color.white.opacity(0.12))
-                            .foregroundStyle(.white)
-                            .clipShape(RoundedRectangle(cornerRadius: 18))
-                    }
-                }
-
-                Spacer()
+                Spacer(minLength: 0)
             }
             .padding(20)
+            .animation(.easeOut(duration: 0.2), value: isEditing)
+        }
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Done") { focusedField = nil }
+            }
+        }
+        .onAppear {
+            // Once per presentation. Re-picking on every redraw would drag the panel off a
+            // set being edited the moment the query refreshed underneath it.
+            guard !didPickStartingSet else { return }
+            didPickStartingSet = true
+            currentSet = firstUnloggedSet()
         }
         .statusBarHidden()
+    }
+
+    // MARK: - Set entry
+
+    private var setEntryPanel: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                stepButton("chevron.left", enabled: currentSet > 1) { step(-1) }
+
+                Text("Set \(currentSet)")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .monospacedDigit()
+
+                stepButton("chevron.right", enabled: currentSet < totalSets) { step(1) }
+
+                Spacer(minLength: 0)
+
+                Text("\(loggedSets.count)/\(totalSets) logged")
+                    .font(.footnote)
+                    .monospacedDigit()
+                    .foregroundStyle(.white.opacity(0.55))
+            }
+
+            HStack(spacing: 8) {
+                entryField(text: weightBinding, placeholder: "lb", key: .weight, wholeNumbers: false, width: 76)
+
+                Text("\u{00D7}")
+                    .font(.footnote)
+                    .foregroundStyle(.white.opacity(0.45))
+
+                entryField(text: repsBinding, placeholder: repsPlaceholder, key: .reps, wholeNumbers: true, width: 62)
+
+                Text("reps")
+                    .font(.footnote)
+                    .foregroundStyle(.white.opacity(0.55))
+
+                Spacer(minLength: 4)
+
+                Text("RIR")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.white.opacity(0.55))
+
+                entryField(text: rirBinding, placeholder: "\u{2014}", key: .rir, wholeNumbers: false, width: 52)
+
+                Button {
+                    confirmCurrentSet()
+                } label: {
+                    Image(systemName: isCurrentSetLogged ? "checkmark.circle.fill" : "checkmark.circle")
+                        .font(.system(size: 30))
+                        .foregroundStyle(canConfirm ? Color.white : Color.white.opacity(0.3))
+                }
+                .buttonStyle(.plain)
+                .disabled(!canConfirm)
+                .accessibilityLabel(isCurrentSetLogged ? "Update set \(currentSet)" : "Confirm set \(currentSet)")
+            }
+
+            // The decimal pad cannot type "BW", so an empty weight offers it explicitly —
+            // same contract as the inline logger, including seeding the target reps so a
+            // bodyweight set is never one disabled checkmark away from a dead end.
+            if weightBinding.wrappedValue.trimmingCharacters(in: .whitespaces).isEmpty {
+                Button {
+                    draftWeight[currentSet] = "BW"
+                    if repsBinding.wrappedValue.trimmingCharacters(in: .whitespaces).isEmpty,
+                       let target = targetRepsPlaceholder ?? suggestedReps {
+                        draftReps[currentSet] = "\(target)"
+                    }
+                } label: {
+                    Label("Bodyweight \u{2014} no external load", systemImage: "figure.core.training")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.white.opacity(0.8))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .contain)
+    }
+
+    private func stepButton(_ systemName: String, enabled: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.footnote.bold())
+                .foregroundStyle(enabled ? Color.white.opacity(0.85) : Color.white.opacity(0.22))
+                .frame(width: 30, height: 30)
+                .background(Color.white.opacity(enabled ? 0.12 : 0.05))
+                .clipShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!enabled)
+        .accessibilityLabel(systemName == "chevron.left" ? "Previous set" : "Next set")
+    }
+
+    private func entryField(text: Binding<String>, placeholder: String, key: FieldKey, wholeNumbers: Bool, width: CGFloat) -> some View {
+        TextField("", text: text, prompt: Text(placeholder).foregroundStyle(Color.white.opacity(0.35)))
+            .keyboardType(wholeNumbers ? .numberPad : .decimalPad)
+            .focused($focusedField, equals: key)
+            .font(.system(size: 20, weight: .semibold, design: .rounded))
+            .foregroundStyle(.white)
+            .tint(.white)
+            .multilineTextAlignment(.center)
+            .frame(width: width)
+            .padding(.vertical, 9)
+            .background(Color.white.opacity(0.14))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+    }
+
+    private func step(_ delta: Int) {
+        focusedField = nil
+        currentSet = min(max(currentSet + delta, 1), totalSets)
+    }
+
+    private func confirmCurrentSet() {
+        guard let weight = parsedWeight, let reps = parsedReps else { return }
+        let confirmed = currentSet
+        focusedField = nil
+        TFHaptics.impact(.light)
+        onLogSet(confirmed, weight, reps, parsedRIR)
+
+        // The set that fills the prescription finishes the exercise, and the card owning this
+        // cover collapses itself the instant that happens (`autoCompleteAfterFinalSet`) —
+        // taking the presenter, and therefore this screen, with it. Leaving under our own
+        // power turns a view yanked out mid-animation into an ordinary dismissal.
+        let remaining = Set(1...totalSets).subtracting(Set(loggedSets.map(\.setNumber)).union([confirmed]))
+        if remaining.isEmpty {
+            onClose()
+            return
+        }
+
+        // `loggedSets` has not refreshed yet at this instant, so the set just written is
+        // added by hand when choosing where to land next.
+        let next = firstUnloggedSet(alsoLogged: [confirmed])
+        guard next != confirmed else { return }
+        currentSet = next
+        // Drop any stale draft so the new set falls back to prefill from real history.
+        draftWeight[next] = nil
+        draftReps[next] = nil
+        draftRIR[next] = nil
+    }
+
+    // MARK: - Set bookkeeping
+
+    /// Mirrors `InlineSetLogger.programmedCount`: a set logged beyond the prescription
+    /// raises the bar rather than becoming unreachable from this panel.
+    private var totalSets: Int {
+        max(programmedSets, loggedSets.map(\.setNumber).max() ?? 0, 1)
+    }
+
+    private func loggedSet(_ n: Int) -> SetLogEntry? {
+        loggedSets.first { $0.setNumber == n }
+    }
+
+    private var isCurrentSetLogged: Bool { loggedSet(currentSet) != nil }
+
+    private func firstUnloggedSet(alsoLogged extra: Set<Int> = []) -> Int {
+        let done = Set(loggedSets.map(\.setNumber)).union(extra)
+        for n in 1...totalSets where !done.contains(n) { return n }
+        return totalSets
+    }
+
+    // MARK: - Drafts & parsing (same rules as the inline logger)
+
+    private var repsPlaceholder: String {
+        targetRepsPlaceholder.map(String.init) ?? "reps"
+    }
+
+    private func defaultWeightText(_ n: Int) -> String {
+        if let logged = loggedSet(n) {
+            return WorkoutProgressionEngine.isBodyweightEquivalent(logged.weightLbs) ? "BW" : formatWeight(logged.weightLbs)
+        }
+        // nil = no history at all; leave it empty rather than inventing a load.
+        guard let w = loggedSets.last?.weightLbs ?? suggestedWeight else { return "" }
+        return WorkoutProgressionEngine.isBodyweightEquivalent(w) ? "BW" : formatWeight(w)
+    }
+
+    private func defaultRepsText(_ n: Int) -> String {
+        if let logged = loggedSet(n) { return "\(logged.repsCompleted)" }
+        if let r = loggedSets.last?.repsCompleted ?? suggestedReps, r > 0 { return "\(r)" }
+        return ""
+    }
+
+    private func defaultRIRText(_ n: Int) -> String {
+        guard let rir = loggedSet(n)?.rir else { return "" }
+        return rir.rounded() == rir ? String(Int(rir)) : String(format: "%.1f", rir)
+    }
+
+    private var weightBinding: Binding<String> {
+        let n = currentSet
+        return Binding(get: { draftWeight[n] ?? defaultWeightText(n) }, set: { draftWeight[n] = $0 })
+    }
+
+    private var repsBinding: Binding<String> {
+        let n = currentSet
+        return Binding(get: { draftReps[n] ?? defaultRepsText(n) }, set: { draftReps[n] = $0 })
+    }
+
+    private var rirBinding: Binding<String> {
+        let n = currentSet
+        return Binding(get: { draftRIR[n] ?? defaultRIRText(n) }, set: { draftRIR[n] = $0 })
+    }
+
+    /// "BW" is the only way to log a 0 load; a typed number must be positive.
+    private var parsedWeight: Double? {
+        let t = weightBinding.wrappedValue.trimmingCharacters(in: .whitespaces)
+        if t.caseInsensitiveCompare("BW") == .orderedSame { return 0 }
+        guard let v = Double(t.replacingOccurrences(of: ",", with: ".")), v > 0 else { return nil }
+        return v
+    }
+
+    private var parsedReps: Int? {
+        let t = repsBinding.wrappedValue.trimmingCharacters(in: .whitespaces)
+        guard let v = Int(t), v > 0 else { return nil }
+        return v
+    }
+
+    private var parsedRIR: Double? {
+        let t = rirBinding.wrappedValue
+            .trimmingCharacters(in: .whitespaces)
+            .replacingOccurrences(of: ",", with: ".")
+        guard let v = Double(t), (0...6).contains(v) else { return nil }
+        return v
+    }
+
+    private var canConfirm: Bool {
+        parsedWeight != nil && parsedReps != nil
     }
 }
 
