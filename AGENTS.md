@@ -44,9 +44,9 @@
 
 ## Minimal Working Rules
 - Work from this repo, not the stale copies.
-- Use the shared authenticated GitHub route in `C:\Dev\_Workflow\GITHUB_SYNC_RUNBOOK.md` for every fetch, pull, push, and remote verification. Codex's ordinary terminal may use local Git inspection and commits, but must not contact GitHub.
-- Prefer GitHub Desktop. If its Windows accessibility/control layer is unavailable, use an already authenticated Claude Code desktop session from this verified repository root as the authorized alternative; it may run the exact `git fetch --prune`, `git pull --ff-only`, and `git push origin main` commands. Do not treat a GitHub Desktop UI-capture failure as a reason to leave a completed commit unpublished.
-- Before either authenticated route, verify `C:\Dev\Transform_clean`, `main`, the `origin` URL, and a clean/intentional working tree. If the tree is clean, refresh it with fetch then fast-forward-only pull before normal edits. Never use Codex's headless shell as a network fallback.
+- Use the shared authenticated GitHub route in `C:\Dev\_Workflow\GITHUB_SYNC_RUNBOOK.md` for every fetch, pull, push, and remote verification. Codex is authorized to run these network Git commands directly from its ordinary terminal, the same as an authenticated Claude Code desktop session.
+- GitHub Desktop remains available as an alternative. Whichever route is used, it may run the exact `git fetch --prune`, `git pull --ff-only`, and `git push origin main` commands. Do not treat a GitHub Desktop UI-capture failure as a reason to leave a completed commit unpublished.
+- Before running network Git, verify `C:\Dev\Transform_clean`, `main`, the `origin` URL, and a clean/intentional working tree. If the tree is clean, refresh it with fetch then fast-forward-only pull before normal edits. Never force-push, and never overwrite a non-fast-forward remote without reconciling first.
 - Push completed repo changes unless the user says not to.
 - Do not leave completed repo changes local-only at handoff time.
 - If only part of the work is complete, either commit and push the finished subset or explicitly tell the user what is still intentionally local and why.
