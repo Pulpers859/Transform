@@ -1249,41 +1249,17 @@ struct ExerciseCard: View {
                     )
                 }
 
-                // Ordered strongest signal first. An implausible load is decidable without
-                // any history, so it must not be shadowed by the two checks that need some.
-                //
-                // The consequence differs by case and the copy must not overstate it. With
-                // 3+ sets the mis-log is ALSO an anomaly, so it is already excluded from the
-                // working load and does NOT become the best — only a set that survived as
-                // `.working` is actually driving progression. Prefer that one when it exists
-                // so the sentence and the set it points at agree.
-                if let implausible = progressionAnalysis.implausibleSets.first(where: { $0.role == .working })
-                    ?? progressionAnalysis.implausibleSets.first {
-                    SetAnomalyNotice(
-                        text: implausible.role == .working
-                            ? "Check Set \(implausible.setNumber): \(formatLoad(implausible.weightLbs)) looks like a typing slip. Fix it — left as-is it becomes your best and your next target."
-                            : "Check Set \(implausible.setNumber): \(formatLoad(implausible.weightLbs)) looks like a typing slip. It's already being left out of your progression — fix it so your log reads right."
-                    )
-                } else if let anomaly = progressionAnalysis.anomalies.first {
-                    let reference = progressionAnalysis.workingWeight ?? anomaly.weightLbs
-                    SetAnomalyNotice(
-                        text: "Check Set \(anomaly.setNumber): \(formatLoad(anomaly.weightLbs)) is well above your \(formatLoad(reference)) working sets. Confirm or fix the entry — it isn't used for progression."
-                    )
-                } else if let hist = historicalLoadAnomaly {
-                    SetAnomalyNotice(
-                        text: "Check Set \(hist.setNumber): \(formatLoad(hist.weight)) is a big jump from last session's \(formatLoad(hist.reference)). Confirm it — a mis-log here would set a false best and skew your next target."
-                    )
-                }
-
-                // How today's work departed from what was prescribed. Descriptive only — the
-                // progression bullet in the guidance tile above owns every statement about
-                // what to load next.
-                // Capped so a set-by-set list cannot bury the card.
-                ForEach(Array(summary.adherence.prefix(2).enumerated()), id: \.offset) { _, flag in
-                    SetAnomalyNotice(text: flag.noticeText)
+                // One tile for every warning about today's logging, not one tile each. A
+                // load-sanity check plus two adherence flags used to stack as three separate
+                // tinted boxes — three alarms for what is one conversation about the same
+                // session, and enough height to push the rest of the card off screen.
+                if !setNotices.isEmpty {
+                    SetAnomalyNotice(texts: setNotices)
                 }
             }
-            .padding(14)
+            .padding(.horizontal, 14)
+            .padding(.top, 6)
+            .padding(.bottom, 14)
 
             // Reads the resolved state, not the stored status. A lift ticked off with fewer
             // sets than prescribed carries no status at all, so the old condition left it
@@ -1360,6 +1336,49 @@ struct ExerciseCard: View {
         onFinalSetLogged()
     }
 
+    /// Every warning about today's logging, strongest signal first, for the single notice
+    /// tile on the card face.
+    ///
+    /// An implausible load is decidable without any history, so it leads — it must not be
+    /// shadowed by the two checks that need some. Only one load-sanity sentence is ever
+    /// emitted: the three cases below are the same complaint seen through progressively
+    /// weaker evidence, so saying all three would be saying it three times.
+    ///
+    /// The consequence differs by case and the copy must not overstate it. With 3+ sets the
+    /// mis-log is ALSO an anomaly, so it is already excluded from the working load and does
+    /// NOT become the best — only a set that survived as `.working` is actually driving
+    /// progression. Prefer that one when it exists so the sentence and the set it points at
+    /// agree.
+    private var setNotices: [String] {
+        var notices: [String] = []
+
+        if let implausible = progressionAnalysis.implausibleSets.first(where: { $0.role == .working })
+            ?? progressionAnalysis.implausibleSets.first {
+            notices.append(
+                implausible.role == .working
+                    ? "Check Set \(implausible.setNumber): \(formatLoad(implausible.weightLbs)) looks like a typing slip. Fix it — left as-is it becomes your best and your next target."
+                    : "Check Set \(implausible.setNumber): \(formatLoad(implausible.weightLbs)) looks like a typing slip. It's already being left out of your progression — fix it so your log reads right."
+            )
+        } else if let anomaly = progressionAnalysis.anomalies.first {
+            let reference = progressionAnalysis.workingWeight ?? anomaly.weightLbs
+            notices.append(
+                "Check Set \(anomaly.setNumber): \(formatLoad(anomaly.weightLbs)) is well above your \(formatLoad(reference)) working sets. Confirm or fix the entry — it isn't used for progression."
+            )
+        } else if let hist = historicalLoadAnomaly {
+            notices.append(
+                "Check Set \(hist.setNumber): \(formatLoad(hist.weight)) is a big jump from last session's \(formatLoad(hist.reference)). Confirm it — a mis-log here would set a false best and skew your next target."
+            )
+        }
+
+        // How today's work departed from what was prescribed. Descriptive only — the
+        // progression bullet in the guidance tile above owns every statement about what to
+        // load next. Still capped at two: grouping them removed the stacked boxes, not the
+        // risk of a set-by-set list burying the card.
+        notices.append(contentsOf: summary.adherence.prefix(2).map(\.noticeText))
+
+        return notices
+    }
+
     private var exerciseHeader: some View {
         HStack(spacing: 12) {
             Button {
@@ -1425,7 +1444,10 @@ struct ExerciseCard: View {
         }
         .padding(.horizontal, 14)
         .padding(.top, 14)
-        .padding(.bottom, 10)
+        // The name and the prescription pills are one unit — the pills say what to do with
+        // the movement named directly above them. 10pt here plus 14pt of body padding put
+        // 24pt between them, which read as two separate blocks.
+        .padding(.bottom, 2)
     }
 
     @ViewBuilder
@@ -1475,15 +1497,11 @@ struct ExerciseCard: View {
                 }
             }
 
-            // Coaching provenance lives here and nowhere else. A "fallback" badge on the card
-            // face would be an apology label — it makes the day uglier without making the
-            // coaching better. Behind the Details tap it is available to anyone who wants to
-            // audit where a cue came from, and invisible to everyone training.
-            if let source = exercise.coachingSource {
-                Text(source.detailLabel)
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-            }
+            // Coaching provenance is deliberately NOT shown here. "Written by AI Coach" told
+            // the lifter nothing they could act on mid-set, and its siblings ("Built by the
+            // training engine") read as an apology for the cue they were about to follow.
+            // `coachingSource` is still recorded on every exercise and still surfaced in the
+            // generator lab, where auditing where a cue came from is the actual job.
         }
     }
 
@@ -2280,7 +2298,11 @@ struct RestTimerFullscreen: View {
                 setEntryPanel
 
                 Text(timeText)
-                    .font(.system(size: isEditing ? 34 : 92, weight: .medium))
+                    // Rounded, not the default face: at 92pt the stock system digits read as
+                    // a stopwatch readout dropped onto the screen. `monospacedDigit` still
+                    // applies, so the clock keeps a fixed width and does not twitch as the
+                    // seconds roll over.
+                    .font(.system(size: isEditing ? 34 : 92, weight: .medium, design: .rounded))
                     .monospacedDigit()
                     .foregroundStyle(.white)
                     .minimumScaleFactor(0.6)
@@ -2349,45 +2371,48 @@ struct RestTimerFullscreen: View {
     // MARK: - Set entry
 
     private var setEntryPanel: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 10) {
+        VStack(spacing: 10) {
+            // Every other line on this screen is centred, so the set stepper is too. The
+            // "n/n logged" readout that used to sit at the trailing edge is gone: the card
+            // this cover was opened from already carries that count, and here it only
+            // competed for attention with the number actually being typed.
+            HStack(spacing: 2) {
                 stepButton("chevron.left", enabled: currentSet > 1) { step(-1) }
 
                 Text("Set \(currentSet)")
                     .font(.system(size: 18, weight: .semibold))
                     .foregroundStyle(.white)
                     .monospacedDigit()
+                    // Fixed width so reaching set 10 does not shove the two chevrons apart.
+                    .frame(minWidth: 62)
 
                 stepButton("chevron.right", enabled: currentSet < totalSets) { step(1) }
-
-                Spacer(minLength: 0)
-
-                Text("\(loggedSets.count)/\(totalSets) logged")
-                    .font(.footnote)
-                    .monospacedDigit()
-                    .foregroundStyle(.white.opacity(0.55))
             }
 
-            HStack(spacing: 8) {
-                entryField(text: weightBinding, placeholder: "lb", key: .weight, wholeNumbers: false, width: 76)
+            // Sized to survive the narrowest phone once the trailing Spacer went away:
+            // centred content has no slack to give back, so the fields and gaps are tighter
+            // than the leading-aligned row they replaced.
+            HStack(spacing: 6) {
+                entryField(text: weightBinding, placeholder: "lb", key: .weight, wholeNumbers: false, width: 72)
 
                 Text("\u{00D7}")
                     .font(.footnote)
                     .foregroundStyle(.white.opacity(0.45))
 
-                entryField(text: repsBinding, placeholder: repsPlaceholder, key: .reps, wholeNumbers: true, width: 62)
+                entryField(text: repsBinding, placeholder: repsPlaceholder, key: .reps, wholeNumbers: true, width: 58)
 
                 Text("reps")
                     .font(.footnote)
                     .foregroundStyle(.white.opacity(0.55))
-
-                Spacer(minLength: 4)
+                    // A fixed gap, not a Spacer: a Spacer in a centred row expands and
+                    // throws the whole group back out to the screen edges.
+                    .padding(.trailing, 8)
 
                 Text("RIR")
                     .font(.footnote.weight(.semibold))
                     .foregroundStyle(.white.opacity(0.55))
 
-                entryField(text: rirBinding, placeholder: "\u{2014}", key: .rir, wholeNumbers: false, width: 52)
+                entryField(text: rirBinding, placeholder: "\u{2014}", key: .rir, wholeNumbers: false, width: 48)
 
                 Button {
                     confirmCurrentSet()
@@ -2401,36 +2426,74 @@ struct RestTimerFullscreen: View {
                 .accessibilityLabel(isCurrentSetLogged ? "Update set \(currentSet)" : "Confirm set \(currentSet)")
             }
 
-            // The decimal pad cannot type "BW", so an empty weight offers it explicitly —
-            // same contract as the inline logger, including seeding the target reps so a
-            // bodyweight set is never one disabled checkmark away from a dead end.
-            if weightBinding.wrappedValue.trimmingCharacters(in: .whitespaces).isEmpty {
-                Button {
-                    draftWeight[currentSet] = "BW"
-                    if repsBinding.wrappedValue.trimmingCharacters(in: .whitespaces).isEmpty,
-                       let target = targetRepsPlaceholder ?? suggestedReps {
-                        draftReps[currentSet] = "\(target)"
-                    }
-                } label: {
-                    Label("Bodyweight \u{2014} no external load", systemImage: "figure.core.training")
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(.white.opacity(0.8))
-                }
-                .buttonStyle(.plain)
-            }
+            bodyweightToggle
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity)
         .accessibilityElement(children: .contain)
     }
 
+    /// Bodyweight is a choice you make, not a consolation prize for leaving the field blank.
+    ///
+    /// It used to appear only while the weight field was empty, which hid it in the two
+    /// states that matter most: the field PRE-FILLS from history, so a movement loaded last
+    /// session but done with no load today offered no way in at all, and a bodyweight set
+    /// restored from history showed nothing to confirm that is what it was. The decimal pad
+    /// cannot type "BW", so there was no fallback either.
+    ///
+    /// So it is always on screen and reads its own state: filled means this set is logging as
+    /// bodyweight, tapping again empties the field so a number can be typed instead.
+    private var bodyweightToggle: some View {
+        Button {
+            toggleBodyweight()
+        } label: {
+            Label("Bodyweight", systemImage: "figure.core.training")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(isBodyweightSelected ? accent : Color.white.opacity(0.75))
+                .padding(.horizontal, 16)
+                .padding(.vertical, 9)
+                .background(isBodyweightSelected ? Color.white : Color.white.opacity(0.12))
+                .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Bodyweight, no external load")
+        .accessibilityHint(isBodyweightSelected ? "Clears the weight so a load can be typed" : "Logs this set with no external load")
+    }
+
+    private var isBodyweightSelected: Bool {
+        weightBinding.wrappedValue
+            .trimmingCharacters(in: .whitespaces)
+            .caseInsensitiveCompare("BW") == .orderedSame
+    }
+
+    private func toggleBodyweight() {
+        focusedField = nil
+        TFHaptics.impact(.light)
+        guard !isBodyweightSelected else {
+            // Empty string, NOT nil: nil falls back to the history prefill, which is what
+            // put "BW" there in the first place, so clearing would appear to do nothing.
+            draftWeight[currentSet] = ""
+            return
+        }
+        draftWeight[currentSet] = "BW"
+        // A bodyweight movement usually has no load history to prefill reps from, so seed
+        // the programmed target — otherwise the set dead-ends on a disabled checkmark.
+        if repsBinding.wrappedValue.trimmingCharacters(in: .whitespaces).isEmpty,
+           let target = targetRepsPlaceholder ?? suggestedReps {
+            draftReps[currentSet] = "\(target)"
+        }
+    }
+
+    /// Bare chevrons. The filled circles behind them read as two more controls parked next
+    /// to the set number instead of part of it. Losing the circle loses the only thing that
+    /// showed how big the target was, so the target is stated outright — and it is now the
+    /// full 44pt minimum rather than the 30pt the artwork used to imply.
     private func stepButton(_ systemName: String, enabled: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: systemName)
-                .font(.footnote.bold())
-                .foregroundStyle(enabled ? Color.white.opacity(0.85) : Color.white.opacity(0.22))
-                .frame(width: 30, height: 30)
-                .background(Color.white.opacity(enabled ? 0.12 : 0.05))
-                .clipShape(Circle())
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(enabled ? Color.white.opacity(0.7) : Color.white.opacity(0.18))
+                .frame(width: TFTapTarget.minimum, height: TFTapTarget.minimum)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .disabled(!enabled)
@@ -3010,18 +3073,30 @@ struct ExerciseGuidanceCard: View {
     }
 }
 
+/// One warning tile carrying one or more sentences about today's logging.
+///
+/// Several warnings can be true of the same session at once. Each in its own tinted box read
+/// as a pile of separate alarms; one box with a rule between the lines reads as what it is —
+/// a short list of things to check before moving on.
 struct SetAnomalyNotice: View {
-    let text: String
+    let texts: [String]
 
     var body: some View {
         HStack(alignment: .top, spacing: 6) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.caption2)
                 .foregroundStyle(TFColor.warning)
-            Text(text)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(Array(texts.enumerated()), id: \.offset) { index, text in
+                    if index > 0 {
+                        Divider().opacity(0.5)
+                    }
+                    Text(text)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
@@ -3550,9 +3625,14 @@ struct InlineSetLogger: View {
                 .disabled(!canLog(n))
                 .accessibilityLabel("Log set \(n)")
             }
-            // The decimal keyboard can't type "BW", so an empty weight field offers
-            // it explicitly. The row disappears once a load (or BW) is entered.
-            if weightBinding(n).wrappedValue.trimmingCharacters(in: .whitespaces).isEmpty {
+            // The decimal keyboard can't type "BW", so the option is offered explicitly. It
+            // shows while the weight field is empty OR while this row is the one being
+            // edited — that second case matters because the field PRE-FILLS from history, so
+            // a movement loaded last session but done with no load today would otherwise
+            // have no way in at all. It stands down once the row already reads "BW", and
+            // never appears on rows sitting idle with a prefilled load.
+            if !isBodyweightText(weightBinding(n).wrappedValue),
+               weightBinding(n).wrappedValue.trimmingCharacters(in: .whitespaces).isEmpty || focusedField == .weight(n) {
                 Button {
                     draftWeight[n] = "BW"
                     // A bodyweight movement progresses on reps and usually has no
@@ -3579,6 +3659,10 @@ struct InlineSetLogger: View {
         .padding(.vertical, 6)
         .background(Color(.systemBackground).opacity(0.55))
         .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func isBodyweightText(_ text: String) -> Bool {
+        text.trimmingCharacters(in: .whitespaces).caseInsensitiveCompare("BW") == .orderedSame
     }
 
     private func setLabel(_ n: Int) -> some View {
