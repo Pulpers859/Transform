@@ -26,6 +26,7 @@ This repository is configured by `.swift-automation.json` using schema version 1
 
 - Swift package: `swift test --enable-xctest --parallel`
 - Xcode: `xcodebuild -project Transform.xcodeproj -target Transform build`
+- Windows syntax check: `swiftc -parse <edited-file.swift>` (not a substitute for Xcode or physical-device validation)
 - Deterministic prerequisite: `swift test --enable-xctest --filter TransformGeneratorCoreTests.GeneratorTroubleshootingTests/testFiveMaintenanceErrorFixtureStaysResolved`
 - workout-generation: `swift test --enable-xctest --filter TransformGeneratorCoreTests.GeneratorTroubleshootingTests/testLiveWeekOneStructuredContract`
 - nutrition-generation: `swift test --enable-xctest --filter TransformGeneratorCoreTests.NutritionGeneratorStressTests/testLiveNutritionWeekOneStructuredContract`
