@@ -53,6 +53,9 @@ struct WorkoutPerformanceLogSnapshot: Equatable {
     /// produces the sets — decoding every log a second time to read it would reintroduce
     /// the per-render cost `performanceSnapshotsByKey` exists to avoid.
     var prescribedReps: String = ""
+    /// Set count the session was prescribed; 0 when it predates the recording. Rides along for
+    /// the same reason as `prescribedReps` — one decode pass, not two.
+    var prescribedSets: Int = 0
 }
 
 enum WorkoutExerciseEffortSignal: Equatable {
@@ -262,11 +265,32 @@ enum WorkoutProgressionEngine {
     static func reducedLoad(from weight: Double, exerciseName: String) -> Double {
         guard !isBodyweightEquivalent(weight) else { return 0 }
         let isDumbbell = isDumbbellLift(exerciseName)
-        let coarseIncrements = isDumbbell || isStackLift(exerciseName)
-        let step: Double = coarseIncrements ? 5.0 : 2.5
+        let step = incrementLbs(forExerciseName: exerciseName)
         let rawDrop = max(weight * 0.05, step)
         let cappedDrop = min(rawDrop, isDumbbell ? 15.0 : 10.0)
-        return max(step, ((weight - cappedDrop) / step).rounded() * step)
+        // DOWN, never nearest. Rounding a reduce-load cue up would hand back part of the drop
+        // the lifter is being told to take, on the one verdict that fires because the current
+        // load is already too heavy.
+        return max(step, ((weight - cappedDrop) / step).rounded(.down) * step)
+    }
+
+    /// The smallest load step this exercise's equipment can actually make.
+    ///
+    /// ONE definition, used by every load the app recommends — up, down, or translated across a
+    /// prescription change. Three copies of this rule would be three chances to recommend a
+    /// weight that cannot be assembled.
+    ///
+    /// Selectorised stacks and barbells are 2.5 lb: the owner has 2.5 lb add-ons, and the old
+    /// flat 5 lb assumption was a 10% jump on a 50 lb isolation lift — big enough to knock a
+    /// lifter out of a 15-20 rep range in one step, which is exactly what happened on the cable
+    /// face pull. Fixed dumbbells stay 5 lb because add-on plates do not apply to them.
+    ///
+    /// `override` is a per-exercise correction for equipment that genuinely cannot do 2.5 (a
+    /// machine with welded 10 lb plates); ignored when zero or negative so "not recorded" can
+    /// never be read as "no increment".
+    static func incrementLbs(forExerciseName name: String, override: Double = 0) -> Double {
+        if override > 0 { return override }
+        return isDumbbellLift(name) ? 5.0 : 2.5
     }
 
     static func nextLoad(from weight: Double, exerciseName: String) -> Double {
@@ -274,8 +298,7 @@ enum WorkoutProgressionEngine {
         // small increment, not percentage math off a meaningless base.
         guard !isBodyweightEquivalent(weight) else { return 2.5 }
         let isDumbbell = isDumbbellLift(exerciseName)
-        let coarseIncrements = isDumbbell || isStackLift(exerciseName)
-        let step: Double = coarseIncrements ? 5.0 : 2.5
+        let step = incrementLbs(forExerciseName: exerciseName)
         let rawJump = max(weight * 0.025, step)
         let cappedJump = min(rawJump, isDumbbell ? 15.0 : 10.0)
         return ((weight + cappedJump) / step).rounded() * step
@@ -288,13 +311,6 @@ enum WorkoutProgressionEngine {
         return tokens.contains("db")
     }
 
-    private static func isStackLift(_ name: String) -> Bool {
-        let lowered = name.lowercased()
-        if lowered.contains("pressdown") || lowered.contains("pushdown")
-            || lowered.contains("pulldown") || lowered.contains("pec deck") {
-            return true
-        }
-        let tokens = lowered.split { !$0.isLetter }
-        return tokens.contains("cable") || tokens.contains("machine")
-    }
+    // `isStackLift` was removed with the coarse-increment rule it existed to serve: stacks and
+    // barbells now share the same 2.5 lb step, so nothing needed to tell them apart any more.
 }

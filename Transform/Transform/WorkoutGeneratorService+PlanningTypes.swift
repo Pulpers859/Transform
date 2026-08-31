@@ -290,6 +290,10 @@ extension ClaudeService {
         let exerciseName: String
         let kind: ProgressionVerdictKind
         let weightLbs: Double
+        /// The range this exercise was last actually TRAINED at, so the validator can see how
+        /// far a new prescription moved. Rides on the verdict because verdicts already reach
+        /// every validation path; a parallel argument would be a second thing to forget to pass.
+        var previousRepRange: RepRange?
     }
 
     struct ExerciseHistoryContext {

@@ -190,11 +190,27 @@ final class PrescriptionAndStallTests: XCTestCase {
         XCTAssertEqual(WorkoutProgressionEngine.reducedLoad(from: 55, exerciseName: "Cable Face Pull"), 50, accuracy: 0.001)
     }
 
-    func testTheDropIsTheExactInverseOfTheStepThatCausedIt() {
-        let up = WorkoutProgressionEngine.nextLoad(from: 50, exerciseName: "Cable Face Pull")
-        XCTAssertEqual(up, 55, accuracy: 0.001)
-        XCTAssertEqual(WorkoutProgressionEngine.reducedLoad(from: up, exerciseName: "Cable Face Pull"), 50, accuracy: 0.001,
-                       "A stalled step must land back where it came from, not somewhere new")
+    /// Up and down are deliberately NOT exact inverses: both round down, so a stalled step
+    /// lands at or below where it started rather than handing back part of the drop.
+    func testAStalledStepNeverLandsAboveWhereItStarted() {
+        let start = 50.0
+        let up = WorkoutProgressionEngine.nextLoad(from: start, exerciseName: "Cable Face Pull")
+        XCTAssertEqual(up, 52.5, accuracy: 0.001, "2.5 lb stack step, not the old 5 lb jump")
+        let back = WorkoutProgressionEngine.reducedLoad(from: up, exerciseName: "Cable Face Pull")
+        XCTAssertLessThan(back, up)
+        XCTAssertLessThanOrEqual(back, start,
+                                 "Reducing after a failed step must not leave the lifter above the load that worked")
+    }
+
+    func testStacksAndBarbellsUseTheOwnersSmallestRealStep() {
+        XCTAssertEqual(WorkoutProgressionEngine.incrementLbs(forExerciseName: "Cable Face Pull"), 2.5)
+        XCTAssertEqual(WorkoutProgressionEngine.incrementLbs(forExerciseName: "Barbell Row"), 2.5)
+        XCTAssertEqual(WorkoutProgressionEngine.incrementLbs(forExerciseName: "Dumbbell Curl"), 5.0,
+                       "Add-on plates do not apply to fixed dumbbells")
+        XCTAssertEqual(WorkoutProgressionEngine.incrementLbs(forExerciseName: "Cable Face Pull", override: 10), 10,
+                       "A machine with welded plates can be corrected per exercise")
+        XCTAssertEqual(WorkoutProgressionEngine.incrementLbs(forExerciseName: "Cable Face Pull", override: 0), 2.5,
+                       "An unrecorded override must never read as a zero-pound step")
     }
 
     func testAReducedLoadIsNeverZeroOrNegative() {

@@ -1292,6 +1292,9 @@ struct WorkoutView: View {
     struct ProgressionLookup {
         let snapshots: [WorkoutPerformanceLogSnapshot]
         let repRangesByKey: [String: RepRange]
+        /// Set count the graded session actually ran, so a load consequence is quoted for the
+        /// right amount of work. Resolved from the same session the rep range came from.
+        let prescribedSetsByKey: [String: Int]
     }
 
     func makeProgressionLookup(performanceLogs: [ExercisePerformanceLog]) -> ProgressionLookup {
@@ -1300,7 +1303,8 @@ struct WorkoutView: View {
                 canonicalExerciseKey: $0.canonicalExerciseKey,
                 loggedAt: $0.loggedAt,
                 setLogs: $0.decodedSetLogs,
-                prescribedReps: $0.prescribedReps
+                prescribedReps: $0.prescribedReps,
+                prescribedSets: $0.prescribedSets
             )
         }
 
@@ -1319,6 +1323,7 @@ struct WorkoutView: View {
         // session that recorded no prescription must fall through to the program scan
         // rather than let an OLDER session's range stand in for it — borrowing a range from
         // a session nobody is grading is the same error in a different direction.
+        var prescribedSetsByKey: [String: Int] = [:]
         var decidedFromLogs: Set<String> = []
         for snapshot in snapshots.sorted(by: { $0.loggedAt > $1.loggedAt }) {
             let key = snapshot.canonicalExerciseKey
@@ -1326,6 +1331,9 @@ struct WorkoutView: View {
             decidedFromLogs.insert(key)
             if let range = RepRange.parse(snapshot.prescribedReps) {
                 repRangesByKey[key] = range
+            }
+            if snapshot.prescribedSets > 0 {
+                prescribedSetsByKey[key] = snapshot.prescribedSets
             }
         }
 
@@ -1340,7 +1348,11 @@ struct WorkoutView: View {
             }
         }
 
-        return ProgressionLookup(snapshots: snapshots, repRangesByKey: repRangesByKey)
+        return ProgressionLookup(
+            snapshots: snapshots,
+            repRangesByKey: repRangesByKey,
+            prescribedSetsByKey: prescribedSetsByKey
+        )
     }
 
     func compactPerformanceHistory(
@@ -1363,8 +1375,65 @@ struct WorkoutView: View {
             if let verdict = progressionVerdict(for: entry, decision: decision, lookup: lookup) {
                 line += " — app verdict: \(verdict)"
             }
+            if let consequences = loadConsequenceLine(for: entry, lookup: lookup) {
+                line += "\n    \(consequences)"
+            }
             return line
         }.joined(separator: "\n")
+    }
+
+    /// What the working load BECOMES for each rep range the model might choose.
+    ///
+    /// This is the whole point of the load-translation work: the model programs reps and sets
+    /// but has never watched this lifter train, so it cannot know what a rep range costs in
+    /// weight. Left to guess it produced the failure this exists to stop — prescribing a jump
+    /// to 3x15-20 in the same week the engine said ADD LOAD, when the honest answer was less
+    /// weight, not more.
+    ///
+    /// Giving the model these numbers is not a restriction on its programming; it is the one
+    /// fact it structurally cannot derive. It chooses the prescription, then the app applies
+    /// the matching load automatically whether the model reads this line or not — so a model
+    /// that ignores it still cannot hurt the lifter. The line exists so the choice is INFORMED.
+    ///
+    /// Reserve is assumed to be 1 rep because the prescribed RIR of a past session is not yet
+    /// recorded. That assumption is stated here rather than hidden: it biases every estimate
+    /// slightly light, which is the safe direction, and it is the next thing worth storing.
+    func loadConsequenceLine(for entry: ExerciseWeightEntry, lookup: ProgressionLookup) -> String? {
+        let key = entry.canonicalExerciseKey
+        let logs = WorkoutProgressionEngine.latestUsableSetLogs(for: key, from: lookup.snapshots)
+        let analysis = WorkingSetAnalysis.analyze(logs)
+        // Freshest capacity, not the lowest set: the model needs what this lifter can do on set
+        // one, because that is what the translation converts. Feeding it a fatigued last set
+        // would understate the yardstick on every exercise.
+        guard let working = analysis.workingSets.max(by: { $0.reps < $1.reps }),
+              let referenceLoad = analysis.workingWeight, referenceLoad > 0
+        else { return nil }
+
+        let sets = max(1, lookup.prescribedSetsByKey[key] ?? analysis.workingSets.count)
+        let decay = WorkoutLoadTranslation.estimatedFatigueDecayPerSet(for: key, from: lookup.snapshots)
+        let increment = WorkoutProgressionEngine.incrementLbs(forExerciseName: entry.exerciseName)
+        let reference = WorkoutLoadTranslation.Reference(
+            loadLbs: referenceLoad,
+            repsAchieved: working.reps,
+            reserveReps: working.rir ?? 1,
+            hitPrescribedCeiling: lookup.repRangesByKey[key].map { working.reps >= $0.high } ?? false
+        )
+
+        let options: [(label: String, floor: Int)] = [("6-10", 6), ("10-14", 10), ("15-20", 15)]
+        let rendered: [String] = options.compactMap { option in
+            guard let outcome = WorkoutLoadTranslation.translate(
+                reference: reference,
+                target: .init(sets: sets, repFloor: option.floor, targetRIR: 1),
+                fatigueDecayPerSet: decay,
+                incrementLbs: increment
+            ) else { return nil }
+            return "\(option.label) reps -> \(formatWeight(outcome.recommendedLoadLbs)) lb"
+        }
+        guard !rendered.isEmpty else { return nil }
+
+        return "at \(sets) set\(sets == 1 ? "" : "s") the app will set the load to: "
+            + rendered.joined(separator: " | ")
+            + " (more reps or more sets = less weight; the app applies this automatically)"
     }
 
     /// Structured verdicts for the validator's cue-vs-history rule — the enforcement half
@@ -1381,7 +1450,8 @@ struct WorkoutView: View {
                 canonicalKey: entry.canonicalExerciseKey,
                 exerciseName: entry.exerciseName,
                 kind: decision.kind,
-                weightLbs: decision.workingWeight
+                weightLbs: decision.workingWeight,
+                previousRepRange: lookup.repRangesByKey[entry.canonicalExerciseKey]
             )
         }
     }

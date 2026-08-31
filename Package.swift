@@ -107,6 +107,10 @@ let package = Package(
                 // coverage instead of shipping correct-by-inspection.
                 "SessionLifecycle.swift",
                 "WorkoutProgressionEngine.swift",
+                // Cross-prescription load translation. Here because it decides what the lifter
+                // is told to pick up when the rep range or set count CHANGES — arithmetic that
+                // is invisible to inspection and was previously nobody's job at all.
+                "WorkoutLoadTranslation.swift",
                 "WorkoutEffortGovernance.swift",
 
                 // Deterministic workout generator (the menu-locked planning core).

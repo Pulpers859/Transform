@@ -768,7 +768,8 @@ struct WorkoutDayDetailView: View {
                     canonicalExerciseKey: $0.canonicalExerciseKey,
                     loggedAt: $0.loggedAt,
                     setLogs: $0.decodedSetLogs,
-                    prescribedReps: $0.prescribedReps
+                    prescribedReps: $0.prescribedReps,
+                    prescribedSets: $0.prescribedSets
                 )
             },
             by: \.canonicalExerciseKey

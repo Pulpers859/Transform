@@ -1,7 +1,10 @@
 import Foundation
 
 extension ClaudeService {
-    enum ValidationIssueDisposition {
+    /// Equatable so a rule's TIER can be asserted directly. A guardrail that silently drifts
+    /// from a free warning into a paid correction pass is a money bug, and the only way to pin
+    /// that is to compare the disposition itself.
+    enum ValidationIssueDisposition: Equatable {
         case acceptableWarning
         case correctionPass
         case hardFailure
@@ -404,6 +407,7 @@ extension ClaudeService {
         issues.append(contentsOf: validateDaySet(days, dayStart: 1, dayEnd: 7))
         issues.append(contentsOf: validateBlueprint(days: days, blueprint: blueprint, dayStart: 1))
         issues.append(contentsOf: validateCoachingCueConsistency(days: days, verdicts: progressionVerdicts))
+        issues.append(contentsOf: validateRepRangeTransitions(days: days, verdicts: progressionVerdicts))
         issues.append(contentsOf: validateBackPatternBalance(days: days))
         if let expectedExerciseMenus {
             issues.append(contentsOf: validateExerciseMenuAdherence(
@@ -443,6 +447,7 @@ extension ClaudeService {
         issues.append(contentsOf: validateDaySet(days, dayStart: dayStart, dayEnd: dayEnd))
         issues.append(contentsOf: validateBlueprint(days: days, blueprint: blueprint, dayStart: dayStart))
         issues.append(contentsOf: validateCoachingCueConsistency(days: days, verdicts: progressionVerdicts))
+        issues.append(contentsOf: validateRepRangeTransitions(days: days, verdicts: progressionVerdicts))
         issues.append(contentsOf: validateBackPatternBalance(days: days))
         if let expectedExerciseMenus {
             issues.append(contentsOf: validateExerciseMenuAdherence(
@@ -826,6 +831,46 @@ extension ClaudeService {
         return [
             "The week trains the back with no horizontal pull at all — every back movement pulls down from overhead. Vertical pulling does not load the rhomboids and mid-traps in their shortened position, so this needs a rowing movement, not another pulldown variation."
         ]
+    }
+
+    // MARK: - Rep-Range Transitions
+
+    /// Flags a rep prescription that leapt further in one week than the load can follow.
+    ///
+    /// The load translation absorbs a range change correctly whatever size it is, so this rule
+    /// protects TRAINING quality, not correctness: moving a lift from 6-8 straight to 15-20
+    /// means a load drop of roughly a third, which is a different exercise stimulus rather than
+    /// a progression. The lifter should step through the intermediate range instead.
+    ///
+    /// Deliberately left unclassified in `validationDisposition`, so on a locked-menu week it
+    /// settles at `.acceptableWarning`: it reaches the owner and the Generator Lab but never
+    /// discards a paid candidate or buys a correction pass. A guardrail that quietly spends
+    /// money to enforce a preference is worse than one that reports.
+    func validateRepRangeTransitions(
+        days: [WorkoutDayResponse],
+        verdicts: [ExerciseProgressionVerdict]
+    ) -> [String] {
+        guard !verdicts.isEmpty else { return [] }
+        let byKey = Dictionary(verdicts.map { ($0.canonicalKey, $0) }, uniquingKeysWith: { first, _ in first })
+        var issues: [String] = []
+
+        for day in days where !day.isRestDay {
+            for exercise in day.exercises {
+                let key = ExerciseWeightEntry.canonicalLookupKey(exercise.exerciseName)
+                guard let previous = byKey[key]?.previousRepRange,
+                      let next = RepRange.parse(exercise.reps)
+                else { continue }
+                let jump = WorkoutLoadTranslation.bandJump(from: previous, to: next)
+                guard jump > WorkoutLoadTranslation.maximumBandJumpPerWeek else { continue }
+                issues.append(
+                    "Day \(day.dayNumber) exercise \(exercise.exerciseName): rep prescription moved from "
+                    + "\(previous.low)-\(previous.high) to \(next.low)-\(next.high), which is \(jump) rep bands in one "
+                    + "week. The working load has to move with it, and a jump this size changes the stimulus rather "
+                    + "than progressing it. Step through an intermediate range instead."
+                )
+            }
+        }
+        return issues
     }
 
     // MARK: - Coaching Cue vs Logged History (enforcement half of 98349db)

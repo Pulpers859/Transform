@@ -176,7 +176,10 @@ final class GeneratorTroubleshootingTests: XCTestCase {
 
         XCTAssertEqual(complete.kind, .addLoad)
         XCTAssertEqual(incomplete.kind, .holdBelowRange)
-        XCTAssertEqual(WorkoutProgressionEngine.nextLoad(from: 70, exerciseName: "Cable Lateral Raise"), 75)
+        // 72.5, not 75: stacks moved from a flat 5 lb step to 2.5 lb once 2.5 lb add-ons were
+        // confirmed available. On a light isolation lift the old step was a ~10% jump, enough to
+        // knock the lifter out of the prescribed rep range in a single session.
+        XCTAssertEqual(WorkoutProgressionEngine.nextLoad(from: 70, exerciseName: "Cable Lateral Raise"), 72.5)
         XCTAssertEqual(WorkoutProgressionEngine.nextLoad(from: 100, exerciseName: "Barbell Row"), 102.5)
     }
 

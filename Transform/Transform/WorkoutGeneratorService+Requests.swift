@@ -305,16 +305,42 @@ extension ClaudeService {
         guard let history, !history.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return "" }
         return """
 
-        --- Logged performance (actual weights/reps from recent workouts — use for load cues) ---
+        --- Logged performance (actual weights/reps from recent workouts) ---
         \(history)
-        Use these actual loads when setting each exercise's rep prescription and `targetRIR` so
-        the written intent matches reality. Where a line carries an "app verdict", that is the
-        app's deterministic progression engine speaking from the actual log — set that
-        exercise's rep range and targetRIR to agree with it, and never prescribe a rep range
-        the logged reps already exceed at that load. Do NOT restate loads or write progression
-        instructions in exercise notes — the app renders its live progression suggestion next
-        to your note, and notes are execution-only. Do not change the output schema or add new
-        fields.
+
+        HOW LOAD WORKS HERE. You program reps, sets, tempo and targetRIR. You never write a
+        weight anywhere. The app computes each exercise's working load itself, from this
+        lifter's own logged capacity, and shows it on the exercise card. The indented "the app
+        will set the load to" line under an exercise is that calculation already done for you,
+        at the set count shown.
+
+        Read that line before choosing reps. Changing a rep range changes the load: more reps
+        or more sets means LESS weight, fewer reps means MORE. The app applies this
+        automatically, so whatever you prescribe will be loaded correctly whether or not you
+        account for it — but choose knowing what it costs. You are free to program the range
+        you judge best; you are not free to assume the weight stays the same when you move it.
+
+        Where a line carries an "app verdict", that is the deterministic progression engine
+        speaking from the actual log. Set that exercise's rep range and targetRIR to agree.
+
+        GUARD RAILS — limits, not preferences:
+        1. ONE BAND PER WEEK. Rep bands are 1-5, 6-10, 11-15, 16+. Move an exercise at most one
+           band from the range it was last trained at. 10-14 -> 15-20 is one band and is fine;
+           6-8 -> 15-20 is two bands and is not — step through 10-12 first.
+        2. CHANGE A RANGE ONLY FOR A PHASE REASON. A stable rep range is what makes double
+           progression work at all. Move it when this week's phase calls for it, never by
+           default and never for variety.
+        3. NEVER PICK A RANGE COSTING MORE THAN A THIRD OF THE LOAD. If the load line shows a
+           drop of more than roughly one third from the current working load, that jump is too
+           big for one week; take the intermediate range instead.
+        4. REPS AND targetRIR MUST AGREE. A range meant to be taken near failure needs a low
+           targetRIR; a range programmed with reserve needs a higher one.
+        5. NEVER prescribe a rep range the logged reps already exceed at that load.
+        6. NOTES ARE EXECUTION-ONLY. No loads, no "add weight", no "beat last week". The app
+           renders progression beside your note; a load instruction there contradicts the card
+           directly below it.
+
+        Do not change the output schema or add new fields.
         --- end logged performance ---
         """
     }
