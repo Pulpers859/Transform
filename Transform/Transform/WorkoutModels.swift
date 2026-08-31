@@ -733,9 +733,14 @@ struct WorkingSetAnalysis {
 
     var hasAnomaly: Bool { !anomalies.isEmpty }
 
-    /// Blend of Epley and Brzycki, matching `ExerciseProgressionView`. Brzycki is
-    /// unstable as reps approach its 37-rep asymptote, so it is only blended in its
-    /// reliable range and Epley alone is used for high-rep sets.
+    /// The app's ONE estimated-1RM implementation. Brzycki is unstable as reps approach its
+    /// 37-rep asymptote, so it is only blended in its reliable range and Epley alone is used
+    /// for high-rep sets.
+    ///
+    /// `ExerciseProgressionView` calls this instead of holding its own copy. It previously
+    /// had one that blended Brzycki to 15 reps, so the same set was reported as two different
+    /// estimates depending on the screen — while this comment asserted the two matched. Any
+    /// new caller must call in here rather than restate the formula.
     static func estimatedOneRepMax(weight: Double, reps: Int) -> Double {
         guard weight > 0, reps > 0 else { return 0 }
         let r = Double(reps)

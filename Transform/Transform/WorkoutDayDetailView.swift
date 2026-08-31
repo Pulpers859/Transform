@@ -2897,6 +2897,27 @@ struct ProgressionSuggestion {
         )
     }
 
+    /// "both sets finished under 15" vs "1 of 3 sets finished under 15".
+    ///
+    /// The distinction is the entire point of the sentence. One slipped set is an ordinary
+    /// session and the load is fine; every set under the floor means the load is wrong for
+    /// the prescribed range. The previous single phrasing ("a working set dropped to N")
+    /// described both cases identically, so the harder one read as the milder one.
+    ///
+    /// Only ever called on the per-set branch, where `holdBelowRange` guarantees at least
+    /// one miss; the zero case is defensive, not expected.
+    private static func belowFloorPhrase(missed: Int, of total: Int, floor: Int) -> String {
+        guard missed > 0, total > 0 else { return "a working set finished under \(floor)" }
+        if missed < total {
+            return "\(missed) of \(setsLabel(total)) finished under \(floor)"
+        }
+        switch total {
+        case 1: return "your working set finished under \(floor)"
+        case 2: return "both sets finished under \(floor)"
+        default: return "all \(total) sets finished under \(floor)"
+        }
+    }
+
     static func evaluate(
         analysis: WorkingSetAnalysis,
         summaryRepsCompleted: Int?,
@@ -2960,7 +2981,7 @@ struct ProgressionSuggestion {
             return ProgressionSuggestion(
                 icon: "arrow.down.circle.fill",
                 text: decision.usedPerSetEvidence
-                    ? "\(holdLabel) — a working set dropped to \(reps) (target \(repRange.low)-\(repRange.high)); even your sets out before adding"
+                    ? "\(holdLabel) — \(belowFloorPhrase(missed: decision.belowFloorSetCount, of: decision.workingSetCount, floor: repRange.low)) (lowest was \(reps), target \(repRange.low)-\(repRange.high)); build every set to \(repRange.low) before adding"
                     : "Stay \(atLoad), focus on form and full ROM",
                 color: TFColor.warning
             )

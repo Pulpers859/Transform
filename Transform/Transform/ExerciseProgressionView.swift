@@ -30,12 +30,24 @@ struct ExerciseProgressionView: View {
         }
     }
 
+    /// Calls the shared estimator rather than restating the formula.
+    ///
+    /// This view carried its own copy that blended Brzycki all the way to 15 reps, while
+    /// `WorkingSetAnalysis.estimatedOneRepMax` stops blending at 12 — so the same logged set
+    /// produced two different "estimated 1RM" numbers depending on which screen asked, and
+    /// the comment on the shared one claimed the two already matched.
+    ///
+    /// The `reps <= 15` cut-off went with it. It was silently DELETING every higher-rep
+    /// session instead of estimating it: a lifter whose accessory work lives at 15-20 reps
+    /// had nearly every point dropped, and a chart left holding one surviving point drew a
+    /// lone dot with no line through it. High-rep estimates are less exact — which the
+    /// caption now says — but they are the lifter's actual training, and discarding them
+    /// silently is worse than plotting them honestly.
     var estimatedOneRepMax: [ProgressionPoint] {
         chartPoints.compactMap { point in
-            guard let reps = point.repsCompleted, reps > 0, reps <= 15 else { return nil }
-            let brzycki = point.weightLbs * 36.0 / (37.0 - Double(reps))
-            let epley = point.weightLbs * (1.0 + Double(reps) / 30.0)
-            let e1rm = (brzycki + epley) / 2.0
+            guard let reps = point.repsCompleted, reps > 0 else { return nil }
+            let e1rm = WorkingSetAnalysis.estimatedOneRepMax(weight: point.weightLbs, reps: reps)
+            guard e1rm > 0 else { return nil }
             return ProgressionPoint(date: point.date, weightLbs: e1rm, repsCompleted: nil, setLogs: [])
         }
     }
@@ -67,7 +79,10 @@ struct ExerciseProgressionView: View {
                 header
                 if chartPoints.count >= 2 {
                     weightChart
-                    if !estimatedOneRepMax.isEmpty {
+                    // Same two-point rule the weight chart above uses. A single point draws
+                    // a dot with no line through it, which reads as a broken chart rather
+                    // than as "not enough data yet".
+                    if estimatedOneRepMax.count >= 2 {
                         e1rmChart
                     }
                 } else if chartPoints.count == 1 {
@@ -243,7 +258,7 @@ struct ExerciseProgressionView: View {
                     .foregroundStyle(TFColor.measurement)
                     .tracking(1.5)
                 Spacer()
-                Text("Epley/Brzycki blend")
+                Text("Estimate · less exact above 12 reps")
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
             }
