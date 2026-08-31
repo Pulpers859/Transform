@@ -27,6 +27,15 @@ struct WorkoutProgressionDecision: Equatable {
     let minimumWorkingReps: Int?
     let workingSetCount: Int
     let ceilingSetCount: Int
+    /// How many working sets finished BELOW the prescribed rep floor.
+    ///
+    /// The card used to describe any below-range session as "a working set dropped to N",
+    /// which reads as one set slipping among good ones. That sentence rendered unchanged for
+    /// a session where EVERY set missed the floor (55 lb for 14 and 12 against a 15-20
+    /// target), understating the miss to the one person who needed it stated plainly. The
+    /// count is the only thing that separates "one set slipped" from "nothing reached the
+    /// target", and those two sessions need different coaching.
+    let belowFloorSetCount: Int
     let usedPerSetEvidence: Bool
     let effortSignal: WorkoutExerciseEffortSignal
 }
@@ -67,6 +76,7 @@ enum WorkoutProgressionEngine {
             let reps = analysis.workingSets.map(\.reps)
             let minimumReps = reps.min()
             let ceilingCount = reps.filter { $0 >= repRange.high }.count
+            let belowFloorCount = reps.filter { $0 < repRange.low }.count
             let workingCount = reps.count
             let majority = max(1, Int(ceil(Double(workingCount) * 0.67)))
 
@@ -88,6 +98,7 @@ enum WorkoutProgressionEngine {
                 minimumWorkingReps: minimumReps,
                 workingSetCount: workingCount,
                 ceilingSetCount: ceilingCount,
+                belowFloorSetCount: belowFloorCount,
                 usedPerSetEvidence: true,
                 effortSignal: effortSignal
             )
@@ -113,6 +124,9 @@ enum WorkoutProgressionEngine {
             minimumWorkingReps: summaryReps,
             workingSetCount: 0,
             ceilingSetCount: summaryReps >= repRange.high ? 1 : 0,
+            // No per-set evidence means no analysed working sets to count, matching
+            // `workingSetCount: 0` above. The copy for this path never cites a count.
+            belowFloorSetCount: 0,
             usedPerSetEvidence: false,
             effortSignal: .insufficientEvidence
         )
