@@ -573,6 +573,15 @@ struct AddExerciseWeightSheet: View {
             existing.notes = trimmedNotes
             existing.muscleTarget = exercise.muscleTarget
             existing.setLogsJSON = ExercisePerformanceLog.encodeSetLogs(validSets)
+            // Backfill only, matching the inline logger: a session that already recorded
+            // its prescription keeps it, so resuming or correcting an older session never
+            // restamps it with today's programming.
+            if existing.recordedPrescribedSets == nil {
+                existing.prescribedSets = exercise.sets
+            }
+            if existing.prescribedReps.isEmpty {
+                existing.prescribedReps = exercise.reps
+            }
         } else {
             let performanceLog = ExercisePerformanceLog(
                 loggedAt: loggedAt,
@@ -582,6 +591,8 @@ struct AddExerciseWeightSheet: View {
                 notes: trimmedNotes,
                 muscleTarget: exercise.muscleTarget,
                 workoutDayNumber: exercise.day?.dayNumber ?? 0,
+                prescribedSets: exercise.sets,
+                prescribedReps: exercise.reps,
                 setLogs: validSets
             )
             modelContext.insert(performanceLog)

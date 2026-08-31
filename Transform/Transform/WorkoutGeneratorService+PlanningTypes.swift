@@ -275,6 +275,14 @@ extension ClaudeService {
         case addRepsInRange
         case holdBelowRange
         case holdForRecovery
+        /// The load itself is wrong for the prescribed range — not a session to grind out.
+        ///
+        /// Until this existed the engine's whole vocabulary was add / hold / add-reps, so a
+        /// lifter stuck under the rep floor was told to hold and build reps no matter how
+        /// many times holding had already failed. "Try the same thing again" was the only
+        /// sentence available, which is why a load that was simply too heavy could sit
+        /// unchallenged for weeks.
+        case reduceLoad
     }
 
     struct ExerciseProgressionVerdict {

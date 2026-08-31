@@ -431,6 +431,7 @@ struct WorkoutDayDetailView: View {
                     performanceHistory: historyByKey[
                         ExerciseWeightEntry.canonicalLookupKey(exercise.exerciseName)
                     ] ?? [],
+                    previousPrescription: previousPrescription(for: exercise),
                     isExpanded: expandedExerciseIDs.contains(exercise.persistentModelID),
                     onToggle: { toggleExercise(exercise) },
                     onToggleExpanded: { toggleExpanded(exercise) },
@@ -733,6 +734,17 @@ struct WorkoutDayDetailView: View {
         SetLoggingService.loggedSets(for: exercise, in: allPerformanceLogs)
     }
 
+    /// What the previous session recorded as its own prescription.
+    ///
+    /// Resolved through `SetLoggingService.previousLog`, the same call `latestSetLogs` goes
+    /// through, so the prescription and the sets it describes always come from one session.
+    func previousPrescription(for exercise: WorkoutExercise) -> RecordedPrescription {
+        guard let log = SetLoggingService.previousLog(for: exercise, in: allPerformanceLogs) else {
+            return .unrecorded
+        }
+        return RecordedPrescription(sets: log.recordedPrescribedSets, repRange: log.recordedRepRange)
+    }
+
     /// Performance history sliced by canonical exercise key, built ONCE per render.
     ///
     /// `ExercisePerformanceLog.decodedSetLogs` runs a full `JSONDecoder` pass on every access.
@@ -755,12 +767,25 @@ struct WorkoutDayDetailView: View {
                 WorkoutPerformanceLogSnapshot(
                     canonicalExerciseKey: $0.canonicalExerciseKey,
                     loggedAt: $0.loggedAt,
-                    setLogs: $0.decodedSetLogs
+                    setLogs: $0.decodedSetLogs,
+                    prescribedReps: $0.prescribedReps
                 )
             },
             by: \.canonicalExerciseKey
         )
     }
+}
+
+/// What a past session was PRESCRIBED, as that session recorded it.
+///
+/// Both fields are optional because sessions logged before the prescription was stored have
+/// no answer, and an absent prescription must never be read as "0 sets" or "no rep range" —
+/// a reader that treated 0 as real would call every legacy session unfinished.
+struct RecordedPrescription: Equatable {
+    let sets: Int?
+    let repRange: RepRange?
+
+    static let unrecorded = RecordedPrescription(sets: nil, repRange: nil)
 }
 
 // MARK: - Exercise Card
@@ -780,6 +805,13 @@ struct ExerciseCard: View {
     let sessionSetLogs: [SetLogEntry]
     /// All decoded performance sessions, used for the exercise-specific effort signal.
     let performanceHistory: [WorkoutPerformanceLogSnapshot]
+    /// What the PREVIOUS session was prescribed, from that session's own record.
+    ///
+    /// The card grades whichever session `progressionReferenceSets` selected. When that is
+    /// the previous one, grading it against `exercise.reps` scores old work by today's
+    /// programming — change a lift from 12-15 to 15-20 and last month's good 14-rep sets
+    /// retroactively become failures. This is that session's own answer.
+    let previousPrescription: RecordedPrescription
     /// Whether this card is open. Ownership lives in the parent so the default (only the
     /// current lift open) can reason across exercises; the card just renders the state.
     let isExpanded: Bool
@@ -839,6 +871,24 @@ struct ExerciseCard: View {
 
     var progressionAnalysis: WorkingSetAnalysis {
         WorkingSetAnalysis.analyze(progressionReferenceSets)
+    }
+
+    /// The prescription belonging to the session `progressionReferenceSets` chose.
+    ///
+    /// Today's sets are trained under today's card, so `exercise` is the right answer for
+    /// them. The previous session was trained under whatever the program said THEN, which is
+    /// the only fair thing to grade it by. Falls back to the current prescription when that
+    /// session predates the recording, which is exactly the old behaviour — never a refusal
+    /// to coach.
+    var gradedSessionPrescription: (repRange: RepRange, prescribedSets: Int?)? {
+        let gradingToday = !sessionSetLogs.isEmpty
+        let currentRange = RepRange.parse(exercise.reps)
+        if gradingToday {
+            guard let currentRange else { return nil }
+            return (currentRange, exercise.sets > 0 ? exercise.sets : nil)
+        }
+        guard let range = previousPrescription.repRange ?? currentRange else { return nil }
+        return (range, previousPrescription.sets)
     }
 
     /// Cross-session sanity check on the just-logged session. The intra-session anomaly
@@ -990,15 +1040,29 @@ struct ExerciseCard: View {
         // prescription. Coach to hold the lighter load regardless of last session's reps.
         if isDeloadContext { return .deloadGuidance }
         guard let log = latestWeightLog else { return nil }
-        guard let repRange = RepRange.parse(exercise.reps) else { return nil }
+        guard let graded = gradedSessionPrescription else { return nil }
         let suggestion = ProgressionSuggestion.evaluate(
             analysis: progressionAnalysis,
             summaryRepsCompleted: log.repsCompleted,
-            repRange: repRange,
+            repRange: graded.repRange,
             lastWeight: log.weightLbs,
             exerciseName: exercise.exerciseName,
             performanceHistory: performanceHistory
         )
+        // An unfinished session is not evidence that a load was easy. Before this, the
+        // engine saw only the sets that exist and read "one good set" as a completed
+        // prescription beaten — so stopping early was rewarded with heavier weight next
+        // time. Gated on load increases alone: a hold or a reduce cue is still the right
+        // answer mid-session, and only an increase can be *earned* by work not done.
+        //
+        // Silent when the prescription was never recorded. Comparing against today's set
+        // count instead would accuse a lifter who correctly finished 2 of 2 last week of
+        // quitting, purely because this week's card asks for 3.
+        if let suggestion, suggestion.increasesLoad,
+           let prescribed = graded.prescribedSets,
+           progressionReferenceSets.count < prescribed {
+            return .finishPrescribedSets(logged: progressionReferenceSets.count, prescribed: prescribed)
+        }
         // Safety net for already-generated workouts where the note still prescribes more
         // sets than the (trimmed) structured count: don't let the generic heuristic
         // greenlight a load increase the written prescription says to hold. Self-correcting
@@ -2887,6 +2951,19 @@ struct ProgressionSuggestion {
         )
     }
 
+    /// Shown when the graded session logged fewer sets than it was prescribed: the load was
+    /// never tested against the full prescription, so nothing about it has been earned yet.
+    ///
+    /// Distinct from `completePrescribedSets`, which resolves a disagreement between an AI
+    /// note and the structured set count. This one is a fact about work actually done.
+    static func finishPrescribedSets(logged: Int, prescribed: Int) -> ProgressionSuggestion {
+        ProgressionSuggestion(
+            icon: "hand.raised.fill",
+            text: "You logged \(logged) of \(setsLabel(prescribed)) — finish the prescription at this load before adding weight",
+            color: TFColor.warning
+        )
+    }
+
     /// Shown on deload days in place of a load-progression cue: the block is deliberately
     /// lighter, so the correct coaching is to hold back, not to add weight.
     static var deloadGuidance: ProgressionSuggestion {
@@ -2931,12 +3008,24 @@ struct ProgressionSuggestion {
             for: key,
             from: performanceHistory
         )
+        // Derived from `analysis` rather than from the decision, because the decision needs
+        // it: whether this session is a one-off miss or a stall is part of what the verdict
+        // IS, not a detail added afterwards.
+        let belowFloorStreak = analysis.workingWeight.map {
+            WorkoutProgressionEngine.belowFloorStreak(
+                for: key,
+                from: performanceHistory,
+                workingWeight: $0,
+                repFloor: repRange.low
+            )
+        } ?? 0
         guard let decision = WorkoutProgressionEngine.evaluate(
             analysis: analysis,
             summaryWeight: lastWeight,
             summaryReps: summaryRepsCompleted,
             repRange: repRange,
-            effortSignal: effortSignal
+            effortSignal: effortSignal,
+            belowFloorStreak: belowFloorStreak
         ) else { return nil }
 
         let weightText = formatWeight(decision.workingWeight)
@@ -2983,6 +3072,25 @@ struct ProgressionSuggestion {
                 text: decision.usedPerSetEvidence
                     ? "\(holdLabel) — \(belowFloorPhrase(missed: decision.belowFloorSetCount, of: decision.workingSetCount, floor: repRange.low)) (lowest was \(reps), target \(repRange.low)-\(repRange.high)); build every set to \(repRange.low) before adding"
                     : "Stay \(atLoad), focus on form and full ROM",
+                color: TFColor.warning
+            )
+        case .reduceLoad:
+            // A bodyweight movement has no load to take off, so the honest advice is to
+            // regress the movement. The app must not name a specific regression it cannot
+            // verify the lifter can do, so it says what it actually knows.
+            guard !isBodyweight else {
+                return ProgressionSuggestion(
+                    icon: "arrow.down.circle.fill",
+                    text: "Bodyweight has finished under \(repRange.low) reps \(decision.belowFloorStreak) sessions running — regress to an easier variation rather than repeating it",
+                    color: TFColor.warning
+                )
+            }
+            let easierText = formatWeight(
+                WorkoutProgressionEngine.reducedLoad(from: decision.workingWeight, exerciseName: exerciseName)
+            )
+            return ProgressionSuggestion(
+                icon: "arrow.down.circle.fill",
+                text: "Drop to \(easierText) lb — \(weightText) lb has finished under \(repRange.low) reps \(decision.belowFloorStreak) sessions running; holding it has not brought the reps back",
                 color: TFColor.warning
             )
         case .holdForRecovery:
@@ -3228,6 +3336,22 @@ enum SetLoggingService {
         in logs: [ExercisePerformanceLog],
         on date: Date = .now
     ) -> [SetLogEntry] {
+        (previousLog(for: exercise, in: logs, on: date)?.decodedSetLogs ?? [])
+            .sorted { $0.setNumber < $1.setNumber }
+    }
+
+    /// The session `previousSets` reads from, as the log itself.
+    ///
+    /// Split out so callers can also ask what that session was PRESCRIBED, which is the only
+    /// way to grade it against the range it actually ran under rather than today's. The
+    /// resolution is unchanged and deliberately shared — two copies of this cutoff logic
+    /// would be two chances for the sets and the prescription to come from different
+    /// sessions.
+    static func previousLog(
+        for exercise: WorkoutExercise,
+        in logs: [ExercisePerformanceLog],
+        on date: Date = .now
+    ) -> ExercisePerformanceLog? {
         let key = ExerciseWeightEntry.canonicalLookupKey(exercise.exerciseName)
         let current = sessionLog(for: exercise, among: logs, on: date)
         let cutoff = SessionLogResolution.previousSessionCutoff(
@@ -3235,7 +3359,7 @@ enum SetLoggingService {
             sessionDates: exercise.day?.sessionCalendarDates ?? [],
             viewingDate: date
         )
-        let prior = logs
+        return logs
             .filter {
                 $0.canonicalExerciseKey == key
                     && !$0.setLogsJSON.isEmpty
@@ -3247,7 +3371,6 @@ enum SetLoggingService {
                     && $0.loggedAt < cutoff
             }
             .max { $0.loggedAt < $1.loggedAt }
-        return (prior?.decodedSetLogs ?? []).sorted { $0.setNumber < $1.setNumber }
     }
 
     // MARK: Writes (fetch fresh, then persist)
@@ -3399,7 +3522,9 @@ enum SetLoggingService {
             weightLbs: 0,
             repsCompleted: nil,
             muscleTarget: exercise.muscleTarget,
-            workoutDayNumber: exercise.day?.dayNumber ?? 0
+            workoutDayNumber: exercise.day?.dayNumber ?? 0,
+            prescribedSets: exercise.sets,
+            prescribedReps: exercise.reps
         )
         modelContext.insert(log)
         return log
@@ -3456,6 +3581,16 @@ enum SetLoggingService {
         log.weightLbs = topWeight
         log.repsCompleted = topReps
         log.setLogsJSON = ExercisePerformanceLog.encodeSetLogs(sets)
+        // Backfill only. A session already carrying a prescription keeps it: this same
+        // funnel is how an OLD session gets corrected, and overwriting there would stamp
+        // today's programming onto work done under a different one — the exact rewriting
+        // of history this field exists to prevent.
+        if log.recordedPrescribedSets == nil {
+            log.prescribedSets = exercise.sets
+        }
+        if log.prescribedReps.isEmpty {
+            log.prescribedReps = exercise.reps
+        }
 
         let summary = summaryEntryOrCreate(for: exercise, weight: topWeight, reps: topReps, date: date, modelContext: modelContext)
         summary.applyLog(loggedAt: date, exerciseName: exercise.exerciseName, weightLbs: topWeight, repsCompleted: topReps, notes: summary.notes)

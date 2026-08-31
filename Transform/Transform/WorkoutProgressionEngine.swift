@@ -36,6 +36,10 @@ struct WorkoutProgressionDecision: Equatable {
     /// count is the only thing that separates "one set slipped" from "nothing reached the
     /// target", and those two sessions need different coaching.
     let belowFloorSetCount: Int
+    /// Consecutive recent sessions at this load that finished under the rep floor, including
+    /// this one. Carried so the cue can state how long the stall has run rather than
+    /// asserting a stall the lifter has no way to check.
+    let belowFloorStreak: Int
     let usedPerSetEvidence: Bool
     let effortSignal: WorkoutExerciseEffortSignal
 }
@@ -44,6 +48,11 @@ struct WorkoutPerformanceLogSnapshot: Equatable {
     let canonicalExerciseKey: String
     let loggedAt: Date
     let setLogs: [SetLogEntry]
+    /// The rep prescription this session ran under, empty when it predates the recording.
+    /// Carried on the snapshot so the range can be resolved from the SAME decode pass that
+    /// produces the sets — decoding every log a second time to read it would reintroduce
+    /// the per-render cost `performanceSnapshotsByKey` exists to avoid.
+    var prescribedReps: String = ""
 }
 
 enum WorkoutExerciseEffortSignal: Equatable {
@@ -70,7 +79,8 @@ enum WorkoutProgressionEngine {
         summaryWeight: Double?,
         summaryReps: Int?,
         repRange: RepRange,
-        effortSignal: WorkoutExerciseEffortSignal = .insufficientEvidence
+        effortSignal: WorkoutExerciseEffortSignal = .insufficientEvidence,
+        belowFloorStreak: Int = 0
     ) -> WorkoutProgressionDecision? {
         if let workingWeight = analysis.workingWeight, !analysis.workingSets.isEmpty {
             let reps = analysis.workingSets.map(\.reps)
@@ -88,9 +98,24 @@ enum WorkoutProgressionEngine {
             } else {
                 repKind = ceilingCount >= majority ? .addLoad : .addRepsInRange
             }
-            let kind = effortSignal == .protectRecovery && repKind != .holdBelowRange
-                ? ClaudeService.ProgressionVerdictKind.holdForRecovery
-                : repKind
+            // Holding is the right answer the FIRST time a session lands under the floor —
+            // one hard session proves nothing about the load. It stops being the right
+            // answer once holding has already been tried and the reps still did not come
+            // back: at that point repeating "hold and build reps" just prescribes the same
+            // failed session again. Two is the threshold because one is noise (a bad night,
+            // a rushed session) and waiting for three spends another week under load the
+            // lifter has already shown they cannot use.
+            //
+            // Recovery protection cannot outrank this. Both say "back off", but only this
+            // one names the load, and holding a load that is too heavy is not protection.
+            let kind: ClaudeService.ProgressionVerdictKind
+            if repKind == .holdBelowRange && belowFloorStreak >= 2 {
+                kind = .reduceLoad
+            } else if effortSignal == .protectRecovery && repKind != .holdBelowRange {
+                kind = .holdForRecovery
+            } else {
+                kind = repKind
+            }
 
             return WorkoutProgressionDecision(
                 kind: kind,
@@ -99,6 +124,7 @@ enum WorkoutProgressionEngine {
                 workingSetCount: workingCount,
                 ceilingSetCount: ceilingCount,
                 belowFloorSetCount: belowFloorCount,
+                belowFloorStreak: belowFloorStreak,
                 usedPerSetEvidence: true,
                 effortSignal: effortSignal
             )
@@ -127,6 +153,9 @@ enum WorkoutProgressionEngine {
             // No per-set evidence means no analysed working sets to count, matching
             // `workingSetCount: 0` above. The copy for this path never cites a count.
             belowFloorSetCount: 0,
+            // A streak is a per-set property; summary-only records cannot establish one,
+            // so this path can never reach `.reduceLoad`.
+            belowFloorStreak: 0,
             usedPerSetEvidence: false,
             effortSignal: .insufficientEvidence
         )
@@ -137,14 +166,16 @@ enum WorkoutProgressionEngine {
         summaryWeight: Double?,
         summaryReps: Int?,
         repRange: RepRange,
-        effortSignal: WorkoutExerciseEffortSignal = .insufficientEvidence
+        effortSignal: WorkoutExerciseEffortSignal = .insufficientEvidence,
+        belowFloorStreak: Int = 0
     ) -> WorkoutProgressionDecision? {
         evaluate(
             analysis: WorkingSetAnalysis.analyze(latestSetLogs),
             summaryWeight: summaryWeight,
             summaryReps: summaryReps,
             repRange: repRange,
-            effortSignal: effortSignal
+            effortSignal: effortSignal,
+            belowFloorStreak: belowFloorStreak
         )
     }
 
@@ -188,6 +219,54 @@ enum WorkoutProgressionEngine {
 
     static func isBodyweightEquivalent(_ weight: Double) -> Bool {
         weight <= bodyweightEquivalentThresholdLbs
+    }
+
+    /// How many of the most recent consecutive sessions at THIS load finished under the
+    /// rep floor. Counting stops at the first session that broke the pattern.
+    ///
+    /// Consecutive-and-at-the-same-load is the whole point. A session at a different weight
+    /// ends the streak because it is a different experiment, and a session that reached the
+    /// floor ends it because the load demonstrably works. Without both conditions this would
+    /// count unrelated hard sessions scattered across a training block and recommend
+    /// dropping a load that is fine.
+    ///
+    /// The session being graded is normally itself the newest snapshot, so a streak of 2
+    /// means "this one and the one before it" — the first miss alone never trips it.
+    static func belowFloorStreak(
+        for canonicalExerciseKey: String,
+        from snapshots: [WorkoutPerformanceLogSnapshot],
+        workingWeight: Double,
+        repFloor: Int,
+        lookback: Int = 4
+    ) -> Int {
+        let recent = snapshots
+            .filter { $0.canonicalExerciseKey == canonicalExerciseKey }
+            .sorted { $0.loggedAt > $1.loggedAt }
+            .prefix(max(1, lookback))
+
+        var streak = 0
+        for snapshot in recent {
+            let analysis = WorkingSetAnalysis.analyze(snapshot.setLogs)
+            guard let weight = analysis.workingWeight, !analysis.workingSets.isEmpty else { break }
+            // Same tolerance the analyzer uses to call two logged loads "the same weight".
+            guard abs(weight - workingWeight) <= max(0.5, workingWeight * 0.02) else { break }
+            guard let lowest = analysis.workingSets.map(\.reps).min(), lowest < repFloor else { break }
+            streak += 1
+        }
+        return streak
+    }
+
+    /// One increment DOWN, mirroring `nextLoad`, so a reduce-load cue names a load the
+    /// lifter's equipment can actually make. Never returns a load at or below zero: the
+    /// smallest real increment is the floor, and a bodyweight movement has nothing to drop.
+    static func reducedLoad(from weight: Double, exerciseName: String) -> Double {
+        guard !isBodyweightEquivalent(weight) else { return 0 }
+        let isDumbbell = isDumbbellLift(exerciseName)
+        let coarseIncrements = isDumbbell || isStackLift(exerciseName)
+        let step: Double = coarseIncrements ? 5.0 : 2.5
+        let rawDrop = max(weight * 0.05, step)
+        let cappedDrop = min(rawDrop, isDumbbell ? 15.0 : 10.0)
+        return max(step, ((weight - cappedDrop) / step).rounded() * step)
     }
 
     static func nextLoad(from weight: Double, exerciseName: String) -> Double {

@@ -348,6 +348,11 @@ nonisolated struct ExercisePerformanceLogSnapshot: Codable {
     let canonicalExerciseKey: String?
     let setLogsJSON: String?
     let workoutDayNumber: Int?
+    /// Optional, like every field added after v1: a backup written before these existed
+    /// decodes with them absent rather than failing. A restore that dropped them would
+    /// turn a session whose prescription IS known back into an ungradeable one.
+    let prescribedSets: Int?
+    let prescribedReps: String?
 }
 
 nonisolated struct ProfileSettingsSnapshot: Codable {
@@ -1025,7 +1030,9 @@ nonisolated struct ProfileSettingsSnapshot: Codable {
             muscleTarget: entry.muscleTarget,
             canonicalExerciseKey: entry.canonicalExerciseKey,
             setLogsJSON: entry.setLogsJSON.isEmpty ? nil : entry.setLogsJSON,
-            workoutDayNumber: entry.workoutDayNumber
+            workoutDayNumber: entry.workoutDayNumber,
+            prescribedSets: entry.recordedPrescribedSets,
+            prescribedReps: entry.prescribedReps.isEmpty ? nil : entry.prescribedReps
         )
     }
 
@@ -1042,7 +1049,9 @@ nonisolated struct ProfileSettingsSnapshot: Codable {
             repsCompleted: repsCompleted,
             notes: notes,
             muscleTarget: muscleTarget,
-            workoutDayNumber: workoutDayNumber ?? 0
+            workoutDayNumber: workoutDayNumber ?? 0,
+            prescribedSets: prescribedSets ?? 0,
+            prescribedReps: prescribedReps ?? ""
         )
         entry.canonicalExerciseKey = resolvedCanonicalKey
         entry.setLogsJSON = setLogsJSON ?? ""

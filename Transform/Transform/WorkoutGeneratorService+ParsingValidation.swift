@@ -863,6 +863,8 @@ extension ClaudeService {
                     expected = "ADD REPS before load (inside the rep range at \(weight) lb)"
                 case .holdBelowRange:
                     expected = "HOLD \(weight) lb and build reps (fell below the rep floor)"
+                case .reduceLoad:
+                    expected = "REDUCE LOAD below \(weight) lb (stalled under the rep floor across repeated sessions)"
                 case .holdForRecovery:
                     expected = "HOLD \(weight) lb (repeated low RIR indicates recovery protection)"
                 }
@@ -925,6 +927,15 @@ extension ClaudeService {
                     return sentence
                 }
             case .holdBelowRange:
+                if matches(sentence, addLoadPatterns) {
+                    return sentence
+                }
+            // Same hard contradiction as `.holdBelowRange`, one step stronger: the history
+            // says take weight OFF, so a cue telling the lifter to add it is wrong in the
+            // same way and is caught by the same patterns. "Hold" cues stay unpoliced here
+            // for the reason given above — holding is a near-miss of the right advice, not
+            // a contradiction of it, and false positives here cost a paid generation.
+            case .reduceLoad:
                 if matches(sentence, addLoadPatterns) {
                     return sentence
                 }

@@ -1299,7 +1299,8 @@ struct WorkoutView: View {
             WorkoutPerformanceLogSnapshot(
                 canonicalExerciseKey: $0.canonicalExerciseKey,
                 loggedAt: $0.loggedAt,
-                setLogs: $0.decodedSetLogs
+                setLogs: $0.decodedSetLogs,
+                prescribedReps: $0.prescribedReps
             )
         }
 
@@ -1308,6 +1309,26 @@ struct WorkoutView: View {
         // most recent program that ran the exercise prescribed. Unparseable reps are skipped
         // rather than claimed, exactly as before.
         var repRangesByKey: [String: RepRange] = [:]
+
+        // What each exercise was ACTUALLY prescribed on the session being graded wins over
+        // the program scan below. The scan answers "what does the newest program that ran
+        // this lift ask for today", which is the wrong question about work already done:
+        // moving a lift from 12-15 to 15-20 re-scored every past 14-rep set as a failure.
+        //
+        // Only the newest session with sets gets a vote, and it is decided either way. A
+        // session that recorded no prescription must fall through to the program scan
+        // rather than let an OLDER session's range stand in for it — borrowing a range from
+        // a session nobody is grading is the same error in a different direction.
+        var decidedFromLogs: Set<String> = []
+        for snapshot in snapshots.sorted(by: { $0.loggedAt > $1.loggedAt }) {
+            let key = snapshot.canonicalExerciseKey
+            guard !decidedFromLogs.contains(key), !snapshot.setLogs.isEmpty else { continue }
+            decidedFromLogs.insert(key)
+            if let range = RepRange.parse(snapshot.prescribedReps) {
+                repRangesByKey[key] = range
+            }
+        }
+
         for program in programs {
             for day in program.sortedDays {
                 for exercise in day.sortedExercises {
@@ -1394,6 +1415,11 @@ struct WorkoutView: View {
             return "beat the \(range.low)-\(range.high) rep target at \(weight) lb — cue ADDING LOAD; next achievable step is \(next) lb"
         case .holdBelowRange:
             return "fell below the \(range.low)-\(range.high) rep target — cue HOLDING \(weight) lb and building reps"
+        case .reduceLoad:
+            let easier = formatWeight(
+                WorkoutProgressionEngine.reducedLoad(from: decision.workingWeight, exerciseName: entry.exerciseName)
+            )
+            return "stalled under the \(range.low)-\(range.high) rep target at \(weight) lb across repeated sessions — cue REDUCING LOAD to \(easier) lb"
         case .holdForRecovery:
             return "repeated low RIR at \(weight) lb — cue HOLDING LOAD to protect recovery before progressing"
         case .addRepsInRange:
@@ -1418,12 +1444,24 @@ struct WorkoutView: View {
             for: key,
             from: snapshots
         )
+        // Same stall test the card runs, from the same helper, so the prompt the AI is
+        // given and the banner the lifter reads cannot disagree about whether a load has
+        // stopped working.
+        let streak = WorkingSetAnalysis.analyze(latestSetLogs).workingWeight.map {
+            WorkoutProgressionEngine.belowFloorStreak(
+                for: key,
+                from: snapshots,
+                workingWeight: $0,
+                repFloor: range.low
+            )
+        } ?? 0
         return WorkoutProgressionEngine.evaluate(
             latestSetLogs: latestSetLogs,
             summaryWeight: entry.weightLbs,
             summaryReps: entry.repsCompleted,
             repRange: range,
-            effortSignal: effortSignal
+            effortSignal: effortSignal,
+            belowFloorStreak: streak
         )
     }
 

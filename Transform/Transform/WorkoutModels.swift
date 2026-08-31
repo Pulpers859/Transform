@@ -637,6 +637,24 @@ class ExercisePerformanceLog {
     /// matches a real day (day numbers start at 1). Cross-session history keys off the
     /// exercise name, not this field, so progression continuity is unaffected.
     var workoutDayNumber: Int = 0
+    /// What the program ASKED FOR on the day this session was trained.
+    ///
+    /// Nothing recorded the prescription, so afterwards a finished session and one cut short
+    /// were indistinguishable — "2 of 2, done" and "2 of 3, stopped early" are the same two
+    /// rows — and every past session was graded against whatever rep range the CURRENT
+    /// program happens to prescribe, so changing a range silently re-scored work already
+    /// done. Neither question is answerable from weights and reps alone; the prescription
+    /// has to be written down beside them.
+    ///
+    /// The defaults mean "not recorded" (logged before this existed), NEVER a real
+    /// prescription. Read them through `recordedPrescribedSets` / `recordedRepRange`, which
+    /// return nil rather than letting 0 be mistaken for "zero sets prescribed" — a reader
+    /// that compares against a bare 0 would call every legacy session complete.
+    ///
+    /// Additive lightweight migration, exactly like `workoutDayNumber` above: new columns
+    /// with defaults. No stored row is read, rewritten, or reinterpreted.
+    var prescribedSets: Int = 0
+    var prescribedReps: String = ""
 
     init(
         loggedAt: Date = .now,
@@ -646,6 +664,8 @@ class ExercisePerformanceLog {
         notes: String = "",
         muscleTarget: String = "",
         workoutDayNumber: Int = 0,
+        prescribedSets: Int = 0,
+        prescribedReps: String = "",
         setLogs: [SetLogEntry] = []
     ) {
         self.loggedAt = loggedAt
@@ -657,7 +677,23 @@ class ExercisePerformanceLog {
         self.notes = notes
         self.muscleTarget = muscleTarget
         self.workoutDayNumber = workoutDayNumber
+        self.prescribedSets = prescribedSets
+        self.prescribedReps = prescribedReps
         self.setLogsJSON = Self.encodeSetLogs(setLogs)
+    }
+
+    /// The prescribed set count, or nil when this session predates the field. Never 0: a
+    /// caller asking "did they finish?" must be able to tell "no prescription recorded"
+    /// apart from a prescription that was met.
+    var recordedPrescribedSets: Int? {
+        prescribedSets > 0 ? prescribedSets : nil
+    }
+
+    /// The rep range this session was actually trained under, or nil when unrecorded or
+    /// unparseable. Callers fall back to the current prescription — the old behaviour —
+    /// rather than refusing to coach.
+    var recordedRepRange: RepRange? {
+        RepRange.parse(prescribedReps)
     }
 
     var decodedSetLogs: [SetLogEntry] {
