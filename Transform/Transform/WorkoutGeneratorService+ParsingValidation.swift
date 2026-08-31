@@ -1287,6 +1287,13 @@ extension ClaudeService {
 
     var acceptableWarningIssuePatterns: [String] {
         [
+            // A rep-band leap is a TRAINING-quality verdict: the load translation already
+            // absorbs the change correctly, so nothing is broken, the stimulus is just wrong
+            // for one week. Listed explicitly rather than left to fall through, because the
+            // two paths disagree by default — unclassified is an acceptable warning under
+            // menu-lock and a HARD FAILURE unlocked, and a guardrail that discards a paid
+            // week to enforce a preference is worse than one that reports.
+            "rep bands in one week",
             "undershot its targeted exercise-slot goal",
             "undershot its weighted stimulus target",
             "Too few anchor lifts carried over",

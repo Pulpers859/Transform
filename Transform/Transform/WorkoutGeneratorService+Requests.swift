@@ -324,9 +324,12 @@ extension ClaudeService {
         speaking from the actual log. Set that exercise's rep range and targetRIR to agree.
 
         GUARD RAILS — limits, not preferences:
-        1. ONE BAND PER WEEK. Rep bands are 1-5, 6-10, 11-15, 16+. Move an exercise at most one
-           band from the range it was last trained at. 10-14 -> 15-20 is one band and is fine;
-           6-8 -> 15-20 is two bands and is not — step through 10-12 first.
+        1. ONE BAND PER WEEK. A range's band is decided by its MIDDLE, not its endpoints:
+           midpoint under 5.5 = band 1, under 10.5 = band 2, under 15.5 = band 3, else band 4.
+           So 10-14 (midpoint 12) is band 3 and 15-20 (midpoint 17.5) is band 4. Move an
+           exercise at most one band from the range it was last trained at: 10-14 -> 15-20 is
+           one band and is fine; 6-8 (midpoint 7, band 2) -> 15-20 is two bands and is not —
+           step through 10-14 first.
         2. CHANGE A RANGE ONLY FOR A PHASE REASON. A stable rep range is what makes double
            progression work at all. Move it when this week's phase calls for it, never by
            default and never for variety.

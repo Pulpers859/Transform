@@ -235,11 +235,30 @@ final class LoadTranslationTests: XCTestCase {
     }
 
     /// A guardrail that spends money to enforce a preference is worse than one that reports.
-    func testTheGuardrailNeverDiscardsAPaidWeek() {
+    ///
+    /// Pinned on BOTH paths deliberately. An unclassified finding is an acceptable warning under
+    /// menu-lock but a HARD FAILURE unlocked, so relying on every call site happening to pass
+    /// `menuLocked: true` would make this rule safe only by accident — one new caller with the
+    /// default argument would start discarding paid weeks with nothing to catch it.
+    func testTheGuardrailNeverDiscardsAPaidWeekOnEitherPath() {
         let issue = service.validateRepRangeTransitions(
             days: [day("Cable Face Pull", reps: "15-20")],
             verdicts: [verdict("Cable Face Pull", previous: RepRange(low: 6, high: 8))])[0]
         XCTAssertEqual(service.validationDisposition(for: issue, menuLocked: true), .acceptableWarning)
+        XCTAssertEqual(service.validationDisposition(for: issue, menuLocked: false), .acceptableWarning,
+                       "Unlocked, an unclassified finding would be a hard failure and discard the week")
         XCTAssertEqual(service.scoreValidationIssues([issue], menuLocked: true), 1)
+        XCTAssertEqual(service.scoreValidationIssues([issue], menuLocked: false), 1)
+    }
+
+    /// The owner must get a sentence he can act on, not "this one isn't recognized".
+    func testTheGuardrailExplainsItselfInPlainLanguage() {
+        let issue = service.validateRepRangeTransitions(
+            days: [day("Cable Face Pull", reps: "15-20")],
+            verdicts: [verdict("Cable Face Pull", previous: RepRange(low: 6, high: 8))])[0]
+        let notices = WorkoutValidatorNotice.notices(from: [issue])
+        XCTAssertFalse(notices.contains { $0.headline == "A plan check didn't pass" },
+                       "A finding this code CAN explain must never reach the unclassified fallback")
+        XCTAssertTrue(notices.contains { $0.headline == "A rep range jumped further than usual" })
     }
 }

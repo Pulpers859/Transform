@@ -221,6 +221,19 @@ final class PrescriptionAndStallTests: XCTestCase {
         }
     }
 
+    /// At the smallest step the equipment makes there is nothing left to drop, so `reducedLoad`
+    /// returns the SAME load. Asserting only `reduced <= weight` passes on that no-op and looks
+    /// like coverage while proving nothing — the card has to detect it and say something else.
+    func testAtTheSmallestStepThereIsNothingLeftToDrop() {
+        XCTAssertEqual(WorkoutProgressionEngine.reducedLoad(from: 5, exerciseName: "Dumbbell Curl"), 5,
+                       accuracy: 0.001)
+        XCTAssertEqual(WorkoutProgressionEngine.reducedLoad(from: 2.5, exerciseName: "Barbell Curl"), 2.5,
+                       accuracy: 0.001)
+        XCTAssertGreaterThan(WorkoutProgressionEngine.reducedLoad(from: 40, exerciseName: "Dumbbell Curl"), 0)
+        XCTAssertLessThan(WorkoutProgressionEngine.reducedLoad(from: 40, exerciseName: "Dumbbell Curl"), 40,
+                          "A real load must still actually come down")
+    }
+
     func testBodyweightHasNoLoadToDrop() {
         XCTAssertEqual(WorkoutProgressionEngine.reducedLoad(from: 0, exerciseName: "Push-Up"), 0)
         XCTAssertEqual(WorkoutProgressionEngine.reducedLoad(from: 1, exerciseName: "Push-Up"), 0,

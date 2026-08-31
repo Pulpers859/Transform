@@ -1036,10 +1036,86 @@ struct ExerciseCard: View {
         )
     }
 
+    /// The load for a week whose PRESCRIPTION changed, not just its numbers.
+    ///
+    /// The add / hold / reduce verdicts all assume the prescription stayed put — they compare
+    /// last session's reps against a rep range and move the load a step. That assumption breaks
+    /// the moment the generator writes a different range, which it is free to do every week,
+    /// and the result was the failure this whole line of work exists to kill: maxing 2x10-14 at
+    /// 35 lb produced "add load, try 37.5" printed beside a 3x15-20 prescription that needs
+    /// about 30. Neither half was wrong on its own; nothing owned the sentence in between.
+    ///
+    /// Only for a PAST session. Today's sets were performed under today's card, so there is no
+    /// translation to do — the ordinary verdicts are already correct for them.
+    var crossPrescriptionSuggestion: ProgressionSuggestion? {
+        guard sessionSetLogs.isEmpty,
+              let previousRange = previousPrescription.repRange,
+              let currentRange = RepRange.parse(exercise.reps)
+        else { return nil }
+
+        let setsChanged = previousPrescription.sets.map { $0 != exercise.sets } ?? false
+        guard previousRange != currentRange || setsChanged else { return nil }
+
+        let analysis = progressionAnalysis
+        // Bodyweight has no load to translate, and the legacy "1 lb" stand-in is not a real
+        // load either — every other load path in the app consults this, so this one must too.
+        guard let referenceLoad = analysis.workingWeight,
+              !WorkoutProgressionEngine.isBodyweightEquivalent(referenceLoad),
+              let freshest = analysis.workingSets.max(by: { $0.reps < $1.reps })
+        else { return nil }
+
+        let key = ExerciseWeightEntry.canonicalLookupKey(exercise.exerciseName)
+        guard let outcome = WorkoutLoadTranslation.translate(
+            reference: .init(
+                loadLbs: referenceLoad,
+                repsAchieved: freshest.reps,
+                reserveReps: freshest.rir ?? 1,
+                hitPrescribedCeiling: freshest.reps >= previousRange.high
+            ),
+            target: .init(
+                sets: exercise.sets,
+                repFloor: currentRange.low,
+                targetRIR: Double(exercise.targetRIR ?? 1)
+            ),
+            fatigueDecayPerSet: WorkoutLoadTranslation.estimatedFatigueDecayPerSet(
+                for: key, from: performanceHistory
+            ),
+            incrementLbs: WorkoutProgressionEngine.incrementLbs(forExerciseName: exercise.exerciseName)
+        ) else { return nil }
+
+        let newLoad = formatWeight(outcome.recommendedLoadLbs)
+        let oldLoad = formatWeight(referenceLoad)
+        let was = "\(previousRange.low)-\(previousRange.high)"
+        let now = "\(exercise.sets)x\(currentRange.low)-\(currentRange.high)"
+
+        // A swing this large is a red flag about the prescription, not a load to follow
+        // confidently. Surfaced rather than silently obeyed, and never quietly clamped into
+        // looking reasonable — the lifter is told the number AND that it looks wrong.
+        guard !outcome.isImplausibleSwing else {
+            return ProgressionSuggestion(
+                icon: "exclamationmark.triangle.fill",
+                text: "\(now) is a big jump from \(was) at \(oldLoad) lb — the matching load is about \(newLoad) lb. Check that before trusting it; consider an in-between rep range instead",
+                color: TFColor.warning
+            )
+        }
+
+        let direction = outcome.recommendedLoadLbs < referenceLoad
+            ? "needs less weight"
+            : (outcome.recommendedLoadLbs > referenceLoad ? "needs more weight" : "keeps the same weight")
+        return ProgressionSuggestion(
+            icon: outcome.recommendedLoadLbs < referenceLoad ? "arrow.down.circle.fill" : "arrow.right.circle.fill",
+            text: "Start at \(newLoad) lb — last time was \(oldLoad) lb x \(freshest.reps) in the \(was) range, and this week's \(now) \(direction)",
+            color: TFColor.info
+        )
+    }
+
     var progressionSuggestion: ProgressionSuggestion? {
         // On a deload day, never tell the lifter to add weight — that contradicts the
         // prescription. Coach to hold the lighter load regardless of last session's reps.
         if isDeloadContext { return .deloadGuidance }
+        // Before any same-prescription verdict: those all assume the prescription held, and
+        // saying "add load" under a rep range the lifter has never trained is the exact bug.
+        if let translated = crossPrescriptionSuggestion { return translated }
         guard let log = latestWeightLog else { return nil }
         guard let graded = gradedSessionPrescription else { return nil }
         let suggestion = ProgressionSuggestion.evaluate(
@@ -3086,9 +3162,18 @@ struct ProgressionSuggestion {
                     color: TFColor.warning
                 )
             }
-            let easierText = formatWeight(
-                WorkoutProgressionEngine.reducedLoad(from: decision.workingWeight, exerciseName: exerciseName)
-            )
+            let easier = WorkoutProgressionEngine.reducedLoad(from: decision.workingWeight, exerciseName: exerciseName)
+            // At the smallest increment the equipment makes, there is no smaller load to drop
+            // to, so "Drop to 5 lb — 5 lb has finished under 15 reps" is not advice. Say the
+            // thing that IS true: the load cannot come down, so the movement has to change.
+            guard easier < decision.workingWeight else {
+                return ProgressionSuggestion(
+                    icon: "arrow.down.circle.fill",
+                    text: "\(weightText) lb is already the lightest step here and has finished under \(repRange.low) reps \(decision.belowFloorStreak) sessions running — switch to an easier variation rather than repeating it",
+                    color: TFColor.warning
+                )
+            }
+            let easierText = formatWeight(easier)
             return ProgressionSuggestion(
                 icon: "arrow.down.circle.fill",
                 text: "Drop to \(easierText) lb — \(weightText) lb has finished under \(repRange.low) reps \(decision.belowFloorStreak) sessions running; holding it has not brought the reps back",

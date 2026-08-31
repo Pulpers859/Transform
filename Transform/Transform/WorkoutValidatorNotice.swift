@@ -438,6 +438,14 @@ extension WorkoutValidatorNotice {
             )
         }
 
+        if issue.contains("rep bands in one week") {
+            return notice(
+                .tuning,
+                "A rep range jumped further than usual",
+                "One exercise moved a long way in one week — for example from heavy sets of 6-8 straight to light sets of 15-20. Your weight was adjusted to match, so nothing is wrong with the plan; a smaller step would build more strength."
+            )
+        }
+
         // Unrecognized shape. This branch means the finding is UNCLASSIFIED, not benign — a
         // reworded or newly added validator message lands here, and one of those could just as
         // easily deserve `.attention`. So say only what is actually known and send the owner to

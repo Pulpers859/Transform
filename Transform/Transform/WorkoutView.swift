@@ -1395,9 +1395,10 @@ struct WorkoutView: View {
     /// the matching load automatically whether the model reads this line or not — so a model
     /// that ignores it still cannot hurt the lifter. The line exists so the choice is INFORMED.
     ///
-    /// Reserve is assumed to be 1 rep because the prescribed RIR of a past session is not yet
-    /// recorded. That assumption is stated here rather than hidden: it biases every estimate
-    /// slightly light, which is the safe direction, and it is the next thing worth storing.
+    /// Reserve uses the lifter's own logged RIR when it exists and falls back to 1 rep when it
+    /// does not, because the prescribed RIR of a past session is not yet recorded. The fallback
+    /// biases those estimates slightly light, which is the safe direction, and storing a
+    /// session's prescribed RIR is the next thing that would remove the assumption.
     func loadConsequenceLine(for entry: ExerciseWeightEntry, lookup: ProgressionLookup) -> String? {
         let key = entry.canonicalExerciseKey
         let logs = WorkoutProgressionEngine.latestUsableSetLogs(for: key, from: lookup.snapshots)
@@ -1406,7 +1407,11 @@ struct WorkoutView: View {
         // one, because that is what the translation converts. Feeding it a fatigued last set
         // would understate the yardstick on every exercise.
         guard let working = analysis.workingSets.max(by: { $0.reps < $1.reps }),
-              let referenceLoad = analysis.workingWeight, referenceLoad > 0
+              let referenceLoad = analysis.workingWeight,
+              // Not `> 0`: the repo's bodyweight sentinel includes the legacy "1 lb" stand-in,
+              // and a bodyweight movement has no load to translate. Without this the line reads
+              // "6-10 reps -> 2.5 lb | 10-14 reps -> 2.5 lb | 15-20 reps -> 2.5 lb".
+              !WorkoutProgressionEngine.isBodyweightEquivalent(referenceLoad)
         else { return nil }
 
         let sets = max(1, lookup.prescribedSetsByKey[key] ?? analysis.workingSets.count)
@@ -1427,13 +1432,20 @@ struct WorkoutView: View {
                 fatigueDecayPerSet: decay,
                 incrementLbs: increment
             ) else { return nil }
-            return "\(option.label) reps -> \(formatWeight(outcome.recommendedLoadLbs)) lb"
+            // A swing this large is a red flag about the prescription, not a load to follow.
+            // Handing the model a bare number would hide exactly the case worth hesitating on.
+            let flag = outcome.isImplausibleSwing ? " (BIG SWING - prefer an in-between range)" : ""
+            return "\(option.label) reps -> \(formatWeight(outcome.recommendedLoadLbs)) lb\(flag)"
         }
         guard !rendered.isEmpty else { return nil }
 
-        return "at \(sets) set\(sets == 1 ? "" : "s") the app will set the load to: "
+        // "last trained at" is load-bearing honesty: this is the set count of the session being
+        // quoted, NOT the count the menu locks for the week being written. At a different set
+        // count the real load differs — more sets means less weight — so the model must not read
+        // these as final numbers for a prescription with a different amount of work.
+        return "at the \(sets) set\(sets == 1 ? "" : "s") last trained, the load would be: "
             + rendered.joined(separator: " | ")
-            + " (more reps or more sets = less weight; the app applies this automatically)"
+            + " (more reps or more sets = less weight; the app computes the final load itself)"
     }
 
     /// Structured verdicts for the validator's cue-vs-history rule — the enforcement half
