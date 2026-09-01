@@ -1864,6 +1864,7 @@ extension ClaudeService {
         let rowCompleteMenus = enforceHorizontalPullCoverage(
             finalCoverageMenus,
             blueprint: blueprint,
+            trainingIntent: trainingIntent,
             weekNumber: weekNumber,
             avoidedExercises: avoidedExercises
         )
@@ -2511,6 +2512,7 @@ extension ClaudeService {
     func enforceHorizontalPullCoverage(
         _ menus: [[PreSelectedExercise]],
         blueprint: ProgramBlueprint,
+        trainingIntent: TrainingIntentPlan,
         weekNumber: Int,
         avoidedExercises: Set<String>
     ) -> [[PreSelectedExercise]] {
@@ -2537,13 +2539,83 @@ extension ClaudeService {
             return horizontalPullPatterns.contains(pattern)
         }
 
-        return menusByAppendingBalanceExercise(
+        if let appended = menusByAppendingBalanceExercise(
             to: menus,
             blueprint: blueprint,
             weekNumber: weekNumber,
             avoidedExercises: avoidedExercises,
             candidates: rowCandidates
-        ) ?? menus
+        ) {
+            return appended
+        }
+
+        // Appending failed, so TRADE instead of giving up.
+        //
+        // This is the half that was missing, and a real week shipped because of it: the lifter's
+        // back budget allows 3 distinct movements when recovery is tight
+        // (`maintenanceSlotBudgetsAreFeasible`, ceiling 8 at a 3-set dose), the week already held
+        // three VERTICAL pulls, and that guard is day-independent — so it rejected every row on
+        // every day at once and the week trained the back with no rowing at all. The budget was
+        // not really full of back work; it was full of the SAME back work three times over.
+        //
+        // Trading rather than adding costs no extra fatigue, no extra session minutes and no
+        // budget breach, which is why it can succeed exactly where appending cannot. The
+        // eviction rules are not invented here: `baselineCoverageReplacementIndices` already
+        // picks duplicated-pattern, non-anchor, non-day-intent slots, and the BASE-001 subset
+        // check is the same guard `enforceBaselineMuscleCoverage` and the priority pass use, so
+        // a trade can never open a zero-coverage hole to close a pattern one.
+        for candidate in rowCandidates {
+            guard !avoidedExercises.contains(ExerciseWeightEntry.canonicalLookupKey(candidate.name)) else { continue }
+
+            let probe = WorkoutExerciseResponse(
+                exerciseName: candidate.name,
+                sets: 3,
+                reps: "10-12",
+                tempo: "",
+                restSeconds: 60,
+                notes: "",
+                muscleTarget: candidate.target
+            )
+
+            for (dayIndex, plan) in blueprint.dayPlans.enumerated()
+            where !plan.isRestDay && dayIndex < menus.count && !menus[dayIndex].isEmpty {
+                guard exerciseMatchesDayStyle(probe, style: canonicalTrainingStyle(plan.style)) else { continue }
+
+                let focusIntent = focusIntentForArea(plan.focusArea, within: trainingIntent)
+                let supportIntents = plan.supportAreas.compactMap { focusIntentForArea($0, within: trainingIntent) }
+                let candidateMenu = PreSelectedExercise(
+                    exerciseName: candidate.name,
+                    muscleTarget: candidate.target,
+                    movementPattern: exerciseMetadata(
+                        forExerciseName: candidate.name,
+                        muscleTarget: candidate.target
+                    ).movementPattern,
+                    role: proceduralExerciseRole(for: candidate.name, muscleTarget: candidate.target),
+                    prescribedSets: 1
+                )
+
+                for replaceIndex in baselineCoverageReplacementIndices(
+                    in: menus[dayIndex],
+                    focusIntent: focusIntent,
+                    supportIntents: supportIntents
+                ) {
+                    var swapped = menus
+                    swapped[dayIndex].remove(at: replaceIndex)
+                    swapped[dayIndex].insert(candidateMenu, at: replaceIndex)
+
+                    // Closure, not a key path: `baselineCoverageGaps` returns tuples and Swift
+                    // has no key paths into tuple elements. This mirrors the existing BASE-001
+                    // replacement guard exactly.
+                    let gapsBefore = Set(baselineCoverageGaps(in: menus, blueprint: blueprint).map { $0.seed })
+                    let gapsAfter = Set(baselineCoverageGaps(in: swapped, blueprint: blueprint).map { $0.seed })
+                    guard gapsAfter.isSubset(of: gapsBefore) else { continue }
+
+                    return swapped
+                }
+            }
+        }
+
+        return menus
     }
 
     // MARK: - Maintenance Breadth (BASE-001 two-exposure floor)

@@ -1049,14 +1049,32 @@ struct ExerciseCard: View {
     /// translation to do — the ordinary verdicts are already correct for them.
     var crossPrescriptionSuggestion: ProgressionSuggestion? {
         guard sessionSetLogs.isEmpty,
-              let previousRange = previousPrescription.repRange,
               let currentRange = RepRange.parse(exercise.reps)
         else { return nil }
 
-        let setsChanged = previousPrescription.sets.map { $0 != exercise.sets } ?? false
-        guard previousRange != currentRange || setsChanged else { return nil }
-
         let analysis = progressionAnalysis
+
+        // Every session logged before the prescription was recorded has no stored answer, and
+        // requiring one here made this whole path dead on arrival: it could only ever fire for
+        // sessions logged AFTER the feature shipped, which is to say weeks in the future, while
+        // the lifter kept being coached off the old same-prescription verdicts in the meantime.
+        // That is exactly what shipped — a 2-set session at 77 lb x 12 met a 4-set prescription
+        // and the card said "On track at 77 lb, build all sets to 15" for a load the honest
+        // answer put near 67.5.
+        //
+        // Both fallbacks are observations, not inventions:
+        //  * the set count is COUNTED from the session's own working sets, which is the best
+        //    available evidence of the work that was actually done at that load;
+        //  * the rep range falls back to the CURRENT one, i.e. assume it did not move. A range
+        //    change that cannot be seen is not asserted, so this can never manufacture a
+        //    translation out of nothing — an unrecorded session with an unchanged set count
+        //    falls through to the ordinary verdicts exactly as before.
+        let observedSets = analysis.workingSets.count
+        let previousRange = previousPrescription.repRange ?? currentRange
+        let previousSets = previousPrescription.sets ?? (observedSets > 0 ? observedSets : nil)
+
+        let setsChanged = previousSets.map { $0 != exercise.sets } ?? false
+        guard previousRange != currentRange || setsChanged else { return nil }
         // Bodyweight has no load to translate, and the legacy "1 lb" stand-in is not a real
         // load either — every other load path in the app consults this, so this one must too.
         guard let referenceLoad = analysis.workingWeight,
@@ -1088,7 +1106,10 @@ struct ExerciseCard: View {
 
         let newLoad = formatWeight(outcome.recommendedLoadLbs)
         let oldLoad = formatWeight(referenceLoad)
-        let was = "\(previousRange.low)-\(previousRange.high)"
+        // Only state the old range when it was actually RECORDED. For a session that predates
+        // the recording the range fell back to the current one, and printing that as history
+        // would assert a fact the app cannot see.
+        let was = previousPrescription.repRange.map { " in the \($0.low)-\($0.high) range" } ?? ""
         let now = "\(exercise.sets)x\(currentRange.low)-\(currentRange.high)"
 
         // A swing this large is a red flag about the prescription, not a load to follow
@@ -1097,7 +1118,7 @@ struct ExerciseCard: View {
         guard !outcome.isImplausibleSwing else {
             return ProgressionSuggestion(
                 icon: "exclamationmark.triangle.fill",
-                text: "\(now) is a big jump from \(was) at \(oldLoad) lb — the matching load is about \(newLoad) lb. Check that before trusting it; consider an in-between rep range instead",
+                text: "\(now) is a big jump from \(oldLoad) lb x \(freshest.reps)\(was) — the matching load is about \(newLoad) lb. Check that before trusting it; consider an in-between rep range instead",
                 color: TFColor.warning
             )
         }
@@ -1107,7 +1128,7 @@ struct ExerciseCard: View {
             : (outcome.recommendedLoadLbs > referenceLoad ? "needs more weight" : "keeps the same weight")
         return ProgressionSuggestion(
             icon: outcome.recommendedLoadLbs < referenceLoad ? "arrow.down.circle.fill" : "arrow.right.circle.fill",
-            text: "Start at \(newLoad) lb — last time was \(oldLoad) lb x \(freshest.reps) in the \(was) range, and this week's \(now) \(direction)",
+            text: "Start at \(newLoad) lb — last time was \(oldLoad) lb x \(freshest.reps)\(was), and this week's \(now) \(direction)",
             color: TFColor.info
         )
     }
