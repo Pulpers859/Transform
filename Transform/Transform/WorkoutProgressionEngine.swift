@@ -302,11 +302,19 @@ enum WorkoutProgressionEngine {
     /// path that needs this answer.
     static func isBodyweightBasedMovement(_ name: String) -> Bool {
         let lowered = name.lowercased()
+        // Validated against the canonical names in `WorkoutGeneratorService+MetadataProfiles`
+        // rather than written from general knowledge. The first version of this list was
+        // generic and missed "Sissy Squat" and "Dead Bug" — both real entries in this app's
+        // own catalog, both bodyweight-dominant, both sometimes logged with a small held
+        // dumbbell, which is exactly the case the list exists to catch. Several markers below
+        // match nothing in the catalog today and are kept only so a later addition is covered
+        // on arrival; anything ADDED to the catalog needs checking against this list.
         let markers = [
             "pull-up", "pull up", "pullup", "chin-up", "chin up", "chinup",
             "dip", "push-up", "push up", "pushup", "knee raise", "leg raise",
             "hanging", "hanging knee", "nordic", "sit-up", "sit up", "plank",
-            "muscle-up", "muscle up", "inverted row", "pistol squat", "glute-ham raise"
+            "muscle-up", "muscle up", "inverted row", "pistol squat", "glute-ham raise",
+            "sissy squat", "dead bug"
         ]
         return markers.contains { lowered.contains($0) }
     }

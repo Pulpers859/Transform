@@ -206,8 +206,12 @@ final class PrescriptionAndStallTests: XCTestCase {
     /// A real generation printed "6-10 reps -> 5 lb | 10-14 reps -> 5 lb | 15-20 reps -> 5 lb"
     /// for a Hanging Knee Raise logged at 5 lb, offering three identical numbers as a choice.
     func testBodyweightBasedMovementsAreRecognised() {
+        // "Sissy Squat" and "Dead Bug" are canonical entries in this app's own exercise
+        // catalog and were missed by the first version of this list, which was written from
+        // general knowledge instead of checked against the catalog.
         for name in ["Hanging Knee Raise", "Pull-Up (Weighted or Assisted)", "Dip (Assisted or Weighted)",
-                     "Chin-Up", "Push-Up", "Nordic Hamstring Curl", "Hanging Leg Raise"] {
+                     "Chin-Up", "Push-Up", "Nordic Hamstring Curl", "Hanging Leg Raise",
+                     "Sissy Squat", "Dead Bug"] {
             XCTAssertTrue(WorkoutProgressionEngine.isBodyweightBasedMovement(name),
                           "\(name) loads bodyweight; any logged number is added load")
         }

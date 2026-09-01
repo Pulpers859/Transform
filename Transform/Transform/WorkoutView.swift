@@ -1440,7 +1440,12 @@ struct WorkoutView: View {
         // source rather than trying to reword around it.
         let currentBand = lookup.repRangesByKey[key].map { WorkoutLoadTranslation.band(for: $0) }
         let options = [RepRange(low: 6, high: 10), RepRange(low: 10, high: 14), RepRange(low: 15, high: 20)]
-        var seenLoads: Set<Double> = [referenceLoad]
+        // Deliberately NOT seeded with the current load. Two RENDERED rows tying each other
+        // carry no discriminating information and are worth dropping; a row that merely happens
+        // to land on the weight already in use is different — "moving to 10-14 keeps you at the
+        // same weight" is a real answer, and suppressing it left light dumbbell lifts with no
+        // cross-range guidance at all once coarse rounding collapsed both surviving options.
+        var seenLoads: Set<Double> = []
         var rendered: [String] = []
 
         for option in options {
