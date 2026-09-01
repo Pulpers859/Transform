@@ -288,6 +288,29 @@ enum WorkoutProgressionEngine {
     /// `override` is a per-exercise correction for equipment that genuinely cannot do 2.5 (a
     /// machine with welded 10 lb plates); ignored when zero or negative so "not recorded" can
     /// never be read as "no increment".
+    /// Movements whose real resistance is the lifter's own body, where any logged number is
+    /// ADDED load rather than the load being lifted.
+    ///
+    /// `isBodyweightEquivalent` answers a different question — it catches a log of 0 or the
+    /// legacy 1 lb stand-in. It cannot catch a hanging knee raise logged at 5 lb, where the
+    /// resistance is ~200 lb of bodyweight and the 5 lb is a dumbbell between the feet.
+    /// Converting THAT 5 lb across rep ranges is meaningless arithmetic, and it showed: a real
+    /// generation printed "6-10 reps -> 5 lb | 10-14 reps -> 5 lb | 15-20 reps -> 5 lb",
+    /// three identical numbers presented to the model as a choice.
+    ///
+    /// Name-based like `isDumbbellLift`, because equipment metadata is not available on every
+    /// path that needs this answer.
+    static func isBodyweightBasedMovement(_ name: String) -> Bool {
+        let lowered = name.lowercased()
+        let markers = [
+            "pull-up", "pull up", "pullup", "chin-up", "chin up", "chinup",
+            "dip", "push-up", "push up", "pushup", "knee raise", "leg raise",
+            "hanging", "hanging knee", "nordic", "sit-up", "sit up", "plank",
+            "muscle-up", "muscle up", "inverted row", "pistol squat", "glute-ham raise"
+        ]
+        return markers.contains { lowered.contains($0) }
+    }
+
     static func incrementLbs(forExerciseName name: String, override: Double = 0) -> Double {
         if override > 0 { return override }
         return isDumbbellLift(name) ? 5.0 : 2.5

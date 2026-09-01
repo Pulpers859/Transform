@@ -310,15 +310,21 @@ extension ClaudeService {
 
         HOW LOAD WORKS HERE. You program reps, sets, tempo and targetRIR. You never write a
         weight anywhere. The app computes each exercise's working load itself, from this
-        lifter's own logged capacity, and shows it on the exercise card. The indented "the app
-        will set the load to" line under an exercise is that calculation already done for you,
-        at the set count shown.
+        lifter's own logged capacity, and shows it on the exercise card.
 
-        Read that line before choosing reps. Changing a rep range changes the load: more reps
-        or more sets means LESS weight, fewer reps means MORE. The app applies this
-        automatically, so whatever you prescribe will be loaded correctly whether or not you
-        account for it — but choose knowing what it costs. You are free to program the range
-        you judge best; you are not free to assume the weight stays the same when you move it.
+        Two different lines, two different jobs — do not mix them up:
+        - The "app verdict" answers what to do if you KEEP the range the exercise was last
+          trained at. That is the deterministic progression engine reading the actual log.
+          Set that exercise's rep range and targetRIR to agree with it.
+        - The indented "if you MOVE this exercise's range" line answers what the load becomes
+          for a DIFFERENT range. It never quotes the current range, because the verdict already
+          owns that case.
+
+        Changing a rep range changes the load: more reps or more sets means LESS weight, fewer
+        reps means MORE. The app applies this automatically, so whatever you prescribe will be
+        loaded correctly whether or not you account for it — but choose knowing what it costs.
+        You are free to program the range you judge best; you are not free to assume the weight
+        stays the same when you move it.
 
         Where a line carries an "app verdict", that is the deterministic progression engine
         speaking from the actual log. Set that exercise's rep range and targetRIR to agree.

@@ -1411,7 +1411,10 @@ struct WorkoutView: View {
               // Not `> 0`: the repo's bodyweight sentinel includes the legacy "1 lb" stand-in,
               // and a bodyweight movement has no load to translate. Without this the line reads
               // "6-10 reps -> 2.5 lb | 10-14 reps -> 2.5 lb | 15-20 reps -> 2.5 lb".
-              !WorkoutProgressionEngine.isBodyweightEquivalent(referenceLoad)
+              !WorkoutProgressionEngine.isBodyweightEquivalent(referenceLoad),
+              // A logged number on a bodyweight movement is ADDED load, not the resistance
+              // being lifted, so converting it across rep ranges is meaningless arithmetic.
+              !WorkoutProgressionEngine.isBodyweightBasedMovement(entry.exerciseName)
         else { return nil }
 
         let sets = max(1, lookup.prescribedSetsByKey[key] ?? analysis.workingSets.count)
@@ -1424,28 +1427,47 @@ struct WorkoutView: View {
             hitPrescribedCeiling: lookup.repRangesByKey[key].map { working.reps >= $0.high } ?? false
         )
 
-        let options: [(label: String, floor: Int)] = [("6-10", 6), ("10-14", 10), ("15-20", 15)]
-        let rendered: [String] = options.compactMap { option in
+        // ONE authority per case, which is the whole point of this rewrite.
+        //
+        // The "app verdict" on the line above owns the UNCHANGED prescription: it is double
+        // progression speaking, and it answers "same range — heavier, lighter, or hold?". This
+        // line owns only the prescriptions the model might move TO. Offering a number for the
+        // range the verdict already covers put two answers to one question in the same prompt,
+        // two lines apart, and a real generation shipped exactly that: "cue ADDING REPS before
+        // load" at 55 lb directly above "15-20 reps -> 52.5 lb". They disagreed on every
+        // exercise in that week, in both directions, and guard rail 3 asked the model to compute
+        // a ratio between them. Dropping the overlapping row removes the contradiction at the
+        // source rather than trying to reword around it.
+        let currentBand = lookup.repRangesByKey[key].map { WorkoutLoadTranslation.band(for: $0) }
+        let options = [RepRange(low: 6, high: 10), RepRange(low: 10, high: 14), RepRange(low: 15, high: 20)]
+        var seenLoads: Set<Double> = [referenceLoad]
+        var rendered: [String] = []
+
+        for option in options {
+            guard WorkoutLoadTranslation.band(for: option) != currentBand else { continue }
             guard let outcome = WorkoutLoadTranslation.translate(
                 reference: reference,
-                target: .init(sets: sets, repFloor: option.floor, targetRIR: 1),
+                target: .init(sets: sets, repFloor: option.low, targetRIR: 1),
                 fatigueDecayPerSet: decay,
                 incrementLbs: increment
-            ) else { return nil }
+            ) else { continue }
+            // Two rep ranges that land on the same weight tell the model nothing and make the
+            // whole block look unreliable. A real generation printed "10-14 reps -> 20 lb |
+            // 15-20 reps -> 20 lb"; at small loads every range collapses onto one increment.
+            guard seenLoads.insert(outcome.recommendedLoadLbs).inserted else { continue }
             // A swing this large is a red flag about the prescription, not a load to follow.
-            // Handing the model a bare number would hide exactly the case worth hesitating on.
             let flag = outcome.isImplausibleSwing ? " (BIG SWING - prefer an in-between range)" : ""
-            return "\(option.label) reps -> \(formatWeight(outcome.recommendedLoadLbs)) lb\(flag)"
+            rendered.append("\(option.low)-\(option.high) reps -> \(formatWeight(outcome.recommendedLoadLbs)) lb\(flag)")
         }
         guard !rendered.isEmpty else { return nil }
 
-        // "last trained at" is load-bearing honesty: this is the set count of the session being
+        // "last trained" is load-bearing honesty: this is the set count of the session being
         // quoted, NOT the count the menu locks for the week being written. At a different set
-        // count the real load differs — more sets means less weight — so the model must not read
-        // these as final numbers for a prescription with a different amount of work.
-        return "at the \(sets) set\(sets == 1 ? "" : "s") last trained, the load would be: "
+        // count the real load differs — more sets means less weight.
+        return "if you MOVE this exercise's range (at the \(sets) set\(sets == 1 ? "" : "s") last trained): "
             + rendered.joined(separator: " | ")
-            + " (more reps or more sets = less weight; the app computes the final load itself)"
+            + " — keeping the current range is the app verdict above, not these numbers"
+
     }
 
     /// Structured verdicts for the validator's cue-vs-history rule — the enforcement half

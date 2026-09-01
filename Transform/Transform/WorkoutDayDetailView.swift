@@ -1061,6 +1061,9 @@ struct ExerciseCard: View {
         // load either — every other load path in the app consults this, so this one must too.
         guard let referenceLoad = analysis.workingWeight,
               !WorkoutProgressionEngine.isBodyweightEquivalent(referenceLoad),
+              // On a bodyweight movement the logged number is ADDED load, not the resistance,
+              // so there is nothing here to translate across rep ranges.
+              !WorkoutProgressionEngine.isBodyweightBasedMovement(exercise.exerciseName),
               let freshest = analysis.workingSets.max(by: { $0.reps < $1.reps })
         else { return nil }
 

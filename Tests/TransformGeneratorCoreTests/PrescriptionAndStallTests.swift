@@ -202,6 +202,30 @@ final class PrescriptionAndStallTests: XCTestCase {
                                  "Reducing after a failed step must not leave the lifter above the load that worked")
     }
 
+    /// A logged number on these movements is ADDED load, not the resistance being lifted.
+    /// A real generation printed "6-10 reps -> 5 lb | 10-14 reps -> 5 lb | 15-20 reps -> 5 lb"
+    /// for a Hanging Knee Raise logged at 5 lb, offering three identical numbers as a choice.
+    func testBodyweightBasedMovementsAreRecognised() {
+        for name in ["Hanging Knee Raise", "Pull-Up (Weighted or Assisted)", "Dip (Assisted or Weighted)",
+                     "Chin-Up", "Push-Up", "Nordic Hamstring Curl", "Hanging Leg Raise"] {
+            XCTAssertTrue(WorkoutProgressionEngine.isBodyweightBasedMovement(name),
+                          "\(name) loads bodyweight; any logged number is added load")
+        }
+        for name in ["Cable Face Pull", "Barbell Row", "Incline Dumbbell Press", "Seated Leg Curl",
+                     "Trap Bar Deadlift", "EZ-Bar Curl"] {
+            XCTAssertFalse(WorkoutProgressionEngine.isBodyweightBasedMovement(name),
+                           "\(name) is externally loaded and must still be translated")
+        }
+    }
+
+    /// Distinct from `isBodyweightEquivalent`, which only catches a 0 or legacy 1 lb log.
+    func testTheTwoBodyweightChecksAnswerDifferentQuestions() {
+        XCTAssertFalse(WorkoutProgressionEngine.isBodyweightEquivalent(5),
+                       "5 lb is not a bodyweight-equivalent LOG")
+        XCTAssertTrue(WorkoutProgressionEngine.isBodyweightBasedMovement("Hanging Knee Raise"),
+                      "...but the MOVEMENT is still bodyweight-based, which is the case that leaked")
+    }
+
     func testStacksAndBarbellsUseTheOwnersSmallestRealStep() {
         XCTAssertEqual(WorkoutProgressionEngine.incrementLbs(forExerciseName: "Cable Face Pull"), 2.5)
         XCTAssertEqual(WorkoutProgressionEngine.incrementLbs(forExerciseName: "Barbell Row"), 2.5)
