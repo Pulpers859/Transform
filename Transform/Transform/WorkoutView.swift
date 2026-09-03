@@ -16,7 +16,23 @@ struct WorkoutView: View {
     @Query(sort: \ExerciseWeightEntry.loggedAt, order: .reverse) private var exerciseWeightEntries: [ExerciseWeightEntry]
     @Query(sort: \ExercisePerformanceLog.loggedAt, order: .reverse) private var exercisePerformanceLogs: [ExercisePerformanceLog]
 
-    @State private var isGenerating = false
+    /// WHICH generation is running, not merely that one is.
+    ///
+    /// A single `isGenerating` boolean was shared by every button, so starting a Start Over
+    /// also flipped the next-week button into its loading state: the screen showed
+    /// "Generating Week 3..." and "Regenerating..." at the same time, for one operation that
+    /// was neither a week 3 nor two operations. Buttons now light up only for their own work,
+    /// while `isGenerating` keeps its old meaning for every disable/tint that only cares that
+    /// something is in flight.
+    enum ActiveGeneration: Equatable {
+        case firstWeek
+        case nextWeek
+        case regenerate
+    }
+
+    @State private var activeGeneration: ActiveGeneration?
+
+    var isGenerating: Bool { activeGeneration != nil }
     @State private var errorMessage: String?
     @State private var showError = false
     @State private var showDeleteConfirm = false
@@ -225,7 +241,7 @@ struct WorkoutView: View {
             startFirstWeekGeneration(from: result, sourceAnalysisDate: analysis.date)
         } label: {
             HStack {
-                if isGenerating {
+                if activeGeneration == .firstWeek {
                     ProgressView()
                         .tint(.white)
                         .padding(.trailing, 4)
@@ -553,7 +569,7 @@ struct WorkoutView: View {
                 startNextWeekGeneration(for: program)
             } label: {
                 HStack {
-                    if isGenerating {
+                    if activeGeneration == .nextWeek {
                         ProgressView()
                             .tint(.white)
                             .padding(.trailing, 4)
@@ -640,11 +656,11 @@ struct WorkoutView: View {
                     showStartOverConfirm = true
                 } label: {
                     HStack {
-                        if isGenerating {
+                        if activeGeneration == .regenerate {
                             ProgressView().tint(TFColor.accent).scaleEffect(0.8)
                         }
                         Image(systemName: "arrow.clockwise")
-                        Text(isGenerating ? "Regenerating..." : "Start Over (New Week 1)")
+                        Text(activeGeneration == .regenerate ? "Regenerating..." : "Start Over (New Week 1)")
                     }
                     .font(.subheadline.bold())
                     .frame(maxWidth: .infinity)
@@ -682,7 +698,7 @@ struct WorkoutView: View {
     @MainActor
     func startFirstWeekGeneration(from result: BodyAnalysisResult, sourceAnalysisDate: Date?) {
         guard !isGenerating else { return }
-        isGenerating = true
+        activeGeneration = .firstWeek
         generationTask?.cancel()
         generationTask = Task {
             await generateFirstWeek(from: result, sourceAnalysisDate: sourceAnalysisDate)
@@ -692,7 +708,7 @@ struct WorkoutView: View {
     @MainActor
     func startNextWeekGeneration(for program: WorkoutProgram) {
         guard !isGenerating else { return }
-        isGenerating = true
+        activeGeneration = .nextWeek
         generationTask?.cancel()
         generationTask = Task {
             await generateNextWeek(for: program)
@@ -702,7 +718,7 @@ struct WorkoutView: View {
     @MainActor
     func startRegeneration(from result: BodyAnalysisResult, sourceAnalysisDate: Date?) {
         guard !isGenerating else { return }
-        isGenerating = true
+        activeGeneration = .regenerate
         generationTask?.cancel()
         generationTask = Task {
             await regenerateProgram(from: result, sourceAnalysisDate: sourceAnalysisDate)
@@ -711,16 +727,18 @@ struct WorkoutView: View {
 
     @MainActor
     func generateFirstWeek(from result: BodyAnalysisResult, sourceAnalysisDate: Date?) async {
-        isGenerating = true
+        // Only claim the slot when nothing else owns it: `regenerateProgram` delegates here,
+        // and overwriting `.regenerate` with `.firstWeek` would mislabel the button again.
+        if activeGeneration == nil { activeGeneration = .firstWeek }
         guard !Task.isCancelled else {
-            isGenerating = false
+            activeGeneration = nil
             generationTask = nil
             return
         }
         WorkoutGenerationDiagnostics.start(feature: "Week 1 workout generation")
         defer {
             WorkoutGenerationDiagnostics.finish()
-            isGenerating = false
+            activeGeneration = nil
             generationTask = nil
         }
         // Re-derive the structured sleep-recovery state at the moment of generation
@@ -818,9 +836,9 @@ struct WorkoutView: View {
 
     @MainActor
     func generateNextWeek(for program: WorkoutProgram) async {
-        isGenerating = true
+        if activeGeneration == nil { activeGeneration = .nextWeek }
         guard !Task.isCancelled else {
-            isGenerating = false
+            activeGeneration = nil
             generationTask = nil
             return
         }
@@ -828,7 +846,7 @@ struct WorkoutView: View {
         WorkoutGenerationDiagnostics.start(feature: "Week \(nextWeek) workout generation")
         defer {
             WorkoutGenerationDiagnostics.finish()
-            isGenerating = false
+            activeGeneration = nil
             generationTask = nil
         }
         // Same generation-time re-derivation as week 1: the recovery tier must

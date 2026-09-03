@@ -31,8 +31,22 @@ final class AnthropicClient {
     static let maxConcurrentRequests = 4
     private lazy var session: URLSession = {
         let configuration = URLSessionConfiguration.ephemeral
-        configuration.timeoutIntervalForRequest = 240
-        configuration.timeoutIntervalForResource = 360
+        // Raised from 240/360 after a full-program generation timed out on the owner's phone
+        // and surfaced as "the AI request timed out ... No recovery-engine week was applied".
+        //
+        // A timeout is the ONE transport failure this client deliberately does not retry
+        // (`shouldRetry(error:)`), and that is the right call: the request may already have
+        // completed and been billed on Anthropic's side, so retrying risks paying twice for one
+        // program. It also cannot fit inside the resource ceiling — two 240s attempts exceed
+        // 360s, and `timeoutIntervalForResource` starts when the task is resumed, so the retry
+        // would die on the budget rather than on the wire.
+        //
+        // With no retry available, the ceiling itself has to be honest about how long a full
+        // 4-week program with an 8192-token budget actually takes. The ratio between the two is
+        // preserved so a queued request still cannot burn its resource budget before reaching
+        // the wire, which is the trap documented on `maxConcurrentRequests` below.
+        configuration.timeoutIntervalForRequest = 300
+        configuration.timeoutIntervalForResource = 480
         configuration.waitsForConnectivity = true
         configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
         configuration.urlCache = nil
