@@ -2466,6 +2466,16 @@ extension ClaudeService {
     /// "Upright Row" is out for the same reason: the name says row, the movement is a delt raise.
     var horizontalPullPatterns: Set<String> { ["Row"] }
 
+    /// Overhead pulling — the work that does NOT do rowing's job, used by
+    /// `validateBackPatternBalance` to weigh a week's back volume.
+    ///
+    /// "Pullover" is deliberately excluded even though it is also non-rowing back work. The
+    /// balance rule's message says "overhead-pulling sets", and a pullover is shoulder-extension
+    /// work rather than a pulldown; counting it would inflate the vertical side and fire the rule
+    /// on weeks whose pulldown-to-row ratio is actually fine. Narrow and accurate beats broad and
+    /// noisy for a rule whose whole failure mode was being too easy to satisfy.
+    var verticalPullPatterns: Set<String> { ["Vertical Pull"] }
+
     /// Whether the week contains a movement that both uses one of `patterns` AND directly trains
     /// `groupSeed`.
     ///
@@ -2564,58 +2574,96 @@ extension ClaudeService {
         // picks duplicated-pattern, non-anchor, non-day-intent slots, and the BASE-001 subset
         // check is the same guard `enforceBaselineMuscleCoverage` and the priority pass use, so
         // a trade can never open a zero-coverage hole to close a pattern one.
-        for candidate in rowCandidates {
-            guard !avoidedExercises.contains(ExerciseWeightEntry.canonicalLookupKey(candidate.name)) else { continue }
+        //
+        // The trade must ALSO leave every maintenance ledger inside its distinct-movement budget,
+        // and the first version of this pass never checked that. `menusByAppendingBalanceExercise`
+        // enforces `maintenanceSlotBudgetsAreFeasible` on every APPEND; the trade path below
+        // bypassed it completely, so a swap that evicted a non-back movement pushed the back group
+        // from three distinct movements to FOUR — one past what an 8-set recovery-tight ceiling can
+        // dose at three sets apiece.
+        //
+        // That overrun is not cosmetic, because `maintenanceSlotBudgetsAreFeasible` is a
+        // WHOLE-WEEK, ALL-GROUPS predicate. Once any single group is over its cap,
+        // `menuPlanningBudgetAllows` returns false for every candidate on every day, and every
+        // later additive pass is dead on arrival. `enforceMaintenanceExposureBreadth` runs
+        // immediately after this one, so the breach silently disabled it for the entire week: the
+        // owner's Week 1 shipped Triceps stuck at ONE slot and 2 weekly sets (the only validator
+        // finding of the run), while the back this pass was trying to help came out as four
+        // movements at two sets apiece — precisely the fragmentation the three-set dose divisor
+        // exists to prevent. The row was bought with the breadth of every other muscle.
+        //
+        // So prefer a trade that keeps every ledger feasible. In practice that means evicting a
+        // VERTICAL PULL to seat the row, which is exactly the intended training outcome: the
+        // budget was never full of back work, it was full of the SAME back work three times over.
+        // Only when no feasible trade exists anywhere do we fall back to the unconstrained one — a
+        // week with a row and one over-budget ledger still beats a week with no rowing at all,
+        // which is the failure this whole pass exists to prevent.
+        func firstValidTrade(requiringDoseFeasibility: Bool) -> [[PreSelectedExercise]]? {
+            for candidate in rowCandidates {
+                guard !avoidedExercises.contains(ExerciseWeightEntry.canonicalLookupKey(candidate.name)) else { continue }
 
-            let probe = WorkoutExerciseResponse(
-                exerciseName: candidate.name,
-                sets: 3,
-                reps: "10-12",
-                tempo: "",
-                restSeconds: 60,
-                notes: "",
-                muscleTarget: candidate.target
-            )
-
-            for (dayIndex, plan) in blueprint.dayPlans.enumerated()
-            where !plan.isRestDay && dayIndex < menus.count && !menus[dayIndex].isEmpty {
-                guard exerciseMatchesDayStyle(probe, style: canonicalTrainingStyle(plan.style)) else { continue }
-
-                let focusIntent = focusIntentForArea(plan.focusArea, within: trainingIntent)
-                let supportIntents = plan.supportAreas.compactMap { focusIntentForArea($0, within: trainingIntent) }
-                let candidateMenu = PreSelectedExercise(
+                let probe = WorkoutExerciseResponse(
                     exerciseName: candidate.name,
-                    muscleTarget: candidate.target,
-                    movementPattern: exerciseMetadata(
-                        forExerciseName: candidate.name,
-                        muscleTarget: candidate.target
-                    ).movementPattern,
-                    role: proceduralExerciseRole(for: candidate.name, muscleTarget: candidate.target),
-                    prescribedSets: 1
+                    sets: 3,
+                    reps: "10-12",
+                    tempo: "",
+                    restSeconds: 60,
+                    notes: "",
+                    muscleTarget: candidate.target
                 )
 
-                for replaceIndex in baselineCoverageReplacementIndices(
-                    in: menus[dayIndex],
-                    focusIntent: focusIntent,
-                    supportIntents: supportIntents
-                ) {
-                    var swapped = menus
-                    swapped[dayIndex].remove(at: replaceIndex)
-                    swapped[dayIndex].insert(candidateMenu, at: replaceIndex)
+                for (dayIndex, plan) in blueprint.dayPlans.enumerated()
+                where !plan.isRestDay && dayIndex < menus.count && !menus[dayIndex].isEmpty {
+                    guard exerciseMatchesDayStyle(probe, style: canonicalTrainingStyle(plan.style)) else { continue }
 
-                    // Closure, not a key path: `baselineCoverageGaps` returns tuples and Swift
-                    // has no key paths into tuple elements. This mirrors the existing BASE-001
-                    // replacement guard exactly.
-                    let gapsBefore = Set(baselineCoverageGaps(in: menus, blueprint: blueprint).map { $0.seed })
-                    let gapsAfter = Set(baselineCoverageGaps(in: swapped, blueprint: blueprint).map { $0.seed })
-                    guard gapsAfter.isSubset(of: gapsBefore) else { continue }
+                    let focusIntent = focusIntentForArea(plan.focusArea, within: trainingIntent)
+                    let supportIntents = plan.supportAreas.compactMap { focusIntentForArea($0, within: trainingIntent) }
+                    let candidateMenu = PreSelectedExercise(
+                        exerciseName: candidate.name,
+                        muscleTarget: candidate.target,
+                        movementPattern: exerciseMetadata(
+                            forExerciseName: candidate.name,
+                            muscleTarget: candidate.target
+                        ).movementPattern,
+                        role: proceduralExerciseRole(for: candidate.name, muscleTarget: candidate.target),
+                        prescribedSets: 1
+                    )
 
-                    return swapped
+                    for replaceIndex in baselineCoverageReplacementIndices(
+                        in: menus[dayIndex],
+                        focusIntent: focusIntent,
+                        supportIntents: supportIntents
+                    ) {
+                        var swapped = menus
+                        swapped[dayIndex].remove(at: replaceIndex)
+                        swapped[dayIndex].insert(candidateMenu, at: replaceIndex)
+
+                        // Closure, not a key path: `baselineCoverageGaps` returns tuples and Swift
+                        // has no key paths into tuple elements. This mirrors the existing BASE-001
+                        // replacement guard exactly.
+                        let gapsBefore = Set(baselineCoverageGaps(in: menus, blueprint: blueprint).map { $0.seed })
+                        let gapsAfter = Set(baselineCoverageGaps(in: swapped, blueprint: blueprint).map { $0.seed })
+                        guard gapsAfter.isSubset(of: gapsBefore) else { continue }
+
+                        if requiringDoseFeasibility {
+                            guard maintenanceSlotBudgetsAreFeasible(
+                                existingMenus: swapped,
+                                selectedToday: [],
+                                blueprint: blueprint
+                            ) else { continue }
+                        }
+
+                        return swapped
+                    }
                 }
             }
+
+            return nil
         }
 
-        return menus
+        return firstValidTrade(requiringDoseFeasibility: true)
+            ?? firstValidTrade(requiringDoseFeasibility: false)
+            ?? menus
     }
 
     // MARK: - Maintenance Breadth (BASE-001 two-exposure floor)

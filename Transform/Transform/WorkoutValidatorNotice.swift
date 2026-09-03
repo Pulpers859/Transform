@@ -217,6 +217,37 @@ extension WorkoutValidatorNotice {
             )
         }
 
+        // The FLOOR, which had no notice at all while its ceiling twin above did. That gap was
+        // not theoretical: the maintenance-floor finding was the single validator result of a
+        // real Week 1, and with nothing to match it the owner was shown "A plan check didn't
+        // pass … isn't recognized well enough to explain here" for the only thing his week had
+        // to say. `.attention` rather than `.headsUp` because a muscle under its floor is a
+        // genuine coverage hole, and the shortfall is in exercise SLOTS, which no amount of
+        // training harder on the day repairs.
+        if issue.contains("falls below the maintenance weekly volume floor") {
+            return notice(
+                .attention,
+                "\(subject ?? "A non-priority muscle") is getting too little work this week",
+                "It only has one exercise in the whole week, and one exercise can't hold enough sets to keep a muscle where it is. It needs a second movement on another day, not more sets on the one it has."
+            )
+        }
+
+        if issue.contains("no horizontal pull at all") {
+            return notice(
+                .attention,
+                "Your back work is all overhead pulling",
+                "Every back movement this week pulls down from above, like a pulldown or pull-up. Those don't train the muscles between your shoulder blades in their shortened position — that takes a rowing movement."
+            )
+        }
+
+        if issue.contains("overhead-pulling sets against only") {
+            return notice(
+                .attention,
+                "Your back work is mostly overhead pulling",
+                "There's more than twice as much pulling-down work as rowing this week. One short row doesn't balance it — the muscles between your shoulder blades need rowing volume closer to the pulldown volume."
+            )
+        }
+
         if issue.contains("overshot its direct-set target enough to create avoidable fatigue") {
             return notice(
                 .headsUp,

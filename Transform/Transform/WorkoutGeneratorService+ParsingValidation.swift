@@ -826,7 +826,52 @@ extension ClaudeService {
                 muscleTarget: exercise.muscleTarget
             )
         }
-        guard !hasHorizontalPull else { return [] }
+        guard !hasHorizontalPull else {
+            // Presence is not balance, and treating it as such is how a real week shipped.
+            //
+            // This rule used to return clean the moment ONE rowing movement existed anywhere.
+            // `enforceHorizontalPullCoverage` uses the same binary test, so the repair pass and
+            // the check agreed with each other and were blind to the same thing: the owner's
+            // Week 1 trained the back with 6 overhead sets and 2 rowing sets — a single
+            // 2-set Chest-Supported Row parked on the Upper day, with the actual PULL day
+            // carrying two vertical pulls and no row at all — and nothing said a word.
+            //
+            // Counting SETS rather than movements is the point. One 2-set row next to three
+            // pulldowns is not a rowing exposure, it is a token that silences the rule.
+            // A nested func rather than a local closure: a closure stored in a `let` that touches
+            // instance members would need explicit `self.` capture, and this reads better without
+            // it. The non-escaping closures passed to `contains`/`reduce` below are unaffected.
+            func backSetsForPattern(_ patterns: Set<String>) -> Int {
+                exercises.reduce(0) { total, exercise in
+                    guard let pattern = menuMovementPattern(
+                        forExerciseName: exercise.exerciseName,
+                        muscleTarget: exercise.muscleTarget
+                    ), patterns.contains(pattern) else { return total }
+                    guard exerciseDirectlyTargets(
+                        groupAliases: backAliases,
+                        exerciseName: exercise.exerciseName,
+                        muscleTarget: exercise.muscleTarget
+                    ) else { return total }
+                    return total + exercise.sets
+                }
+            }
+
+            let rowSets = backSetsForPattern(horizontalPullPatterns)
+            let verticalSets = backSetsForPattern(verticalPullPatterns)
+
+            // Two conditions, both deliberate. The floor on `verticalSets` keeps a small back
+            // week (one pulldown, one row) from tripping a balance rule that has nothing to
+            // balance. The 2:1 ratio is the line where the week stops being "vertical-leaning"
+            // and starts being "vertical, with a token row" — at 6 vs 2 the owner's week was
+            // 3:1. Deliberately NOT symmetric: a row-dominant week still loads the lats through
+            // a full range, whereas nothing in a vertical pull trains the rhomboids and mid-traps
+            // at their shortened position, which is the gap this rule exists to close.
+            guard verticalSets >= 4, rowSets * 2 < verticalSets else { return [] }
+
+            return [
+                "The week's back work is \(verticalSets) overhead-pulling sets against only \(rowSets) rowing set(s) — more than twice as much vertical as horizontal. One token row does not cover the rhomboids and mid-traps in their shortened position; this needs rowing volume closer to its pulldown volume, not another pulldown variation."
+            ]
+        }
 
         return [
             "The week trains the back with no horizontal pull at all — every back movement pulls down from overhead. Vertical pulling does not load the rhomboids and mid-traps in their shortened position, so this needs a rowing movement, not another pulldown variation."
@@ -1308,6 +1353,13 @@ extension ClaudeService {
             // a week over a slot that provably could not be placed repairs nothing and denies the
             // owner a program he paid for — the same reasoning that demoted zero-coverage.
             "no horizontal pull at all",
+            // The ratio sibling of the line above, and classified with it for the same reason:
+            // it is a verdict on WHICH EXERCISES the menu holds. Under menu-lock the AI may not
+            // swap a pulldown for a row, and on the procedural path
+            // `enforceHorizontalPullCoverage` has already tried and taken the best trade the
+            // week's budgets allow. Anchored on "overhead-pulling sets against only" rather than
+            // a generic fragment so no other rule's prose can pick it up.
+            "overhead-pulling sets against only",
             "falls below the maintenance weekly volume floor",
         ]
     }

@@ -224,7 +224,26 @@ extension ClaudeService {
             .map { canonicalTrainingStyle($0.style) }
 
         return allocations.map { allocation in
-            let compatibleDays = trainingStyles.filter { allocation.preferredStyles.contains($0) }.count
+            // Both sides of this comparison must be canonical, and only one of them used to be.
+            //
+            // `canonicalTrainingStyle` folds "Legs" and "Lower" into the single style "Lower",
+            // and `trainingStyles` above is already folded. `preferredStyles` is NOT: it comes
+            // from `sanitizedPreferredStyles`, whose fallback is the raw catalogue list, and the
+            // Core/Abs profile lists BOTH spellings (`["Legs", "Lower", "Upper"]`). Dedup there
+            // keeps the first literal spelling per bucket, so the allocation carried "Legs" and
+            // the day carried the canonical "Lower" — and `["Upper", "Legs"].contains("Lower")`
+            // is false. Every lower-body day was therefore invisible to this count.
+            //
+            // Live cost on the owner's Week 1: Core/Abs genuinely had three compatible days
+            // (Upper, Legs, Lower) against a target frequency of 2, so this guard should have
+            // returned the allocation untouched. Instead it saw ONE compatible day, clamped the
+            // priority to 1 exposure, and recut 6 direct sets to 5 (and 8.5 weighted stimulus to
+            // 7.1). That missing set is exactly what left Day 5's Cable Crunch stranded at ONE
+            // set: the floor pass could not lift it to the `.core` two-set floor because the
+            // over-volume ceiling (5 * 1.15 = 5.73) was already spent by the three exposures the
+            // clamped budget never expected to fund.
+            let preferredCanonicalStyles = Set(allocation.preferredStyles.map { canonicalTrainingStyle($0) })
+            let compatibleDays = trainingStyles.filter { preferredCanonicalStyles.contains($0) }.count
             // Zero compatible days means the style list is unusable as a constraint for this
             // split, not that the priority should stop training. Leave the allocation alone and
             // let the feasibility pass place the work off-style rather than clamping to zero.
