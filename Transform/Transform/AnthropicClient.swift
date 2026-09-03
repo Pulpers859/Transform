@@ -34,10 +34,33 @@ struct AnthropicRequestContext {
 /// and no shared mutable state between concurrent candidates. The lock is there because the
 /// callback arrives on the session's delegate queue while the value is read on the calling
 /// task after the await resumes.
-final class ConnectivityWaitRecorder: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+nonisolated final class ConnectivityWaitRecorder: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
     private let lock = NSLock()
     private var waited = false
+    private var putBytesOnTheWire = false
 
+    /// True only when this attempt stalled on connectivity AND never sent a byte of the request
+    /// body — the one state in which Anthropic provably never saw the request, so a retry costs
+    /// nothing.
+    ///
+    /// The first version of this asked only "did the task ever wait for connectivity", which is
+    /// a different and much broader question, and it was wrong in the exact way that costs
+    /// money. A flaky signal blips at the start (waited = true), recovers, the request uploads,
+    /// Anthropic generates and bills it, and then a genuinely slow Opus response blows the 300s
+    /// ceiling. The stale `waited` flag would call that billed request free to retry and pay for
+    /// the same program twice — on precisely the poor-signal days this rule exists to help.
+    ///
+    /// Body bytes are the evidence, because they are the last thing that happens before
+    /// Anthropic can act on the request. Their ABSENCE is what licenses the retry; if the upload
+    /// started at all the claim is void, whatever happened afterwards.
+    var isFreeToRetry: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return waited && !putBytesOnTheWire
+    }
+
+    /// Kept separate from the retry decision: a stall is worth RECORDING even when it is not
+    /// free to retry, because it is the fact that tells a slow model apart from a dead radio.
     var didWaitForConnectivity: Bool {
         lock.lock()
         defer { lock.unlock() }
@@ -47,6 +70,19 @@ final class ConnectivityWaitRecorder: NSObject, URLSessionTaskDelegate, @uncheck
     func urlSession(_ session: URLSession, taskIsWaitingForConnectivity task: URLSessionTask) {
         lock.lock()
         waited = true
+        lock.unlock()
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        didSendBodyData bytesSent: Int64,
+        totalBytesSent: Int64,
+        totalBytesExpectedToSend: Int64
+    ) {
+        guard totalBytesSent > 0 else { return }
+        lock.lock()
+        putBytesOnTheWire = true
         lock.unlock()
     }
 }
@@ -353,7 +389,7 @@ final class AnthropicClient {
                     didWaitForConnectivity: waitedForConnectivity
                 )
 
-                if shouldRetry(error: error, didWaitForConnectivity: waitRecorder.didWaitForConnectivity),
+                if shouldRetry(error: error, isFreeToRetry: waitRecorder.isFreeToRetry),
                    attempt < allowedAttempts {
                     logRequest(
                         requestID: requestID,
@@ -567,21 +603,22 @@ final class AnthropicClient {
         statusCode == 408 || statusCode == 429 || (500...599).contains(statusCode)
     }
 
-    /// A timeout is retried ONLY when the task is known to have stalled waiting for a network
-    /// path.
+    /// A timeout is retried ONLY when the attempt is PROVEN never to have reached Anthropic.
     ///
     /// Refusing every timeout was the right instinct for the wrong reason: the danger is
-    /// double-billing a request that already completed on Anthropic's side, and that danger is
-    /// real only for a request that actually reached the wire. A task that sat in
-    /// `waitsForConnectivity` never got there, so nothing was generated and nothing was billed
-    /// — retrying it is free, and refusing to turned a few seconds of lost signal into a hard
-    /// failure with no second attempt.
+    /// double-billing a request that already completed server-side, and that danger is real only
+    /// for a request that got on the wire. `ConnectivityWaitRecorder.isFreeToRetry` is the proof
+    /// — it requires both a connectivity stall and zero body bytes sent, so the request cannot
+    /// have been generated or billed.
     ///
-    /// When the signal is absent the old behaviour stands, unchanged: assume the request may
-    /// have been served and do not pay for it twice.
-    private func shouldRetry(error: Error, didWaitForConnectivity: Bool) -> Bool {
+    /// "Stalled on connectivity" ALONE is not that proof, and treating it as such was a
+    /// double-billing bug: a signal blip at the start of a request that then succeeds, is billed,
+    /// and later times out on genuine model latency would have been retried as though it were
+    /// free. Anything short of the full proof keeps the old behaviour: assume it may have been
+    /// served and do not pay for it twice.
+    private func shouldRetry(error: Error, isFreeToRetry: Bool) -> Bool {
         if let urlError = error as? URLError, urlError.code == .timedOut {
-            return didWaitForConnectivity
+            return isFreeToRetry
         }
         return error.isTransientNetworkFailure
     }
