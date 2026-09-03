@@ -110,8 +110,9 @@ final class AnthropicClient {
         // means a task can instead sit waiting for a radio that never returns, burn a clock, and
         // fail with the SAME `.timedOut` code without Anthropic ever seeing it — nothing
         // generated, nothing billed, and nothing retried either. `ConnectivityWaitRecorder` now
-        // separates the two, so `shouldRetry(error:didWaitForConnectivity:)` retries exactly the
-        // case that is free to retry and still refuses the case that could cost twice.
+        // separates the two, so `shouldRetry(error:isFreeToRetry:)` retries only the case proven
+        // never to have reached Anthropic — a stall AND zero body bytes sent — and still refuses
+        // everything that could have been served and billed.
         //
         // With no retry available, the ceiling itself has to be honest about how long the week 1
         // call actually takes. It emits one 7-day week like any other generation, but it is the
