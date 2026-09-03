@@ -17,6 +17,40 @@ struct AnthropicRequestContext {
     }
 }
 
+/// Records whether ONE request ever stalled waiting for a usable network path.
+///
+/// `waitsForConnectivity = true` deliberately suppresses the immediate
+/// "not connected to the internet" failure and lets a task sit waiting for the radio
+/// instead. That wait is not free: it is drawn from the same clocks as real server latency,
+/// and when a clock expires Foundation reports `URLError.timedOut` — the SAME code it reports
+/// when Anthropic genuinely took too long. Without this delegate the two are indistinguishable,
+/// which is exactly how a few seconds of dead zone reached the owner as "the AI request timed
+/// out before Anthropic returned a complete structured response".
+///
+/// `taskIsWaitingForConnectivity` is the only signal Apple gives that separates them, and the
+/// session was built with no delegate at all, so nothing was listening.
+///
+/// One instance per request, handed to `data(for:delegate:)`, so there is no task bookkeeping
+/// and no shared mutable state between concurrent candidates. The lock is there because the
+/// callback arrives on the session's delegate queue while the value is read on the calling
+/// task after the await resumes.
+final class ConnectivityWaitRecorder: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+    private let lock = NSLock()
+    private var waited = false
+
+    var didWaitForConnectivity: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return waited
+    }
+
+    func urlSession(_ session: URLSession, taskIsWaitingForConnectivity task: URLSessionTask) {
+        lock.lock()
+        waited = true
+        lock.unlock()
+    }
+}
+
 final class AnthropicClient {
     static let shared = AnthropicClient()
     private let maxAttempts = 3
@@ -34,12 +68,14 @@ final class AnthropicClient {
         // Raised from 240/360 after a full-program generation timed out on the owner's phone
         // and surfaced as "the AI request timed out ... No recovery-engine week was applied".
         //
-        // A timeout is the ONE transport failure this client deliberately does not retry
-        // (`shouldRetry(error:)`), and that is the right call: the request may already have
-        // completed and been billed on Anthropic's side, so retrying risks paying twice for one
-        // program. It also cannot fit inside the resource ceiling — two 240s attempts exceed
-        // 360s, and `timeoutIntervalForResource` starts when the task is resumed, so the retry
-        // would die on the budget rather than on the wire.
+        // A timeout used to be the ONE transport failure this client never retried, on the
+        // reasoning that the request may already have completed and been billed. That reasoning
+        // holds only for a request that actually reached the wire. `waitsForConnectivity` below
+        // means a task can instead sit waiting for a radio that never returns, burn a clock, and
+        // fail with the SAME `.timedOut` code without Anthropic ever seeing it — nothing
+        // generated, nothing billed, and nothing retried either. `ConnectivityWaitRecorder` now
+        // separates the two, so `shouldRetry(error:didWaitForConnectivity:)` retries exactly the
+        // case that is free to retry and still refuses the case that could cost twice.
         //
         // With no retry available, the ceiling itself has to be honest about how long the week 1
         // call actually takes. It emits one 7-day week like any other generation, but it is the
@@ -217,6 +253,9 @@ final class AnthropicClient {
         let allowedAttempts = max(1, min(maxAttempts, attemptLimit ?? maxAttempts))
         for attempt in 1...allowedAttempts {
             try Task.checkCancellation()
+            // Declared outside the `do` on purpose: the retry decision is made in the `catch`,
+            // and whether this attempt stalled on connectivity is the fact that decision turns on.
+            let waitRecorder = ConnectivityWaitRecorder()
             do {
                 var request = URLRequest(url: url)
                 request.httpMethod = "POST"
@@ -228,7 +267,7 @@ final class AnthropicClient {
                 request.httpBody = encodedBody
                 request.timeoutInterval = timeout
 
-                let (data, response) = try await session.data(for: request)
+                let (data, response) = try await session.data(for: request, delegate: waitRecorder)
 
                 guard let httpResponse = response as? HTTPURLResponse else {
                     throw ClaudeError.apiError("Invalid response")
@@ -306,13 +345,16 @@ final class AnthropicClient {
                 throw ClaudeError.apiError("HTTP \(httpResponse.statusCode)")
             } catch {
                 let lifecycleAtEnd = AppLifecycleMonitor.shared.snapshot()
+                let waitedForConnectivity = waitRecorder.didWaitForConnectivity
                 let category = failureCategory(
                     for: error,
                     lifecycleAtStart: lifecycleAtStart,
-                    lifecycleAtEnd: lifecycleAtEnd
+                    lifecycleAtEnd: lifecycleAtEnd,
+                    didWaitForConnectivity: waitedForConnectivity
                 )
 
-                if shouldRetry(error: error), attempt < allowedAttempts {
+                if shouldRetry(error: error, didWaitForConnectivity: waitRecorder.didWaitForConnectivity),
+                   attempt < allowedAttempts {
                     logRequest(
                         requestID: requestID,
                         event: "retry_scheduled",
@@ -338,6 +380,10 @@ final class AnthropicClient {
                         "category": category,
                         "error": normalizedErrorDescription(error),
                         "duration_ms": "\(durationMs)",
+                        // The fact that separates "Anthropic was slow" from "this phone never
+                        // had a usable network path". Without it `duration_ms` alone cannot tell
+                        // 300s of model latency from 50s of latency plus 250s of dead zone.
+                        "waited_for_connectivity": "\(waitedForConnectivity)",
                         "lifecycle_end": lifecycleAtEnd.phase.rawValue,
                         "lifecycle_changed": "\(lifecycleAtEnd.generation != lifecycleAtStart.generation)",
                         "transition_age_ms": "\(max(0, Int(lifecycleAtEnd.lastTransitionAt.timeIntervalSince(startedAt) * 1000)))"
@@ -408,7 +454,8 @@ final class AnthropicClient {
     private func failureCategory(
         for error: Error,
         lifecycleAtStart: AppLifecycleSnapshot,
-        lifecycleAtEnd: AppLifecycleSnapshot
+        lifecycleAtEnd: AppLifecycleSnapshot,
+        didWaitForConnectivity: Bool = false
     ) -> String {
         let lifecycleChanged = lifecycleAtEnd.generation != lifecycleAtStart.generation
         if lifecycleChanged && lifecycleAtEnd.phase != .active {
@@ -418,7 +465,10 @@ final class AnthropicClient {
         if let urlError = error as? URLError {
             switch urlError.code {
             case .timedOut:
-                return "transport_timeout"
+                // A stalled radio and a slow model produce the identical error code. Naming them
+                // apart here is what stops a future reader repeating the conflation that sent
+                // this investigation after the wrong cause.
+                return didWaitForConnectivity ? "connectivity_wait_timeout" : "transport_timeout"
             case .networkConnectionLost:
                 return lifecycleChanged ? "app_lifecycle_disconnect" : "transport_disconnect"
             case .notConnectedToInternet, .cannotFindHost, .cannotConnectToHost, .dnsLookupFailed:
@@ -517,9 +567,21 @@ final class AnthropicClient {
         statusCode == 408 || statusCode == 429 || (500...599).contains(statusCode)
     }
 
-    private func shouldRetry(error: Error) -> Bool {
+    /// A timeout is retried ONLY when the task is known to have stalled waiting for a network
+    /// path.
+    ///
+    /// Refusing every timeout was the right instinct for the wrong reason: the danger is
+    /// double-billing a request that already completed on Anthropic's side, and that danger is
+    /// real only for a request that actually reached the wire. A task that sat in
+    /// `waitsForConnectivity` never got there, so nothing was generated and nothing was billed
+    /// — retrying it is free, and refusing to turned a few seconds of lost signal into a hard
+    /// failure with no second attempt.
+    ///
+    /// When the signal is absent the old behaviour stands, unchanged: assume the request may
+    /// have been served and do not pay for it twice.
+    private func shouldRetry(error: Error, didWaitForConnectivity: Bool) -> Bool {
         if let urlError = error as? URLError, urlError.code == .timedOut {
-            return false
+            return didWaitForConnectivity
         }
         return error.isTransientNetworkFailure
     }
