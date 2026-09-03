@@ -39,9 +39,11 @@ extension ClaudeService {
     var weekOneConfig: GenerationConfig {
         // Week 1 is the highest-leverage planning pass, so keep Opus for deeper reasoning.
         // The latency fix comes from tighter prompt/output budgets, not from downgrading the model.
-        // 300s, matching the session's request ceiling. The full-program call is the longest
-        // one the app makes — a whole mesocycle blueprint plus week one against an 8192-token
-        // budget — and it is the call that actually timed out in use.
+        // 300s, matching the session's request ceiling. This is NOT a bigger request than a
+        // later week — every generation emits exactly one 7-day week, and the training intent,
+        // blueprint and exercise menu are all computed deterministically before the call. It is
+        // the SLOWEST request because it is the only one that runs on Opus rather than the lite
+        // model, against the same 8192-token budget, and it is the call that timed out in use.
         GenerationConfig(model: Config.claudeModel, maxTokens: 8192, timeout: 300)
     }
 

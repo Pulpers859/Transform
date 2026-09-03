@@ -41,8 +41,10 @@ final class AnthropicClient {
         // 360s, and `timeoutIntervalForResource` starts when the task is resumed, so the retry
         // would die on the budget rather than on the wire.
         //
-        // With no retry available, the ceiling itself has to be honest about how long a full
-        // 4-week program with an 8192-token budget actually takes. The ratio between the two is
+        // With no retry available, the ceiling itself has to be honest about how long the week 1
+        // call actually takes. It emits one 7-day week like any other generation, but it is the
+        // only one that runs on Opus rather than the lite model, so it is the slowest of them.
+        // The ratio between the two is
         // preserved so a queued request still cannot burn its resource budget before reaching
         // the wire, which is the trap documented on `maxConcurrentRequests` below.
         configuration.timeoutIntervalForRequest = 300
