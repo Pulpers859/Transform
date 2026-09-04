@@ -155,7 +155,7 @@ extension ClaudeService {
         let analysisSummary = analysisContext(from: analysisResult)
         let trainingIntent = trainingIntentPlan(from: analysisResult)
         let blueprint = programBlueprint(for: trainingIntent, weekNumber: 1)
-        let intentSummary = trainingIntentContext(from: trainingIntent)
+        let intentSummary = trainingIntentContext(from: trainingIntent, blueprint: blueprint)
         let blueprintSummary = blueprintContext(from: blueprint)
         let context = generationContext(
             analysisSummary: analysisSummary,
@@ -462,7 +462,7 @@ extension ClaudeService {
         let trainingIntent = decodedAnalysis.map(trainingIntentPlan(from:))
             ?? fallbackTrainingIntentPlan(from: priorityMuscles(from: analysisJSON))
         let blueprint = programBlueprint(for: trainingIntent, weekNumber: weekNumber)
-        let intentSummary = trainingIntentContext(from: trainingIntent)
+        let intentSummary = trainingIntentContext(from: trainingIntent, blueprint: blueprint)
         let blueprintSummary = blueprintContext(from: blueprint)
         let context = generationContext(
             analysisSummary: analysisSummary,
@@ -772,7 +772,7 @@ extension ClaudeService {
         let analysisSummary = analysisContext(from: analysisResult)
         let trainingIntent = trainingIntentPlan(from: analysisResult)
         let blueprint = programBlueprint(for: trainingIntent, weekNumber: 1)
-        let intentSummary = trainingIntentContext(from: trainingIntent)
+        let intentSummary = trainingIntentContext(from: trainingIntent, blueprint: blueprint)
         let blueprintSummary = blueprintContext(from: blueprint)
         let context = generationContext(
             analysisSummary: analysisSummary,
@@ -1154,7 +1154,7 @@ extension ClaudeService {
         let trainingIntent = decodedAnalysis.map(trainingIntentPlan(from:))
             ?? fallbackTrainingIntentPlan(from: priorityMuscles(from: analysisJSON))
         let blueprint = programBlueprint(for: trainingIntent, weekNumber: weekNumber)
-        let intentSummary = trainingIntentContext(from: trainingIntent)
+        let intentSummary = trainingIntentContext(from: trainingIntent, blueprint: blueprint)
         let blueprintSummary = blueprintContext(from: blueprint)
         let context = generationContext(
             analysisSummary: analysisSummary,

@@ -355,7 +355,7 @@ final class GeneratorTroubleshootingTests: XCTestCase {
             let analysisSummary = service.analysisContext(from: fixture.analysis)
             let intent = service.trainingIntentPlan(from: fixture.analysis)
             let blueprint = service.programBlueprint(for: intent, weekNumber: 1)
-            let intentSummary = service.trainingIntentContext(from: intent)
+            let intentSummary = service.trainingIntentContext(from: intent, blueprint: blueprint)
             let blueprintSummary = service.blueprintContext(from: blueprint)
             let context = service.generationContext(
                 analysisSummary: analysisSummary,

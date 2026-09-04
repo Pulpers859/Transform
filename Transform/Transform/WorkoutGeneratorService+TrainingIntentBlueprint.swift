@@ -72,17 +72,50 @@ extension ClaudeService {
         return calibratedTrainingIntentPlan(basePlan, using: calibrationProfile(from: analysis))
     }
 
-    func trainingIntentContext(from trainingIntent: TrainingIntentPlan) -> String {
+    /// Renders the Training Intent block, reconciled against the Blueprint's per-priority
+    /// allocations so the two printed blocks never disagree in silence.
+    ///
+    /// `blueprintAllocation(for:)` copies `targetFrequency`, `directSetTarget` and
+    /// `weightedStimulusTarget` verbatim off the (already fully calibrated)
+    /// `MusclePriorityIntent` before a single day exists. The ONLY step between that copy and
+    /// this render that can change those three numbers is `styleFeasibleAllocations`, which
+    /// clamps `targetFrequency` down to the count of days the chosen split can actually offer
+    /// that priority's preferred styles, and — only when frequency was clamped — may also recut
+    /// the direct-set and weighted-stimulus targets to what the surviving sessions can hold. So
+    /// any disagreement this function finds between the intent's asked-for numbers and the
+    /// blueprint's delivered numbers is guaranteed (by that call chain, verified by inspection at
+    /// the time this was written) to be a style-feasibility clamp, never a recovery-modulation
+    /// trim — recovery modulation runs earlier, inside `adjustedPriorityIntent`, and is already
+    /// baked equally into both sides before `blueprintAllocation` ever copies the number. If a
+    /// future change adds another step that can rewrite `BlueprintPriorityAllocation` after
+    /// `programBlueprint` builds it, this attribution needs re-checking.
+    ///
+    /// This keeps the intent's asked-for number (so the record of what was requested survives
+    /// calibration, per the doc comment on `styleFeasibleAllocations`) and adds what the week
+    /// will actually deliver, in-line, only where the two disagree — the common path where they
+    /// agree is unchanged.
+    func trainingIntentContext(from trainingIntent: TrainingIntentPlan, blueprint: ProgramBlueprint) -> String {
         guard !trainingIntent.priorities.isEmpty else {
             return "Structured training intent: no priority muscles were available, so use balanced hypertrophy programming."
         }
 
+        var allocationsByArea: [String: BlueprintPriorityAllocation] = [:]
+        for allocation in blueprint.priorityAllocations {
+            let key = normalizedPriorityText(canonicalPriorityAreaName(allocation.area))
+            allocationsByArea[key] = allocation
+        }
+
         let lines = trainingIntent.priorities.map { intent in
             let movementPatterns = intent.preferredMovementPatterns.joined(separator: ", ")
+            let allocationKey = normalizedPriorityText(canonicalPriorityAreaName(intent.area))
+            let weeklyTargetsText = reconciledWeeklyTargetsText(
+                intent: intent,
+                allocation: allocationsByArea[allocationKey]
+            )
             return """
             - rank \(intent.rank + 1): \(intent.area) [\(intent.priorityLevel)]
               rationale: \(intent.rationale)
-              weekly_targets: \(intent.weeklyDayTarget) days, \(intent.weeklyExerciseTarget) targeted exercises, \(formatStimulusValue(intent.weeklyDirectSetTarget)) direct sets, \(formatStimulusValue(intent.weeklyStimulusTarget)) weighted stimulus
+              weekly_targets: \(weeklyTargetsText)
               preferred_styles: \(intent.preferredStyles.joined(separator: ", "))
               preferred_patterns: \(movementPatterns.isEmpty ? "(none inferred)" : movementPatterns)
               volume_bias: \(intent.volumeBias)
@@ -101,6 +134,45 @@ extension ClaudeService {
         priorities:
         \(lines)
         """
+    }
+
+    /// The `weekly_targets:` payload for one priority line. Renders the intent's asked-for
+    /// numbers unchanged when they match what the blueprint will actually deliver; when they
+    /// disagree, appends "(trimmed to N by the chosen split)" onto whichever fields the
+    /// style-feasibility clamp actually touched (see `trainingIntentContext` doc comment for why
+    /// that clamp is the only possible cause). `allocation` is nil only if a priority in the
+    /// intent has no matching blueprint allocation at all — that should not happen given
+    /// `programBlueprint` derives its allocations from this same priority list, but if it ever
+    /// does, this renders the asked-for numbers only rather than guessing a delivered number.
+    func reconciledWeeklyTargetsText(
+        intent: MusclePriorityIntent,
+        allocation: BlueprintPriorityAllocation?
+    ) -> String {
+        let exerciseText = "\(intent.weeklyExerciseTarget) targeted exercises"
+
+        guard let allocation else {
+            return "\(intent.weeklyDayTarget) days, \(exerciseText), \(formatStimulusValue(intent.weeklyDirectSetTarget)) direct sets, \(formatStimulusValue(intent.weeklyStimulusTarget)) weighted stimulus"
+        }
+
+        let daysText = reconciledIntMetric(asked: intent.weeklyDayTarget, delivered: allocation.targetFrequency, unit: "days")
+        let directSetsText = reconciledDoubleMetric(asked: intent.weeklyDirectSetTarget, delivered: allocation.directSetTarget, unit: "direct sets")
+        let stimulusText = reconciledDoubleMetric(asked: intent.weeklyStimulusTarget, delivered: allocation.weightedStimulusTarget, unit: "weighted stimulus")
+
+        return "\(daysText), \(exerciseText), \(directSetsText), \(stimulusText)"
+    }
+
+    func reconciledIntMetric(asked: Int, delivered: Int, unit: String) -> String {
+        guard asked != delivered else {
+            return "\(asked) \(unit)"
+        }
+        return "\(asked) \(unit) (trimmed to \(delivered) by the chosen split)"
+    }
+
+    func reconciledDoubleMetric(asked: Double, delivered: Double, unit: String) -> String {
+        guard abs(asked - delivered) > 0.0001 else {
+            return "\(formatStimulusValue(asked)) \(unit)"
+        }
+        return "\(formatStimulusValue(asked)) \(unit) (trimmed to \(formatStimulusValue(delivered)) by the chosen split)"
     }
 
     func blueprintContext(from blueprint: ProgramBlueprint) -> String {
