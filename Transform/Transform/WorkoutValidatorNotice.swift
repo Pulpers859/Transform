@@ -520,6 +520,91 @@ extension WorkoutValidatorNotice {
             )
         }
 
+        // The last finding in the four severity lists that had no copy. It matters more than most:
+        // `Transform/Transform/CLAUDE.md` names "prime hypertrophy work must not be replaced in
+        // practice by corrective or support work" as a top standard, and this is the rule that
+        // detects exactly that. Under menu lock it is demoted to a warning on purpose — the AI is
+        // forbidden to swap the exercise — so the owner reading the warning is the ONLY place this
+        // finding can do any good, and until now it read as "isn't recognized well enough to
+        // explain here."
+        if containsAnyFragment(issue, [
+            "never includes a prime hypertrophy movement",
+            "but never includes a prime"
+        ]) {
+            return notice(
+                .attention,
+                day.map { "Day \($0) has no main lift for the muscle it targets" }
+                    ?? "A day has no main lift for the muscle it targets",
+                "That session is built around a muscle but only contains smaller support work for it — nothing heavy enough to be the main driver. The volume is there; the growth stimulus is thinner than the plan intends."
+            )
+        }
+
+        // --- Structural malformation: the response is not a usable week ---
+        //
+        // Nineteen of the twenty-five entries in `lockedMenuHardFailurePatterns` had no copy at
+        // all, so every one of them reached the owner as "A plan check didn't pass … isn't
+        // recognized well enough to explain here." These are reachable in production: the
+        // procedural fallback reports its own issues unfiltered, so a fault in the deterministic
+        // builder surfaces here rather than being caught upstream.
+        //
+        // Grouped rather than written out nineteen times, because the owner's takeaway is the same
+        // within each group and nineteen near-identical rows would be worse than one clear one.
+        // Grouping is by what the person can actually do about it, not by which function emitted it.
+        if containsAnyFragment(issue, [
+            "Must contain exactly 7 days.",
+            "dayNumber values must exactly match",
+            "Duplicate dayNumber values found.",
+            "Training days must be between 4 and 6.",
+            "Rest days must be between 1 and 3.",
+            "daysPerWeek should be between 4 and 6.",
+            "All days are rest days.",
+            "is rest day but has exercises.",
+            "Blueprint calls for"
+        ]) {
+            return notice(
+                .attention,
+                "The week came back the wrong shape",
+                "The plan didn't have the right number of training and rest days, so the app rebuilt it from its own template instead. The training is sound; it just isn't the AI's version. Regenerating usually fixes it."
+            )
+        }
+
+        if containsAnyFragment(issue, [
+            "must have 5-8 exercises.",
+            "Total training exercises are too low."
+        ]) {
+            return notice(
+                .attention,
+                "A day came back with too few exercises",
+                "One session had too little in it to be a real workout, so the app rebuilt the week from its own template. Regenerating usually fixes it."
+            )
+        }
+
+        if containsAnyFragment(issue, [
+            "has invalid sets.",
+            "has invalid restSeconds."
+        ]) {
+            return notice(
+                .attention,
+                "An exercise came back with impossible numbers",
+                "A lift was written with a set count or rest time outside anything sensible, so the app rebuilt the week rather than hand you those numbers."
+            )
+        }
+
+        if containsAnyFragment(issue, [
+            "has empty dayName.",
+            "has an exercise with empty exerciseName.",
+            "has empty reps.",
+            "programName is empty.",
+            "programSummary is empty.",
+            "weekSummary is empty."
+        ]) {
+            return notice(
+                .headsUp,
+                "Part of the plan came back blank",
+                "A name, a rep range or a summary was missing from the AI's response, so the app rebuilt the week from its own template. Nothing about the training itself is unsafe."
+            )
+        }
+
         // Effort-field findings. None of these had copy before — including the pre-existing
         // "is missing targetRIR", which meant the owner saw the unrecognised fallback for a
         // finding the app had understood perfectly well. Found by the disposition sweep.
@@ -584,6 +669,13 @@ extension WorkoutValidatorNotice {
     /// Requiring the opening quote to follow whitespace or start-of-string, and the closing
     /// quote to be followed by punctuation/whitespace/end, means a term is only extracted when
     /// it really is quoted.
+    /// Whether `issue` carries any of `fragments`. Mirrors `matchesValidationIssue` in the
+    /// validator so the two stay conceptually identical: plain substring containment, no
+    /// normalisation, no regular expressions.
+    private static func containsAnyFragment(_ issue: String, _ fragments: [String]) -> Bool {
+        fragments.contains { issue.contains($0) }
+    }
+
     private static func quotedSubject(in issue: String) -> String? {
         guard let range = issue.range(
             of: #"(?:^|\s)'([^']{1,60})'(?=[\s.,:;!?]|$)"#,

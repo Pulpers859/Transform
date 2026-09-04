@@ -1128,7 +1128,19 @@ extension ClaudeService {
     ///    judgement. Anchors and secondaries are deliberately exempt: the same rule says to
     ///    preserve the first hard sets and protect intensity, so a hard top set on a compound is
     ///    the part Restricted is meant to keep.
-    ///  * A value outside 0...5 is not a defensible prescription at all; it is bad data.
+    ///  * A value outside 0...5 is not a defensible prescription at all.
+    ///
+    ///    Be precise about what that second check is worth, because the first version of this
+    ///    comment overstated it: it is NOT a guard on model output. `WorkoutExerciseResponse`'s
+    ///    decoder already clamps the field — `decodeFlexibleInt(forKey: .targetRIR).flatMap {
+    ///    (0...5).contains($0) ? $0 : nil }` in `WorkoutModels.swift` — so an absurd value from
+    ///    the AI becomes `nil` before this function runs and surfaces as the separate
+    ///    "is missing targetRIR" finding instead. The only other producer,
+    ///    `proceduralTargetRIR(for:)`, emits 1, 2 or 3. So this branch is unreachable from every
+    ///    producer that exists today and is defence-in-depth only: it holds the invariant if the
+    ///    decoder's clamp is ever relaxed, or if a future path builds the response through the
+    ///    memberwise initialiser rather than by decoding. Worth keeping at this price; not worth
+    ///    counting as new protection against the model.
     ///
     /// Deliberately NOT flagged: RIR 0 on a heavy compound in general. `SIMP-001` says failure
     /// training is an optional refinement rather than a necessity — which is a reason not to

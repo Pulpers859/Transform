@@ -276,6 +276,16 @@ final class DispositionCoverageSweepTests: XCTestCase {
         // Blueprint volume/frequency accounting over a week that ignores the plan entirely.
         findings += service.validateBlueprint(days: flipped, blueprint: blueprint, dayStart: 1)
 
+        // Effort prescription. Added after an audit pointed out this sweep claimed to drive
+        // "every validator reachable with simple inputs" while never calling this one — the exact
+        // blind spot the sweep exists to prevent, in the sweep itself. The out-of-range branch is
+        // driven through the memberwise initialiser deliberately: the JSON decoder clamps junk RIR
+        // to nil, so decoded AI output can never reach it.
+        findings += service.validateEffortPrescription(
+            days: [day(1, [exercise("Cable Lateral Raise", "Lateral Deltoids", sets: 3, targetRIR: 9)])],
+            blueprint: blueprint
+        )
+
         return findings.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     }
 
