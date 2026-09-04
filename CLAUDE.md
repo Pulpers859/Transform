@@ -8,6 +8,41 @@
   - `C:\Dev\Transform`
   - `C:\Users\Patrick's Computer\OneDrive - WV School of Osteopathic Medicine\Desktop\Transform`
 
+## Never Assume — Verify, Then State (HIGHEST PRIORITY, APPLIES TO EVERY AGENT)
+- This rule outranks speed, brevity, and every other instruction in this file except the
+  data-safety and `origin/main` rules. It is permanent and has no exceptions.
+- **Do not state anything about this codebase you have not just verified.** Not from memory, not
+  from an earlier turn in the same conversation, not from a plausible inference, not from a code
+  comment, and not from another agent's report. Open the file and read the actual lines first.
+- If you have not verified it, you must either verify it before speaking or label it explicitly:
+  "I have not checked this." Never present an inference as a finding.
+- Applies verbatim to EVERY subagent, lane, reviewer, and audit spawned from this repo. Put this
+  rule in their brief. Their findings are unverified claims until the spawning agent has checked
+  them against the code — verify before acting on them, and say which parts you verified.
+- Concrete failures this rule exists to prevent — all real, all from one session:
+  - Asserted a validator finding lived in `menuLockedDemotionPatterns` from a line number seen in
+    an earlier grep, without re-checking which array that line fell inside after intervening edits
+    shifted it. It was in `correctionWorthyIssuePatterns`. The wrong belief went into a code
+    comment AND a test, and CI caught it.
+  - Wrote a bodyweight-movement list "from general knowledge" instead of reading
+    `WorkoutGeneratorService+MetadataProfiles.swift`, and missed real catalogue entries.
+  - Told the owner generation produced a 4-week plan. It produces one week per call.
+  - Told the owner a load-translation feature was live in the app when the only caller built a
+    prompt string. It did nothing.
+  - Reported four fixes as "the fixes" while five more audited, confirmed items sat unworked.
+  - Subagents reported a deliberate, documented design choice as a bug, and a correct progression
+    cue as a defect. Both would have caused real regressions if applied unverified.
+- Practical discipline:
+  - Line numbers go stale the moment anything above them changes. Re-grep; never reuse a line
+    number across edits.
+  - Before claiming a value, behavior, or wiring, read it — and prefer generating strings and
+    numbers from the source (script them out) over retyping them.
+  - Before claiming something is fixed, name the evidence: the test that covers it, the CI run
+    that went green, or the code path you read end to end.
+  - When you cannot verify (no toolchain, no access), say exactly that and say what would verify
+    it. "Correct-by-inspection" is a claim about what you read, not a substitute for reading it.
+  - A green check is not evidence on its own. Confirm the work actually ran.
+
 ## Branch Policy
 - Use `main` as the only working branch for this repository.
 - Commit directly to `main` and push directly to `origin/main`.
