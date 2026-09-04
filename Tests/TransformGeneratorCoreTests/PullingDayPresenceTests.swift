@@ -107,19 +107,40 @@ final class PullingDayPresenceTests: XCTestCase {
 
     // MARK: - The donor must not be chosen by demand alone
 
-    /// "Legs" carries the lowest demand of the displaceable styles, so a plain lowest-demand swap
-    /// takes it — and Core/Abs, whose only other compatible style is "Upper", is then left with a
-    /// single day. One day at a focus cap of five cannot carry a six-set weekly target, so the
-    /// week trades a back hole for a core hole. "Arms" is the only donor that strands nobody.
-    func testThePullingDayDisplacesArmsRatherThanLegs() {
+    /// Buying the pulling day must not strand a priority. That is the invariant; WHICH style pays
+    /// for it is an implementation detail, and pinning the answer is what made this test wrong.
+    ///
+    /// It used to assert that "Legs" survives and "Arms" is displaced, on the reasoning that
+    /// Core/Abs's "only other compatible style is Upper". That reasoning was an artifact of the
+    /// raw-vs-canonical style bug: `canonicalTrainingStyle` folds "Legs" into "Lower", the
+    /// comparison used to miss it, and Core/Abs therefore looked unservable on any week without a
+    /// day literally labelled "Legs". With both sides canonicalized, the structurally guaranteed
+    /// "Lower" day already satisfies that preference, so Core/Abs never needed a dedicated Legs
+    /// day — its reachable sets are unchanged at 8 against a target of 6 either way. Both styles
+    /// became safe donors, and the screen now takes the lower-demand one (Legs, 4) over Arms (6).
+    ///
+    /// The new split is better for this lifter, not merely different: keeping Arms leaves three
+    /// distinct days that can carry lateral-delt work (Upper, Push, Arms) instead of two, which is
+    /// the weekly frequency the analysis asked for and the audited week did not deliver.
+    func testThePullingDayNeverStrandsAPriority() {
         let styles = service.orderedBlueprintStyles(for: auditedAllocations, trainingDays: 5)
+
+        XCTAssertTrue(styles.contains("Pull"), "The pulling day is the whole point: \(styles)")
         XCTAssertTrue(
-            styles.contains("Legs"),
-            "Core/Abs lost the only day besides Upper that it can be trained on: \(styles)"
+            styles.contains("Lower"),
+            "The structurally guaranteed lower-body day must never be the donor: \(styles)"
         )
-        XCTAssertFalse(
-            styles.contains("Arms"),
-            "Arms was the one safely displaceable style and it survived instead: \(styles)"
+
+        // Core/Abs by name, because it is the priority the original incident stranded. The
+        // all-allocations sweep lives in `testEveryPriorityCanStillReachItsWeeklyTargetAfterTheSwap`.
+        guard let core = auditedAllocations.first(where: { $0.area.localizedCaseInsensitiveContains("core") }) else {
+            XCTFail("Fixture no longer carries a Core/Abs priority to guard")
+            return
+        }
+        XCTAssertGreaterThanOrEqual(
+            service.reachableWeeklyDirectSets(for: core, within: styles),
+            core.directSetTarget,
+            "Core/Abs was stranded to buy the pulling day: \(styles)"
         )
     }
 

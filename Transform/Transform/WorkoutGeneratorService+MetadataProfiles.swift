@@ -774,7 +774,14 @@ extension ClaudeService {
             // internal rotation, so naming those two would misdescribe the finding for a lifter
             // whose analysis says "anterior shoulder pain". The anchor substring
             // ("is not clearly adapted to the shoulder risk") is matched by
-            // `menuLockedDemotionPatterns` and by `WorkoutValidatorNotice`; all three moved together.
+            // `correctionWorthyIssuePatterns` and by `WorkoutValidatorNotice`; both moved with it.
+            //
+            // `correctionWorthyIssuePatterns` — NOT `menuLockedDemotionPatterns`, which contains no
+            // shoulder entry at all. An earlier version of this comment said otherwise and the
+            // mistake propagated straight into a test that asserted the wrong tier. The finding is
+            // repairable under a locked menu even though the exercise is not: the check below
+            // clears the day as soon as the note carries a "neutral grip" / "pain free" style cue,
+            // so a correction pass has something real to do.
             "Day \(day.dayNumber) includes shoulder pressing that is not clearly adapted to the shoulder risk in the analysis (\(names)). Use more shoulder-friendly setup cues or choose a better-aligned press variation."
         ]
     }

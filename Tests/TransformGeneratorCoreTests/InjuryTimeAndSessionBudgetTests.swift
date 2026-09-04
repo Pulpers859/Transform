@@ -153,10 +153,21 @@ final class InjuryTimeAndSessionBudgetTests: XCTestCase {
             return
         }
 
+        // `.correctionPass`, and this expectation was wrong on the first attempt — it asserted
+        // `.acceptableWarning` because the commit that widened the wording mislabelled which list
+        // owns the anchor. The string lives in `correctionWorthyIssuePatterns`, not
+        // `menuLockedDemotionPatterns`, and always has; only the wording changed.
+        //
+        // `.correctionPass` is also the RIGHT tier, which is why the code is left alone. A locked
+        // menu forbids swapping the press, but the repair this finding actually asks for is a note
+        // rewrite — `validateInjuryRiskAlignment` clears the day as soon as the exercise note says
+        // "neutral grip", "pain free" or similar — and that is exactly what a correction pass is
+        // for. Demoting it to a warning would mean the model never gets the chance to make the day
+        // safer, and the week would carry a permanent shoulder complaint instead of a cheap fix.
         XCTAssertEqual(
             service.validationDisposition(for: finding, menuLocked: true),
-            .acceptableWarning,
-            "Under menu-lock the AI cannot swap the press, so this must not discard a paid week"
+            .correctionPass,
+            "The AI cannot swap the press under menu-lock, but it can rewrite the cue — so this is repairable, not merely reportable"
         )
 
         let notices = WorkoutValidatorNotice.notices(from: [finding])
