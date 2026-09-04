@@ -193,11 +193,14 @@ extension WorkoutValidatorNotice {
             )
         }
 
-        if issue.contains("is not clearly adapted to the impingement") {
+        // Anchor moved with the rule: it now fires for any flagged shoulder risk, not only
+        // impingement, so the copy must not tell someone with anterior shoulder pain that their
+        // analysis said "impingement" when it did not.
+        if issue.contains("is not clearly adapted to the shoulder risk") {
             return notice(
-                .headsUp,
+                .attention,
                 "A session isn't clearly adapted to your shoulder notes",
-                "Your analysis flagged shoulder impingement, but this day's lifts and prep don't obviously work around it. Warm up the cuff and regress anything painful."
+                "Your analysis flagged a shoulder problem, but this day's overhead pressing and prep don't obviously work around it. Warm the shoulder up properly, and stop short of anything that pinches rather than pushing through it."
             )
         }
 

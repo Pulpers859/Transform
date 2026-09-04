@@ -1147,6 +1147,7 @@ struct WorkoutView: View {
 
         var painCounts: [String: Int] = [:]
         var equipmentCounts: [String: Int] = [:]
+        var timeCounts: [String: Int] = [:]
 
         for program in programs {
             let isArchived = program.isArchived
@@ -1165,6 +1166,8 @@ struct WorkoutView: View {
                         painCounts[key, default: 0] += 1
                     case .skippedEquipment:
                         equipmentCounts[key, default: 0] += 1
+                    case .skippedTime:
+                        timeCounts[key, default: 0] += 1
                     default:
                         break
                     }
@@ -1178,6 +1181,12 @@ struct WorkoutView: View {
         for (key, count) in equipmentCounts where count >= 2 {
             equipmentSkipExercises.insert(key)
         }
+        // Same recurrence bar as equipment skips: once is a bad day, twice is a pattern. A single
+        // rushed session must not start reshaping the program.
+        var timeSkipExercises = Set<String>()
+        for (key, count) in timeCounts where count >= 2 {
+            timeSkipExercises.insert(key)
+        }
 
         let activeCount = programs.filter { !$0.isArchived }.count
         let archivedCount = programs.filter { $0.isArchived }.count
@@ -1186,6 +1195,7 @@ struct WorkoutView: View {
         return ClaudeService.ExerciseHistoryContext(
             painExercises: painExercises,
             equipmentSkipExercises: equipmentSkipExercises,
+            timeSkipExercises: timeSkipExercises,
             priorMesocycleExercises: priorMesocycleExercises,
             mesocycleIndex: mesocycleIndex
         )

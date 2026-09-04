@@ -1251,12 +1251,45 @@ extension ClaudeService {
         return score
     }
 
+    /// Whether the analysis's injury field describes a shoulder the week must work around.
+    ///
+    /// This is the single gate for shoulder caution: it scores exercise selection
+    /// (`ExerciseSelection`), drives `avoidEndRangeShoulder` in the fallback's cue generation, and
+    /// gates `validateInjuryRiskAlignment`. So a phrasing it does not recognise disables shoulder
+    /// caution EVERYWHERE at once, silently.
+    ///
+    /// It used to match five named conditions and nothing else. Real analyses do not write
+    /// diagnoses — the owner's read "Left anterior shoulder pain during neutral-grip overhead
+    /// pressing is the key flag", which names no condition and matched none of them. Shoulder
+    /// caution was therefore off for a lifter whose own analysis opens on shoulder pain, and the
+    /// week containing no overhead pressing was a coincidence of which patterns the priorities
+    /// happened to want rather than anything this code decided.
+    ///
+    /// The descriptive arm below is deliberately broad. This field exists only to describe injury
+    /// risk, so "shoulder" plus a word for hurting is a strong signal, and the cost of a false
+    /// positive is conservative exercise scoring plus a warning — never a discarded week. Being
+    /// slightly too careful about a joint is the correct bias; missing a real one is not.
     func hasShoulderRisk(injuryRiskFocus: String) -> Bool {
         let normalized = normalizedPriorityText(injuryRiskFocus)
-        return containsAny(
+        if containsAny(
             normalized,
-            keywords: ["shoulder impingement", "internal rotation", "internally rotated", "upper crossed", "shoulder health"]
+            keywords: [
+                "shoulder impingement", "internal rotation", "internally rotated", "upper crossed",
+                "shoulder health", "rotator cuff", "labral", "labrum", "ac joint"
+            ]
+        ) {
+            return true
+        }
+
+        let namesTheJoint = containsAny(normalized, keywords: ["shoulder", "deltoid", "delt"])
+        let namesAProblem = containsAny(
+            normalized,
+            keywords: [
+                "pain", "painful", "discomfort", "ache", "aching", "injury", "injured",
+                "irritat", "flare", "tender", "sore", "instability", "impinge"
+            ]
         )
+        return namesTheJoint && namesAProblem
     }
 
     // MARK: - Week-over-Week Plan Diff
@@ -1563,7 +1596,18 @@ extension ClaudeService {
         var allMenus: [[PreSelectedExercise]] = []
 
         let avoidedExercises = exerciseHistory?.painExercises ?? []
-        let deprioritizedExercises = exerciseHistory?.equipmentSkipExercises ?? []
+        // Equipment skips and repeated time skips are the same KIND of signal — "this movement
+        // keeps not happening" — so they share the deprioritization path rather than getting a
+        // second mechanism. Neither bans the exercise: `applyHistoryFilters` pushes them down the
+        // catalogue so an equivalent movement is preferred when one exists, and they still get
+        // picked when nothing else covers the muscle.
+        //
+        // This is the first thing in the pipeline that actually CONSUMES a time skip. Until now
+        // the count was collected, printed into the prompt, and then ignored by every consumer:
+        // the menu is locked before the model runs, so the prompt's instruction to "prioritize the
+        // flagged movement earlier" asked the AI to change something it is not allowed to change.
+        let deprioritizedExercises = (exerciseHistory?.equipmentSkipExercises ?? [])
+            .union(exerciseHistory?.timeSkipExercises ?? [])
         let catalogOffset = exerciseHistory.map { variationCatalogOffset(for: $0) } ?? 0
 
         // How many leading slots each day pins for week-to-week continuity. Recorded here because

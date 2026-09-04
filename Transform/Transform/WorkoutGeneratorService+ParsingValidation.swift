@@ -1390,7 +1390,7 @@ extension ClaudeService {
             "opens its",
             "spends too many",
             "never includes a prime hypertrophy movement",
-            "is not clearly adapted to the impingement",
+            "is not clearly adapted to the shoulder risk",
             "minimum viable stimulus threshold",
             "uses too many weekly exercise variations",
             "session budget",

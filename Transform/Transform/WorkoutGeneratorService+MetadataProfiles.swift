@@ -296,7 +296,29 @@ extension ClaudeService {
             partialResult + estimatedExerciseMinutes(for: exercise)
         }
 
-        return Int(ceil(warmupMinutes + exerciseMinutes))
+        // Time spent BETWEEN exercises, which this estimate did not model at all.
+        //
+        // `estimatedExerciseMinutes` counts working time, rest between sets of the SAME movement,
+        // and a per-exercise ramp allowance. Nothing counted walking to a different station,
+        // unloading a bar, or waiting for an occupied machine — so a six-movement session across
+        // six pieces of equipment was costed as though the lifter teleported between them.
+        //
+        // That blind spot was load-bearing rather than cosmetic, because the same function both
+        // BUILDS the day (the selection gates and the two trim loops in `ExerciseSelection`) and
+        // GRADES it (`validateSessionTimeBudget`). An optimistic clock therefore packed the day
+        // and then certified the packed day as comfortably inside budget: the owner's Upper day
+        // estimated ~55 minutes against a 70-minute target while three of its six movements were
+        // on his own "ran out of time" list. Nothing else in the pipeline could catch it, because
+        // there is no second opinion about how long a session takes.
+        //
+        // 1.5 minutes per changeover is deliberately conservative — it is a commercial-gym floor,
+        // not an allowance for a busy evening — so the estimate moves toward honest without
+        // suddenly shrinking every session. It cannot starve a day below the five-exercise
+        // validator floor: the set-trim loop only ever removes SETS down to `minimumSetFloor`, and
+        // the rebalance loop drops a movement only while `count > 5`.
+        let transitionMinutes = Double(max(0, day.exercises.count - 1)) * 1.5
+
+        return Int(ceil(warmupMinutes + exerciseMinutes + transitionMinutes))
     }
 
     func estimatedExerciseMinutes(for exercise: WorkoutExerciseResponse) -> Double {
@@ -720,18 +742,22 @@ extension ClaudeService {
         on day: WorkoutDayResponse,
         injuryRiskFocus: String
     ) -> [String] {
-        let normalizedRisk = normalizedPriorityText(injuryRiskFocus)
-        guard containsAny(
-            normalizedRisk,
-            keywords: ["shoulder impingement", "internal shoulder rotation", "internally rotated shoulders", "upper crossed"]
-        ) else {
-            return []
-        }
+        // Delegated to the shared gate rather than keeping a second, narrower copy of the keyword
+        // list. The two lists had already drifted — this one omitted "shoulder health" and
+        // "rotator cuff" that `hasShoulderRisk` carried — and neither recognised the descriptive
+        // phrasing a real analysis actually uses ("Left anterior shoulder pain during neutral-grip
+        // overhead pressing"), so this rule silently checked nothing for the lifter it was written
+        // for. One gate means shoulder caution can never be on for selection and off for
+        // validation again.
+        guard hasShoulderRisk(injuryRiskFocus: injuryRiskFocus) else { return [] }
 
         let dayNote = normalizedPriorityText(day.notes)
         let riskyVerticalPresses = day.exercises.filter { exercise in
             let name = normalizedPriorityText(exercise.exerciseName)
-            guard containsAny(name, keywords: ["shoulder press", "overhead press", "arnold press"]) else {
+            guard containsAny(
+                name,
+                keywords: ["shoulder press", "overhead press", "arnold press", "military press", "push press", "behind the neck"]
+            ) else {
                 return false
             }
 
@@ -744,7 +770,12 @@ extension ClaudeService {
         guard !riskyVerticalPresses.isEmpty else { return [] }
         let names = riskyVerticalPresses.prefix(2).map(\.exerciseName).joined(separator: ", ")
         return [
-            "Day \(day.dayNumber) includes shoulder pressing that is not clearly adapted to the impingement/internal-rotation risk in the analysis (\(names)). Use more shoulder-friendly setup cues or choose a better-aligned press variation."
+            // Wording widened with the gate. The rule no longer fires only on impingement and
+            // internal rotation, so naming those two would misdescribe the finding for a lifter
+            // whose analysis says "anterior shoulder pain". The anchor substring
+            // ("is not clearly adapted to the shoulder risk") is matched by
+            // `menuLockedDemotionPatterns` and by `WorkoutValidatorNotice`; all three moved together.
+            "Day \(day.dayNumber) includes shoulder pressing that is not clearly adapted to the shoulder risk in the analysis (\(names)). Use more shoulder-friendly setup cues or choose a better-aligned press variation."
         ]
     }
 

@@ -292,12 +292,59 @@ final class PullingDayPresenceTests: XCTestCase {
             directSetTarget: 6,
             maxPerSessionDirectSets: 3,
             maxFocusSessionDirectSets: 5,
-            preferredStyles: ["Upper", "Legs"]
+            // Was `["Upper", "Legs"]` against `["Push", "Pull", "Lower"]`, which asserted ZERO
+            // reachable sets. That expectation encoded the raw-vs-canonical style bug: "Legs" and
+            // "Lower" are one canonical style, so that allocation was always compatible with the
+            // Lower day and the honest answer was never zero. `["Arms"]` is genuinely absent from
+            // this week, which is what the test's own name claims to be testing.
+            preferredStyles: ["Arms"]
         )
         XCTAssertEqual(
             service.reachableWeeklyDirectSets(for: alloc, within: ["Push", "Pull", "Lower"]),
             0,
             accuracy: 0.001
+        )
+    }
+
+    /// The canonical-style tripwire. `canonicalTrainingStyle` folds "Legs" into "Lower", and this
+    /// screen decides whether dropping a style would starve a priority — so treating the two
+    /// spellings as different styles made a Core/Abs priority look unservable on a week that
+    /// actually had two lower-body days for it.
+    func testLegsAndLowerAreOneStyleOnBothSidesOfTheComparison() {
+        let alloc = allocation(
+            area: "Core/Abs",
+            priorityLevel: "Medium",
+            targetFrequency: 2,
+            targetExerciseSlots: 2,
+            directSetTarget: 6,
+            maxPerSessionDirectSets: 3,
+            maxFocusSessionDirectSets: 5,
+            preferredStyles: ["Upper", "Legs"]
+        )
+
+        // A "Lower" day must satisfy a "Legs" preference: one focus day, nothing else compatible.
+        XCTAssertEqual(
+            service.reachableWeeklyDirectSets(for: alloc, within: ["Push", "Pull", "Lower"]),
+            5,
+            accuracy: 0.001,
+            "A Lower day must satisfy a Legs preference"
+        )
+
+        // And the reverse spelling, so neither direction can regress.
+        XCTAssertEqual(
+            service.reachableWeeklyDirectSets(for: alloc, within: ["Push", "Pull", "Legs"]),
+            5,
+            accuracy: 0.001,
+            "A Legs day must satisfy a Legs preference too"
+        )
+
+        // Two distinct lower-body days must still count as TWO exposures — canonicalizing the
+        // comparison must not collapse the week's days into one.
+        XCTAssertEqual(
+            service.reachableWeeklyDirectSets(for: alloc, within: ["Legs", "Lower"]),
+            8,
+            accuracy: 0.001,
+            "Canonicalizing the comparison must not merge two separate training days"
         )
     }
 }

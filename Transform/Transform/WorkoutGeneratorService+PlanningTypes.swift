@@ -299,6 +299,20 @@ extension ClaudeService {
     struct ExerciseHistoryContext {
         let painExercises: Set<String>
         let equipmentSkipExercises: Set<String>
+        /// Movements the lifter has repeatedly failed to finish for TIME.
+        ///
+        /// The app has always recorded these — `recurringSkipHistory` prints "ran out of time 3x"
+        /// straight into the prompt — but nothing downstream could act on it: the menu is locked
+        /// before the model runs, so telling the AI to "prioritize the flagged movement earlier"
+        /// asked it to change something it is forbidden to change. The owner's Cable Crunch was
+        /// flagged three times and still shipped last on the day, at one set, which is a fourth
+        /// skip waiting to happen.
+        ///
+        /// Deliberately fed into `deprioritizedExercises` and NOT `painExercises`: running out of
+        /// time is a scheduling problem, not a reason a movement is unsafe, so it should nudge
+        /// selection toward an alternative rather than ban the exercise outright. Defaulted so
+        /// adding it cannot silently break a construction site that has not been updated.
+        var timeSkipExercises: Set<String> = []
         let priorMesocycleExercises: Set<String>
         let mesocycleIndex: Int
     }

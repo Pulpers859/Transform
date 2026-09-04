@@ -669,8 +669,18 @@ extension ClaudeService {
         for allocation: BlueprintPriorityAllocation,
         within styles: [String]
     ) -> Double {
+        // Canonical on both sides, for the same reason as `styleFeasibleAllocations`: "Legs" and
+        // "Lower" are one style, and comparing a raw preference list against day styles that may
+        // be spelled either way made a Core/Abs priority preferring "Legs" read as having ZERO
+        // reachable sets on a week containing a Lower day. This function is the screen that
+        // decides whether swapping a style out would starve a priority, so a false zero there
+        // silently lets split selection drop a day the priority actually needed.
+        //
+        // Canonicalizing does NOT collapse two days into one: `styles` carries one entry per
+        // training day, so a week with both a "Legs" day and a "Lower" day still counts two.
+        let preferredCanonicalStyles = Set(allocation.preferredStyles.map { canonicalTrainingStyle($0) })
         let compatibleCount = min(
-            styles.filter { allocation.preferredStyles.contains($0) }.count,
+            styles.filter { preferredCanonicalStyles.contains(canonicalTrainingStyle($0)) }.count,
             max(1, allocation.targetFrequency)
         )
         guard compatibleCount > 0 else { return 0 }
