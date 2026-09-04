@@ -87,6 +87,7 @@
     "poorNutritionAdherence": true,
     "recompositionGoal": true,
     "validatorIssues": [
+      "Day 1 exercise Behind-the-Back Cable Lateral Raise is prescribed 1 set(s), below its role-based minimum of 2 set(s).",
       "The week's back work is 6 overhead-pulling sets against only 2 rowing set(s) — more than twice as much vertical as horizontal. One token row does not cover the rhomboids and mid-traps in their shortened position; this needs rowing volume closer to its pulldown volume, not another pulldown variation."
     ],
     "forbiddenIssueFragments": [

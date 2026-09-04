@@ -636,6 +636,26 @@ extension ClaudeService {
                     "Blueprint priority '\(coverage.label)' missed its frequency target (\(coverage.dayMatches)/\(allocation.targetFrequency) targeted days)."
                 )
             }
+            // GAP 3 (2026-09-04 coverage audit): only UNDER-frequency was ever checked. The
+            // owner's Core/Abs shipped 3 real exposures against a planned 1 (and against a
+            // corrected plan of 2), and nothing noticed a priority spread across materially more
+            // days than intended. A single extra day is common and often harmless — an
+            // incidental hit on a day built for something else — so the threshold is +2 days
+            // over target rather than +1, to catch real spread (like the shipped 3-vs-1) without
+            // flagging routine one-day overlap. Classified in `acceptableWarningIssuePatterns`
+            // for the same reason as its under-frequency sibling: which days carry a priority's
+            // menu slots is decided when the deterministic menu is built, so by the time this
+            // runs neither the AI (menu locked) nor the procedural fallback (reads the same
+            // menu) can move a day's worth of exercises elsewhere. It is also not inherently a
+            // safety problem — more frequency at the same weekly volume is usually neutral-to-good
+            // for hypertrophy — so it does not belong with the direct-set overshoot findings that
+            // hard-fail.
+            let frequencyOvershoot = coverage.dayMatches >= allocation.targetFrequency + 2
+            if frequencyOvershoot {
+                issues.append(
+                    "Blueprint priority '\(coverage.label)' overshot its frequency target, trained on \(coverage.dayMatches) days against a planned \(allocation.targetFrequency)."
+                )
+            }
             if meaningfulFrequencyMiss {
                 issues.append(
                     "Blueprint priority '\(coverage.label)' only delivered \(coverage.meaningfulDayMatches)/\(allocation.targetFrequency) meaningful exposures that met the minimum viable stimulus threshold. Avoid counting token 1-set touches as real priority frequency."
@@ -1150,6 +1170,22 @@ extension ClaudeService {
                 }
                 if exercise.sets < 1 || exercise.sets > 8 {
                     issues.append("Day \(day.dayNumber) exercise \(exercise.exerciseName) has invalid sets.")
+                } else {
+                    // GAP 1 (2026-09-04 coverage audit): the shape check above only rejects sets
+                    // outside 1-8, so a single-set exercise was structurally "valid" and invisible
+                    // — the owner's Day 5 shipped `Cable Crunch` at ONE set, below its own
+                    // `minimumSetFloor` (ExerciseSelection.swift: 3 for an anchor, 2 for
+                    // everything else), and nothing said a word. `minimumSetFloor` is the SAME
+                    // floor the deterministic allocator already targets when it fills a slot, so
+                    // this is a verdict on a number the planner owns, not one this layer can
+                    // change: under menu lock the AI may not touch set counts, and the procedural
+                    // fallback reads the same locked menu. That is the same reasoning that put the
+                    // maintenance-volume floor finding in `acceptableWarningIssuePatterns` rather
+                    // than `correctionWorthyIssuePatterns` — reachable, not repairable here.
+                    let floor = minimumSetFloor(for: exercise)
+                    if exercise.sets < floor {
+                        issues.append("Day \(day.dayNumber) exercise \(exercise.exerciseName) is prescribed \(exercise.sets) set(s), below its role-based minimum of \(floor) set(s).")
+                    }
                 }
                 if exercise.restSeconds < 30 || exercise.restSeconds > 240 {
                     issues.append("Day \(day.dayNumber) exercise \(exercise.exerciseName) has invalid restSeconds.")
@@ -1322,7 +1358,14 @@ extension ClaudeService {
             // "but the generated week has" — that phrasing is generic enough that an unrelated
             // count-mismatch message could pick it up and hard-fail a week this list exists to
             // protect. Every other blueprint finding starts "Blueprint priority '...'".
-            "Blueprint calls for"
+            "Blueprint calls for",
+            // GAP 4 (2026-09-04 coverage audit): a blueprint day plan with no matching day at
+            // all in the response. In practice this can only happen alongside one of the day-count
+            // findings above (the day-number arithmetic in `blueprintDayNumber` guarantees every
+            // planned day lands inside `dayStart...dayEnd` once the response actually has 7
+            // correctly-numbered days) — but on its own it still means the response is not a
+            // usable 7-day program, which is exactly the Shape category this list exists for.
+            "is missing from the generated output."
         ]
     }
 
@@ -1361,6 +1404,15 @@ extension ClaudeService {
             // a generic fragment so no other rule's prose can pick it up.
             "overhead-pulling sets against only",
             "falls below the maintenance weekly volume floor",
+            // GAP 1: a single-set (or otherwise below-role-floor) exercise. Set counts are the
+            // deterministic allocator's territory under menu lock; see the comment beside the
+            // finding itself in `validateDaySet` for the full reasoning.
+            "below its role-based minimum of",
+            // GAP 3: a priority trained on materially more days than the blueprint planned. Which
+            // days carry a priority's exercises is decided when the locked menu is built, and
+            // spread alone is not a safety problem; see the comment beside the finding in
+            // `validateBlueprint`.
+            "overshot its frequency target",
         ]
     }
 
@@ -1425,7 +1477,18 @@ extension ClaudeService {
             "was replaced with a poor substitute",
             "substitution changes the primary muscle target",
             "substitution significantly increases fatigue",
-            "did not follow the Pre-Selected Exercise Menu"
+            "did not follow the Pre-Selected Exercise Menu",
+            // GAP 4 (2026-09-04 coverage audit): a blueprint day plan whose rest/training SHAPE
+            // the response ignored. Unlike menu content (which the AI is forbidden to touch under
+            // lock), rest-vs-training is a decision the model makes for itself when it writes
+            // `isRestDay` — the prompt already tells it to follow the blueprint's split exactly —
+            // so a mismatch here is a prompt-adherence slip the model can correct by rewriting
+            // that one field (and, for a day the AI wrongly emptied into a rest day, restoring the
+            // locked exercises). A planned rest day silently becoming a training session is a real
+            // recovery-budget risk, which is why this is not left to fall through to the softer
+            // demotion tier the way priority under-delivery is.
+            "turned it into a training session.",
+            "generated output made it a rest day."
         ]
     }
 

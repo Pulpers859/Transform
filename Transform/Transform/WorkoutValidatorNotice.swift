@@ -235,6 +235,19 @@ extension WorkoutValidatorNotice {
             )
         }
 
+        // GAP 1 (2026-09-04 coverage audit): a single-set (or otherwise below-role-floor)
+        // exercise, e.g. the owner's shipped Cable Crunch at one set. `.attention` because this
+        // is a genuine under-dosing of one movement — one or two sets below the app's own floor
+        // for that role — not a trade-off the planner chose on purpose.
+        if issue.contains("below its role-based minimum of") {
+            return notice(
+                .attention,
+                day.map { "Day \($0) has an exercise with fewer sets than the app's own minimum" }
+                    ?? "An exercise has fewer sets than the app's own minimum",
+                "One movement is prescribed below the lowest set count the app considers worth doing for its role. Add a set or two yourself, or treat it as a warm-up rather than a working exercise."
+            )
+        }
+
         if issue.contains("no horizontal pull at all") {
             return notice(
                 .attention,
@@ -320,6 +333,19 @@ extension WorkoutValidatorNotice {
             )
         }
 
+        // GAP 3 (2026-09-04 coverage audit): the opposite miss — a priority spread across
+        // materially MORE days than planned (the owner's Core/Abs shipped on 3 days against a
+        // plan of 1). `.tuning` because extra frequency at the same weekly volume is usually
+        // neutral-to-good for growth, not a risk; this exists so the owner can see the plan
+        // changed shape, not to raise an alarm.
+        if issue.contains("overshot its frequency target") {
+            return notice(
+                .tuning,
+                "\(subject ?? "A priority muscle") is trained on more days than planned",
+                "It showed up in more sessions than the plan called for. That usually isn't a problem — more frequent, smaller doses is often fine for growth — but it means the week's shape drifted from what was planned."
+            )
+        }
+
         if issue.contains("minimum viable stimulus threshold") {
             return notice(
                 .tuning,
@@ -382,6 +408,36 @@ extension WorkoutValidatorNotice {
                 .tuning,
                 day.map { "Day \($0) has some overlapping work" } ?? "One day has some overlapping work",
                 "Several movements in that session train the same thing in the same way. The later ones add fatigue more than stimulus."
+            )
+        }
+
+        // GAP 4 (2026-09-04 coverage audit): blueprint day-SHAPE violations from
+        // `validateDayPlans` that used to carry no copy at all and no disposition — a planned
+        // rest day silently becoming a training day (a real recovery-budget risk) rendered as
+        // the generic "isn't recognized well enough to explain here" fallback. All three must
+        // stay ahead of the generic day-composition branch below, since none of their wording
+        // overlaps it.
+        if issue.contains("turned it into a training session.") {
+            return notice(
+                .attention,
+                day.map { "Day \($0) was supposed to be a rest day" } ?? "A planned rest day became a training day",
+                "This day was built for recovery, but the plan turned it into a training session instead. Consider treating it as a rest day yourself, or regenerate the week."
+            )
+        }
+
+        if issue.contains("generated output made it a rest day.") {
+            return notice(
+                .headsUp,
+                day.map { "Day \($0) was supposed to be a training day" } ?? "A planned training day became a rest day",
+                "The plan called for a real workout here, but this day came back empty. You're getting less training this week than intended — regenerating may fix it."
+            )
+        }
+
+        if issue.contains("is missing from the generated output.") {
+            return notice(
+                .attention,
+                "A planned day didn't come back at all",
+                "One of your training days wasn't in what the plan produced. This is a system hiccup, not something you did — regenerate the week."
             )
         }
 

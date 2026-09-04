@@ -888,7 +888,28 @@ extension ClaudeService {
         let combined = "\(note) \(dayName)"
         var issues: [String] = []
 
-        if containsAny(combined, keywords: ["low fatigue", "low-fatigue", "recovery", "deload", "easy"]) {
+        // GAP 2 (2026-09-04 coverage audit): the literal keyword list below caught the REJECTED
+        // candidate but missed the ACCEPTED one, which framed the identical intent as "a balanced
+        // lower session to maintain leg mass without adding fatigue" over Back Squat + Barbell
+        // Romanian Deadlift (both fatigueCost 3) — no word here overlapped the original list at
+        // all. The additions are common paraphrases of the same claim: writing that a session
+        // won't spend/add fatigue, will keep it low, or is deliberately light/easy on the system.
+        // Deliberately NOT added: bare "fatigue" or "taxing" alone, which would also match a note
+        // correctly warning that a day WILL be fatiguing ("this session will be fatiguing, pace
+        // yourself") — the false positive that phrase would create costs more trust than the
+        // paraphrase gap it would close. Every addition below is a multi-word claim that the
+        // session is easy on the system, not a bare mention that fatigue exists.
+        if containsAny(combined, keywords: [
+            "low fatigue", "low-fatigue", "recovery", "deload", "easy",
+            "without adding fatigue", "won't add fatigue", "wont add fatigue",
+            "not add fatigue", "won't add much fatigue",
+            "keep fatigue low", "keeping fatigue low", "keeps fatigue low",
+            "manage fatigue", "managing fatigue", "minimal fatigue",
+            "light session", "lighter session", "not too taxing", "not overly taxing",
+            "conserve energy", "conserving energy", "save your energy",
+            "saving your energy", "spare your energy", "sparing your energy",
+            "without taxing", "low-stress session", "low stress session"
+        ]) {
             let heavyCompoundCount = day.exercises.filter { exercise in
                 let metadata = exerciseMetadata(for: exercise)
                 return metadata.fatigueCost >= 3
