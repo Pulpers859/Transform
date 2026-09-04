@@ -409,6 +409,7 @@ extension ClaudeService {
         issues.append(contentsOf: validateCoachingCueConsistency(days: days, verdicts: progressionVerdicts))
         issues.append(contentsOf: validateRepRangeTransitions(days: days, verdicts: progressionVerdicts))
         issues.append(contentsOf: validateBackPatternBalance(days: days))
+        issues.append(contentsOf: validateEffortPrescription(days: days, blueprint: blueprint))
         if let expectedExerciseMenus {
             issues.append(contentsOf: validateExerciseMenuAdherence(
                 days: days,
@@ -449,6 +450,7 @@ extension ClaudeService {
         issues.append(contentsOf: validateCoachingCueConsistency(days: days, verdicts: progressionVerdicts))
         issues.append(contentsOf: validateRepRangeTransitions(days: days, verdicts: progressionVerdicts))
         issues.append(contentsOf: validateBackPatternBalance(days: days))
+        issues.append(contentsOf: validateEffortPrescription(days: days, blueprint: blueprint))
         if let expectedExerciseMenus {
             issues.append(contentsOf: validateExerciseMenuAdherence(
                 days: days,
@@ -1109,6 +1111,62 @@ extension ClaudeService {
         return nil
     }
 
+    /// Checks the effort number itself, not merely that one was written.
+    ///
+    /// `validateDaySet` only ever asked whether `targetRIR` was PRESENT. Nothing looked at the
+    /// value, so the prompt's own rule 4 ("REPS AND targetRIR MUST AGREE … a range programmed
+    /// with reserve needs a higher one", `WorkoutGeneratorService+Requests.swift`) was an
+    /// instruction with no enforcement behind it — exactly the prompt-vs-validator drift this
+    /// repo lists as a known failure mode.
+    ///
+    /// Both rules below are anchored to `EvidenceProfile.md` rather than to invented numbers:
+    ///
+    ///  * `SLEEP-002` states that on the Restricted tier the volume cut is taken from back-off and
+    ///    accessory hard-set exposure, with accessories "biased about 1 rep further from failure"
+    ///    and loads NOT reduced. Accessory and core work coming back at RIR 0-1 on a Restricted
+    ///    week is therefore a direct contradiction of an encoded evidence rule, not a taste
+    ///    judgement. Anchors and secondaries are deliberately exempt: the same rule says to
+    ///    preserve the first hard sets and protect intensity, so a hard top set on a compound is
+    ///    the part Restricted is meant to keep.
+    ///  * A value outside 0...5 is not a defensible prescription at all; it is bad data.
+    ///
+    /// Deliberately NOT flagged: RIR 0 on a heavy compound in general. `SIMP-001` says failure
+    /// training is an optional refinement rather than a necessity — which is a reason not to
+    /// REQUIRE it, not evidence that a single set taken to failure is a defect. Flagging it would
+    /// be the validator asserting a training preference the profile does not support.
+    ///
+    /// Correction-worthy: `targetRIR` is a field the model writes for itself and can rewrite
+    /// without touching the locked menu, which is the same reasoning that put the existing
+    /// "is missing targetRIR" finding in that list.
+    func validateEffortPrescription(
+        days: [WorkoutDayResponse],
+        blueprint: ProgramBlueprint
+    ) -> [String] {
+        var issues: [String] = []
+        let restricted = blueprint.calibration.recoveryTier == .restricted
+
+        for day in days where !day.isRestDay {
+            for exercise in day.exercises {
+                guard let rir = exercise.targetRIR else { continue }
+
+                if rir < 0 || rir > 5 {
+                    issues.append("Day \(day.dayNumber) exercise \(exercise.exerciseName) has an out-of-range targetRIR of \(rir) — working-set effort belongs between 0 and 5 reps in reserve.")
+                    continue
+                }
+
+                guard restricted, rir <= 1 else { continue }
+                let role = proceduralExerciseRole(
+                    for: exercise.exerciseName,
+                    muscleTarget: exercise.muscleTarget
+                )
+                guard role == .accessory || role == .core else { continue }
+                issues.append("Day \(day.dayNumber) exercise \(exercise.exerciseName) is prescribed targetRIR \(rir) on a Restricted-recovery week — SLEEP-002 takes the cut from accessory hard-set exposure and biases accessories about one rep further from failure, so this accessory should sit further from failure rather than closer to it.")
+            }
+        }
+
+        return issues
+    }
+
     func validateDaySet(_ days: [WorkoutDayResponse], dayStart: Int, dayEnd: Int) -> [String] {
         var issues: [String] = []
 
@@ -1462,6 +1520,11 @@ extension ClaudeService {
             // the locked-menu default is now `.acceptableWarning`: without this it would ship as
             // a warning rather than be fixed.
             "is missing targetRIR",
+            // The VALUE of the effort field, not just its presence. Both are AI-owned: the model
+            // writes `targetRIR` itself and can rewrite it without touching the locked menu,
+            // which is the same reasoning that placed "is missing targetRIR" here.
+            "has an out-of-range targetRIR",
+            "on a Restricted-recovery week",
             "notes do not include a concrete progression cue",
             "the generated day reads as",
             "is supposed to emphasize quads",

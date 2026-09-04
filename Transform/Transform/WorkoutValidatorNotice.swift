@@ -520,6 +520,33 @@ extension WorkoutValidatorNotice {
             )
         }
 
+        // Effort-field findings. None of these had copy before — including the pre-existing
+        // "is missing targetRIR", which meant the owner saw the unrecognised fallback for a
+        // finding the app had understood perfectly well. Found by the disposition sweep.
+        if issue.contains("has an out-of-range targetRIR") {
+            return notice(
+                .headsUp,
+                "An exercise has a nonsense effort number",
+                "Every exercise carries a target for how many reps you should have left in the tank. This one came back with a value that isn't usable. Judge that lift by feel and leave a couple of reps in reserve."
+            )
+        }
+
+        if issue.contains("on a Restricted-recovery week") {
+            return notice(
+                .attention,
+                "An accessory is prescribed too close to failure for this week",
+                "Your logged sleep put this week in the most restricted recovery band, where the smaller isolation work is meant to be taken further from failure — not harder. Back that exercise off by a rep or two rather than grinding it out."
+            )
+        }
+
+        if issue.contains("is missing targetRIR") {
+            return notice(
+                .tuning,
+                "An exercise didn't say how hard to push",
+                "The coach left out the how-close-to-failure target for one lift. Nothing is wrong with the rest of the plan — leave about two reps in the tank on that exercise."
+            )
+        }
+
         if issue.contains("notes contain load/rep progression instructions") {
             return notice(
                 .tuning,
