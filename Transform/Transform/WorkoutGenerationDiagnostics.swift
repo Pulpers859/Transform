@@ -94,8 +94,28 @@ enum WorkoutGenerationDiagnostics {
     /// append that loses entries under concurrency would quietly defeat the point of keeping them.
     private static let requestLogLock = NSLock()
 
+    /// Where the log is stored. Production uses the standard domain; tests point it at a private
+    /// suite instead.
+    ///
+    /// This seam exists because of a lesson already written down in this repo:
+    /// `RecoveryModulationTests` notes that `swift test --parallel` runs test classes in SEPARATE
+    /// PROCESSES that share one defaults plist, so a test writing stored state can race another
+    /// test's fixture mid-run. An `NSLock` does nothing about that — it serialises one process's
+    /// address space, not two. The first version of this log's tests wrote straight to
+    /// `UserDefaults.standard` and re-made exactly the mistake that comment warns against.
+    static var requestLogStore: UserDefaults = .standard
+
     static func recordRequestEvent(_ line: String) {
-        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Newlines are flattened, not just trimmed at the edges. `requestLogText` joins entries
+        // with "\n" and the log is explicitly meant to be pasted into a bug report, so one entry
+        // must stay one line. Anthropic's HTTP error `message` is passed through only edge-trimmed
+        // and can legitimately contain a newline, which would otherwise silently split one event
+        // into two rows that each look like a separate request.
+        let flattened = line
+            .replacingOccurrences(of: "\r\n", with: " ")
+            .replacingOccurrences(of: "\n", with: " ")
+            .replacingOccurrences(of: "\r", with: " ")
+        let trimmed = flattened.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         let bounded = trimmed.count > requestLogLineLimit
             ? String(trimmed.prefix(requestLogLineLimit)) + "…"
@@ -106,19 +126,19 @@ enum WorkoutGenerationDiagnostics {
         requestLogLock.lock()
         defer { requestLogLock.unlock() }
 
-        var entries = defaults.stringArray(forKey: requestLogKey) ?? []
+        var entries = requestLogStore.stringArray(forKey: requestLogKey) ?? []
         entries.append(stamped)
         if entries.count > requestLogCapacity {
             entries.removeFirst(entries.count - requestLogCapacity)
         }
-        defaults.set(entries, forKey: requestLogKey)
+        requestLogStore.set(entries, forKey: requestLogKey)
     }
 
     /// Oldest first, so the list reads as a timeline.
     static var recentRequestEvents: [String] {
         requestLogLock.lock()
         defer { requestLogLock.unlock() }
-        return defaults.stringArray(forKey: requestLogKey) ?? []
+        return requestLogStore.stringArray(forKey: requestLogKey) ?? []
     }
 
     /// Ready to paste into a bug report.
@@ -129,6 +149,6 @@ enum WorkoutGenerationDiagnostics {
     static func clearRequestLog() {
         requestLogLock.lock()
         defer { requestLogLock.unlock() }
-        defaults.removeObject(forKey: requestLogKey)
+        requestLogStore.removeObject(forKey: requestLogKey)
     }
 }

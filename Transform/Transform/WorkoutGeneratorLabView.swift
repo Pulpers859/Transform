@@ -23,6 +23,9 @@ struct WorkoutGeneratorLabView: View {
     @State private var errorMessage = ""
     @State private var showError = false
     @State private var toastMessage: String?
+    /// Bumped when the network log is cleared, so that card re-renders. The log lives in
+    /// `UserDefaults` rather than in SwiftUI's observation graph, so nothing else would.
+    @State private var requestLogRevision = 0
     @State private var didSeed = false
     @State private var showAnalysisEditor = false
     @State private var showPreviousWeekEditor = false
@@ -130,6 +133,13 @@ struct WorkoutGeneratorLabView: View {
                     if let report {
                         resultsCard(report)
                     }
+
+                    // OUTSIDE the `if let report` on purpose, and this placement is the whole
+                    // point. The run that most needs its network diagnostics read is the one that
+                    // failed and therefore produced no report — putting this inside `resultsCard`
+                    // would hide the log in exactly the case it exists for. (It was written there
+                    // first; that was wrong.)
+                    requestLogCard
                 }
                 .padding(16)
             }
@@ -925,6 +935,64 @@ struct WorkoutGeneratorLabView: View {
                     .foregroundStyle(.secondary)
             }
         }
+    }
+
+    /// The on-device Anthropic request log, with a copy button.
+    ///
+    /// `AnthropicClient.logRequest` used to only `print`, which on the owner's phone meant the
+    /// request profile, every retry and its reason, the failure category and the app-lifecycle
+    /// state at the moment a generation broke were all discarded the instant they were written.
+    /// The log now survives, and this is the only place he can read it.
+    ///
+    /// `requestLogRevision` is read below purely so that clearing the log re-renders this card;
+    /// the events themselves live outside SwiftUI's observation graph.
+    var requestLogCard: some View {
+        let events = WorkoutGenerationDiagnostics.recentRequestEvents
+        let revision = requestLogRevision
+
+        return VStack(alignment: .leading, spacing: 14) {
+            sectionTitle("Network Log")
+
+            if events.isEmpty {
+                Text("No AI requests have been recorded on this device yet. They are logged automatically — generate a week and they will appear here.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                Text("Every AI request the app has made recently: what was sent, how long it took, and why anything failed or was retried. Copy this if a generation fails and you want it looked at. It holds no workout content and no API key.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                // Newest first on screen — a failure just hit is why anyone opens this.
+                promptSection(
+                    title: "\(events.count) event\(events.count == 1 ? "" : "s"), newest first",
+                    text: events.reversed().joined(separator: "\n")
+                )
+
+                HStack(spacing: 12) {
+                    Button {
+                        copyToClipboard(
+                            WorkoutGenerationDiagnostics.requestLogText,
+                            confirmation: "Network log copied"
+                        )
+                    } label: {
+                        Label("Copy Network Log", systemImage: "doc.on.doc")
+                            .font(.caption.bold())
+                    }
+
+                    Button(role: .destructive) {
+                        WorkoutGenerationDiagnostics.clearRequestLog()
+                        requestLogRevision += 1
+                    } label: {
+                        Label("Clear", systemImage: "trash")
+                            .font(.caption.bold())
+                    }
+                }
+            }
+        }
+        .id(revision)
+        .padding(16)
+        .background(TFColor.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 18))
     }
 
     func promptSection(title: String, text: String) -> some View {

@@ -12,13 +12,31 @@ import XCTest
 @MainActor
 final class RequestLogDurabilityTests: XCTestCase {
 
+    /// A private suite per test, never `UserDefaults.standard`.
+    ///
+    /// `RecoveryModulationTests` already records why: `swift test --parallel` runs test classes in
+    /// SEPARATE PROCESSES that share one defaults plist, so writing stored state from a test can
+    /// race another class's fixture mid-run. The lock inside the log serialises one process, not
+    /// two. The first version of this file wrote to the standard domain and re-made exactly that
+    /// mistake; it was not flaky under today's CI only because nothing else touches this key yet,
+    /// which is luck rather than design.
+    private var suiteName = ""
+
     override func setUp() {
         super.setUp()
+        suiteName = "RequestLogDurabilityTests.\(UUID().uuidString)"
+        guard let suite = UserDefaults(suiteName: suiteName) else {
+            XCTFail("Could not create a private defaults suite")
+            return
+        }
+        WorkoutGenerationDiagnostics.requestLogStore = suite
         WorkoutGenerationDiagnostics.clearRequestLog()
     }
 
     override func tearDown() {
         WorkoutGenerationDiagnostics.clearRequestLog()
+        UserDefaults.standard.removePersistentDomain(forName: suiteName)
+        WorkoutGenerationDiagnostics.requestLogStore = .standard
         super.tearDown()
     }
 
