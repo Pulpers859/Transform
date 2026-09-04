@@ -563,12 +563,24 @@ final class AnthropicClient {
         return nil
     }
 
+    /// Records a request event to the console AND to the durable on-device log.
+    ///
+    /// This used to be the `print` alone. On the owner's phone nothing reads stdout, so every
+    /// diagnostic here — the request profile, each retry with its reason and backoff, the failure
+    /// category, the lifecycle phase at the moment it broke — lived for an instant and vanished.
+    /// That is exactly the evidence a reported failure needs, and it was being thrown away, so a
+    /// generation that failed on device could only be guessed at afterwards.
+    ///
+    /// The `print` stays: with Xcode attached the console is still the fastest way to watch a live
+    /// run. `recordRequestEvent` is the copy that survives the app being closed.
     private func logRequest(requestID: String, event: String, details: [String: String]) {
         let payload = details
             .sorted { $0.key < $1.key }
             .map { "\($0.key)=\($0.value)" }
             .joined(separator: " ")
-        print("[AnthropicClient][\(requestID)][\(event)] \(payload)")
+        let line = "[AnthropicClient][\(requestID)][\(event)] \(payload)"
+        print(line)
+        WorkoutGenerationDiagnostics.recordRequestEvent(line)
     }
 
     /// Exponential backoff with a lower-bounded jitter window (half the nominal delay to the

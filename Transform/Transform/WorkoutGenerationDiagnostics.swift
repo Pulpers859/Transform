@@ -56,4 +56,79 @@ enum WorkoutGenerationDiagnostics {
         Approximate elapsed time before the app closed: \(ageSeconds) second(s).
         """
     }
+
+    // MARK: - Durable request log
+
+    /// A bounded, on-device history of Anthropic request events.
+    ///
+    /// `AnthropicClient.logRequest` was a bare `print`. On the owner's phone nothing is attached to
+    /// read stdout, so every diagnostic it emitted — the request profile, each retry with its
+    /// reason and backoff, the failure category, the app-lifecycle state at the moment it broke —
+    /// existed only for the instant it was written and then was gone. That is precisely the
+    /// evidence needed to explain a generation failure after the fact, and the app was discarding
+    /// all of it. A failure the owner reported could not be investigated, only guessed at.
+    ///
+    /// Writing here does NOT replace the `print`: in Xcode the console is still the fastest way to
+    /// watch a live run. This is the copy that survives.
+    ///
+    /// Safe to persist, checked rather than assumed: `requestProfile` records the model name, byte
+    /// and character COUNTS, timeout, feature/phase/week and tool name; the retry and failure
+    /// events record attempt number, error category, normalized error text, backoff and lifecycle
+    /// phase. No prompt text, no response content, no API key, and nothing the lifter typed.
+    ///
+    /// `UserDefaults` matches how the rest of this type already stores state, and the cap keeps it
+    /// small — a few hundred short lines, trimmed oldest-first. It is diagnostics, not an audit
+    /// trail: losing the tail on a crash is acceptable, silently losing everything is not.
+    private static let requestLogKey = "workout_generation_request_log"
+
+    /// Enough to hold several full generations including retries, since the interesting failures
+    /// are the ones with a long attempt history behind them.
+    static let requestLogCapacity = 300
+
+    /// One event can carry a long normalized error string; bound it so a pathological message
+    /// cannot crowd out the history around it, which is usually the more useful part.
+    private static let requestLogLineLimit = 600
+
+    /// Serialises the read-modify-write. Under the app's default MainActor isolation these calls
+    /// already serialise, but the package build compiles this type without that isolation, and an
+    /// append that loses entries under concurrency would quietly defeat the point of keeping them.
+    private static let requestLogLock = NSLock()
+
+    static func recordRequestEvent(_ line: String) {
+        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        let bounded = trimmed.count > requestLogLineLimit
+            ? String(trimmed.prefix(requestLogLineLimit)) + "…"
+            : trimmed
+
+        let stamped = "\(ISO8601DateFormatter().string(from: Date())) \(bounded)"
+
+        requestLogLock.lock()
+        defer { requestLogLock.unlock() }
+
+        var entries = defaults.stringArray(forKey: requestLogKey) ?? []
+        entries.append(stamped)
+        if entries.count > requestLogCapacity {
+            entries.removeFirst(entries.count - requestLogCapacity)
+        }
+        defaults.set(entries, forKey: requestLogKey)
+    }
+
+    /// Oldest first, so the list reads as a timeline.
+    static var recentRequestEvents: [String] {
+        requestLogLock.lock()
+        defer { requestLogLock.unlock() }
+        return defaults.stringArray(forKey: requestLogKey) ?? []
+    }
+
+    /// Ready to paste into a bug report.
+    static var requestLogText: String {
+        recentRequestEvents.joined(separator: "\n")
+    }
+
+    static func clearRequestLog() {
+        requestLogLock.lock()
+        defer { requestLogLock.unlock() }
+        defaults.removeObject(forKey: requestLogKey)
+    }
 }
