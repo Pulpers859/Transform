@@ -122,6 +122,20 @@ def attack_concat_fabrication(tree):
     path.write_text(text, encoding="utf-8")
 
 
+def attack_exercise_keyword_collision(tree):
+    """A nonsense pattern that collides with an exercise-keyword list.
+
+    "skull crusher" is a real literal in an exercise-keyword array. Under the
+    return-[...]-anywhere rule it fully vouched for itself as a validator pattern.
+    """
+    edit(tree, DISPOSITION, LIST_ANCHOR, LIST_ANCHOR + '            "skull crusher",\n')
+
+
+def attack_catalogue_literal(tree):
+    """A pattern lifted from the procedural fallback's exercise catalogue."""
+    edit(tree, DISPOSITION, LIST_ANCHOR, LIST_ANCHOR + '            "Seated Cable Row",\n')
+
+
 ATTACKS = [
     ("dead pattern, mirrored nowhere", attack_no_mirror),
     ("hidden in containsAnyFragment", attack_consumer_notice),
@@ -129,6 +143,8 @@ ATTACKS = [
     ("hidden in an unused constant", attack_unused_literal),
     ("hidden in a neighbouring array", attack_neighbouring_array),
     ("welded from two unconcatenated literals", attack_concat_fabrication),
+    ("an exercise keyword, not a finding", attack_exercise_keyword_collision),
+    ("a catalogue exercise name", attack_catalogue_literal),
 ]
 
 
@@ -158,9 +174,45 @@ def benign_trailing_comment(tree):
                     + text[index + len("\n        ]\n"):], encoding="utf-8")
 
 
+def _add_validator(tree, body_lines, message):
+    """Add a real `validate*` function using `body_lines`, and its pattern."""
+    path = pathlib.Path(tree) / DISPOSITION
+    text = path.read_text(encoding="utf-8")
+    anchor = "extension ClaudeService {"
+    func = anchor + "\n    func validateSyntheticShape() -> [String] {\n" + body_lines + "    }\n"
+    text = text.replace(anchor, func, 1)
+    text = text.replace(LIST_ANCHOR, LIST_ANCHOR + '            "%s",\n' % message, 1)
+    path.write_text(text, encoding="utf-8")
+
+
+def benign_plus_equals_shape(tree):
+    """`issues += [...]` — ordinary Swift, invisible to every syntax-enumerating rule."""
+    message = "uses the plus-equals emission shape"
+    _add_validator(
+        tree,
+        '        var issues: [String] = []\n'
+        '        issues += ["A day plan %s for findings."]\n'
+        '        return issues\n' % message,
+        message,
+    )
+
+
+def benign_let_then_return_shape(tree):
+    """`let messages = [...]; return messages` — the natural refactor of a bare return."""
+    message = "uses the let-then-return emission shape"
+    _add_validator(
+        tree,
+        '        let messages = ["A day plan %s for findings."]\n'
+        '        return messages\n' % message,
+        message,
+    )
+
+
 BENIGN = [
     ("cosmetic reindent", benign_reindent),
     ("trailing comment after a list", benign_trailing_comment),
+    ("issues += [...] emission shape", benign_plus_equals_shape),
+    ("let-then-return emission shape", benign_let_then_return_shape),
 ]
 
 
@@ -179,7 +231,7 @@ def main():
             shutil.copytree(ROOT, tree, ignore=shutil.ignore_patterns(".git", "__pycache__"))
             mutate(tree)
             code, output = run(tree)
-            if code == 1 and ("zzqx" in output):
+            if code == 1 and any(t in output for t in ("zzqx", "skull crusher", "Seated Cable Row")):
                 print("PASS  caught: %s" % label)
             else:
                 failures.append("NOT CAUGHT: %s (exit %d)\n%s" % (label, code, output))

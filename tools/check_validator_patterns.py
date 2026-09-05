@@ -1,57 +1,53 @@
 #!/usr/bin/env python3
-"""Fail if a validator disposition pattern matches no message the app can emit.
+"""Fail if a workout-validator disposition pattern matches no message the app can emit.
 
 WHY THIS EXISTS
 ---------------
 `validationDisposition` classifies a validator finding by plain substring containment
 against four hand-maintained pattern lists. A pattern that matches nothing is invisible:
-it changes no behaviour, breaks no test, and reads exactly like coverage. Two shipped —
-"was replaced with a poor substitute" and "notes do not include a concrete progression
-cue" — each sitting in a disposition list and in the on-screen copy mapper while no
-validator ever produced the phrase.
+it changes no behaviour, breaks no test, and reads exactly like coverage. Two shipped that
+way and were only found by adversarial audit.
 
-THE RULE THIS TOOL ENFORCES ON ITSELF
--------------------------------------
-A pattern must never be validated by code that CONSUMES findings — only by code that
-EMITS them. The first version of this script got that wrong twice over. It excluded
-consumers by blacklisting two syntactic forms (`issue.contains(`, `matchesValidationIssue`)
-and missed:
+WHY IT LOOKS LIKE THIS (four rebuilds, each after being broken)
+---------------------------------------------------------------
+Every earlier version defined the corpus by guessing at SYNTAX, and every one was defeated
+by syntax it had not guessed:
 
-  - `WorkoutValidatorNotice.containsAnyFragment(issue, [...])`, whose fragment arrays span
-    several lines, none of which carry the blacklisted text; and
-  - `correctionTactics(for:)` in WorkoutGeneratorService+Requests.swift, which matches with
-    `issues.contains(where: { $0.contains("...") })` — a string that does NOT contain the
-    substring "issue.contains(".
+  1. "every string literal in the source" — a pattern matched its own DECLARATION.
+  2. "...minus lines containing `issue.contains(` or `matchesValidationIssue`" — defeated by
+     `containsAnyFragment(issue, [...])`, whose array spans lines carrying neither, and by
+     `issues.contains(where:)`, which does not contain the substring "issue.contains(".
+  3. "any literal in a FILE that emits a finding" — measured 7.4% signal. An UNUSED constant,
+     or a literal in a neighbouring regex array, vouched for a pattern.
+  4. "literals inside `issues.append(...)` and `return [...]` spans" — `return [` matches
+     EVERY array and dictionary return in every file, so ~80% of that corpus was exercise
+     catalogues, muscle-group tables, JSON request keys, and two unrelated validation
+     pipelines (Body Analysis, Nutrition) that never reach `validationDisposition`. The
+     nonsense pattern "skull crusher" passed, vouched for by an exercise-keyword list.
 
-A fabricated dead pattern mirrored into either place passed the check. Blacklisting
-consumer SYNTAX cannot work, because the next consumer invents new syntax.
+Enumerating emission syntax cannot work: `issues.append(x)`, `issues += [x]`, `return [x]`,
+and `let m = [x]; return m` are all ordinary Swift, and the next one is not on any list.
 
-So the corpus is now chosen STRUCTURALLY: a file contributes only if it actually appends
-validator findings (`issues.append(` / `warnings.append(`). Pure consumers — the copy
-mapper, the prompt builder — contribute nothing and need no maintenance to stay excluded,
-and a consumer added tomorrow is excluded automatically because it does not emit.
+So the corpus is now scoped by FUNCTION, not by syntax and not by file: the bodies of the
+`validate*` functions in `WorkoutGeneratorService*.swift`. Those are the functions whose
+output reaches `validationDisposition`. Every emission shape inside one is covered because
+the whole body is read, and no shape outside one counts. That is ~195 literals against 2268
+under rule 1.
+
+A validator added under a name that does not start with `validate` will have its patterns
+reported dead. That is a LOUD failure naming the pattern, not a silent pass, and the fix is
+to make VALIDATOR_FUNCTION aware of it.
 
 LIMITS, STATED RATHER THAN HIDDEN
 ---------------------------------
-Emitted messages are Swift string literals, so two shapes cannot be read literally:
-
-  concatenation  "...rep bands in one " + "week. The working load..."
-  interpolation  "...exceeds its \\(capContext) direct-set cap on day..."
-
-Concatenation is handled: adjacent literals joined by `+` are merged before matching.
-Interpolation cannot be resolved statically — the value is only known at runtime — so
-those patterns live in ALLOWED_VIA_INTERPOLATION below, each naming the emitter that
-builds it. That list is deliberately small and deliberately annoying to add to: a pattern
-that cannot be proven live must be justified by a human pointing at the code that writes
-it, which is the whole point.
-
-An emitter that returns finding literals without ever calling `.append(` would be missed
-by the corpus rule and its patterns would report as dead. That is a LOUD failure naming
-the pattern, not a silent pass, and the fix is to make this file aware of the new emitter
-shape.
+  - Interpolated messages (`"...exceeds its \\(capContext) direct-set cap..."`) cannot be
+    resolved statically. Those patterns live in ALLOWED_VIA_INTERPOLATION, each naming its
+    emitter — deliberately small and deliberately annoying to add to.
+  - Reachability is not analysed. A literal inside `if false { }` still counts. A text
+    checker cannot know what runs.
 
 Run: python3 tools/check_validator_patterns.py
-Exit 1 and names the offenders if any pattern is dead.
+Self-test: python3 tools/test_check_validator_patterns.py
 """
 import re
 import sys
@@ -61,6 +57,15 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 SRC = ROOT / "Transform" / "Transform"
 DISPOSITION_FILE = SRC / "WorkoutGeneratorService+ParsingValidation.swift"
 
+# Only the workout generator's own validation surface. BodyAnalysisModels.swift and
+# NutritionGeneratorService.swift also contain `validate*` functions, but they feed separate
+# pipelines that never reach `validationDisposition`; including them let their messages
+# vouch for workout patterns.
+VALIDATOR_SOURCES = "WorkoutGeneratorService*.swift"
+
+# The functions whose output is classified by `validationDisposition`.
+VALIDATOR_FUNCTION = re.compile(r"\bfunc\s+(validate[A-Za-z0-9_]*)\s*[(<]")
+
 PATTERN_LISTS = [
     "lockedMenuHardFailurePatterns",
     "acceptableWarningIssuePatterns",
@@ -68,22 +73,17 @@ PATTERN_LISTS = [
     "menuLockedDemotionPatterns",
 ]
 
-# The two shapes a validator uses to produce a finding. Verified by reading the emitters,
-# not assumed: `validateBackPatternBalance` and `validatePrimeFocusDensity` return their
-# messages as `return ["..."]` and never call `.append(` at all, so an append-only rule
-# reported six live patterns as dead.
-EMIT_CALL = re.compile(r"\b(?:issues|warnings)\.append\(")
-EMIT_RETURN = re.compile(r"\breturn\s*\[")
-
 LITERAL = re.compile(r'"((?:[^"\\\n]|\\.)*)"')
 
-# Adjacent literals joined by `+` across a line break are one runtime string.
+# Adjacent literals joined by `+` are one runtime string.
 CONCATENATION = re.compile(r'"\s*\+\s*"')
 
-# Patterns whose emitted form is assembled through a `\(...)` interpolation, so no single
-# literal in the source contains them. Each MUST name the emitter.
+# Swift raw strings. Used in this repo for regexes, never for validator messages, and their
+# unescaped quotes desync a naive scanner — so they are removed before anything else runs.
+RAW_STRING = re.compile(r'#+"(?:.|\n)*?"#+')
+
 ALLOWED_VIA_INTERPOLATION = {
-    # WorkoutGeneratorService+ParsingValidation.swift builds the cap kind separately:
+    # ParsingValidation builds the cap kind separately:
     #     let capContext = ... ? "focus-day" : "per-session"
     #     "Blueprint priority '\(...)' exceeds its \(capContext) direct-set cap on day ..."
     "exceeds its focus-day direct-set cap":
@@ -93,25 +93,21 @@ ALLOWED_VIA_INTERPOLATION = {
 }
 
 
-def strip_comments(text):
-    """Remove `//` comments without touching anything inside a string literal.
+def strip_noise(text):
+    """Remove raw strings and `//` comments without truncating a string literal.
 
-    Two bugs this has had, both real:
-      - `re.sub(r"//[^\n]*", "")` ate the tail of the line holding
-        `URL(string: "https://api.anthropic.com/...")`, truncating at the `//` in the URL.
-      - The line-by-line replacement that fixed it reset quote state at every newline, so
-        a `//` inside a Swift `\"\"\"` multi-line literal was still cut. Nothing in the repo
-        trips that today, but "fixed" was overstated.
-
-    So this scans the whole text once, tracking both `"` and `\"\"\"` state across lines.
+    Two real bugs this has had: `re.sub(r"//[^\\n]*", "")` ate the tail of the line holding
+    `URL(string: "https://...")`, and the line-by-line replacement that fixed it reset quote
+    state at every newline so a `//` inside a `\"\"\"` block was still cut. This scans once,
+    tracking `"` and `\"\"\"` across lines.
     """
+    text = RAW_STRING.sub('""', text)
     out = []
     index = 0
     in_line_string = False
     in_block_string = False
-    length = len(text)
-    while index < length:
-        if text.startswith('\\', index) and (in_line_string or in_block_string):
+    while index < len(text):
+        if text.startswith("\\", index) and (in_line_string or in_block_string):
             out.append(text[index:index + 2])
             index += 2
             continue
@@ -125,25 +121,25 @@ def strip_comments(text):
         if char == '"' and not in_block_string:
             in_line_string = not in_line_string
         elif char == "\n":
-            # An unterminated single-line literal cannot span a newline in valid Swift.
             in_line_string = False
         elif (
-            not in_line_string
-            and not in_block_string
-            and char == "/"
-            and text[index + 1:index + 2] == "/"
+            not in_line_string and not in_block_string
+            and char == "/" and text[index + 1:index + 2] == "/"
         ):
             newline = text.find("\n", index)
-            index = length if newline == -1 else newline
+            index = len(text) if newline == -1 else newline
             continue
         out.append(char)
         index += 1
     return "".join(out)
 
 
-def _balanced_span(text, open_index, opener, closer):
-    """End index of the delimiter opened at `open_index`, ignoring delimiters in strings."""
-    index = open_index
+def function_body(text, start):
+    """Text of the function whose declaration begins at `start`, braces balanced."""
+    try:
+        index = text.index("{", start)
+    except ValueError:
+        return ""
     depth = 0
     in_string = False
     escaped = False
@@ -155,50 +151,24 @@ def _balanced_span(text, open_index, opener, closer):
             escaped = True
         elif char == '"':
             in_string = not in_string
-        elif not in_string and char == opener:
+        elif not in_string and char == "{":
             depth += 1
-        elif not in_string and char == closer:
+        elif not in_string and char == "}":
             depth -= 1
             if depth == 0:
-                return index
+                return text[start:index]
         index += 1
-    return None
-
-
-def finding_spans(text):
-    """(start, end) of every expression that PRODUCES a validator finding.
-
-    THE CORPUS IS THESE SPANS AND NOTHING ELSE. The previous rule admitted every literal in
-    any file that emitted a finding somewhere, which measured out at 7.4% genuinely emitted
-    text and 92.6% unrelated strings — exercise-name keywords, prompt fragments, log lines.
-    Under it an UNUSED constant, or a literal in a neighbouring regex array, vouched for a
-    pattern exactly as well as a real message. Both were demonstrated by injection.
-
-    Delimiters inside string literals are ignored, so a message containing "(" or "[" cannot
-    end its own span early.
-    """
-    spans = []
-    for match in EMIT_CALL.finditer(text):
-        end = _balanced_span(text, match.end() - 1, "(", ")")
-        if end is not None:
-            spans.append((match.end() - 1, end))
-    for match in EMIT_RETURN.finditer(text):
-        open_index = text.index("[", match.start())
-        end = _balanced_span(text, open_index, "[", "]")
-        if end is not None:
-            spans.append((open_index, end))
-    return spans
+    return text[start:]
 
 
 def pattern_list_blocks(text):
-    """(name, declaration text) for each disposition list.
+    """(name, declaration text) for each disposition list. `text` must be noise-stripped.
 
-    `text` MUST already have comments stripped. A trailing `// note` after the closing `]`
-    used to defeat the `\n[ \t]*\]\n` anchor, so the non-greedy match ran on to the next
-    closing bracket it could find — ~215 lines into unrelated function bodies — and the
-    check then condemned 14 live patterns, printing their own emitted text as proof they
-    were dead. The `func ` guard below turns that class of overrun into a clear error
-    instead of a confident wrong answer.
+    Two overruns have happened here. A trailing `// note` after `]` defeated the anchor and
+    the match ran ~215 lines into function bodies, condemning live patterns. A list reflowed
+    onto ONE line has no newline before its `]`, so the anchor matched the NEXT list's
+    bracket and silently absorbed that whole list — with no error at all. Both guards below
+    exist for a specific observed failure; neither is theoretical.
     """
     for name in PATTERN_LISTS:
         match = re.search(
@@ -212,12 +182,23 @@ def pattern_list_blocks(text):
                 % (name, DISPOSITION_FILE.name)
             )
         block = match.group(0)
-        if "func " in block or "return " in block:
+        # Check the block's CODE, not its text: a pattern may legitimately contain the word
+        # "return" (one does), and matching inside string literals made the guard fire on a
+        # perfectly well-formed list.
+        skeleton = LITERAL.sub('""', block)
+        if "func " in skeleton or "return " in skeleton:
             raise SystemExit(
                 "the parsed declaration of %s ran past its closing bracket into code.\n"
-                "Something about that array's formatting defeated the parser. Fix "
-                "pattern_list_blocks() — do NOT trust the pattern list it would produce."
-                % name
+                "Fix pattern_list_blocks() — do NOT trust the list it would produce." % name
+            )
+        swallowed = [other for other in PATTERN_LISTS
+                     if other != name and ("var %s:" % other) in block]
+        if swallowed:
+            raise SystemExit(
+                "the parsed declaration of %s swallowed %s.\n"
+                "Its closing bracket was not found where expected — most likely the array was "
+                "reflowed onto one line. Fix pattern_list_blocks(); the pattern counts it "
+                "would report are wrong." % (name, ", ".join(swallowed))
             )
         yield name, block
 
@@ -229,39 +210,31 @@ def main():
             % DISPOSITION_FILE
         )
 
-    disposition_text = strip_comments(DISPOSITION_FILE.read_text(encoding="utf-8"))
+    disposition_text = strip_noise(DISPOSITION_FILE.read_text(encoding="utf-8"))
 
     lists = {}
     for name, block in pattern_list_blocks(disposition_text):
         lists[name] = LITERAL.findall(block)
 
     corpus = []
-    emitter_files = []
-    for path in sorted(SRC.glob("*.swift")):
-        text = strip_comments(path.read_text(encoding="utf-8"))
-        spans = finding_spans(text)
-        if not spans:
-            continue
-
-        literals_here = 0
-        for start, end in spans:
-            # Merge concatenated literals INSIDE the call so a phrase split across a line
-            # break is seen whole. Applied per span rather than to whole-file text: the old
-            # whole-text merge, combined with a line-deletion filter, could weld two
-            # literals that were never concatenated into a string nothing emits.
-            argument = CONCATENATION.sub("", text[start:end + 1])
-            for literal in LITERAL.findall(argument):
+    scanned = []
+    for path in sorted(SRC.glob(VALIDATOR_SOURCES)):
+        text = strip_noise(path.read_text(encoding="utf-8"))
+        found_here = 0
+        for match in VALIDATOR_FUNCTION.finditer(text):
+            body = CONCATENATION.sub("", function_body(text, match.start()))
+            for literal in LITERAL.findall(body):
                 if len(literal) >= 8:
-                    corpus.append((path.name, literal))
-                    literals_here += 1
-        if literals_here:
-            emitter_files.append("%s(%d)" % (path.name, literals_here))
+                    corpus.append(literal)
+                    found_here += 1
+        if found_here:
+            scanned.append("%s(%d)" % (path.name, found_here))
 
     dead = []
     allowed_used = set()
     for name, patterns in lists.items():
         for pattern in patterns:
-            if any(pattern in text for _, text in corpus):
+            if any(pattern in literal for literal in corpus):
                 continue
             if pattern in ALLOWED_VIA_INTERPOLATION:
                 allowed_used.add(pattern)
@@ -270,14 +243,14 @@ def main():
 
     unused = set(ALLOWED_VIA_INTERPOLATION) - allowed_used
 
-    print("emitting files (%d): %s" % (len(emitter_files), ", ".join(emitter_files)))
-    print("corpus: %d literals, all from inside a finding-producing expression" % len(corpus))
+    print("validator sources (%d): %s" % (len(scanned), ", ".join(scanned)))
+    print("corpus: %d literals, all from inside a validate* function body" % len(corpus))
     for name, patterns in lists.items():
         print("  %-36s %d patterns" % (name, len(patterns)))
     print("  %-36s %d allowed via interpolation" % ("", len(allowed_used)))
 
-    if not emitter_files:
-        print("\nNo emitter files found at all — the corpus rule is broken, not the patterns.")
+    if not corpus:
+        print("\nThe corpus is empty — the scoping rule is broken, not the patterns.")
         return 1
 
     if unused:
@@ -286,14 +259,15 @@ def main():
             print("  %r" % pattern)
 
     if dead:
-        print("\nDEAD PATTERNS — these match no message the app can emit:")
+        print("\nDEAD PATTERNS — these match no message a validate* function can emit:")
         for name, pattern in dead:
             print("  %s: %r" % (name, pattern))
         print("\nEither delete the pattern, or paste the real emitted string from the")
-        print("validator function that produces it. Do not add it back from memory, and do")
-        print("not satisfy this by adding the phrase to a consumer — consumers do not count.")
-        print("If it is genuinely built by interpolation, add it to")
-        print("ALLOWED_VIA_INTERPOLATION with the emitter named.")
+        print("validator that produces it. Do not add it back from memory, and do not")
+        print("satisfy this by adding the phrase anywhere outside a validate* function —")
+        print("nothing outside one counts. If a new validator is not named validate*, teach")
+        print("VALIDATOR_FUNCTION about it. If the message is built by interpolation, add it")
+        print("to ALLOWED_VIA_INTERPOLATION with the emitter named.")
 
     if dead or unused:
         return 1
