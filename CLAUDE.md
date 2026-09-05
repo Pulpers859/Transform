@@ -32,7 +32,31 @@
   - Reported four fixes as "the fixes" while five more audited, confirmed items sat unworked.
   - Subagents reported a deliberate, documented design choice as a bug, and a correct progression
     cue as a defect. Both would have caused real regressions if applied unverified.
+  - Wrote a source comment claiming a new Generator Lab card sat OUTSIDE the `if let report`
+    block. It was inside `resultsCard(_ report:)`. That is not a cosmetic slip: the card is a
+    network log whose entire purpose is explaining a run that FAILED and therefore produced no
+    report, so the placement hid it in exactly the case it exists for.
+  - Wrote two initialisers in a new test from memory — `BodyAnalysisResult` and
+    `SleepRecoveryState`. Both had wrong labels. The correct ones were sitting in
+    `RecoveryModulationTests`, which constructs the same types.
+  - Claimed a new out-of-range `targetRIR` check guarded against bad model output. It cannot: the
+    decoder clamps that field to 0...5 and drops junk to nil before the validator ever runs. The
+    branch is unreachable from every producer that exists. An auditor caught the overstatement.
+- **The failure is always the same shape: something was easy to look up and got typed from memory
+  instead.** Every instance above took under a minute to verify and was wrong. There is no
+  category of claim about this repo cheap enough to skip checking.
+- Note which of these CI can and cannot catch. Wrong initialiser labels and wrong types fail the
+  build, so they cost a cycle and are recoverable. Wrong claims in COMMENTS, COMMIT MESSAGES and
+  MESSAGES TO THE OWNER compile perfectly and ship — they are the dangerous half, and the only
+  defence is reading before writing. Treat a sentence about behaviour as seriously as code.
 - Practical discipline:
+  - NEVER type an initialiser, method signature, enum case, or field label from memory. Grep the
+    declaration, or copy a working call from an existing test, every time.
+  - Before writing a comment that says where code sits or what scope it runs in, read the
+    enclosing declaration. `awk 'NR<=LINE && /^    func /{n=NR;l=$0} END{print n": "l}' FILE`
+    answers it in one command.
+  - Before claiming a new guard protects against something, find the code path that would reach
+    it. If an earlier layer already handles that input, say so instead of claiming the credit.
   - Line numbers go stale the moment anything above them changes. Re-grep; never reuse a line
     number across edits.
   - Before claiming a value, behavior, or wiring, read it — and prefer generating strings and
