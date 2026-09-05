@@ -123,7 +123,6 @@ final class CorrectionTacticsTests: XCTestCase {
             // PROSE REWRITES. The finding text already quotes the offending sentence and names the
             // standard it broke, so the generic rule plus the finding is the whole instruction.
             "notes are empty or too short",
-            "notes do not include a concrete progression cue",
             "session notes are empty or too short",
             "session notes are generic",
             "session notes talk about",

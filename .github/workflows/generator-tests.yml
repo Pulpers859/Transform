@@ -26,6 +26,14 @@ jobs:
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
 
+      # Runs BEFORE the Swift tests: it needs no toolchain, takes under a second, and
+      # catches a defect the test suite structurally cannot. Validator findings are
+      # classified by substring against hand-maintained pattern lists, so a pattern that
+      # matches no message the app can emit changes no behaviour and breaks no test — it
+      # just sits there looking like coverage. Two shipped that way.
+      - name: Check validator patterns are live
+        run: python3 tools/check_validator_patterns.py
+
       - name: Show toolchain
         run: |
           swift --version

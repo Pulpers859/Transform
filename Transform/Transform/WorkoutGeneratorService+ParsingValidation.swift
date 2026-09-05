@@ -1537,7 +1537,6 @@ extension ClaudeService {
             // which is the same reasoning that placed "is missing targetRIR" here.
             "has an out-of-range targetRIR",
             "on a Restricted-recovery week",
-            "notes do not include a concrete progression cue",
             "the generated day reads as",
             "is supposed to emphasize quads",
             "excessive shoulder joint stress",

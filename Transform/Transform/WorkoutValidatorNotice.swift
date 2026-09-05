@@ -512,10 +512,13 @@ extension WorkoutValidatorNotice {
             )
         }
 
+        // A fourth clause matched "notes do not include a concrete progression cue". That
+        // rule was retired when the templated prose cue was replaced by the numeric one
+        // (see WorkoutGeneratorService+FocusCoachingContext.swift), and nothing has emitted
+        // the phrase since — it was matching a message the app no longer writes.
         if issue.contains("session notes are generic")
             || issue.contains("session notes are empty or too short")
-            || issue.contains("notes are empty or too short")
-            || issue.contains("notes do not include a concrete progression cue") {
+            || issue.contains("notes are empty or too short") {
             return notice(
                 .tuning,
                 "Some coaching notes are thin",
