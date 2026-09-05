@@ -1,10 +1,23 @@
 import Foundation
 
 extension ClaudeService {
-    func trainingIntentPlan(from analysis: BodyAnalysisResult) -> TrainingIntentPlan {
+    /// `unfinishedMovementCount` is how many DISTINCT movements the lifter has repeatedly failed
+    /// to finish for time (`ExerciseHistoryContext.timeSkipExercises`). It reaches the session
+    /// time cap through `calibrationProfile`; see the cap derivation there for why.
+    ///
+    /// Defaulted so the Generator Lab's debug paths, which have no logged history to draw on,
+    /// behave exactly as before rather than silently inheriting someone else's.
+    func trainingIntentPlan(
+        from analysis: BodyAnalysisResult,
+        unfinishedMovementCount: Int = 0
+    ) -> TrainingIntentPlan {
         if let structuredIntent = analysis.structuredTrainingIntent,
            !structuredIntent.priorities.isEmpty {
-            return trainingIntentPlan(from: structuredIntent, analysis: analysis)
+            return trainingIntentPlan(
+                from: structuredIntent,
+                analysis: analysis,
+                unfinishedMovementCount: unfinishedMovementCount
+            )
         }
 
         let focusAreas = derivedPriorityAreas(from: analysis)
@@ -28,7 +41,10 @@ extension ClaudeService {
             injuryRiskFocus: analysis.injuryRiskNotes.trimmedOr(default: "(none)"),
             calibration: neutralCalibrationProfile()
         )
-        return calibratedTrainingIntentPlan(basePlan, using: calibrationProfile(from: analysis))
+        return calibratedTrainingIntentPlan(
+            basePlan,
+            using: calibrationProfile(from: analysis, unfinishedMovementCount: unfinishedMovementCount)
+        )
     }
 
     func fallbackTrainingIntentPlan(from focusAreas: [String]) -> TrainingIntentPlan {
@@ -54,7 +70,11 @@ extension ClaudeService {
         )
     }
 
-    func trainingIntentPlan(from structuredIntent: StructuredTrainingIntent, analysis: BodyAnalysisResult) -> TrainingIntentPlan {
+    func trainingIntentPlan(
+        from structuredIntent: StructuredTrainingIntent,
+        analysis: BodyAnalysisResult,
+        unfinishedMovementCount: Int = 0
+    ) -> TrainingIntentPlan {
         let priorities = structuredIntent.priorities.enumerated().map { index, priority in
             musclePriorityIntent(from: priority, rank: index, analysis: analysis)
         }
@@ -69,7 +89,10 @@ extension ClaudeService {
             injuryRiskFocus: analysis.injuryRiskNotes.trimmedOr(default: "(none)"),
             calibration: neutralCalibrationProfile()
         )
-        return calibratedTrainingIntentPlan(basePlan, using: calibrationProfile(from: analysis))
+        return calibratedTrainingIntentPlan(
+            basePlan,
+            using: calibrationProfile(from: analysis, unfinishedMovementCount: unfinishedMovementCount)
+        )
     }
 
     /// Renders the Training Intent block, reconciled against the Blueprint's per-priority
@@ -1155,7 +1178,8 @@ extension ClaudeService {
     /// UserDefaults plist.
     func calibrationProfile(
         from analysis: BodyAnalysisResult,
-        recoveryDecision: RecoveryDecision? = nil
+        recoveryDecision: RecoveryDecision? = nil,
+        unfinishedMovementCount: Int = 0
     ) -> ProgramCalibrationProfile {
         let profile = analysis.inputContext?.profile
         let checkIn = analysis.inputContext?.checkIn
@@ -1283,7 +1307,33 @@ extension ClaudeService {
         case .constrained: baseTimeCap = 70
         case .ready, .insufficientData: baseTimeCap = 75
         }
-        let defaultSessionTimeCapMinutes = baseTimeCap
+
+        // The session budget now answers to whether the lifter actually FINISHES his sessions,
+        // not only to how he slept.
+        //
+        // Until this, the cap came from the recovery tier alone. The app separately recorded every
+        // movement he abandoned for time — one of his had been skipped for time three separate
+        // times — printed that count into the prompt, and then planned the next week to exactly
+        // the same length as if it had never happened. A plan he cannot finish is not a plan he is
+        // following, and the exercises that lose are always the ones at the end.
+        //
+        // Deliberately modest and capped. One repeatedly-unfinished movement is worth 5 minutes,
+        // two or more is worth 10, and it stops there: this is a nudge toward a session he
+        // completes, not a spiral that shrinks the program every time a shift runs long. The 45
+        // minute floor is well clear of anything the trim loops could turn into a short-menu
+        // failure — they only reduce SETS down to `minimumSetFloor`, and drop a movement solely
+        // while a day still holds more than five.
+        //
+        // Counting DISTINCT movements rather than total skips is deliberate too: `timeSkipExercises`
+        // already requires a movement to have been abandoned at least twice before it counts, so
+        // two of them means the problem is the session length rather than one awkward exercise.
+        //
+        // Reaches every style cap below EXCEPT "Arms", which carries its own hardcoded 50/55/60
+        // ladder rather than deriving from this default. That is left alone deliberately: an Arms
+        // day is already the shortest in the week, so it is the least likely to be the one running
+        // over, and trimming the shortest session is where a time cut starts costing real work.
+        let unfinishedPenalty = min(10, max(0, unfinishedMovementCount) * 5)
+        let defaultSessionTimeCapMinutes = max(45, baseTimeCap - unfinishedPenalty)
         let styleSessionCaps: [String: Int] = [
             "Push": defaultSessionTimeCapMinutes,
             "Pull": defaultSessionTimeCapMinutes,

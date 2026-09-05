@@ -153,7 +153,10 @@ extension ClaudeService {
     func generateWeekOne(from analysisResult: BodyAnalysisResult, performanceHistory: String? = nil, skipHistory: String? = nil, exerciseHistory: ExerciseHistoryContext? = nil, progressionVerdicts: [ExerciseProgressionVerdict] = []) async throws -> WorkoutProgramGenerationResult {
         WorkoutGenerationDiagnostics.markStage("building week 1 analysis context")
         let analysisSummary = analysisContext(from: analysisResult)
-        let trainingIntent = trainingIntentPlan(from: analysisResult)
+        let trainingIntent = trainingIntentPlan(
+            from: analysisResult,
+            unfinishedMovementCount: exerciseHistory?.timeSkipExercises.count ?? 0
+        )
         let blueprint = programBlueprint(for: trainingIntent, weekNumber: 1)
         let intentSummary = trainingIntentContext(from: trainingIntent, blueprint: blueprint)
         let blueprintSummary = blueprintContext(from: blueprint)
@@ -459,8 +462,12 @@ extension ClaudeService {
         let analysisSummary = analysisDecode.warning.map {
             "\(baseAnalysisSummary)\nDecoding note: \($0)"
         } ?? baseAnalysisSummary
-        let trainingIntent = decodedAnalysis.map(trainingIntentPlan(from:))
-            ?? fallbackTrainingIntentPlan(from: priorityMuscles(from: analysisJSON))
+        let trainingIntent = decodedAnalysis.map {
+            trainingIntentPlan(
+                from: $0,
+                unfinishedMovementCount: exerciseHistory?.timeSkipExercises.count ?? 0
+            )
+        } ?? fallbackTrainingIntentPlan(from: priorityMuscles(from: analysisJSON))
         let blueprint = programBlueprint(for: trainingIntent, weekNumber: weekNumber)
         let intentSummary = trainingIntentContext(from: trainingIntent, blueprint: blueprint)
         let blueprintSummary = blueprintContext(from: blueprint)
