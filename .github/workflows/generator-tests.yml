@@ -59,7 +59,16 @@ jobs:
       # mask it. This way one run reports both.
       - name: Check validator patterns are live
         if: always()
-        run: python3 tools/check_validator_patterns.py
+        run: |
+          set -euo pipefail
+          # The checker's own self-test runs first: it has had the exact bug it exists to
+          # catch three times (validating a pattern against its own declaration, against
+          # consumer code, and against any literal in a file that emitted anything), each
+          # found by an adversarial audit rather than by reading it. Every one of those is
+          # now a pinned attack. A checker whose regressions are not pinned is the thing it
+          # was written to prevent.
+          python3 tools/test_check_validator_patterns.py
+          python3 tools/check_validator_patterns.py
 
       - name: Upload generator test log
         if: failure()

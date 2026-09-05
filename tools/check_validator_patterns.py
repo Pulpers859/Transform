@@ -68,8 +68,12 @@ PATTERN_LISTS = [
     "menuLockedDemotionPatterns",
 ]
 
-# What makes a file an EMITTER of validator findings.
-EMITS = re.compile(r"\b(?:issues|warnings)\.append\(")
+# The two shapes a validator uses to produce a finding. Verified by reading the emitters,
+# not assumed: `validateBackPatternBalance` and `validatePrimeFocusDensity` return their
+# messages as `return ["..."]` and never call `.append(` at all, so an append-only rule
+# reported six live patterns as dead.
+EMIT_CALL = re.compile(r"\b(?:issues|warnings)\.append\(")
+EMIT_RETURN = re.compile(r"\breturn\s*\[")
 
 LITERAL = re.compile(r'"((?:[^"\\\n]|\\.)*)"')
 
@@ -90,43 +94,115 @@ ALLOWED_VIA_INTERPOLATION = {
 
 
 def strip_comments(text):
-    """Remove `//` comments WITHOUT truncating a string literal that contains `//`.
+    """Remove `//` comments without touching anything inside a string literal.
 
-    A naive `re.sub(r"//[^\\n]*", "", text)` eats the rest of the line from the `//` in
-    `URL(string: "https://api.anthropic.com/v1/messages")`, silently dropping whatever
-    followed on that line. Any emitted message containing a URL would lose its tail.
+    Two bugs this has had, both real:
+      - `re.sub(r"//[^\n]*", "")` ate the tail of the line holding
+        `URL(string: "https://api.anthropic.com/...")`, truncating at the `//` in the URL.
+      - The line-by-line replacement that fixed it reset quote state at every newline, so
+        a `//` inside a Swift `\"\"\"` multi-line literal was still cut. Nothing in the repo
+        trips that today, but "fixed" was overstated.
+
+    So this scans the whole text once, tracking both `"` and `\"\"\"` state across lines.
     """
     out = []
-    for line in text.splitlines():
-        in_string = False
-        escaped = False
-        cut = len(line)
-        index = 0
-        while index < len(line):
-            char = line[index]
-            if escaped:
-                escaped = False
-            elif char == "\\":
-                escaped = True
-            elif char == '"':
-                in_string = not in_string
-            elif not in_string and char == "/" and line[index + 1:index + 2] == "/":
-                cut = index
-                break
-            index += 1
-        out.append(line[:cut])
-    return "\n".join(out)
+    index = 0
+    in_line_string = False
+    in_block_string = False
+    length = len(text)
+    while index < length:
+        if text.startswith('\\', index) and (in_line_string or in_block_string):
+            out.append(text[index:index + 2])
+            index += 2
+            continue
+        if text.startswith('"""', index):
+            if not in_line_string:
+                in_block_string = not in_block_string
+            out.append('"""')
+            index += 3
+            continue
+        char = text[index]
+        if char == '"' and not in_block_string:
+            in_line_string = not in_line_string
+        elif char == "\n":
+            # An unterminated single-line literal cannot span a newline in valid Swift.
+            in_line_string = False
+        elif (
+            not in_line_string
+            and not in_block_string
+            and char == "/"
+            and text[index + 1:index + 2] == "/"
+        ):
+            newline = text.find("\n", index)
+            index = length if newline == -1 else newline
+            continue
+        out.append(char)
+        index += 1
+    return "".join(out)
+
+
+def _balanced_span(text, open_index, opener, closer):
+    """End index of the delimiter opened at `open_index`, ignoring delimiters in strings."""
+    index = open_index
+    depth = 0
+    in_string = False
+    escaped = False
+    while index < len(text):
+        char = text[index]
+        if escaped:
+            escaped = False
+        elif char == "\\":
+            escaped = True
+        elif char == '"':
+            in_string = not in_string
+        elif not in_string and char == opener:
+            depth += 1
+        elif not in_string and char == closer:
+            depth -= 1
+            if depth == 0:
+                return index
+        index += 1
+    return None
+
+
+def finding_spans(text):
+    """(start, end) of every expression that PRODUCES a validator finding.
+
+    THE CORPUS IS THESE SPANS AND NOTHING ELSE. The previous rule admitted every literal in
+    any file that emitted a finding somewhere, which measured out at 7.4% genuinely emitted
+    text and 92.6% unrelated strings — exercise-name keywords, prompt fragments, log lines.
+    Under it an UNUSED constant, or a literal in a neighbouring regex array, vouched for a
+    pattern exactly as well as a real message. Both were demonstrated by injection.
+
+    Delimiters inside string literals are ignored, so a message containing "(" or "[" cannot
+    end its own span early.
+    """
+    spans = []
+    for match in EMIT_CALL.finditer(text):
+        end = _balanced_span(text, match.end() - 1, "(", ")")
+        if end is not None:
+            spans.append((match.end() - 1, end))
+    for match in EMIT_RETURN.finditer(text):
+        open_index = text.index("[", match.start())
+        end = _balanced_span(text, open_index, "[", "]")
+        if end is not None:
+            spans.append((open_index, end))
+    return spans
 
 
 def pattern_list_blocks(text):
-    """(name, whole declaration text) for each disposition list.
+    """(name, declaration text) for each disposition list.
 
-    The closing bracket is matched at any indentation: pinning it to a fixed number of
-    spaces made a cosmetic reformat fail CI with a confusing "could not locate" error.
+    `text` MUST already have comments stripped. A trailing `// note` after the closing `]`
+    used to defeat the `\n[ \t]*\]\n` anchor, so the non-greedy match ran on to the next
+    closing bracket it could find — ~215 lines into unrelated function bodies — and the
+    check then condemned 14 live patterns, printing their own emitted text as proof they
+    were dead. The `func ` guard below turns that class of overrun into a clear error
+    instead of a confident wrong answer.
     """
     for name in PATTERN_LISTS:
         match = re.search(
-            r"var " + name + r": \[String\] \{.*?\n[ \t]*\]\n", text, re.S
+            r"var " + name + r": \[String\] \{.*?\n[ \t]*\][ \t]*\n", text, re.S
         )
         if not match:
             raise SystemExit(
@@ -135,48 +211,51 @@ def pattern_list_blocks(text):
                 "update pattern_list_blocks() rather than deleting the check."
                 % (name, DISPOSITION_FILE.name)
             )
-        yield name, match.group(0)
+        block = match.group(0)
+        if "func " in block or "return " in block:
+            raise SystemExit(
+                "the parsed declaration of %s ran past its closing bracket into code.\n"
+                "Something about that array's formatting defeated the parser. Fix "
+                "pattern_list_blocks() — do NOT trust the pattern list it would produce."
+                % name
+            )
+        yield name, block
 
 
 def main():
-    disposition_text = DISPOSITION_FILE.read_text(encoding="utf-8")
+    if not DISPOSITION_FILE.exists():
+        raise SystemExit(
+            "cannot find %s. If it was renamed, update DISPOSITION_FILE in this script."
+            % DISPOSITION_FILE
+        )
+
+    disposition_text = strip_comments(DISPOSITION_FILE.read_text(encoding="utf-8"))
 
     lists = {}
-    declaration_blocks = []
     for name, block in pattern_list_blocks(disposition_text):
-        lists[name] = LITERAL.findall(strip_comments(block))
-        declaration_blocks.append(block)
+        lists[name] = LITERAL.findall(block)
 
     corpus = []
     emitter_files = []
     for path in sorted(SRC.glob("*.swift")):
-        text = path.read_text(encoding="utf-8")
-
-        # Remove the declarations themselves — a pattern must never match its own
-        # declaration, which is how the first dead pattern survived a check at all.
-        if path == DISPOSITION_FILE:
-            for block in declaration_blocks:
-                text = text.replace(block, "")
-
-        text = strip_comments(text)
-
-        # Only files that actually append findings can vouch for a pattern.
-        if not EMITS.search(text):
+        text = strip_comments(path.read_text(encoding="utf-8"))
+        spans = finding_spans(text)
+        if not spans:
             continue
-        emitter_files.append(path.name)
 
-        # A consumer living INSIDE an emitter file still may not vouch for a pattern.
-        text = "\n".join(
-            line for line in text.splitlines()
-            if "matchesValidationIssue" not in line and ".contains(" not in line
-        )
-
-        # Merge concatenated literals so a phrase split across a line break is seen whole.
-        text = CONCATENATION.sub("", text)
-
-        for literal in LITERAL.findall(text):
-            if len(literal) >= 8:
-                corpus.append((path.name, literal))
+        literals_here = 0
+        for start, end in spans:
+            # Merge concatenated literals INSIDE the call so a phrase split across a line
+            # break is seen whole. Applied per span rather than to whole-file text: the old
+            # whole-text merge, combined with a line-deletion filter, could weld two
+            # literals that were never concatenated into a string nothing emits.
+            argument = CONCATENATION.sub("", text[start:end + 1])
+            for literal in LITERAL.findall(argument):
+                if len(literal) >= 8:
+                    corpus.append((path.name, literal))
+                    literals_here += 1
+        if literals_here:
+            emitter_files.append("%s(%d)" % (path.name, literals_here))
 
     dead = []
     allowed_used = set()
@@ -191,8 +270,8 @@ def main():
 
     unused = set(ALLOWED_VIA_INTERPOLATION) - allowed_used
 
-    print("emitter files (%d): %s" % (len(emitter_files), ", ".join(emitter_files)))
-    print("corpus: %d emitted literals" % len(corpus))
+    print("emitting files (%d): %s" % (len(emitter_files), ", ".join(emitter_files)))
+    print("corpus: %d literals, all from inside a finding-producing expression" % len(corpus))
     for name, patterns in lists.items():
         print("  %-36s %d patterns" % (name, len(patterns)))
     print("  %-36s %d allowed via interpolation" % ("", len(allowed_used)))
