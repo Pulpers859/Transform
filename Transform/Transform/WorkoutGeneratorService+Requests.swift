@@ -188,6 +188,35 @@ extension ClaudeService {
             rules.append("- The Pre-Selected Exercise Menu is locked. Use the exact exercise names, order, and set counts for each listed day; only adjust reps, tempo, rest, and notes.")
         }
 
+        // A blueprint day whose rest/training SHAPE the response ignored. These were classified as
+        // correction-worthy on the grounds that the model writes `isRestDay` itself and can fix it
+        // — but it was being handed the complaint with no instruction for resolving it, which is
+        // the weakest possible form of a paid repair call: the model has to infer both the cause
+        // and the remedy from prose written for a human reviewer.
+        if issues.contains(where: {
+            $0.contains("turned it into a training session.") || $0.contains("generated output made it a rest day.")
+        }) {
+            rules.append("- A day's rest/training status does not match the Weekly Blueprint. Set `isRestDay` to exactly what the blueprint specifies for every day named in the issues. A day the blueprint marks as rest must have `isRestDay` true and an EMPTY exercises array. A day the blueprint marks for training must have `isRestDay` false and must carry that day's exercises from the Pre-Selected Exercise Menu, in the given order with the given set counts. Do not add, drop, or renumber days to resolve this, and change nothing about any day the issues do not name.")
+        }
+
+        // The effort field. `targetRIR` is the one prescription number the model owns outright, and
+        // both findings about it are repairable without touching the locked menu.
+        if issues.contains(where: { $0.contains("on a Restricted-recovery week") }) {
+            rules.append("- Recovery is Restricted this week. Raise `targetRIR` on each flagged accessory or core exercise so it sits further from failure — 2 or 3 rather than 0 or 1. Leave the loads, sets and reps alone, and do not soften the heavy compounds: the cut belongs to accessory effort, not to the main lifts.")
+        }
+
+        // Lazy uniform rest/tempo across a mixed session. Mechanical and squarely inside what the
+        // model may change, so a tactic is worth far more here than the finding text alone.
+        if issues.contains(where: {
+            $0.contains("one identical rest prescription") || $0.contains("one identical tempo prescription")
+        }) {
+            rules.append("- Rest and tempo must track exercise role, not be copied across the day. Give heavy compounds longer rest and a controlled eccentric; give isolation and core work shorter rest and a tighter tempo. Leave tempo empty for carries, and for distance-, time- or hold-based work where a four-part cadence is meaningless. Change only rest and tempo to resolve this.")
+        }
+
+        if issues.contains(where: { $0.contains("is missing targetRIR") || $0.contains("has an out-of-range targetRIR") }) {
+            rules.append("- Set `targetRIR` on each flagged exercise to a whole number from 0 to 5 that matches the rep range you prescribed: a range meant to be taken close to failure needs a low value, a range programmed with reserve needs a higher one. State effort only in that field, never in the note.")
+        }
+
         return rules.joined(separator: "\n")
     }
 
