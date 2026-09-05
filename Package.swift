@@ -106,6 +106,13 @@ let package = Package(
                 // when a day is finished and when the clock closes get real regression
                 // coverage instead of shipping correct-by-inspection.
                 "SessionLifecycle.swift",
+                // What past sessions say about which movements to avoid, which to push down
+                // the list, and how long the next session should be. Extracted from WorkoutView
+                // (a SwiftUI file, outside this closure) because it is keyed on
+                // `canonicalLookupKey` and had no executed coverage, and because its
+                // no-such-thing-as-old-evidence bug turned the session-clock trim into a
+                // one-way ratchet the lifter could never earn back.
+                "ExerciseHistoryAggregation.swift",
                 "WorkoutProgressionEngine.swift",
                 // Cross-prescription load translation. Here because it decides what the lifter
                 // is told to pick up when the rep range or set count CHANGES — arithmetic that

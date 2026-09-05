@@ -1140,65 +1140,12 @@ struct WorkoutView: View {
         return lines.joined(separator: "\n")
     }
 
+    /// Delegates to `ExerciseHistoryAggregator`. The aggregation moved out of this view so it
+    /// could be compiled and tested by the headless generator harness, which cannot build a
+    /// SwiftUI file — see that type for why rules keyed on canonical exercise names need
+    /// executed coverage rather than inspection.
     func exerciseHistoryContext(from programs: [WorkoutProgram]) -> ClaudeService.ExerciseHistoryContext {
-        var painExercises = Set<String>()
-        var equipmentSkipExercises = Set<String>()
-        var priorMesocycleExercises = Set<String>()
-
-        var painCounts: [String: Int] = [:]
-        var equipmentCounts: [String: Int] = [:]
-        var timeCounts: [String: Int] = [:]
-
-        for program in programs {
-            let isArchived = program.isArchived
-            for day in program.sortedDays where !day.isRestDay {
-                for exercise in day.sortedExercises {
-                    let key = ExerciseWeightEntry.canonicalLookupKey(exercise.exerciseName)
-                    guard !key.isEmpty else { continue }
-
-                    if isArchived {
-                        priorMesocycleExercises.insert(key)
-                    }
-
-                    guard let status = exercise.completionStatus, status != .completed else { continue }
-                    switch status {
-                    case .skippedPain:
-                        painCounts[key, default: 0] += 1
-                    case .skippedEquipment:
-                        equipmentCounts[key, default: 0] += 1
-                    case .skippedTime:
-                        timeCounts[key, default: 0] += 1
-                    default:
-                        break
-                    }
-                }
-            }
-        }
-
-        for (key, count) in painCounts where count >= 1 {
-            painExercises.insert(key)
-        }
-        for (key, count) in equipmentCounts where count >= 2 {
-            equipmentSkipExercises.insert(key)
-        }
-        // Same recurrence bar as equipment skips: once is a bad day, twice is a pattern. A single
-        // rushed session must not start reshaping the program.
-        var timeSkipExercises = Set<String>()
-        for (key, count) in timeCounts where count >= 2 {
-            timeSkipExercises.insert(key)
-        }
-
-        let activeCount = programs.filter { !$0.isArchived }.count
-        let archivedCount = programs.filter { $0.isArchived }.count
-        let mesocycleIndex = activeCount > 0 ? archivedCount : max(0, archivedCount - 1)
-
-        return ClaudeService.ExerciseHistoryContext(
-            painExercises: painExercises,
-            equipmentSkipExercises: equipmentSkipExercises,
-            timeSkipExercises: timeSkipExercises,
-            priorMesocycleExercises: priorMesocycleExercises,
-            mesocycleIndex: mesocycleIndex
-        )
+        ExerciseHistoryAggregator.context(from: programs)
     }
 
     func deleteProgram(_ program: WorkoutProgram) {
