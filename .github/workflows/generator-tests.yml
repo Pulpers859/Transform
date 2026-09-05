@@ -26,14 +26,6 @@ jobs:
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
 
-      # Runs BEFORE the Swift tests: it needs no toolchain, takes under a second, and
-      # catches a defect the test suite structurally cannot. Validator findings are
-      # classified by substring against hand-maintained pattern lists, so a pattern that
-      # matches no message the app can emit changes no behaviour and breaks no test — it
-      # just sits there looking like coverage. Two shipped that way.
-      - name: Check validator patterns are live
-        run: python3 tools/check_validator_patterns.py
-
       - name: Show toolchain
         run: |
           swift --version
@@ -53,6 +45,21 @@ jobs:
             echo "NutritionGeneratorStressTests was not discovered by swift test."
             exit 1
           fi
+
+      # Catches a defect the Swift suite structurally cannot: validator findings are
+      # classified by substring against hand-maintained pattern lists, so a pattern that
+      # matches no message the app can emit changes no behaviour and breaks no test — it
+      # just sits there looking like coverage. Two shipped that way.
+      #
+      # Runs AFTER the tests, with `if: always()`, deliberately. It needs no toolchain and
+      # takes under a second, so running it first was tempting — but a failure there would
+      # end the job before `swift test` ran, and a push that breaks both would report only
+      # this, hiding the real regression until someone fixed the pattern and pushed again.
+      # The Swift suite is the primary signal; a dead pattern is never urgent enough to
+      # mask it. This way one run reports both.
+      - name: Check validator patterns are live
+        if: always()
+        run: python3 tools/check_validator_patterns.py
 
       - name: Upload generator test log
         if: failure()

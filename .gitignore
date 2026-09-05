@@ -24,3 +24,5 @@ _refactor_backups/
 *.log
 *.tmp
 *.swp
+__pycache__/
+*.pyc
