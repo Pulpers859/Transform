@@ -1614,7 +1614,50 @@ extension ClaudeService {
             // error instead of a program. `WorkoutValidatorNotice` already carries the
             // plain-language `.attention` notice for this exact string — a notice that could
             // never be reached while the finding hard-failed.
-            "receives zero direct sets this week"
+            "receives zero direct sets this week",
+
+            // Exercise-selection and volume verdicts that reach here WITHOUT being caught by an
+            // earlier list, and that the model provably cannot act on under menu lock.
+            //
+            // Each one's own remedy text asks for a swap, a drop, or a reallocation — "Spread the
+            // work more intelligently", "Trim the noise", "spends too many slots on support work",
+            // "Swap a compound press for a machine alternative", "was replaced with". None of that
+            // is reachable through reps, tempo, rest, notes or targetRIR, which are the only
+            // fields the AI owns once the menu is locked.
+            //
+            // Left in `correctionWorthyIssuePatterns` they resolved to `.correctionPass` under
+            // lock, which is not merely useless but actively expensive: a paid correction call is
+            // sent, the model has no legal move that resolves the finding, the surviving issue
+            // then fails `shouldAcceptAIOutput`, and the paid candidate is discarded along with
+            // the correction — the week ships from the procedural fallback. That is the exact
+            // sequence recorded a few lines above for "reads as a broad lower-body session":
+            // "two paid candidates plus a paid correction pass, all discarded". Ten siblings were
+            // moved here then; these were missed, and kept paying that cost.
+            //
+            // They remain correction-worthy on the UNLOCKED procedural path, which does not
+            // consult this list and where the planner can still act on them.
+            //
+            // The sharpest evidence this was a gap rather than a judgement call:
+            // `validateSubstituteQuality` emits three findings from one function on one event, and
+            // "substitution significantly increases shoulder risk" already sat in
+            // `acceptableWarningIssuePatterns` — shipping free — while its two siblings burned a
+            // doomed paid call. Same function, same event, same un-actionability, three different
+            // costs.
+            "is concentrated into overly fatiguing sessions",
+            "low-value filler",
+            "does not clearly support",
+            "Trim redundant focus work",
+            "spends too many",
+            "was planned for",
+            "already reached its weekly target",
+            "uses shoulder-intensive pressing on an Arms/Lateral focus day",
+            "excessive shoulder joint stress",
+            "excessive elbow joint stress",
+            "excessive lower-back stress",
+            "excessive knee joint stress",
+            "was replaced with a poor substitute",
+            "substitution changes the primary muscle target",
+            "substitution significantly increases fatigue"
         ]
     }
 
