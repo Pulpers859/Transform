@@ -20,6 +20,13 @@ import SwiftData
 /// it became a real defect once `timeSkipExercises.count` started shortening the session clock,
 /// because the trim then had no release. A lifter who fixed his schedule and finished every
 /// session for six months would still be handed a permanently shortened week.
+/// The `@MainActor` is load-bearing rather than decorative. The Xcode app target sets
+/// `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`, so it is redundant there — but the SPM harness
+/// target that compiles this file for `swift test` sets no such default, and without it the
+/// MainActor-isolated tests could not call this synchronously. `SessionLifecycle.swift` is the
+/// precedent for that exact combination (@MainActor + SwiftData models inside the harness);
+/// `SessionLogResolution.swift`, cited when this file was created, is the precedent for moving a
+/// view method into the harness for testability but is NOT @MainActor — it takes plain values.
 @MainActor
 enum ExerciseHistoryAggregator {
 
@@ -29,6 +36,16 @@ enum ExerciseHistoryAggregator {
     /// the current block and the two before it and then releases. Long enough that one good month
     /// cannot erase a real pattern; short enough that a pattern the lifter has actually fixed
     /// stops shaping his programming.
+    ///
+    /// KNOWN COST, stated rather than discovered later. Because the bar is two skips WITHIN one
+    /// window, a lifter who trains less often than roughly every 84 days can never reach it: each
+    /// skip ages out before the next one lands, so a genuinely recurring problem stays invisible
+    /// to both `deprioritizedExercises` and the session-clock trim. That is the accepted price of
+    /// having a release at all — the alternative it replaced had no release, and permanently
+    /// shortened the week off two skips recorded years earlier. If it ever matters, the fix is to
+    /// count back over the last N SESSIONS rather than the last N days, which does not depend on
+    /// how often those sessions happen; that is a deliberate design change, not something to
+    /// slide in here.
     static let circumstantialSkipWindowDays = 84
 
     /// A skip only counts once it has happened twice: once is a bad day, twice is a pattern.

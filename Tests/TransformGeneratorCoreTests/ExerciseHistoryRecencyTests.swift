@@ -106,15 +106,31 @@ final class ExerciseHistoryRecencyTests: XCTestCase {
         XCTAssertTrue(context([program]).timeSkipExercises.isEmpty)
     }
 
-    /// A skip exactly on the window edge is still inside it — the boundary is inclusive, so a
-    /// pattern does not blink out a day early.
-    func testTheWindowBoundaryIsInclusive() {
-        let program = makeProgram()
+    /// The boundary is inclusive, so a pattern does not blink out a day early.
+    ///
+    /// Deliberately DIFFERENTIAL. An earlier version of this test placed both skips at 84 and 83
+    /// days and asserted they counted — which is true whether the window exists or not, so it
+    /// passed against a build with the ageing ripped out entirely. Asserting the day just outside
+    /// is what makes it a test: this now fails if the gate is removed, AND fails on an off-by-one
+    /// in either direction.
+    func testTheWindowBoundaryIsInclusiveAndTheDayBeyondItIsNot() {
         let edge = ExerciseHistoryAggregator.circumstantialSkipWindowDays
-        addDay(to: program, dayNumber: 1, skips: [("Cable Crunch", .skippedTime)], daysAgo: edge)
-        addDay(to: program, dayNumber: 2, skips: [("Cable Crunch", .skippedTime)], daysAgo: edge - 1)
 
-        XCTAssertEqual(context([program]).timeSkipExercises.count, 1)
+        let onTheEdge = makeProgram()
+        addDay(to: onTheEdge, dayNumber: 1, skips: [("Cable Crunch", .skippedTime)], daysAgo: edge)
+        addDay(to: onTheEdge, dayNumber: 2, skips: [("Cable Crunch", .skippedTime)], daysAgo: edge)
+        XCTAssertEqual(
+            context([onTheEdge]).timeSkipExercises.count, 1,
+            "A skip exactly \(edge) days old is still inside the window"
+        )
+
+        let justPast = makeProgram()
+        addDay(to: justPast, dayNumber: 1, skips: [("Cable Crunch", .skippedTime)], daysAgo: edge + 1)
+        addDay(to: justPast, dayNumber: 2, skips: [("Cable Crunch", .skippedTime)], daysAgo: edge + 1)
+        XCTAssertTrue(
+            context([justPast]).timeSkipExercises.isEmpty,
+            "One day past the window must stop counting — this is the half that fails if the gate is gone"
+        )
     }
 
     // MARK: - Equipment ages the same way; pain does not
@@ -161,14 +177,31 @@ final class ExerciseHistoryRecencyTests: XCTestCase {
         XCTAssertTrue(context([program]).timeSkipExercises.isEmpty)
     }
 
-    /// The same unstamped days in a CURRENT program still count — the fallback ages history, it
-    /// does not discard undated evidence outright.
-    func testUnstampedDaysInACurrentProgramStillCount() {
-        let program = makeProgram(createdDaysAgo: 5)
-        addDay(to: program, dayNumber: 1, skips: [("Cable Crunch", .skippedTime)], daysAgo: 0, stamped: false)
-        addDay(to: program, dayNumber: 2, skips: [("Cable Crunch", .skippedTime)], daysAgo: 0, stamped: false)
+    /// The fallback AGES undated history rather than discarding it: identical unstamped days
+    /// count in a current program and stop counting in an old one. Asserting only the first half
+    /// proved nothing — it passed with the ageing removed — so both halves are asserted here off
+    /// the same day construction, with the program's age as the only variable.
+    func testUnstampedDaysCountOrNotPurelyByTheirProgramsAge() {
+        func programWithTwoUndatedSkips(createdDaysAgo: Int) -> WorkoutProgram {
+            let program = makeProgram(createdDaysAgo: createdDaysAgo)
+            addDay(to: program, dayNumber: 1, skips: [("Cable Crunch", .skippedTime)], daysAgo: 0, stamped: false)
+            addDay(to: program, dayNumber: 2, skips: [("Cable Crunch", .skippedTime)], daysAgo: 0, stamped: false)
+            return program
+        }
 
-        XCTAssertEqual(context([program]).timeSkipExercises.count, 1)
+        let current = programWithTwoUndatedSkips(createdDaysAgo: 5)
+        XCTAssertEqual(
+            context([current]).timeSkipExercises.count, 1,
+            "Undated days in the current block must still count — the fallback ages, it does not discard"
+        )
+
+        let ancient = programWithTwoUndatedSkips(
+            createdDaysAgo: ExerciseHistoryAggregator.circumstantialSkipWindowDays + 20
+        )
+        XCTAssertTrue(
+            context([ancient]).timeSkipExercises.isEmpty,
+            "The same days in an old block must age out with it"
+        )
     }
 
     // MARK: - Ageing must not disturb what it was not meant to touch
