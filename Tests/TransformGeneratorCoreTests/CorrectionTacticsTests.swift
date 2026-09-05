@@ -148,7 +148,6 @@ final class CorrectionTacticsTests: XCTestCase {
             "exceeds its focus-day direct-set cap", "exceeds its per-session direct-set cap",
             "exceeds the maintenance weekly volume ceiling",
             "overshot its direct-set target enough to create avoidable fatigue",
-            "was replaced with a poor substitute",
             "substitution changes the primary muscle target",
             "substitution significantly increases fatigue",
             "spends too many", "low-value filler", "Trim redundant focus work",

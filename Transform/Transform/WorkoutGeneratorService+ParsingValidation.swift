@@ -1549,7 +1549,6 @@ extension ClaudeService {
             "notes describe a shoulder-friendly",
             "notes claim",
             "notes contradict the actual programming",
-            "was replaced with a poor substitute",
             "substitution changes the primary muscle target",
             "substitution significantly increases fatigue",
             "did not follow the Pre-Selected Exercise Menu",
@@ -1655,7 +1654,6 @@ extension ClaudeService {
             "excessive elbow joint stress",
             "excessive lower-back stress",
             "excessive knee joint stress",
-            "was replaced with a poor substitute",
             "substitution changes the primary muscle target",
             "substitution significantly increases fatigue"
         ]

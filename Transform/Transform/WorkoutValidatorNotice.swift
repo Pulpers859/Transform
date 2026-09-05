@@ -302,9 +302,12 @@ extension WorkoutValidatorNotice {
             )
         }
 
+        // Both fragments are quoted from the real messages `validateSubstituteQuality`
+        // emits. A third clause here matched "was replaced with a poor substitute", a
+        // phrase NO emitter has ever produced — it read like coverage and was worth
+        // nothing. Anything added here must be pasted from an actual emitted string.
         if issue.contains("substitution changes the primary muscle target")
-            || issue.contains("substitution significantly increases fatigue")
-            || issue.contains("was replaced with a poor substitute") {
+            || issue.contains("substitution significantly increases fatigue") {
             return notice(
                 .headsUp,
                 subject.map { "\($0) was swapped for a loose match" }
