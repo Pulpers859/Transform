@@ -68,12 +68,55 @@ final class UnfinishedSessionBudgetTests: XCTestCase {
         XCTAssertEqual(cap(unfinished: -3), cap(unfinished: 0))
     }
 
-    /// Well clear of anything the trim loops could turn into a short-menu hard failure: they only
-    /// reduce sets down to `minimumSetFloor`, and drop a movement solely while a day still holds
-    /// more than five.
-    func testTheBudgetNeverFallsBelowTheFloor() {
+    /// This used to assert the budget stays at or above 45 and passed without measuring anything:
+    /// the lowest `baseTimeCap` is 65 and the trim caps at 10, so the smallest value the
+    /// expression can produce is 55 and the floor can never bind. The commit that added the floor
+    /// described it as protecting against a short-menu failure; it protects against nothing today.
+    ///
+    /// So assert the REAL minimum instead. The floor stays in the code as headroom for a future
+    /// change to the tier ladder or the penalty cap — and if such a change ever makes it live,
+    /// this test fails and says so rather than quietly handing over a shorter week.
+    func testTheWorstCaseBudgetIsTheRestrictedTierMinusTheFullTrim() {
+        let restrictedUntrimmed = service.calibrationProfile(
+            from: blankAnalysis(),
+            recoveryDecision: SleepRecoveryPolicy.decision(from: restrictedSleepState()),
+            unfinishedMovementCount: 0
+        ).defaultSessionTimeCapMinutes
+
+        var worstCase = restrictedUntrimmed
         for count in [0, 1, 2, 10, 100] {
-            XCTAssertGreaterThanOrEqual(cap(unfinished: count), 45)
+            let trimmed = service.calibrationProfile(
+                from: blankAnalysis(),
+                recoveryDecision: SleepRecoveryPolicy.decision(from: restrictedSleepState()),
+                unfinishedMovementCount: count
+            ).defaultSessionTimeCapMinutes
+            worstCase = min(worstCase, trimmed)
+        }
+
+        XCTAssertEqual(
+            worstCase,
+            restrictedUntrimmed - 10,
+            "The worst case is the lowest tier carrying the full trim, and nothing beyond it"
+        )
+        XCTAssertGreaterThan(
+            worstCase,
+            ClaudeService.absoluteSessionTimeFloorMinutes,
+            """
+            The floor is documented as unreachable headroom. If this fails, the tier ladder or \
+            the penalty cap changed and the floor is now doing real work — decide deliberately \
+            whether that is the session length the lifter should get, and update the note at the \
+            trim in WorkoutGeneratorService+TrainingIntentBlueprint.swift.
+            """
+        )
+    }
+
+    /// Whatever else changes, the declared floor is still honoured.
+    func testTheDeclaredFloorIsNeverBreached() {
+        for count in [0, 1, 2, 10, 100] {
+            XCTAssertGreaterThanOrEqual(
+                cap(unfinished: count),
+                ClaudeService.absoluteSessionTimeFloorMinutes
+            )
         }
     }
 

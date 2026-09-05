@@ -1173,6 +1173,11 @@ extension ClaudeService {
         )
     }
 
+    /// Hard lower bound on a session budget, whatever the recovery tier and the unfinished-work
+    /// trim combine to. Currently HEADROOM: the arithmetic above cannot reach it (see the note at
+    /// the trim), and `UnfinishedSessionBudgetTests` pins that fact so it stays deliberate.
+    static let absoluteSessionTimeFloorMinutes = 45
+
     /// `recoveryDecision` defaults to the stored structured sleep state; the harness
     /// injects decisions directly so parallel test processes never race the shared
     /// UserDefaults plist.
@@ -1319,10 +1324,15 @@ extension ClaudeService {
         //
         // Deliberately modest and capped. One repeatedly-unfinished movement is worth 5 minutes,
         // two or more is worth 10, and it stops there: this is a nudge toward a session he
-        // completes, not a spiral that shrinks the program every time a shift runs long. The 45
-        // minute floor is well clear of anything the trim loops could turn into a short-menu
-        // failure — they only reduce SETS down to `minimumSetFloor`, and drop a movement solely
-        // while a day still holds more than five.
+        // completes, not a spiral that shrinks the program every time a shift runs long.
+        //
+        // The floor below is HEADROOM, not an active guard, and the commit that introduced it
+        // wrongly described it as protecting against a short-menu failure. It cannot: the lowest
+        // `baseTimeCap` is 65 (Restricted) and the penalty caps at 10, so the smallest value this
+        // expression can produce is 55 — the `max` never binds. It is kept because it is the
+        // right shape if the ladder above or the penalty cap is ever changed, and
+        // `UnfinishedSessionBudgetTests` pins the true minimum so a future edit that makes the
+        // floor live shows up as a failing test rather than as a silently shorter week.
         //
         // Counting DISTINCT movements rather than total skips is deliberate too: `timeSkipExercises`
         // already requires a movement to have been abandoned at least twice before it counts, so
@@ -1333,7 +1343,7 @@ extension ClaudeService {
         // day is already the shortest in the week, so it is the least likely to be the one running
         // over, and trimming the shortest session is where a time cut starts costing real work.
         let unfinishedPenalty = min(10, max(0, unfinishedMovementCount) * 5)
-        let defaultSessionTimeCapMinutes = max(45, baseTimeCap - unfinishedPenalty)
+        let defaultSessionTimeCapMinutes = max(ClaudeService.absoluteSessionTimeFloorMinutes, baseTimeCap - unfinishedPenalty)
         let styleSessionCaps: [String: Int] = [
             "Push": defaultSessionTimeCapMinutes,
             "Pull": defaultSessionTimeCapMinutes,
