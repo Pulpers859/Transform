@@ -1338,6 +1338,20 @@ extension ClaudeService {
         // already requires a movement to have been abandoned at least twice before it counts, so
         // two of them means the problem is the session length rather than one awkward exercise.
         //
+        // WHAT THIS TRIM DOES NOT DO, stated because the commit that added it implied otherwise.
+        // A smaller budget is spent by `volumeReductionPriority`, whose score STARTS at the
+        // exercise's index — so the work at the END of the day is cut first. Core sits last by
+        // ORD-001, and on a day whose focus is not core it also takes the +12 not-focus-direct
+        // penalty. So shortening the session takes sets off the very movement that keeps getting
+        // abandoned, rather than protecting it.
+        //
+        // That is the RIGHT trade and is left alone deliberately. Reversing it means cutting the
+        // day's heavy compounds to preserve trunk work, which inverts the priority ORD-001
+        // exists to hold, and a shorter ab prescription he COMPLETES still beats a longer one he
+        // walks out on — `minimumSetFloor` stops it reaching zero, and dropping a movement
+        // outright needs `weekNumber > 1 && exercises.count > 5`. The pairing that actually helps
+        // the abandoned movement is the deprioritisation in `deprioritizedExercises`, not this.
+        //
         // Reaches every style cap below EXCEPT "Arms", which carries its own hardcoded 50/55/60
         // ladder rather than deriving from this default. That is left alone deliberately: an Arms
         // day is already the shortest in the week, so it is the least likely to be the one running
