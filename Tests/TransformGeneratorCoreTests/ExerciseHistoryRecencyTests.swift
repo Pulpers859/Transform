@@ -6,10 +6,14 @@ import XCTest
 /// outright, which to push down the list, and — since the session-clock trim landed — how long
 /// next week's sessions should be.
 ///
-/// It used to decide all three from EVERY session ever recorded, with no sense of when anything
-/// happened. Two movements abandoned for time in January still shortened the week in December,
-/// and there was no way to earn that back: the evidence only grew. This pins the window that
-/// releases it, and pins that pain is deliberately exempt.
+/// It first decided all three from EVERY session ever recorded, so evidence only grew and the
+/// session trim could never be earned back. The fix for that expired circumstantial skips after
+/// 84 CALENDAR days, which released the ratchet and introduced a quieter defect: the bar is two
+/// skips inside one window, so anyone training less often than that could never reach it. Each
+/// skip aged out before the next landed and a real recurring problem stayed invisible.
+///
+/// The window now counts SESSIONS. These pin that it behaves the same for a frequent lifter,
+/// works for an infrequent one, and still lets go.
 @MainActor
 final class ExerciseHistoryRecencyTests: XCTestCase {
 
@@ -33,7 +37,8 @@ final class ExerciseHistoryRecencyTests: XCTestCase {
         return program
     }
 
-    /// Appends one trained day carrying `skips`, stamped `daysAgo` unless `stamped` is false.
+    /// Appends one TRAINED day. A day only occupies a window slot if it shows evidence of having
+    /// been trained, which a session stamp or any completion status provides.
     @discardableResult
     private func addDay(
         to program: WorkoutProgram,
@@ -63,13 +68,45 @@ final class ExerciseHistoryRecencyTests: XCTestCase {
         return day
     }
 
+    /// `count` ordinary completed sessions, newest at `startingDaysAgo`, one per day going back.
+    private func addCompletedSessions(
+        to program: WorkoutProgram,
+        count: Int,
+        startingDaysAgo: Int,
+        firstDayNumber: Int = 1000
+    ) {
+        for offset in 0..<count {
+            addDay(
+                to: program,
+                dayNumber: firstDayNumber + offset,
+                skips: [("Barbell Bench Press", .completed)],
+                daysAgo: startingDaysAgo + offset
+            )
+        }
+    }
+
     private func context(_ programs: [WorkoutProgram]) -> ClaudeService.ExerciseHistoryContext {
         ExerciseHistoryAggregator.context(from: programs, now: now)
     }
 
-    // MARK: - The ratchet
+    // MARK: - The defect this rewrite exists to fix
 
-    /// Two recent abandonments are exactly what the trim is meant to react to.
+    /// THE POINT. Someone training twice a month abandons the same movement twice, four months
+    /// apart. Under the old 84-day calendar window the first skip expired before the second
+    /// landed, so a real pattern was invisible to a lifter purely because of how often he trains.
+    /// Two sessions is two sessions.
+    func testAnInfrequentLifterStillReachesTheRecurrenceBar() {
+        let program = makeProgram(createdDaysAgo: 200)
+        addDay(to: program, dayNumber: 1, skips: [("Cable Crunch", .skippedTime)], daysAgo: 130)
+        addDay(to: program, dayNumber: 2, skips: [("Cable Crunch", .skippedTime)], daysAgo: 15)
+
+        XCTAssertEqual(
+            context([program]).timeSkipExercises.count, 1,
+            "Four months apart is still the last two sessions for someone who trains twice a month"
+        )
+    }
+
+    /// The frequent case must be unchanged: two recent skips are exactly what the trim reacts to.
     func testRecentlyAbandonedMovementsStillCount() {
         let program = makeProgram()
         addDay(to: program, dayNumber: 1, skips: [("Cable Crunch", .skippedTime)], daysAgo: 3)
@@ -78,152 +115,155 @@ final class ExerciseHistoryRecencyTests: XCTestCase {
         XCTAssertEqual(context([program]).timeSkipExercises.count, 1)
     }
 
-    /// The whole point of the fix: a lifter who fixed his schedule gets his session length back.
-    func testAbandonmentsOlderThanTheWindowStopCounting() {
-        let program = makeProgram()
-        let stale = ExerciseHistoryAggregator.circumstantialSkipWindowDays + 1
-        addDay(to: program, dayNumber: 1, skips: [("Cable Crunch", .skippedTime)], daysAgo: stale)
-        addDay(to: program, dayNumber: 2, skips: [("Cable Crunch", .skippedTime)], daysAgo: stale + 7)
+    // MARK: - It still lets go
+
+    /// The original defect must stay fixed: a lifter who sorted his schedule out gets his session
+    /// length back once enough training has happened since.
+    func testSkipsPushedOutByLaterSessionsStopCounting() {
+        let program = makeProgram(createdDaysAgo: 400)
+        addDay(to: program, dayNumber: 1, skips: [("Cable Crunch", .skippedTime)], daysAgo: 300)
+        addDay(to: program, dayNumber: 2, skips: [("Cable Crunch", .skippedTime)], daysAgo: 299)
+        addCompletedSessions(
+            to: program,
+            count: ExerciseHistoryAggregator.recentSessionWindow,
+            startingDaysAgo: 1
+        )
 
         XCTAssertTrue(
             context([program]).timeSkipExercises.isEmpty,
-            "Evidence older than the window must release, or the session trim can never be earned back"
+            "A full window of clean sessions since must clear the evidence"
         )
     }
 
-    /// The bar is two WITHIN the window, not two ever. One recent skip plus one ancient one is
-    /// not a live pattern.
-    func testOneRecentSkipPlusOneAncientOneIsNotAPattern() {
-        let program = makeProgram()
-        addDay(to: program, dayNumber: 1, skips: [("Cable Crunch", .skippedTime)], daysAgo: 5)
-        addDay(
+    /// One short of a full window, the evidence is still in view — this is the half that fails if
+    /// the window is removed or mis-sized, so the test above cannot pass vacuously.
+    func testOneSessionShortOfAFullWindowTheEvidenceSurvives() {
+        let program = makeProgram(createdDaysAgo: 400)
+        addDay(to: program, dayNumber: 1, skips: [("Cable Crunch", .skippedTime)], daysAgo: 300)
+        addDay(to: program, dayNumber: 2, skips: [("Cable Crunch", .skippedTime)], daysAgo: 299)
+        addCompletedSessions(
             to: program,
-            dayNumber: 2,
-            skips: [("Cable Crunch", .skippedTime)],
-            daysAgo: ExerciseHistoryAggregator.circumstantialSkipWindowDays + 30
+            count: ExerciseHistoryAggregator.recentSessionWindow - 2,
+            startingDaysAgo: 1
         )
+
+        XCTAssertEqual(context([program]).timeSkipExercises.count, 1)
+    }
+
+    /// The bar is two skips INSIDE the window, not two ever.
+    func testOneRecentSkipPlusOnePushedOutIsNotAPattern() {
+        let program = makeProgram(createdDaysAgo: 400)
+        addDay(to: program, dayNumber: 1, skips: [("Cable Crunch", .skippedTime)], daysAgo: 350)
+        addCompletedSessions(
+            to: program,
+            count: ExerciseHistoryAggregator.recentSessionWindow,
+            startingDaysAgo: 2
+        )
+        addDay(to: program, dayNumber: 2, skips: [("Cable Crunch", .skippedTime)], daysAgo: 1)
 
         XCTAssertTrue(context([program]).timeSkipExercises.isEmpty)
     }
 
-    /// The boundary is inclusive, so a pattern does not blink out a day early.
-    ///
-    /// Deliberately DIFFERENTIAL. An earlier version of this test placed both skips at 84 and 83
-    /// days and asserted they counted — which is true whether the window exists or not, so it
-    /// passed against a build with the ageing ripped out entirely. Asserting the day just outside
-    /// is what makes it a test: this now fails if the gate is removed, AND fails on an off-by-one
-    /// in either direction.
-    func testTheWindowBoundaryIsInclusiveAndTheDayBeyondItIsNot() {
-        let edge = ExerciseHistoryAggregator.circumstantialSkipWindowDays
+    // MARK: - The calendar backstop
 
-        let onTheEdge = makeProgram()
-        addDay(to: onTheEdge, dayNumber: 1, skips: [("Cable Crunch", .skippedTime)], daysAgo: edge)
-        addDay(to: onTheEdge, dayNumber: 2, skips: [("Cable Crunch", .skippedTime)], daysAgo: edge)
-        XCTAssertEqual(
-            context([onTheEdge]).timeSkipExercises.count, 1,
-            "A skip exactly \(edge) days old is still inside the window"
-        )
+    /// Counting sessions alone would keep evidence from before a multi-year layoff alive forever.
+    /// A movement abandoned for time before a two-year gap says nothing about the gym, the
+    /// schedule, or the body the lifter has now.
+    func testEvidenceFromBeforeALongLayoffIsDroppedEvenWithinTheSessionWindow() {
+        let ancient = ExerciseHistoryAggregator.staleSessionCutoffDays + 30
+        let program = makeProgram(createdDaysAgo: ancient + 10)
+        addDay(to: program, dayNumber: 1, skips: [("Cable Crunch", .skippedTime)], daysAgo: ancient)
+        addDay(to: program, dayNumber: 2, skips: [("Cable Crunch", .skippedTime)], daysAgo: ancient)
 
-        let justPast = makeProgram()
-        addDay(to: justPast, dayNumber: 1, skips: [("Cable Crunch", .skippedTime)], daysAgo: edge + 1)
-        addDay(to: justPast, dayNumber: 2, skips: [("Cable Crunch", .skippedTime)], daysAgo: edge + 1)
         XCTAssertTrue(
-            context([justPast]).timeSkipExercises.isEmpty,
-            "One day past the window must stop counting — this is the half that fails if the gate is gone"
+            context([program]).timeSkipExercises.isEmpty,
+            "Only two sessions on record, so the session window holds them — the backstop must not"
+        )
+    }
+
+    /// Just inside the backstop, the same two sessions still count, so the test above is measuring
+    /// the cutoff rather than something incidental.
+    func testEvidenceJustInsideTheBackstopStillCounts() {
+        let recent = ExerciseHistoryAggregator.staleSessionCutoffDays - 30
+        let program = makeProgram(createdDaysAgo: recent + 10)
+        addDay(to: program, dayNumber: 1, skips: [("Cable Crunch", .skippedTime)], daysAgo: recent)
+        addDay(to: program, dayNumber: 2, skips: [("Cable Crunch", .skippedTime)], daysAgo: recent)
+
+        XCTAssertEqual(context([program]).timeSkipExercises.count, 1)
+    }
+
+    // MARK: - Untrained days must not consume the window
+
+    /// Days scheduled but not yet trained carry no stamps and no dispositions. If they took window
+    /// slots, a program generated for the weeks ahead would push real history out of view the
+    /// moment it was created.
+    func testUnTrainedFutureDaysDoNotPushOutRealHistory() {
+        let program = makeProgram(createdDaysAgo: 30)
+        addDay(to: program, dayNumber: 1, skips: [("Cable Crunch", .skippedTime)], daysAgo: 20)
+        addDay(to: program, dayNumber: 2, skips: [("Cable Crunch", .skippedTime)], daysAgo: 19)
+        for dayNumber in 100..<(100 + ExerciseHistoryAggregator.recentSessionWindow * 2) {
+            let scheduled = WorkoutDay(dayNumber: dayNumber, dayName: "Push", muscleGroups: "Chest")
+            let exercise = WorkoutExercise(order: 0, exerciseName: "Barbell Bench Press", sets: 3, reps: "8-12")
+            exercise.day = scheduled
+            scheduled.exercises.append(exercise)
+            scheduled.program = program
+            program.days.append(scheduled)
+        }
+
+        XCTAssertEqual(
+            context([program]).timeSkipExercises.count, 1,
+            "Days never trained must not occupy window slots"
         )
     }
 
     // MARK: - Equipment ages the same way; pain does not
 
     func testEquipmentSkipsAlsoRelease() {
-        let program = makeProgram()
-        let stale = ExerciseHistoryAggregator.circumstantialSkipWindowDays + 5
-        addDay(to: program, dayNumber: 1, skips: [("Pec Deck", .skippedEquipment)], daysAgo: stale)
-        addDay(to: program, dayNumber: 2, skips: [("Pec Deck", .skippedEquipment)], daysAgo: stale)
+        let program = makeProgram(createdDaysAgo: 400)
+        addDay(to: program, dayNumber: 1, skips: [("Pec Deck", .skippedEquipment)], daysAgo: 300)
+        addDay(to: program, dayNumber: 2, skips: [("Pec Deck", .skippedEquipment)], daysAgo: 299)
+        addCompletedSessions(
+            to: program,
+            count: ExerciseHistoryAggregator.recentSessionWindow,
+            startingDaysAgo: 1
+        )
 
         XCTAssertTrue(context([program]).equipmentSkipExercises.isEmpty)
     }
 
     /// Pain is about his body, not his schedule. A movement that hurt him is not reintroduced
-    /// because a timer expired — and one report is enough, where the others need two.
-    func testPainIsNeverAgedOutAndNeedsOnlyOneReport() {
-        let program = makeProgram()
-        addDay(
+    /// because enough sessions have gone by — and one report is enough, where the others need two.
+    func testPainIsNeverWindowedAndNeedsOnlyOneReport() {
+        let program = makeProgram(createdDaysAgo: 3000)
+        addDay(to: program, dayNumber: 1, skips: [("Upright Row", .skippedPain)], daysAgo: 2500)
+        addCompletedSessions(
             to: program,
-            dayNumber: 1,
-            skips: [("Upright Row", .skippedPain)],
-            daysAgo: ExerciseHistoryAggregator.circumstantialSkipWindowDays * 10
+            count: ExerciseHistoryAggregator.recentSessionWindow * 2,
+            startingDaysAgo: 1
         )
 
         XCTAssertEqual(
-            context([program]).painExercises.count,
-            1,
-            "A painful movement must stay avoided no matter how long ago it hurt"
-        )
-    }
-
-    // MARK: - Days with no session stamps
-
-    /// Days trained before the session clock existed carry no stamps. They inherit their
-    /// program's creation date so an old block ages out as a unit rather than counting forever.
-    func testUnstampedDaysInAnOldProgramAgeOutWithThatProgram() {
-        let program = makeProgram(
-            archived: true,
-            createdDaysAgo: ExerciseHistoryAggregator.circumstantialSkipWindowDays + 20
-        )
-        addDay(to: program, dayNumber: 1, skips: [("Cable Crunch", .skippedTime)], daysAgo: 0, stamped: false)
-        addDay(to: program, dayNumber: 2, skips: [("Cable Crunch", .skippedTime)], daysAgo: 0, stamped: false)
-
-        XCTAssertTrue(context([program]).timeSkipExercises.isEmpty)
-    }
-
-    /// The fallback AGES undated history rather than discarding it: identical unstamped days
-    /// count in a current program and stop counting in an old one. Asserting only the first half
-    /// proved nothing — it passed with the ageing removed — so both halves are asserted here off
-    /// the same day construction, with the program's age as the only variable.
-    func testUnstampedDaysCountOrNotPurelyByTheirProgramsAge() {
-        func programWithTwoUndatedSkips(createdDaysAgo: Int) -> WorkoutProgram {
-            let program = makeProgram(createdDaysAgo: createdDaysAgo)
-            addDay(to: program, dayNumber: 1, skips: [("Cable Crunch", .skippedTime)], daysAgo: 0, stamped: false)
-            addDay(to: program, dayNumber: 2, skips: [("Cable Crunch", .skippedTime)], daysAgo: 0, stamped: false)
-            return program
-        }
-
-        let current = programWithTwoUndatedSkips(createdDaysAgo: 5)
-        XCTAssertEqual(
-            context([current]).timeSkipExercises.count, 1,
-            "Undated days in the current block must still count — the fallback ages, it does not discard"
-        )
-
-        let ancient = programWithTwoUndatedSkips(
-            createdDaysAgo: ExerciseHistoryAggregator.circumstantialSkipWindowDays + 20
-        )
-        XCTAssertTrue(
-            context([ancient]).timeSkipExercises.isEmpty,
-            "The same days in an old block must age out with it"
+            context([program]).painExercises.count, 1,
+            "A painful movement stays avoided however long ago it hurt and however much training since"
         )
     }
 
     // MARK: - Ageing must not disturb what it was not meant to touch
 
-    /// `priorMesocycleExercises` drives variation between training blocks, so it is supposed to
-    /// be historical. Ageing the skip counters must not have quietly narrowed it.
-    func testPriorMesocycleMemoryIsNotAged() {
-        let old = makeProgram(
-            archived: true,
-            createdDaysAgo: ExerciseHistoryAggregator.circumstantialSkipWindowDays * 4
-        )
-        addDay(to: old, dayNumber: 1, skips: [("Incline Press", .skippedTime)], daysAgo: 0, stamped: false)
+    /// `priorMesocycleExercises` drives variation between training blocks, so it is supposed to be
+    /// historical. Windowing the skip counters must not have quietly narrowed it.
+    func testPriorMesocycleMemoryIsNotWindowed() {
+        let old = makeProgram(archived: true, createdDaysAgo: 3000)
+        addDay(to: old, dayNumber: 1, skips: [("Incline Press", .skippedTime)], daysAgo: 2900)
 
         let result = context([old])
         XCTAssertTrue(
             result.priorMesocycleExercises.contains(ExerciseWeightEntry.canonicalLookupKey("Incline Press")),
-            "Movements from previous blocks must stay known even when their skips have aged out"
+            "Movements from previous blocks must stay known even when their skips have dropped out"
         )
-        XCTAssertTrue(result.timeSkipExercises.isEmpty)
+        XCTAssertTrue(result.timeSkipExercises.isEmpty, "That skip is past the backstop")
     }
 
-    /// Mesocycle counting is independent of the window.
     func testMesocycleIndexIsUnaffectedByTheWindow() {
         let archivedOne = makeProgram(archived: true, createdDaysAgo: 400)
         let archivedTwo = makeProgram(archived: true, createdDaysAgo: 200)
@@ -235,7 +275,6 @@ final class ExerciseHistoryRecencyTests: XCTestCase {
 
     // MARK: - Shape
 
-    /// Rest days and completed exercises are not skips, and an unnamed exercise cannot be keyed.
     func testCompletedWorkAndRestDaysContributeNothing() {
         let program = makeProgram()
         addDay(to: program, dayNumber: 1, skips: [("Cable Crunch", .completed)], daysAgo: 2)
@@ -256,5 +295,28 @@ final class ExerciseHistoryRecencyTests: XCTestCase {
         XCTAssertTrue(result.equipmentSkipExercises.isEmpty)
         XCTAssertTrue(result.priorMesocycleExercises.isEmpty)
         XCTAssertEqual(result.mesocycleIndex, 0)
+    }
+
+    /// The same data must produce the same answer. Many days legitimately share a date, and
+    /// `sorted` is not guaranteed stable, so the ordering carries explicit tiebreakers.
+    func testTheWindowIsDeterministicWhenSessionsShareADate() {
+        func build() -> ClaudeService.ExerciseHistoryContext {
+            let program = makeProgram(createdDaysAgo: 50)
+            for dayNumber in 1...(ExerciseHistoryAggregator.recentSessionWindow + 10) {
+                addDay(
+                    to: program,
+                    dayNumber: dayNumber,
+                    skips: [("Cable Crunch", .skippedTime)],
+                    daysAgo: 0,
+                    stamped: false
+                )
+            }
+            return context([program])
+        }
+
+        let first = build()
+        for _ in 0..<5 {
+            XCTAssertEqual(build().timeSkipExercises, first.timeSkipExercises)
+        }
     }
 }
