@@ -366,7 +366,7 @@ final class AnthropicClient {
                             "response_bytes": "\(data.count)",
                             "duration_ms": "\(durationMs)",
                             "server_request_id": serverRequestID(from: httpResponse) ?? "n/a"
-                        ]
+                        ].merging(cacheUsageDetails(from: data)) { current, _ in current }
                     )
                     return data
                 }
@@ -509,9 +509,20 @@ final class AnthropicClient {
                 .reduce(0) { $0 + $1.count }
             details["system_chars"] = "\(totalChars)"
         }
-        if let messages = body["messages"] as? [[String: Any]],
-           let firstContent = messages.first?["content"] as? String {
-            details["user_chars"] = "\(firstContent.count)"
+        if let messages = body["messages"] as? [[String: Any]], let first = messages.first {
+            // Both shapes, for the same reason `system` above handles both: caching a prompt turns
+            // its content from a bare string into an array of text blocks, and reading only the
+            // string shape would have made `user_chars` disappear from the log the moment the user
+            // prompt was cached — losing the number that says how big the request actually is,
+            // silently, in the diagnostics used to investigate that exact question.
+            if let text = first["content"] as? String {
+                details["user_chars"] = "\(text.count)"
+            } else if let blocks = first["content"] as? [[String: Any]] {
+                let totalChars = blocks
+                    .compactMap { $0["text"] as? String }
+                    .reduce(0) { $0 + $1.count }
+                details["user_chars"] = "\(totalChars)"
+            }
         }
         if let toolChoice = body["tool_choice"] as? [String: Any],
            let toolName = toolChoice["name"] as? String {
@@ -595,6 +606,30 @@ final class AnthropicClient {
         error.localizedDescription
             .replacingOccurrences(of: "\n", with: " ")
             .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Prompt-cache accounting, pulled out of the response so a caching regression is visible.
+    ///
+    /// Caching fails SILENTLY: requests keep succeeding and the bill is just higher, with nothing
+    /// to announce it. The usual shape is not a bad first implementation but a later edit to
+    /// prompt assembly — a new per-request field landing inside the cached prefix — that misses on
+    /// every call afterwards and goes unnoticed. These three numbers are the only ground truth
+    /// that caching is working at all, so they belong in the log the owner can already read.
+    ///
+    /// `input_tokens` is the UNCACHED remainder only; total prompt size is the sum of all three.
+    /// A `cache_read` of 0 on the second parallel candidate means `candidateCacheStagger` is too
+    /// short and the pair is paying two write premiums instead of a write and a read.
+    private func cacheUsageDetails(from data: Data) -> [String: String] {
+        guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let usage = root["usage"] as? [String: Any] else {
+            return [:]
+        }
+        var details: [String: String] = [:]
+        if let value = usage["input_tokens"] as? Int { details["in_uncached"] = "\(value)" }
+        if let value = usage["cache_read_input_tokens"] as? Int { details["cache_read"] = "\(value)" }
+        if let value = usage["cache_creation_input_tokens"] as? Int { details["cache_write"] = "\(value)" }
+        if let value = usage["output_tokens"] as? Int { details["out"] = "\(value)" }
+        return details
     }
 
     private func serverRequestID(from response: HTTPURLResponse) -> String? {

@@ -62,14 +62,25 @@ extension ClaudeService {
     /// nothing ever requested on its own, and the tool block alone sits under the minimum
     /// cacheable length, so it was a cache write that could never be read.
     ///
-    /// What the single remaining breakpoint can actually buy: within one generation the main
-    /// request and its correction pass send identical tools and an identical system prompt, so
-    /// the correction reads this entry seconds later instead of paying full price. That is the
-    /// only read this flow can realistically get — the week tool schema pins `dayNumber` to the
-    /// week's own day range, so the prefix differs from week to week by construction, and the
-    /// parallel candidates fire simultaneously and cannot see each other's write. Keeping the
-    /// schema exact is the right trade: a loose `dayNumber` would move a cheap schema guarantee
-    /// into a paid validator correction.
+    /// There are now TWO breakpoints, and the second is the one that matters. The system block
+    /// runs ~5.5K characters; the user block carries the whole body analysis at ~26K, so roughly
+    /// three quarters of every request's input used to be paid for at full price on each parallel
+    /// candidate and again on every retry. Both prefixes clear the 1024-token minimum that Opus
+    /// 4.8 and Sonnet 4.6 both impose, so neither is a write that silently never caches.
+    ///
+    /// This paragraph used to end "the parallel candidates fire simultaneously and cannot see
+    /// each other's write", and treated that as fixed. It was the right observation and the wrong
+    /// conclusion: simultaneity is a scheduling choice, not a constraint. Two requests sharing a
+    /// prefix that start together BOTH miss and both pay the 1.25x write premium — strictly worse
+    /// than not caching at all. `ClaudeService.candidateCacheStagger` delays candidate 2 by a few
+    /// seconds so it reads instead, which is what turns the write premium into a saving.
+    ///
+    /// Still true and still deliberate: the week tool schema pins `dayNumber` to the week's own
+    /// day range, so the prefix differs from week to week by construction. Keeping the schema
+    /// exact is the right trade — a loose `dayNumber` would move a cheap schema guarantee into a
+    /// paid validator correction. The correction pass still reads the system entry seconds later;
+    /// it carries the validator findings in its user prompt, so it diverges at the second
+    /// breakpoint and only reads the first, which costs nothing and is the expected shape.
     func structuredRequestBody(
         config: GenerationConfig,
         systemPrompt: String,
@@ -91,6 +102,27 @@ extension ClaudeService {
             ]
         ]
 
+        // The user prompt is cached too, and it is the half that matters: the system prompt runs
+        // ~5.5K characters while this one carries the whole body analysis at ~26K, so roughly
+        // three quarters of every request's input was being paid for at full price on each of the
+        // parallel candidates and on every retry.
+        //
+        // Safe to cache as one block because the candidates send a byte-identical body — the task
+        // group captures ONE `requestBody` and hands the same value to every task — so there is no
+        // per-request tail here that would sit after the breakpoint and invalidate it. If a
+        // per-candidate nonce or timestamp is ever added to this prompt, it must go AFTER this
+        // block or caching silently stops paying and nothing announces it.
+        //
+        // Caching is only worth the write premium if something later READS the entry, which is
+        // why `ClaudeService.candidateCacheStagger` exists. Read the note there before removing it.
+        let cachedUser: [[String: Any]] = [
+            [
+                "type": "text",
+                "text": userPrompt,
+                "cache_control": ["type": "ephemeral"]
+            ]
+        ]
+
         return [
             "model": config.model,
             "max_tokens": config.maxTokens,
@@ -98,7 +130,7 @@ extension ClaudeService {
             "tools": [tool],
             "tool_choice": ["type": "tool", "name": toolName],
             "messages": [
-                ["role": "user", "content": userPrompt]
+                ["role": "user", "content": cachedUser]
             ]
         ]
     }

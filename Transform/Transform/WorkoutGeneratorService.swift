@@ -23,6 +23,22 @@ extension ClaudeService {
         }
         return max(1, allowed)
     }
+    /// How long candidate 2+ waits before starting, so it can READ the prompt cache candidate 1
+    /// writes instead of paying to write its own copy.
+    ///
+    /// This is what decides whether caching saves money or costs it. Two requests that share a
+    /// prefix and start at the same instant BOTH miss — neither entry exists yet — so both pay the
+    /// 1.25x write premium and the pair costs 2.5x the uncached input instead of 2x. Staggered so
+    /// the second reads, the pair costs 1.25x + 0.1x = 1.35x. Same two weeks, about a third off
+    /// the input bill, and the racing that picks the better week is untouched.
+    ///
+    /// Deliberately small against a generation measured in minutes: it only has to outlast the
+    /// prompt-processing phase that writes the entry, not the generation itself. The honest part
+    /// is that the exact time for a new entry to become readable is not documented, so this is a
+    /// starting value, not a derived one — `cache_read` in the request log is the ground truth,
+    /// and if it stays 0 on candidate 2 this number is too low.
+    var candidateCacheStagger: Duration { .seconds(4) }
+
     var aiSourceLabel: String { "[AI Coach]" }
     var fallbackSourceLabel: String { "[Recovery Engine]" }
     var evidenceProfile: HypertrophyEvidenceProfile { Self.evidenceProfileCache }
@@ -235,6 +251,10 @@ extension ClaudeService {
             for i in 1...parallelCandidates {
                 group.addTask { [requestBody, config, requestContext] in
                     do {
+                        // Let candidate 1 write the prompt cache before the rest read it.
+                        if i > 1 {
+                            try? await Task.sleep(for: self.candidateCacheStagger)
+                        }
                         let jsonString = try await AnthropicClient.shared.sendStructuredRequest(
                             body: requestBody,
                             toolName: self.programToolName,
@@ -562,6 +582,10 @@ extension ClaudeService {
             for i in 1...parallelCandidates {
                 group.addTask { [requestBody, config, requestContext] in
                     do {
+                        // Let candidate 1 write the prompt cache before the rest read it.
+                        if i > 1 {
+                            try? await Task.sleep(for: self.candidateCacheStagger)
+                        }
                         let jsonString = try await AnthropicClient.shared.sendStructuredRequest(
                             body: requestBody,
                             toolName: self.weekToolName,
