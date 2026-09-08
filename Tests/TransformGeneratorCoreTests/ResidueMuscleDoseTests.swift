@@ -137,6 +137,73 @@ final class ResidueMuscleDoseTests: XCTestCase {
         }
     }
 
+    /// THE GUARD THE FIRST REVERTED ATTEMPT LACKED.
+    ///
+    /// Counting exposures instead of names in `priorityDoseBudgetsAreFeasible` cleared the
+    /// one-set defect below and was reverted anyway: the gate runs per candidate while days are
+    /// built in order, so a weekly budget enforced greedily was spent by the early days, and day 6
+    /// was refused the Lateral Deltoids work its own plan called for — it delivered ZERO direct
+    /// sets to its stated focus and the rescue sweep backfilled it with under-dosed triceps.
+    ///
+    /// Nothing in this suite asserted against that. It had to be caught by reading generated
+    /// menus, which is why it survived long enough to be committed. This asserts it directly: a
+    /// day the blueprint gave a focus area must deliver SOME direct work to that area, which is
+    /// the one thing a focus day exists for.
+    ///
+    /// Deliberately a zero check rather than a quality threshold. "Enough" is what the dose gates
+    /// argue about; "none at all" is the specific harm the reverted attempt caused, and a guard
+    /// that fires on exactly that is one a future attempt cannot talk itself past.
+    func testEveryFocusDayDeliversDirectWorkToItsOwnFocus() throws {
+        let (blueprint, menus) = try fixtureBlueprintAndMenus()
+
+        var focusDaysChecked = 0
+        var starved: [String] = []
+
+        for (dayIndex, menu) in menus.enumerated() {
+            guard blueprint.dayPlans.indices.contains(dayIndex) else { continue }
+            let plan = blueprint.dayPlans[dayIndex]
+            guard !plan.isRestDay, let focusArea = plan.focusArea else { continue }
+            focusDaysChecked += 1
+
+            let delivered = menu.reduce(0.0) { total, exercise in
+                total + service.directSetCredit(
+                    for: WorkoutExerciseResponse(
+                        exerciseName: exercise.exerciseName,
+                        sets: exercise.prescribedSets,
+                        reps: "",
+                        tempo: "",
+                        restSeconds: 0,
+                        notes: "",
+                        muscleTarget: exercise.muscleTarget
+                    ),
+                    area: focusArea
+                )
+            }
+
+            if delivered <= 0 {
+                starved.append(
+                    "Day \(dayIndex + 1) has focus '\(focusArea)' and delivers 0 direct sets to it. "
+                        + "Menu: \(menu.map(\.exerciseName).joined(separator: ", "))"
+                )
+            }
+        }
+
+        // Without this the whole test passes on a fixture whose days carry no focus at all.
+        XCTAssertGreaterThan(
+            focusDaysChecked, 0,
+            "The fixture produced no focus days, so this guard measured nothing"
+        )
+        XCTAssertTrue(
+            starved.isEmpty,
+            """
+            \(starved.count) focus day(s) deliver no direct work to their own focus area. A dose \
+            gate that refuses a day the work its plan called for is the failure that reverted the \
+            exposure-counting attempt; see the note on testNoMovementInTheWeekShipsAtOneSet.
+            \(starved.joined(separator: "\n"))
+            """
+        )
+    }
+
     /// KNOWN OPEN DEFECT, bounded rather than closed.
     ///
     /// Written as a guard on the residue change, this immediately caught an older one:
