@@ -1,8 +1,10 @@
 import Foundation
 import SwiftData
 
-/// What past sessions say about which movements to avoid, which to push down the list, and how
-/// long next week's sessions should be.
+/// What past sessions say about which movements to avoid and which to push down the list.
+///
+/// It no longer says anything about how long a session should be. It briefly did, and that is the
+/// subject of the second bug below.
 ///
 /// WHY THIS IS ITS OWN TYPE
 /// -----------------------

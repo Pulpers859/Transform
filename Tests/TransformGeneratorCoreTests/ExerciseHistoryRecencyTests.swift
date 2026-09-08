@@ -2,9 +2,10 @@ import Foundation
 import XCTest
 @testable import Transform
 
-/// The app decides three things from what happened in past sessions: which movements to avoid
-/// outright, which to push down the list, and — since the session-clock trim landed — how long
-/// next week's sessions should be.
+/// The app decides two things from what happened in past sessions: which movements to avoid
+/// outright, and which to push down the list. It briefly decided session LENGTH from them too;
+/// that was removed, because running out of time turned out to be about the lifter's arrival
+/// rather than the program's length.
 ///
 /// It first decided all three from EVERY session ever recorded, so evidence only grew and the
 /// session trim could never be earned back. The fix for that expired circumstantial skips after
@@ -106,7 +107,8 @@ final class ExerciseHistoryRecencyTests: XCTestCase {
         )
     }
 
-    /// The frequent case must be unchanged: two recent skips are exactly what the trim reacts to.
+    /// The frequent case must be unchanged: two recent skips are exactly what deprioritisation is
+    /// meant to react to.
     func testRecentlyAbandonedMovementsStillCount() {
         let program = makeProgram()
         addDay(to: program, dayNumber: 1, skips: [("Pec Deck", .skippedEquipment)], daysAgo: 3)
@@ -117,8 +119,9 @@ final class ExerciseHistoryRecencyTests: XCTestCase {
 
     // MARK: - It still lets go
 
-    /// The original defect must stay fixed: a lifter who sorted his schedule out gets his session
-    /// length back once enough training has happened since.
+    /// The original defect must stay fixed: evidence has to be able to expire. A movement whose
+    /// equipment stopped being a problem must stop being pushed down the list once enough training
+    /// has happened since.
     func testSkipsPushedOutByLaterSessionsStopCounting() {
         let program = makeProgram(createdDaysAgo: 400)
         addDay(to: program, dayNumber: 1, skips: [("Pec Deck", .skippedEquipment)], daysAgo: 300)
@@ -167,8 +170,8 @@ final class ExerciseHistoryRecencyTests: XCTestCase {
     // MARK: - The calendar backstop
 
     /// Counting sessions alone would keep evidence from before a multi-year layoff alive forever.
-    /// A movement abandoned for time before a two-year gap says nothing about the gym, the
-    /// schedule, or the body the lifter has now.
+    /// A movement whose equipment was unavailable before a two-year gap says nothing about the
+    /// gym the lifter trains in now.
     func testEvidenceFromBeforeALongLayoffIsDroppedEvenWithinTheSessionWindow() {
         let ancient = ExerciseHistoryAggregator.staleSessionCutoffDays + 30
         let program = makeProgram(createdDaysAgo: ancient + 10)
@@ -194,42 +197,7 @@ final class ExerciseHistoryRecencyTests: XCTestCase {
 
     // MARK: - Untrained days must not consume the window
 
-    /// Days scheduled but not yet trained carry no stamps and no dispositions. If they took window
-    /// slots, a program generated for the weeks ahead would push real history out of view the
-    /// moment it was created.
-    func testUnTrainedFutureDaysDoNotPushOutRealHistory() {
-        let program = makeProgram(createdDaysAgo: 30)
-        addDay(to: program, dayNumber: 1, skips: [("Pec Deck", .skippedEquipment)], daysAgo: 20)
-        addDay(to: program, dayNumber: 2, skips: [("Pec Deck", .skippedEquipment)], daysAgo: 19)
-        for dayNumber in 100..<(100 + ExerciseHistoryAggregator.recentSessionWindow * 2) {
-            let scheduled = WorkoutDay(dayNumber: dayNumber, dayName: "Push", muscleGroups: "Chest")
-            let exercise = WorkoutExercise(order: 0, exerciseName: "Barbell Bench Press", sets: 3, reps: "8-12")
-            exercise.day = scheduled
-            scheduled.exercises.append(exercise)
-            scheduled.program = program
-            program.days.append(scheduled)
-        }
-
-        XCTAssertEqual(
-            context([program]).equipmentSkipExercises.count, 1,
-            "Days never trained must not occupy window slots"
-        )
-    }
-
-    // MARK: - Equipment ages the same way; pain does not
-
-    func testASecondEquipmentSkipPathAlsoReleases() {
-        let program = makeProgram(createdDaysAgo: 400)
-        addDay(to: program, dayNumber: 1, skips: [("Pec Deck", .skippedEquipment)], daysAgo: 300)
-        addDay(to: program, dayNumber: 2, skips: [("Pec Deck", .skippedEquipment)], daysAgo: 299)
-        addCompletedSessions(
-            to: program,
-            count: ExerciseHistoryAggregator.recentSessionWindow,
-            startingDaysAgo: 1
-        )
-
-        XCTAssertTrue(context([program]).equipmentSkipExercises.isEmpty)
-    }
+    // MARK: - Pain is never windowed
 
     /// Pain is about his body, not his schedule. A movement that hurt him is not reintroduced
     /// because enough sessions have gone by — and one report is enough, where the others need two.

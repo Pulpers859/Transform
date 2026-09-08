@@ -9,9 +9,11 @@ import XCTest
 ///  1. `hasShoulderRisk` matched five named conditions, so the owner's actual analysis text —
 ///     "Left anterior shoulder pain during neutral-grip overhead pressing is the key flag" —
 ///     turned shoulder caution OFF for exercise scoring, the fallback's cues, AND the validator.
-///  2. Repeated "ran out of time" skips were printed into the prompt and consumed by nothing. The
-///     menu is locked before the model runs, so the prompt's "prioritize it earlier" instruction
-///     asked the AI to change something it is forbidden to change.
+///  2. Repeated "ran out of time" skips were printed into the prompt and consumed by nothing.
+///     They were then wired into deprioritization and the session clock, and BOTH have since
+///     been removed: the owner's skips are arrival time and phone distraction, so a movement he
+///     runs out of time for says nothing about the movement. Deprioritization survives for
+///     EQUIPMENT skips, which is what the tests in section 2 now cover.
 ///  3. `estimatedSessionMinutes` counted no time between exercises, and the same function both
 ///     builds the day and grades it — so it packed a session and then certified it as short.
 @MainActor
@@ -180,23 +182,27 @@ final class InjuryTimeAndSessionBudgetTests: XCTestCase {
         XCTAssertEqual(notices[0].severity, .attention, "A flagged joint is not a tuning note")
     }
 
-    // MARK: - 2. A repeatedly unfinished movement is actually acted on
+    // MARK: - 2. An unavailable movement sinks without being banned
 
     /// `applyHistoryFilters` is the one place a deprioritized movement changes anything: it sinks
-    /// to the back of the catalogue so an equivalent movement is preferred. Time skips now reach
-    /// it; before this they reached nothing at all.
-    func testARepeatedlyTimedOutAccessorySinksBehindItsAlternatives() {
+    /// to the back of the catalogue so an equivalent movement is preferred.
+    ///
+    /// EQUIPMENT skips are what reach it. Time skips briefly did too and no longer do — swapping
+    /// which exercise sits last cannot help a lifter reach the last exercise, so it bought nothing
+    /// and churned the naming that progression is keyed on. A busy machine is different: another
+    /// movement genuinely solves it.
+    func testAnUnavailableAccessorySinksBehindItsAlternatives() {
         let catalog = [
             (name: "Cable Crunch", target: "Abs"),
             (name: "Hanging Knee Raise", target: "Lower Abs"),
             (name: "Cable Pallof Press", target: "Obliques")
         ]
-        let timedOut: Set<String> = [ExerciseWeightEntry.canonicalLookupKey("Cable Crunch")]
+        let unavailable: Set<String> = [ExerciseWeightEntry.canonicalLookupKey("Cable Crunch")]
 
         let ordered = service.applyHistoryFilters(
             catalog,
             avoidedExercises: [],
-            deprioritizedExercises: timedOut,
+            deprioritizedExercises: unavailable,
             catalogOffset: 0,
             weekNumber: 1,
             priorMesocycleExercises: []
@@ -206,13 +212,13 @@ final class InjuryTimeAndSessionBudgetTests: XCTestCase {
         XCTAssertEqual(
             ordered.last?.name,
             "Cable Crunch",
-            "A movement the lifter keeps running out of time for must be picked last, not first"
+            "A movement whose equipment keeps being unavailable must be picked last, not first"
         )
     }
 
-    /// Deprioritizing is not banning. Running out of time says nothing about safety, so the
-    /// movement must still be reachable when nothing else covers the muscle.
-    func testATimedOutMovementIsStillAvailableWhenItIsTheOnlyOption() {
+    /// Deprioritizing is not banning. A busy machine says nothing about safety, so the movement
+    /// must still be reachable when nothing else covers the muscle.
+    func testADeprioritizedMovementIsStillAvailableWhenItIsTheOnlyOption() {
         let ordered = service.applyHistoryFilters(
             [(name: "Cable Crunch", target: "Abs")],
             avoidedExercises: [],

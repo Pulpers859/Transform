@@ -1176,7 +1176,7 @@ extension ClaudeService {
     /// UserDefaults plist.
     func calibrationProfile(
         from analysis: BodyAnalysisResult,
-        recoveryDecision: RecoveryDecision? = nil,
+        recoveryDecision: RecoveryDecision? = nil
     ) -> ProgramCalibrationProfile {
         let profile = analysis.inputContext?.profile
         let checkIn = analysis.inputContext?.checkIn
