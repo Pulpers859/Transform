@@ -1596,18 +1596,20 @@ extension ClaudeService {
         var allMenus: [[PreSelectedExercise]] = []
 
         let avoidedExercises = exerciseHistory?.painExercises ?? []
-        // Equipment skips and repeated time skips are the same KIND of signal — "this movement
-        // keeps not happening" — so they share the deprioritization path rather than getting a
-        // second mechanism. Neither bans the exercise: `applyHistoryFilters` pushes them down the
-        // catalogue so an equivalent movement is preferred when one exists, and they still get
-        // picked when nothing else covers the muscle.
+        // EQUIPMENT skips only. This does not ban the exercise — `applyHistoryFilters` pushes it
+        // down the catalogue so an equivalent movement is preferred when one exists, and it is
+        // still picked when nothing else covers the muscle. That is the right response to a
+        // machine that is always occupied: another movement genuinely solves it.
         //
-        // This is the first thing in the pipeline that actually CONSUMES a time skip. Until now
-        // the count was collected, printed into the prompt, and then ignored by every consumer:
-        // the menu is locked before the model runs, so the prompt's instruction to "prioritize the
-        // flagged movement earlier" asked the AI to change something it is not allowed to change.
-        let deprioritizedExercises = (exerciseHistory?.equipmentSkipExercises ?? [])
-            .union(exerciseHistory?.timeSkipExercises ?? [])
+        // TIME skips used to be folded in here on the reasoning that both mean "this movement
+        // keeps not happening". They are not the same signal, and the difference matters. What the
+        // lifter runs out of time for is a POSITION in the session, not a movement: swapping which
+        // exercise sits last does not help him reach the last exercise. So the swap bought nothing
+        // and cost something real — churning the exercise selection fragments the weight history
+        // that progression is keyed on. The owner's own read is that his skips are arrival time
+        // and phone distraction rather than anything about the movement, which leaves no mechanism
+        // by which changing the movement could help.
+        let deprioritizedExercises = exerciseHistory?.equipmentSkipExercises ?? []
         let catalogOffset = exerciseHistory.map { variationCatalogOffset(for: $0) } ?? 0
 
         // How many leading slots each day pins for week-to-week continuity. Recorded here because

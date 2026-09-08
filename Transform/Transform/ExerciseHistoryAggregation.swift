@@ -16,9 +16,10 @@ import SwiftData
 /// ------------------------------
 /// The original walked EVERY program with no notion of when anything happened, so two skips in
 /// January still counted in December and the evidence only ever grew. That became a real defect
-/// once `timeSkipExercises.count` started shortening the session clock: the trim had no release,
+/// once a skipped-for-time count started shortening the session clock: the trim had no release,
 /// and a lifter who fixed his schedule and finished every session for six months was still handed
-/// a permanently shortened week.
+/// a permanently shortened week. That trim has since been removed outright — see the note where
+/// the session cap is derived — but the ratchet it exposed was real for equipment skips too.
 ///
 /// The first fix — expire circumstantial skips after 84 CALENDAR days — released the ratchet but
 /// bought a second defect with it. The bar is two skips inside one window, so a lifter training
@@ -84,7 +85,6 @@ enum ExerciseHistoryAggregator {
 
         var painCounts: [String: Int] = [:]
         var equipmentCounts: [String: Int] = [:]
-        var timeCounts: [String: Int] = [:]
 
         var trainedSessions: [TrainedSession] = []
 
@@ -160,9 +160,14 @@ enum ExerciseHistoryAggregator {
                 switch status {
                 case .skippedEquipment:
                     equipmentCounts[key, default: 0] += 1
-                case .skippedTime:
-                    timeCounts[key, default: 0] += 1
                 default:
+                    // Skipped for TIME is deliberately not aggregated. It used to drive two
+                    // things — a shorter session budget and a deprioritised exercise — and both
+                    // rested on the same wrong premise: that running out of time says something
+                    // about the PROGRAM. For this owner it says he arrived late or got distracted,
+                    // and the first week built on that premise came back with his squat, deadlift
+                    // and Romanian deadlift all cut to 2 sets. Nothing consumes it now, so nothing
+                    // computes it; reviving it needs evidence that session length is the cause.
                     break
                 }
             }
@@ -175,11 +180,6 @@ enum ExerciseHistoryAggregator {
         for (key, count) in equipmentCounts where count >= recurrenceBar {
             equipmentSkipExercises.insert(key)
         }
-        var timeSkipExercises = Set<String>()
-        for (key, count) in timeCounts where count >= recurrenceBar {
-            timeSkipExercises.insert(key)
-        }
-
         let activeCount = programs.filter { !$0.isArchived }.count
         let archivedCount = programs.filter { $0.isArchived }.count
         let mesocycleIndex = activeCount > 0 ? archivedCount : max(0, archivedCount - 1)
@@ -187,7 +187,6 @@ enum ExerciseHistoryAggregator {
         return ClaudeService.ExerciseHistoryContext(
             painExercises: painExercises,
             equipmentSkipExercises: equipmentSkipExercises,
-            timeSkipExercises: timeSkipExercises,
             priorMesocycleExercises: priorMesocycleExercises,
             mesocycleIndex: mesocycleIndex
         )

@@ -169,10 +169,7 @@ extension ClaudeService {
     func generateWeekOne(from analysisResult: BodyAnalysisResult, performanceHistory: String? = nil, skipHistory: String? = nil, exerciseHistory: ExerciseHistoryContext? = nil, progressionVerdicts: [ExerciseProgressionVerdict] = []) async throws -> WorkoutProgramGenerationResult {
         WorkoutGenerationDiagnostics.markStage("building week 1 analysis context")
         let analysisSummary = analysisContext(from: analysisResult)
-        let trainingIntent = trainingIntentPlan(
-            from: analysisResult,
-            unfinishedMovementCount: exerciseHistory?.timeSkipExercises.count ?? 0
-        )
+        let trainingIntent = trainingIntentPlan(from: analysisResult)
         let blueprint = programBlueprint(for: trainingIntent, weekNumber: 1)
         let intentSummary = trainingIntentContext(from: trainingIntent, blueprint: blueprint)
         let blueprintSummary = blueprintContext(from: blueprint)
@@ -482,12 +479,8 @@ extension ClaudeService {
         let analysisSummary = analysisDecode.warning.map {
             "\(baseAnalysisSummary)\nDecoding note: \($0)"
         } ?? baseAnalysisSummary
-        let trainingIntent = decodedAnalysis.map {
-            trainingIntentPlan(
-                from: $0,
-                unfinishedMovementCount: exerciseHistory?.timeSkipExercises.count ?? 0
-            )
-        } ?? fallbackTrainingIntentPlan(from: priorityMuscles(from: analysisJSON))
+        let trainingIntent = decodedAnalysis.map(trainingIntentPlan(from:))
+            ?? fallbackTrainingIntentPlan(from: priorityMuscles(from: analysisJSON))
         let blueprint = programBlueprint(for: trainingIntent, weekNumber: weekNumber)
         let intentSummary = trainingIntentContext(from: trainingIntent, blueprint: blueprint)
         let blueprintSummary = blueprintContext(from: blueprint)
@@ -1182,15 +1175,8 @@ extension ClaudeService {
         let analysisSummary = analysisDecode.warning.map {
             "\(baseAnalysisSummary)\nDecoding note: \($0)"
         } ?? baseAnalysisSummary
-        // The lab harness takes no `ExerciseHistoryContext` (see this function's parameter list),
-        // so there is no skipped-for-time history to read here and the session-budget trim is
-        // deliberately absent: a lab run reproduces the UNTRIMMED plan. Written as a closure rather
-        // than the shorter `map(trainingIntentPlan(from:))` because that compound-name form must
-        // match a function's FULL label list, and both overloads now also declare
-        // `unfinishedMovementCount:` even though it is defaulted.
-        let trainingIntent = decodedAnalysis.map {
-            trainingIntentPlan(from: $0, unfinishedMovementCount: 0)
-        } ?? fallbackTrainingIntentPlan(from: priorityMuscles(from: analysisJSON))
+        let trainingIntent = decodedAnalysis.map(trainingIntentPlan(from:))
+            ?? fallbackTrainingIntentPlan(from: priorityMuscles(from: analysisJSON))
         let blueprint = programBlueprint(for: trainingIntent, weekNumber: weekNumber)
         let intentSummary = trainingIntentContext(from: trainingIntent, blueprint: blueprint)
         let blueprintSummary = blueprintContext(from: blueprint)

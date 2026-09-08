@@ -227,7 +227,25 @@ final class InjuryTimeAndSessionBudgetTests: XCTestCase {
         XCTAssertEqual(ordered.map { $0.name }, ["Cable Crunch"])
     }
 
-    func testHistoryContextDefaultsToNoTimeSkips() {
+    /// Skipped-for-TIME is still recorded on the exercise, but nothing aggregates it any more.
+    /// It drove a shorter session budget and a deprioritised exercise, and both rested on the
+    /// premise that running out of time says something about the program — for this owner it says
+    /// he arrived late. This pins that a movement he has abandoned for time is treated exactly
+    /// like any other: no penalty, no swap, nothing.
+    /// Copied verbatim from `RecoveryModulationTests` so the initialiser labels stay correct.
+    private func blankAnalysis() -> BodyAnalysisResult {
+        BodyAnalysisResult(
+            overallAssessment: "", trainingAssessment: "", nutritionAssessment: "",
+            recoveryRiskAssessment: "", adherenceAssessment: "", analysisLimitations: "",
+            inputContext: nil, regionBreakdown: [], topLeverageChange: "",
+            priorityMuscles: [], workoutRecommendations: [], dietRecommendations: [],
+            posturalNotes: "", estimatedBodyFat: "", metabolicHealthNotes: "",
+            psychologicalInsights: "", injuryRiskNotes: "", macroTargets: nil,
+            structuredTrainingIntent: nil
+        )
+    }
+
+    func testATimeSkipNoLongerInfluencesAnything() {
         let context = ClaudeService.ExerciseHistoryContext(
             painExercises: [],
             equipmentSkipExercises: [],
@@ -235,9 +253,18 @@ final class InjuryTimeAndSessionBudgetTests: XCTestCase {
             mesocycleIndex: 0
         )
 
+        XCTAssertTrue(context.painExercises.isEmpty)
         XCTAssertTrue(
-            context.timeSkipExercises.isEmpty,
-            "The new field must default empty so an un-updated construction site cannot invent skips"
+            context.equipmentSkipExercises.isEmpty,
+            "Equipment is the only skip kind that still steers selection"
+        )
+
+        // The session budget is derived without any unfinished-work input at all.
+        let cap = service.calibrationProfile(from: blankAnalysis()).defaultSessionTimeCapMinutes
+        XCTAssertGreaterThanOrEqual(
+            cap,
+            65,
+            "No skip history may shorten the session; 65 is the lowest recovery-tier baseline"
         )
     }
 

@@ -1,22 +1,14 @@
 import Foundation
 
 extension ClaudeService {
-    /// `unfinishedMovementCount` is how many DISTINCT movements the lifter has repeatedly failed
-    /// to finish for time (`ExerciseHistoryContext.timeSkipExercises`). It reaches the session
-    /// time cap through `calibrationProfile`; see the cap derivation there for why.
-    ///
-    /// Defaulted so the Generator Lab's debug paths, which have no logged history to draw on,
-    /// behave exactly as before rather than silently inheriting someone else's.
     func trainingIntentPlan(
-        from analysis: BodyAnalysisResult,
-        unfinishedMovementCount: Int = 0
+        from analysis: BodyAnalysisResult
     ) -> TrainingIntentPlan {
         if let structuredIntent = analysis.structuredTrainingIntent,
            !structuredIntent.priorities.isEmpty {
             return trainingIntentPlan(
                 from: structuredIntent,
-                analysis: analysis,
-                unfinishedMovementCount: unfinishedMovementCount
+                analysis: analysis
             )
         }
 
@@ -43,7 +35,7 @@ extension ClaudeService {
         )
         return calibratedTrainingIntentPlan(
             basePlan,
-            using: calibrationProfile(from: analysis, unfinishedMovementCount: unfinishedMovementCount)
+            using: calibrationProfile(from: analysis)
         )
     }
 
@@ -72,8 +64,7 @@ extension ClaudeService {
 
     func trainingIntentPlan(
         from structuredIntent: StructuredTrainingIntent,
-        analysis: BodyAnalysisResult,
-        unfinishedMovementCount: Int = 0
+        analysis: BodyAnalysisResult
     ) -> TrainingIntentPlan {
         let priorities = structuredIntent.priorities.enumerated().map { index, priority in
             musclePriorityIntent(from: priority, rank: index, analysis: analysis)
@@ -91,7 +82,7 @@ extension ClaudeService {
         )
         return calibratedTrainingIntentPlan(
             basePlan,
-            using: calibrationProfile(from: analysis, unfinishedMovementCount: unfinishedMovementCount)
+            using: calibrationProfile(from: analysis)
         )
     }
 
@@ -1173,9 +1164,11 @@ extension ClaudeService {
         )
     }
 
-    /// Hard lower bound on a session budget, whatever the recovery tier and the unfinished-work
-    /// trim combine to. Currently HEADROOM: the arithmetic above cannot reach it (see the note at
-    /// the trim), and `UnfinishedSessionBudgetTests` pins that fact so it stays deliberate.
+    /// Hard lower bound on a session budget, whatever the recovery tier produces. Currently
+    /// HEADROOM, and more so than before: the unfinished-work trim that used to subtract up to 10
+    /// minutes is gone, so the smallest value the cap can take is the Restricted tier's 65 —
+    /// twenty minutes clear of this floor. It stays as the right shape if the tier ladder is ever
+    /// lowered, not because anything reaches it.
     static let absoluteSessionTimeFloorMinutes = 45
 
     /// `recoveryDecision` defaults to the stored structured sleep state; the harness
@@ -1184,7 +1177,6 @@ extension ClaudeService {
     func calibrationProfile(
         from analysis: BodyAnalysisResult,
         recoveryDecision: RecoveryDecision? = nil,
-        unfinishedMovementCount: Int = 0
     ) -> ProgramCalibrationProfile {
         let profile = analysis.inputContext?.profile
         let checkIn = analysis.inputContext?.checkIn
@@ -1313,51 +1305,24 @@ extension ClaudeService {
         case .ready, .insufficientData: baseTimeCap = 75
         }
 
-        // The session budget now answers to whether the lifter actually FINISHES his sessions,
-        // not only to how he slept.
+        // NO unfinished-work penalty here, deliberately, and this is a reversal.
         //
-        // Until this, the cap came from the recovery tier alone. The app separately recorded every
-        // movement he abandoned for time — one of his had been skipped for time three separate
-        // times — printed that count into the prompt, and then planned the next week to exactly
-        // the same length as if it had never happened. A plan he cannot finish is not a plan he is
-        // following, and the exercises that lose are always the ones at the end.
+        // A previous version shortened the session by up to 10 minutes when the lifter had
+        // repeatedly abandoned movements for time, reasoning that a plan he cannot finish is not a
+        // plan he is following. The first week it produced showed what that reasoning was worth:
+        // six of his movements were past the recurrence bar, so it took the FULL 10 minutes off
+        // every session, and the Lower day came back with Trap Bar Deadlift, Back Squat and
+        // Barbell Romanian Deadlift all cut to 2 sets and Standing Calf Raise to 1.
         //
-        // Deliberately modest and capped. One repeatedly-unfinished movement is worth 5 minutes,
-        // two or more is worth 10, and it stops there: this is a nudge toward a session he
-        // completes, not a spiral that shrinks the program every time a shift runs long.
+        // The premise was wrong. The owner's skips are arrival time and phone distraction, not a
+        // session that is too long — his words: "needing to cut exercises because of time is my
+        // fault... I don't want you to punish the workout generator because of this." Degrading
+        // the programming to match how late he got to the gym trains the wrong thing, and it costs
+        // real sets off the heaviest lifts in the week.
         //
-        // The floor below is HEADROOM, not an active guard, and the commit that introduced it
-        // wrongly described it as protecting against a short-menu failure. It cannot: the lowest
-        // `baseTimeCap` is 65 (Restricted) and the penalty caps at 10, so the smallest value this
-        // expression can produce is 55 — the `max` never binds. It is kept because it is the
-        // right shape if the ladder above or the penalty cap is ever changed, and
-        // `UnfinishedSessionBudgetTests` pins the true minimum so a future edit that makes the
-        // floor live shows up as a failing test rather than as a silently shorter week.
-        //
-        // Counting DISTINCT movements rather than total skips is deliberate too: `timeSkipExercises`
-        // already requires a movement to have been abandoned at least twice before it counts, so
-        // two of them means the problem is the session length rather than one awkward exercise.
-        //
-        // WHAT THIS TRIM DOES NOT DO, stated because the commit that added it implied otherwise.
-        // A smaller budget is spent by `volumeReductionPriority`, whose score STARTS at the
-        // exercise's index — so the work at the END of the day is cut first. Core sits last by
-        // ORD-001, and on a day whose focus is not core it also takes the +12 not-focus-direct
-        // penalty. So shortening the session takes sets off the very movement that keeps getting
-        // abandoned, rather than protecting it.
-        //
-        // That is the RIGHT trade and is left alone deliberately. Reversing it means cutting the
-        // day's heavy compounds to preserve trunk work, which inverts the priority ORD-001
-        // exists to hold, and a shorter ab prescription he COMPLETES still beats a longer one he
-        // walks out on — `minimumSetFloor` stops it reaching zero, and dropping a movement
-        // outright needs `weekNumber > 1 && exercises.count > 5`. The pairing that actually helps
-        // the abandoned movement is the deprioritisation in `deprioritizedExercises`, not this.
-        //
-        // Reaches every style cap below EXCEPT "Arms", which carries its own hardcoded 50/55/60
-        // ladder rather than deriving from this default. That is left alone deliberately: an Arms
-        // day is already the shortest in the week, so it is the least likely to be the one running
-        // over, and trimming the shortest session is where a time cut starts costing real work.
-        let unfinishedPenalty = min(10, max(0, unfinishedMovementCount) * 5)
-        let defaultSessionTimeCapMinutes = max(ClaudeService.absoluteSessionTimeFloorMinutes, baseTimeCap - unfinishedPenalty)
+        // Do not reintroduce a time penalty here without evidence that the SESSION LENGTH is the
+        // cause, rather than inferring it from skips that have a simpler explanation.
+        let defaultSessionTimeCapMinutes = max(ClaudeService.absoluteSessionTimeFloorMinutes, baseTimeCap)
         let styleSessionCaps: [String: Int] = [
             "Push": defaultSessionTimeCapMinutes,
             "Pull": defaultSessionTimeCapMinutes,
