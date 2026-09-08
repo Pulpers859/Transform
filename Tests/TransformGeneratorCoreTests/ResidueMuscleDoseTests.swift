@@ -217,7 +217,7 @@ final class ResidueMuscleDoseTests: XCTestCase {
     /// days, and six exposures need twelve sets at the two-set floor. The plan was infeasible
     /// before allocation began.
     ///
-    /// Two fixes were tried and REVERTED, both recorded where they were made:
+    /// Three fixes were tried and REVERTED, each recorded where it was made:
     ///   - counting exposures instead of names in `priorityDoseBudgetsAreFeasible`. It cleared this
     ///     defect, but the gate runs per candidate as days are built in order, so a weekly budget
     ///     enforced greedily was spent by the early days: day 6 was refused the Lateral Deltoids
@@ -226,10 +226,25 @@ final class ResidueMuscleDoseTests: XCTestCase {
     ///   - rounding `prioritySlotsPerSession` down. That broke the ~4-set-per-exercise invariant
     ///     `minimumExerciseSlots` exists to hold, caught by
     ///     `testReducedExposuresCanStillCarryTheWeeklySetTarget`.
+    ///   - reserving each focus day's share of the priority budget before selection: a per-day
+    ///     cap of `maxDosedMovements / targetFrequency` inside `priorityDoseBudgetsAreFeasible`
+    ///     (a33fde4, reverted). CI went green and the CI fixture-snapshot artifact was
+    ///     BYTE-IDENTICAL to the run immediately before it — same menus, same
+    ///     "Behind-the-Back Cable Lateral Raise#1" on day one. The cap never bound. Reason,
+    ///     inferred from that snapshot rather than read off a running generator: the divisor is
+    ///     the PLANNED frequency, and the week schedules Lateral Deltoids on more days than it
+    ///     planned (three, with two exposures each). A share sized for two days is spent across
+    ///     three, so the per-day allowance was 2 where the exposure count was 2. Dividing a
+    ///     weekly budget by a day count the week does not honour cannot bind.
     ///
-    /// Closing it properly means reserving each focus day's share of the priority budget before
-    /// selection, or distributing exposures across days instead of checking a running total. Both
-    /// are real changes to menu construction and are not attempted here.
+    /// So a green CI run is NOT evidence this defect is closed: the tripwire below allows the
+    /// known exposure, so it passes either way, and the snapshot artifact is what actually
+    /// distinguishes them. Any fourth attempt must diff that artifact against the previous run
+    /// before claiming anything.
+    ///
+    /// The remaining untried remedy is the other one: distributing exposures across days at
+    /// menu-construction time instead of checking a running total. That is a real change to how
+    /// days are built and is not attempted here.
     ///
     /// So this asserts what is TRUE today rather than what should be: at most one exposure below
     /// its floor, and that one must be priority-funded. A second one, or a maintenance-side one,

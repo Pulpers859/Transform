@@ -1500,10 +1500,11 @@ extension ClaudeService {
             // which shipped at one set. Trading one under-dosed movement for a focus day with no
             // focus work, plus two more under-dosed movements, is a clear loss.
             //
-            // The first of those two proper fixes — reserving each focus day's share before
-            // selection — is now implemented immediately below, which is why this name count can
-            // stay exactly as it was. It is left untouched on purpose: it is the tested behaviour,
-            // it does not starve anything, and replacing it was what went wrong last time.
+            // Fixing it properly means either reserving each focus day's share of the budget
+            // before selection starts, or distributing exposures across days rather than checking
+            // a running total. Both are real changes to how menus are built. Until then the
+            // narrower defect stands, documented, with its cause recorded in
+            // `ResidueMuscleDoseTests`.
             let distinctDirect = identities.reduce(into: Set<String>()) { result, exercise in
                 let probe = WorkoutExerciseResponse(
                     exerciseName: exercise.name,
@@ -1518,44 +1519,6 @@ extension ClaudeService {
                 result.insert(normalizeExerciseName(exercise.name))
             }
             guard distinctDirect.count <= maxDosedMovements else { return false }
-
-            // PER-DAY RESERVATION — the second half of the affordability question, and the half
-            // the name count cannot ask.
-            //
-            // Distinct names understates what the allocator must pay for: the same movement on
-            // two days is two SLOTS, each needing its own floor. The recorded case was four
-            // lateral-raise names occupying six exposures across three days — the name gate saw
-            // four against an affordable five and passed, while six slots at the two-set floor
-            // needed twelve sets against a spendable 11.5. The plan was infeasible before
-            // allocation began, and the allocator's only recourse was to under-dose.
-            //
-            // Counting exposures against the WEEKLY total was tried and reverted, for a reason
-            // this deliberately avoids rather than rediscovers: the gate runs per candidate while
-            // days are built in order, so one weekly pot enforced greedily gets drained by the
-            // early days and a late focus day is refused the work its own plan called for. Here
-            // each day is asked only about ITSELF, against a share reserved up front, so no day
-            // can spend another's. That is the fix the reverted attempt's own note prescribes.
-            //
-            // Truncating rather than rounding is deliberate and is what makes it bind: five
-            // affordable movements over three days rounds to two, which re-admits six exposures
-            // and the original defect. One per day still meets the frequency target — frequency
-            // wants exposures SPREAD, not stacked — while leaving every slot fundable to its
-            // floor.
-            let focusDays = max(1, allocation.targetFrequency)
-            let perDayDosedMovements = max(1, maxDosedMovements / focusDays)
-            let todayExposures = selectedToday.reduce(into: 0) { count, exercise in
-                let probe = WorkoutExerciseResponse(
-                    exerciseName: exercise.name,
-                    sets: 1,
-                    reps: "",
-                    tempo: "",
-                    restSeconds: 0,
-                    notes: "",
-                    muscleTarget: exercise.target
-                )
-                if directSetCredit(for: probe, area: allocation.area) > 0 { count += 1 }
-            }
-            guard todayExposures <= perDayDosedMovements else { return false }
         }
         return true
     }
