@@ -40,6 +40,12 @@ let package = Package(
                 // behind #if canImport(UIKit), so it compiles cleanly off-device).
                 "ClaudeService.swift",
                 "AnthropicClient.swift",
+                // SSE reassembly for the streamed Messages API response. Here because the
+                // structured tool-use path is how every paid week is produced: if the tool input
+                // does not come back out of the stream byte-identical to the non-streaming
+                // envelope, a generation the owner paid for is lost. That is only provable by
+                // running scripted transcripts through it.
+                "AnthropicStreamAssembler.swift",
                 "AnthropicAPIKeyStore.swift",
                 "Config.swift",
                 // Harness-only shims for free functions that live in UIKit/SwiftUI files

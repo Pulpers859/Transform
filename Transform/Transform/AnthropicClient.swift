@@ -120,8 +120,18 @@ final class AnthropicClient {
         // The ratio between the two is
         // preserved so a queued request still cannot burn its resource budget before reaching
         // the wire, which is the trap documented on `maxConcurrentRequests` below.
+        //
+        // Now that the response STREAMS, these two mean what their names say for the first time.
+        // `timeoutIntervalForRequest` is an inactivity timer, and with tokens arriving
+        // continuously it finally distinguishes a dead connection from a slow answer — which is
+        // the fact the client never had. `timeoutIntervalForResource` is a hard wall-clock cap
+        // that fires regardless of progress, so it was the only thing that could ever end a
+        // stalled non-streaming call, and raising it was the only lever available. It is raised
+        // once more here, but for the opposite reason: a long generation is no longer evidence of
+        // a problem, because a genuinely stuck stream is now caught by the inactivity timer at
+        // 300s instead.
         configuration.timeoutIntervalForRequest = 300
-        configuration.timeoutIntervalForResource = 480
+        configuration.timeoutIntervalForResource = 900
         configuration.waitsForConnectivity = true
         configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
         configuration.urlCache = nil
@@ -266,13 +276,20 @@ final class AnthropicClient {
             throw ClaudeError.apiError(Config.anthropicKeyStatus.requestFailureMessage)
         }
 
-        let encodedBody = try JSONSerialization.data(withJSONObject: body)
+        // STREAMED, deliberately. A non-streaming call delivers nothing until it delivers
+        // everything, which left `timeoutIntervalForRequest` — an INACTIVITY timer — unable to
+        // fire, so the only backstop was the hard resource ceiling. Week 1 hit it twice.
+        // Anthropic's guidance is to stream any request with long input, long output, or a high
+        // `max_tokens`; this one is all three. See `AnthropicStreamAssembler`.
+        var streamedBody = body
+        streamedBody["stream"] = true
+        let encodedBody = try JSONSerialization.data(withJSONObject: streamedBody)
         let requestID = String(UUID().uuidString.prefix(8))
         let startedAt = Date()
         let lifecycleAtStart = AppLifecycleMonitor.shared.snapshot()
         let profile = requestProfile(
             requestID: requestID,
-            body: body,
+            body: streamedBody,
             encodedBody: encodedBody,
             timeout: timeout,
             requestKind: requestKind,
@@ -304,10 +321,38 @@ final class AnthropicClient {
                 request.httpBody = encodedBody
                 request.timeoutInterval = timeout
 
-                let (data, response) = try await session.data(for: request, delegate: waitRecorder)
+                let (byteStream, response) = try await session.bytes(for: request, delegate: waitRecorder)
 
                 guard let httpResponse = response as? HTTPURLResponse else {
                     throw ClaudeError.apiError("Invalid response")
+                }
+
+                // Reassembled into exactly the envelope a non-streaming call would have produced,
+                // so `sendRequest` and `sendStructuredRequest` are untouched by this change. A
+                // non-200 body is not SSE, so it is collected verbatim for the error decoders.
+                let data: Data
+                if httpResponse.statusCode == 200 {
+                    var assembler = AnthropicStreamAssembler()
+                    do {
+                        for try await line in byteStream.lines {
+                            try Task.checkCancellation()
+                            try assembler.consume(line: line)
+                        }
+                        data = try assembler.finish()
+                    } catch let streamError as AnthropicStreamAssembler.StreamError {
+                        switch streamError {
+                        case let .apiError(type, message):
+                            throw ClaudeError.apiError("(\(type)) \(message)")
+                        case .malformed:
+                            throw ClaudeError.parseError(streamError.description)
+                        }
+                    }
+                } else {
+                    var collected = Data()
+                    for try await byte in byteStream {
+                        collected.append(byte)
+                    }
+                    data = collected
                 }
 
                 if httpResponse.statusCode == 200 {
