@@ -7,7 +7,7 @@ import XCTest
 /// that was removed, because running out of time turned out to be about the lifter's arrival
 /// rather than the program's length.
 ///
-/// It first decided all three from EVERY session ever recorded, so evidence only grew and the
+/// It first decided all of that from EVERY session ever recorded, so evidence only grew and the
 /// session trim could never be earned back. The fix for that expired circumstantial skips after
 /// 84 CALENDAR days, which released the ratchet and introduced a quieter defect: the bar is two
 /// skips inside one window, so anyone training less often than that could never reach it. Each
@@ -196,6 +196,59 @@ final class ExerciseHistoryRecencyTests: XCTestCase {
     }
 
     // MARK: - Untrained days must not consume the window
+
+    /// Days scheduled but not yet trained carry no stamps and no dispositions. If they took window
+    /// slots, a program generated for the weeks ahead would push real history out of view the
+    /// moment it was created.
+    ///
+    /// This is the only coverage of the `showsEvidenceOfTraining` guard. It was deleted in 10df93b
+    /// along with the time-skip feature it happened to use as its carrier signal, which left the
+    /// guard live and untested — an audit caught the empty section header the deletion left
+    /// behind. Restored here on equipment skips, which exercise the identical windowing.
+    func testUnTrainedFutureDaysDoNotPushOutRealHistory() {
+        let program = makeProgram(createdDaysAgo: 30)
+        addDay(to: program, dayNumber: 1, skips: [("Pec Deck", .skippedEquipment)], daysAgo: 20)
+        addDay(to: program, dayNumber: 2, skips: [("Pec Deck", .skippedEquipment)], daysAgo: 19)
+        for dayNumber in 100..<(100 + ExerciseHistoryAggregator.recentSessionWindow * 2) {
+            let scheduled = WorkoutDay(dayNumber: dayNumber, dayName: "Push", muscleGroups: "Chest")
+            let exercise = WorkoutExercise(order: 0, exerciseName: "Barbell Bench Press", sets: 3, reps: "8-12")
+            exercise.day = scheduled
+            scheduled.exercises.append(exercise)
+            scheduled.program = program
+            program.days.append(scheduled)
+        }
+
+        XCTAssertEqual(
+            context([program]).equipmentSkipExercises.count, 1,
+            "Days never trained must not occupy window slots"
+        )
+    }
+
+    // MARK: - Time skips reach nothing
+
+    /// The other half of what 10df93b removed. Running out of time is still RECORDED on the
+    /// exercise and still reaches the prompt as prose, but nothing aggregates it into a signal any
+    /// more, because the owner's cause is arrival time rather than a session that runs too long.
+    ///
+    /// Written to actually fail if that comes back: two time skips, well inside the window, on the
+    /// same movement — everything the equipment path needs to produce a hit — and the assertion is
+    /// that BOTH lists stay empty. The version of this test that shipped in 10df93b asserted that
+    /// empty arrays it had just written were empty, and could not have failed.
+    func testTimeSkipsAreNotAggregatedAtAll() {
+        let program = makeProgram(createdDaysAgo: 30)
+        addDay(to: program, dayNumber: 1, skips: [("Cable Crunch", .skippedTime)], daysAgo: 20)
+        addDay(to: program, dayNumber: 2, skips: [("Cable Crunch", .skippedTime)], daysAgo: 19)
+
+        let result = context([program])
+        XCTAssertTrue(
+            result.equipmentSkipExercises.isEmpty,
+            "A time skip must not steer selection: \(result.equipmentSkipExercises)"
+        )
+        XCTAssertTrue(
+            result.painExercises.isEmpty,
+            "A time skip must not be treated as pain: \(result.painExercises)"
+        )
+    }
 
     // MARK: - Pain is never windowed
 

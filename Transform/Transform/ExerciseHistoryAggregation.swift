@@ -3,8 +3,8 @@ import SwiftData
 
 /// What past sessions say about which movements to avoid and which to push down the list.
 ///
-/// It no longer says anything about how long a session should be. It briefly did, and that is the
-/// subject of the second bug below.
+/// It no longer says anything about how long a session should be. It briefly did, and that trim
+/// is what turned the FIRST bug below from a curiosity into a real defect.
 ///
 /// WHY THIS IS ITS OWN TYPE
 /// -----------------------
@@ -53,9 +53,10 @@ enum ExerciseHistoryAggregator {
     static let recentSessionWindow = 60
 
     /// A backstop the session window cannot provide on its own. Someone returning after a long
-    /// layoff still has their last sixty sessions on record, but a movement abandoned for time
-    /// before a two-year gap says nothing about the gym, the schedule, or the body they have now.
-    /// This is the only place calendar age still decides anything for a circumstantial skip.
+    /// layoff still has their last sixty sessions on record, but a machine that was always
+    /// occupied before a two-year gap says nothing about the gym he trains in now. Equipment
+    /// skips are the only circumstantial skips left, so this is the only place calendar age still
+    /// decides anything.
     static let staleSessionCutoffDays = 730
 
     /// A skip only counts once it has happened twice: once is a bad day, twice is a pattern.

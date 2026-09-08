@@ -233,11 +233,6 @@ final class InjuryTimeAndSessionBudgetTests: XCTestCase {
         XCTAssertEqual(ordered.map { $0.name }, ["Cable Crunch"])
     }
 
-    /// Skipped-for-TIME is still recorded on the exercise, but nothing aggregates it any more.
-    /// It drove a shorter session budget and a deprioritised exercise, and both rested on the
-    /// premise that running out of time says something about the program — for this owner it says
-    /// he arrived late. This pins that a movement he has abandoned for time is treated exactly
-    /// like any other: no penalty, no swap, nothing.
     /// Copied verbatim from `RecoveryModulationTests` so the initialiser labels stay correct.
     private func blankAnalysis() -> BodyAnalysisResult {
         BodyAnalysisResult(
@@ -251,27 +246,64 @@ final class InjuryTimeAndSessionBudgetTests: XCTestCase {
         )
     }
 
-    func testATimeSkipNoLongerInfluencesAnything() {
-        let context = ClaudeService.ExerciseHistoryContext(
-            painExercises: [],
-            equipmentSkipExercises: [],
-            priorMesocycleExercises: [],
-            mesocycleIndex: 0
-        )
+    /// Skipped-for-TIME is still recorded on the exercise, but nothing derives programming from it
+    /// any more. It drove a shorter session budget and a deprioritised exercise, and both rested on
+    /// the premise that running out of time says something about the program — for this owner it
+    /// says he arrived late.
+    ///
+    /// This pins the SESSION-LENGTH half: the shortest session the calibration ladder can produce
+    /// is its own lowest baseline, so nothing subtracts from it. The earlier version of this test
+    /// asserted that two empty arrays it had just written were empty and that a cap derived from
+    /// no skip history at all cleared 65 — both true whether or not the penalty existed. An audit
+    /// caught it. The skip-aggregation half is pinned where the aggregator's helpers live, by
+    /// `testTimeSkipsAreNotAggregatedAtAll` in `ExerciseHistoryRecencyTests`.
+    ///
+    /// The baselines are pinned as literals, deliberately. Deriving them from the same switch
+    /// that produces them would make any subtraction invisible; a hard 65/70/75 fails the moment
+    /// a penalty shortens a session, which is the whole point. Changing the ladder on purpose
+    /// means updating these three numbers on purpose. They were copied from the switch in
+    /// `calibrationProfile`, not recalled.
+    func testEveryRecoveryTierGetsItsFullBaselineSession() {
+        // Injected through the same parameter seam `RecoveryModulationTests` uses, and for the
+        // same reason recorded there: `swift test --parallel` runs classes in separate processes
+        // sharing one defaults plist, so writing stored recovery state here could race another
+        // suite. `.insufficientData` is left out on purpose — it is re-derived from profile prose
+        // rather than passed through, so it does not pin a baseline.
+        let expectedBaselines: [(tier: RecoveryTier, minutes: Int)] = [
+            (.restricted, 65),
+            (.constrained, 70),
+            (.ready, 75)
+        ]
 
-        XCTAssertTrue(context.painExercises.isEmpty)
-        XCTAssertTrue(
-            context.equipmentSkipExercises.isEmpty,
-            "Equipment is the only skip kind that still steers selection"
-        )
+        for expected in expectedBaselines {
+            let profile = service.calibrationProfile(
+                from: blankAnalysis(),
+                recoveryDecision: RecoveryDecision(tier: expected.tier, audit: "injected for test")
+            )
+            XCTAssertEqual(
+                profile.recoveryTier, expected.tier,
+                "Premise: the injected tier must reach the profile unchanged"
+            )
+            XCTAssertEqual(
+                profile.defaultSessionTimeCapMinutes, expected.minutes,
+                "Tier \(expected.tier) must get its whole baseline session — anything less means "
+                    + "something is subtracting minutes again"
+            )
 
-        // The session budget is derived without any unfinished-work input at all.
-        let cap = service.calibrationProfile(from: blankAnalysis()).defaultSessionTimeCapMinutes
-        XCTAssertGreaterThanOrEqual(
-            cap,
-            65,
-            "No skip history may shorten the session; 65 is the lowest recovery-tier baseline"
-        )
+            // Every style inherits the default except Arms. Deleting `UnfinishedSessionBudgetTests`
+            // with the penalty took the only coverage of this table with it, which an audit caught.
+            for style in ["Push", "Pull", "Upper", "Lower", "Legs"] {
+                XCTAssertEqual(
+                    profile.sessionTimeCapsByStyle[style], expected.minutes,
+                    "\(style) must inherit the tier baseline on tier \(expected.tier)"
+                )
+            }
+            XCTAssertLessThan(
+                profile.sessionTimeCapsByStyle["Arms"] ?? .max,
+                expected.minutes,
+                "Arms is deliberately the one shorter session; that exception must stay explicit"
+            )
+        }
     }
 
     // MARK: - 3. The clock counts the walk between machines

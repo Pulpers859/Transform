@@ -1500,11 +1500,25 @@ extension ClaudeService {
             // which shipped at one set. Trading one under-dosed movement for a focus day with no
             // focus work, plus two more under-dosed movements, is a clear loss.
             //
-            // Fixing it properly means either reserving each focus day's share of the budget
-            // before selection starts, or distributing exposures across days rather than checking
-            // a running total. Both are real changes to how menus are built. Until then the
-            // narrower defect stands, documented, with its cause recorded in
-            // `ResidueMuscleDoseTests`.
+            // The FIRST of those two remedies — reserving each focus day's share of the budget
+            // before selection — was tried here in a33fde4 and reverted in 82ae1f9. Do not retry
+            // it in this shape. A per-day cap of `maxDosedMovements / targetFrequency` was added
+            // immediately below this check; CI went green and the run's `generator-fixture-snapshot`
+            // artifact came back BYTE-IDENTICAL to the run before it, one-set lateral raise and
+            // all. The cap never bound on a single candidate, because the divisor is the PLANNED
+            // exposure count and the week schedules an area on more days than it plans — an area
+            // is counted against `targetFrequency` when it is a day's FOCUS and not when it rides
+            // along as support. A weekly budget divided by a day count the week does not honour
+            // cannot be tighter than the days actually built.
+            //
+            // So the untried remedy is the OTHER one: distributing exposures across days at
+            // menu-construction time rather than checking a running total. That is a real change
+            // to how menus are built. Until then the narrower defect stands, documented, with its
+            // cause and all three reverted attempts recorded in `ResidueMuscleDoseTests`.
+            //
+            // Note for anyone attempting it: a green CI run is NOT evidence about this defect.
+            // `testNoMovementInTheWeekShipsAtOneSet` allows the known exposure, so it passes
+            // either way. Diff the snapshot artifact against the previous run instead.
             let distinctDirect = identities.reduce(into: Set<String>()) { result, exercise in
                 let probe = WorkoutExerciseResponse(
                     exerciseName: exercise.name,
