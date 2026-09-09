@@ -2361,9 +2361,29 @@ extension ClaudeService {
     /// the SEEDED day, every movement at one set, already fits: past that line it can decline to
     /// fund further sets, but it cannot remove the movement that broke the budget.
     ///
-    /// So the seeded projection is exactly the right test — not the finished day, which is unknown
-    /// while the menu is still being built, and not the role-default projection, which the
-    /// allocator is free to stop short of.
+    /// So the projection is the right test — not the finished day, which is unknown while the
+    /// menu is still being built, and not the role-default projection, which the allocator is
+    /// free to stop short of.
+    ///
+    /// But it is projected at each movement's `minimumSetFloor`, NOT at one set, and the
+    /// difference is the below-floor defect. The allocator is free to stop short of a role
+    /// default; it is NOT free to stop short of the floor — that is the number the reduction
+    /// loops refuse to cross and the validator reports on. A day that fits at one set each and
+    /// not at floors is a day that was admitted on a promise it cannot keep, and the movement
+    /// that loses the ranking ships at ONE SET.
+    ///
+    /// This changes only the session CLOCK, and deliberately so: `fatigueContribution` charges
+    /// the same multiplier anywhere below four sets, so every role floor (2, or 3 for an anchor)
+    /// carries exactly the fatigue one set did. Time was always the constraint that actually
+    /// bound here; it is now measured against what the day is obliged to deliver.
+    ///
+    /// The trade is real and is the point. Both callers — `enforceHorizontalPullCoverage` and
+    /// `enforceMaintenanceExposureBreadth` — will now give up more often, so a week can ship with
+    /// a muscle on one weekly slot and draw the maintenance-floor finding instead. That is the
+    /// better failure: a group short of breadth is a warning about the WEEK, while a movement
+    /// stranded at one set is a session the lifter actually performs badly. Neither caller owns
+    /// the zero-exposure path — `enforceBaselineMuscleCoverage` does, and it trades slots rather
+    /// than appending through here — so a tighter gate cannot leave a muscle untrained.
     ///
     /// Without this, a balance pass could hand the lifter a session that earns "carries too much
     /// total fatigue load" or a session-budget finding. Both are correction-worthy under menu-lock:
@@ -2384,7 +2404,10 @@ extension ClaudeService {
                 )
                 return WorkoutExerciseResponse(
                     exerciseName: item.name,
-                    sets: 1,
+                    sets: minimumSetFloor(
+                        forExerciseName: item.name,
+                        muscleTarget: item.target
+                    ),
                     reps: reps,
                     tempo: proceduralTempo(
                         for: weekNumber,
@@ -2913,6 +2936,47 @@ extension ClaudeService {
     /// (duplicated-pattern, non-focus, non-anchor) slot, so no muscle loses its last exposure and
     /// no session grows in length. Menu-locked-safe: the deterministic builder owns the menu here,
     /// exactly where exercise selection is allowed to add work.
+    /// How many exercise slots for one priority a single session can actually FUND to a real
+    /// dose — never more than the flat two-per-session ceiling.
+    ///
+    /// A session may carry `maxPerSessionDirectSets` direct sets for a priority it does not
+    /// focus on, and `maxFocusSessionDirectSets` when it does. Every movement needs at least
+    /// `minimumSetFloor` sets to be worth programming. Slots beyond `cap / floor` are therefore
+    /// slots the allocator is forbidden to fill: its floor pass reaches the per-session cap check
+    /// in `canAddSet`, returns false, and the movement ships at the seed value of ONE SET.
+    ///
+    /// This is why the below-floor defect resisted three fixes. Each of them looked for more sets
+    /// to spend and was blocked by a ceiling that was already spent. The set was never available.
+    /// The SLOT should not have existed, and that is a decision made here, before the menu locks.
+    ///
+    /// Two is the smallest `minimumSetFloor` any role carries — accessory, secondary and core all
+    /// use it, an anchor needs three — so this is a NECESSARY condition, not a sufficient one. It
+    /// cannot over-restrict a session, and an anchor-heavy priority can still need a
+    /// post-allocation backstop.
+    ///
+    /// One interaction is worth stating rather than leaving to be rediscovered.
+    /// `buildBlueprintDayPlans` sets each day's `targetPrioritySlots` from
+    /// `prioritySlotsPerSession`, which divides slots by frequency and knows nothing about the
+    /// per-session direct cap, so the two can disagree. The exposure is small and it is worth
+    /// being exact about why: that field is filled from the day's FOCUS allocation only, and a
+    /// focus day is measured here against `maxFocusSessionDirectSets` rather than the tighter
+    /// non-focus cap. Where they do disagree the cost is the "was planned for N priority slots"
+    /// finding, which is correction-worthy rather than a hard failure — the same bounded cost
+    /// `styleFeasibleAllocations` already accepts when it trims a frequency the day plans were
+    /// built from. It is the right side to err on: an honest single slot beats a second slot
+    /// that ships at one set.
+    func fundablePrioritySlotsPerSession(
+        for allocation: BlueprintPriorityAllocation,
+        isFocusDay: Bool
+    ) -> Int {
+        let sessionDirectCap = isFocusDay
+            ? allocation.maxFocusSessionDirectSets
+            : allocation.maxPerSessionDirectSets
+        let smallestRoleFloor = 2.0
+        let fundableSlots = Int((sessionDirectCap / smallestRoleFloor).rounded(.down))
+        return max(1, min(2, fundableSlots))
+    }
+
     func enforcePriorityDirectSetFeasibility(
         _ menus: [[PreSelectedExercise]],
         blueprint: ProgramBlueprint,
@@ -2986,9 +3050,7 @@ extension ClaudeService {
             // `styleFeasibleAllocations` now trims the frequency target to the compatible days, so
             // in practice this fallback should only fire for a split with no compatible day at all.
             let styleCompatibleDays = trainingDays.filter { dayIndex in
-                allocation.preferredStyles.contains(
-                    canonicalTrainingStyle(blueprint.dayPlans[dayIndex].style)
-                )
+                allocationPrefersStyle(allocation, blueprint.dayPlans[dayIndex].style)
             }
             let candidateDays = styleCompatibleDays.isEmpty ? trainingDays : styleCompatibleDays
             guard !candidateDays.isEmpty else { continue }
@@ -3016,13 +3078,37 @@ extension ClaudeService {
 
                 var placed = false
                 dayLoop: for dayIndex in orderedDays {
-                    // Never over-stack one session with a single priority.
+                    let plan = blueprint.dayPlans[dayIndex]
+                    // Never over-stack one session with a single priority, and never hand a
+                    // session more slots for this priority than that session is allowed to FUND.
+                    //
+                    // The flat ceiling of two was the second half of the 2026-09-08 Week 1
+                    // failure. A session may carry `maxPerSessionDirectSets` direct sets for a
+                    // non-focus priority — 3 for a 6-set, 2-exposure allocation like Core/Abs —
+                    // while every `.core` or accessory movement needs `minimumSetFloor` = 2 sets
+                    // to be worth programming at all. Two slots against a cap of three is
+                    // arithmetically unfundable: the allocator's floor pass reaches the
+                    // per-session cap check in `canAddSet`, returns false, and the movement ships
+                    // at the seed value of ONE SET. Three previous attempts tried to fix that by
+                    // finding more sets to spend, and all three were blocked by a ceiling that
+                    // was already spent. The set was never available; the SLOT should never have
+                    // been created.
+                    //
+                    // Two sets is the smallest `minimumSetFloor` any role carries (accessory,
+                    // secondary and core; an anchor needs three), so this is a NECESSARY
+                    // condition rather than a sufficient one — it cannot over-restrict, and an
+                    // anchor-heavy priority can still need the post-allocation backstop.
                     let dayCredits = updated[dayIndex].filter {
                         credits($0.exerciseName, $0.muscleTarget, area: allocation.area)
                     }.count
-                    guard dayCredits < 2 else { continue }
+                    let dayIsFocus = plan.focusArea.map {
+                        normalizedPriorityText($0) == normalizedPriorityText(allocation.area)
+                    } ?? false
+                    guard dayCredits < fundablePrioritySlotsPerSession(
+                        for: allocation,
+                        isFocusDay: dayIsFocus
+                    ) else { continue }
 
-                    let plan = blueprint.dayPlans[dayIndex]
                     let focusIntent = focusIntentForArea(plan.focusArea, within: trainingIntent)
                     let supportIntents = plan.supportAreas.compactMap { focusIntentForArea($0, within: trainingIntent) }
 

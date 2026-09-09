@@ -687,6 +687,31 @@ extension ClaudeService {
         }
     }
 
+    /// How many DISTINCT movements in the week directly train a muscle group.
+    ///
+    /// The maintenance-floor finding used to assert its own cause — "short of exercise SLOTS,
+    /// not sets" — without ever counting the slots. On the owner's 2026-09-08 week that assertion
+    /// was simply false: Calves shipped 2 sets from ONE movement whose accessory role default is
+    /// 3, so the group was short of a set the allocator was entitled to spend and had been
+    /// refused by a day-level budget. The finding is on the correction path, so a confidently
+    /// wrong cause spends a paid correction call chasing the wrong repair.
+    ///
+    /// Matching mirrors `weeklyDirectSets` exactly, so the count and the set total can never
+    /// describe different sets of exercises.
+    func weeklyDirectMovements(forGroupAliases aliases: Set<String>, days: [WorkoutDayResponse]) -> Int {
+        var names = Set<String>()
+        for day in days where !day.isRestDay {
+            for exercise in day.exercises where exerciseDirectlyTargets(
+                groupAliases: aliases,
+                exerciseName: exercise.exerciseName,
+                muscleTarget: exercise.muscleTarget
+            ) {
+                names.insert(normalizeExerciseName(exercise.exerciseName))
+            }
+        }
+        return names.count
+    }
+
     func weightedStimulusCredit(for exercise: WorkoutExerciseResponse, area: String) -> Double {
         stimulusCredit(for: exercise, area: area).weightedStimulus
     }

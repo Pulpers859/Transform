@@ -793,8 +793,26 @@ extension ClaudeService {
                 )
             } else if directSets + 0.01 < maintenanceFloor {
                 // EvidenceProfile.md MAINT-001 / BASE-001 [confidence: low-moderate]
+                //
+                // The movement count is COUNTED; the cause is no longer asserted.
+                //
+                // This message used to state "short of exercise SLOTS, not sets" as fact. On the
+                // owner's 2026-09-08 week that was false: Calves shipped 2 sets from ONE Standing
+                // Calf Raise, an `.accessory` whose week-1 role default is 3
+                // (`phasePrescriptionsByWeek`). The allocator was entitled to a third set and a
+                // day-level budget refused it, so the group was short of a SET, and the same Lower
+                // day also carried a squat, an RDL and a lunge under their own role defaults.
+                // The finding is correction-worthy, so a confidently wrong cause spends a paid
+                // correction call on the wrong repair.
+                //
+                // Telling the two apart needs each movement's role default, which needs the week
+                // number, and this validator is not given one (`ProgramBlueprint` carries no
+                // week). Rather than plumb one through for a message, state the counted fact and
+                // name both repairs. An assertion that cannot be checked here does not become
+                // true by being shorter.
+                let movements = weeklyDirectMovements(forGroupAliases: aliases, days: days)
                 issues.append(
-                    "Non-priority muscle group '\(group.label)' falls below the maintenance weekly volume floor (\(formatStimulusValue(directSets)) sets vs \(formatStimulusValue(maintenanceFloor))). MAINT-001 puts maintenance near 6-10 quality sets per week, and the allocator can only fill an exercise to its role default — so a group this low is short of exercise SLOTS, not sets, and needs a second weekly exposure rather than more sets on the one it already has."
+                    "Non-priority muscle group '\(group.label)' falls below the maintenance weekly volume floor (\(formatStimulusValue(directSets)) sets vs \(formatStimulusValue(maintenanceFloor))). MAINT-001 puts maintenance near 6-10 quality sets per week. It has \(movements) movement(s) this week carrying \(formatStimulusValue(directSets)) set(s) between them. Either those movements are capped at their role defaults and the group needs another weekly exposure, or they are under their defaults and a day-level fatigue or session-time budget refused the sets — check which before adding an exercise."
                 )
             }
         }

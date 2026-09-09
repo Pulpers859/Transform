@@ -225,13 +225,18 @@ extension WorkoutValidatorNotice {
         // real Week 1, and with nothing to match it the owner was shown "A plan check didn't
         // pass … isn't recognized well enough to explain here" for the only thing his week had
         // to say. `.attention` rather than `.headsUp` because a muscle under its floor is a
-        // genuine coverage hole, and the shortfall is in exercise SLOTS, which no amount of
-        // training harder on the day repairs.
+        // genuine coverage hole.
+        //
+        // The copy no longer asserts WHICH shortfall it is. It used to say "it only has one
+        // exercise in the whole week", which this code never checks and which was wrong on the
+        // 2026-09-08 week: Calves had one movement held two sets under its own `.accessory` role
+        // default by a day-level budget, not a missing exercise. Owner-facing copy states what is
+        // known.
         if issue.contains("falls below the maintenance weekly volume floor") {
             return notice(
                 .attention,
                 "\(subject ?? "A non-priority muscle") is getting too little work this week",
-                "It only has one exercise in the whole week, and one exercise can't hold enough sets to keep a muscle where it is. It needs a second movement on another day, not more sets on the one it has."
+                "Across the whole week it is getting fewer sets than it needs just to hold its ground. That usually means it only has one exercise in the week, or the day it sits on ran out of room and trimmed its sets."
             )
         }
 

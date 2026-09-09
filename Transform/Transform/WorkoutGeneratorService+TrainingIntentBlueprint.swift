@@ -268,6 +268,33 @@ extension ClaudeService {
         )
     }
 
+    /// Whether an allocation's declared session styles include `style`, compared as SESSIONS
+    /// rather than as spellings. Every style-compatibility question in the planner goes through
+    /// here; none of them may compare the two lists raw.
+    ///
+    /// `sanitizedPreferredStyles` deduplicates by CANONICAL style but returns the ORIGINAL
+    /// spelling it saw first, so an allocation that falls back to the Core/Abs catalogue list
+    /// `["Legs", "Lower", "Upper"]` ships the literal "Legs". Day plans carry the canonical
+    /// "Lower". A raw `preferredStyles.contains(dayStyle)` therefore reads FALSE for every
+    /// lower-body day in the week — and reads false SILENTLY, because the allocation still prints
+    /// its full style list into the blueprint. The plan looks correct and nothing can act on it.
+    ///
+    /// This has now cost the owner two separate weeks through two different call sites. The first
+    /// time it was fixed at the one comparison that had been caught (`styleFeasibleAllocations`),
+    /// which left five more live. On the 2026-09-08 Week 1 it came back through
+    /// `companionSupportAreas` and `enforcePriorityDirectSetFeasibility`: Core/Abs saw only the
+    /// Upper day, both of its exercise slots were stacked onto that one session, and the second
+    /// one shipped at ONE set because a single session may only carry
+    /// `maxPerSessionDirectSets` (3) direct sets for it and two `.core` movements need four.
+    /// One comparison produced five of the seven validator findings on that week.
+    ///
+    /// Canonicalizing does NOT collapse two training days into one. Day-style lists carry one
+    /// entry per day, so a week with both a "Legs" day and a "Lower" day still counts two.
+    func allocationPrefersStyle(_ allocation: BlueprintPriorityAllocation, _ style: String) -> Bool {
+        let canonicalStyle = canonicalTrainingStyle(style)
+        return allocation.preferredStyles.contains { canonicalTrainingStyle($0) == canonicalStyle }
+    }
+
     /// Re-cuts each priority's weekly frequency to the number of sessions it can legally train in.
     ///
     /// `blueprintAllocation` fixes `targetFrequency` from the evidence bands before a single day
@@ -328,8 +355,7 @@ extension ClaudeService {
             // set: the floor pass could not lift it to the `.core` two-set floor because the
             // over-volume ceiling (5 * 1.15 = 5.73) was already spent by the three exposures the
             // clamped budget never expected to fund.
-            let preferredCanonicalStyles = Set(allocation.preferredStyles.map { canonicalTrainingStyle($0) })
-            let compatibleDays = trainingStyles.filter { preferredCanonicalStyles.contains($0) }.count
+            let compatibleDays = trainingStyles.filter { allocationPrefersStyle(allocation, $0) }.count
             // Zero compatible days means the style list is unusable as a constraint for this
             // split, not that the priority should stop training. Leave the allocation alone and
             // let the feasibility pass place the work off-style rather than clamping to zero.
@@ -525,7 +551,11 @@ extension ClaudeService {
 
         if trainingDays >= 5 {
             let armDemand = demandByStyle["Arms", default: 0]
-            let legsDemand = demandByStyle["Legs", default: 0] + demandByStyle["Lower", default: 0]
+            // One bucket, not the sum. `styleDemandScore` now matches styles canonically, so
+            // "Legs" and "Lower" hold the SAME score and adding them counted every lower-body
+            // allocation twice against `armDemand`. The sum existed only to reunite a demand
+            // split across the two spellings; that split is gone, so the sum has to go with it.
+            let legsDemand = demandByStyle["Lower", default: 0]
             if armDemand <= legsDemand && !selected.contains("Legs") {
                 replaceLowestDemandStyle(
                     in: &selected,
@@ -573,7 +603,7 @@ extension ClaudeService {
 
     func styleDemandScore(for style: String, allocations: [BlueprintPriorityAllocation]) -> Int {
         allocations.reduce(0) { partialResult, allocation in
-            guard allocation.preferredStyles.contains(style) else { return partialResult }
+            guard allocationPrefersStyle(allocation, style) else { return partialResult }
             let frequencyScore = allocation.targetFrequency
             let slotScore = allocation.targetExerciseSlots
             let specialtyBonus = specialtyDemandBonus(for: style, area: allocation.area)
@@ -764,9 +794,8 @@ extension ClaudeService {
         //
         // Canonicalizing does NOT collapse two days into one: `styles` carries one entry per
         // training day, so a week with both a "Legs" day and a "Lower" day still counts two.
-        let preferredCanonicalStyles = Set(allocation.preferredStyles.map { canonicalTrainingStyle($0) })
         let compatibleCount = min(
-            styles.filter { preferredCanonicalStyles.contains(canonicalTrainingStyle($0)) }.count,
+            styles.filter { allocationPrefersStyle(allocation, $0) }.count,
             max(1, allocation.targetFrequency)
         )
         guard compatibleCount > 0 else { return 0 }
@@ -886,7 +915,7 @@ extension ClaudeService {
     ) -> BlueprintPriorityAllocation? {
         allocations
             .filter { allocation in
-                allocation.preferredStyles.contains(style)
+                allocationPrefersStyle(allocation, style)
                     && usageCounts[allocation.area, default: 0] < allocation.targetFrequency
             }
             .sorted { lhs, rhs in
@@ -928,7 +957,7 @@ extension ClaudeService {
 
         return allocations
             .filter { allocation in
-                allocation.preferredStyles.contains(style)
+                allocationPrefersStyle(allocation, style)
                     && allocation.area != focus?.area
                     && usageCounts[allocation.area, default: 0] < allocation.targetFrequency
             }
@@ -965,7 +994,7 @@ extension ClaudeService {
         weeklyStyles: [String]
     ) -> Int {
         let remainingFrequency = max(0, allocation.targetFrequency - usageCounts[allocation.area, default: 0])
-        let compatibleStyleCount = max(1, weeklyStyles.filter { allocation.preferredStyles.contains($0) }.count)
+        let compatibleStyleCount = max(1, weeklyStyles.filter { allocationPrefersStyle(allocation, $0) }.count)
         let scarcityBonus = remainingFrequency >= compatibleStyleCount ? 12 : compatibleStyleCount <= 2 ? 6 : 0
         return (remainingFrequency * 100) + (scarcityBonus * 10) + Int(ceil(allocation.directSetTarget))
     }

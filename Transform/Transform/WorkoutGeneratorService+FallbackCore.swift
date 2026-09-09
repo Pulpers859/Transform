@@ -809,14 +809,13 @@ extension ClaudeService {
         guard needsFrequencyExpansion else { return candidates }
 
         let candidateSet = Set(candidates)
-        let styleCompatible = allocation.preferredStyles.map { canonicalTrainingStyle($0) }
 
         let extraDays = blueprint.dayPlans.compactMap { plan -> Int? in
             guard !plan.isRestDay else { return nil }
             let dayNumber = blueprintDayNumber(plan.dayIndex, dayStart: dayStart)
             guard !candidateSet.contains(dayNumber) else { return nil }
-            let canonical = canonicalTrainingStyle(plan.style)
-            guard styleCompatible.contains(canonical) || canonical == "Upper" else { return nil }
+            guard allocationPrefersStyle(allocation, plan.style)
+                || canonicalTrainingStyle(plan.style) == "Upper" else { return nil }
             return dayNumber
         }
 
