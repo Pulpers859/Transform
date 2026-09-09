@@ -818,8 +818,7 @@ final class GeneratorBalanceFixTests: XCTestCase {
             service.seededDayFitsItsBudgets(
                 adding: candidate,
                 to: menu,
-                plan: dayPlan(1, style: "Lower", fatigueCap: seededFatigue - 1),
-                weekNumber: 1
+                plan: dayPlan(1, style: "Lower", fatigueCap: seededFatigue - 1)
             ),
             "A day already at its fatigue cap must not accept another movement"
         )
@@ -827,8 +826,7 @@ final class GeneratorBalanceFixTests: XCTestCase {
             service.seededDayFitsItsBudgets(
                 adding: candidate,
                 to: menu,
-                plan: dayPlan(1, style: "Lower", fatigueCap: seededFatigue),
-                weekNumber: 1
+                plan: dayPlan(1, style: "Lower", fatigueCap: seededFatigue)
             ),
             "A day with room must still accept it"
         )

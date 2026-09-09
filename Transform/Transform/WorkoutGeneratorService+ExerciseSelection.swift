@@ -805,17 +805,6 @@ extension ClaudeService {
         return rebalanced
     }
 
-    func proceduralTrainingDay(from exercises: [WorkoutExerciseResponse]) -> WorkoutDayResponse {
-        WorkoutDayResponse(
-            dayNumber: 1,
-            dayName: "Procedural Session",
-            muscleGroups: "Training",
-            isRestDay: false,
-            notes: "",
-            exercises: exercises
-        )
-    }
-
     func volumeReductionCandidateIndex(
         in exercises: [WorkoutExerciseResponse],
         weekNumber: Int,
@@ -1144,7 +1133,6 @@ extension ClaudeService {
             }
         }
 
-
         // Promoting a shoulder-friendly option costs no other movement anything, so it stays on
         // the broad gate. PENALISING is the half that must be earned: it is applied only to
         // movements the lifter's own report actually implicates. See
@@ -1178,6 +1166,15 @@ extension ClaudeService {
             if metadata.exerciseClass == "Isolation" {
                 score += 6
             }
+            // Rescued from the deleted short-session block, which gated this on the day's clock.
+            // The gate was wrong but the preference was not: that block only ever fired on Arms
+            // days, because Arms is the one style whose session cap sits at or below 60, so this
+            // was in practice an Arms-day rule wearing a clock's clothes. Systemically fatiguing
+            // work is a poor fit for a pump-biased arm day for RECOVERY reasons that have nothing
+            // to do with how long the session runs, so it moves to the gate that actually
+            // described it. Removing the clock should not have quietly cost a recovery
+            // preference; an audit caught that it had.
+            score -= max(0, metadata.systemicFatigue - 1) * 2
         }
 
         if metadata.exerciseClass == "Heavy Compound" && selectionContext.calibration.lowPerformanceDataQuality {
@@ -1205,6 +1202,11 @@ extension ClaudeService {
     ///
     /// The families are deliberately small and literal. This reads a sentence a language model
     /// wrote about a body part; inferring beyond what it says is how the blanket penalty happened.
+    /// Matching is plain substring (`containsAny`), so a phrase can catch a longer word — "fly"
+    /// inside "flying". That is tolerable here and not worth a word-boundary pass: the direction
+    /// of the error is one extra movement treated carefully on a report that already describes a
+    /// shoulder problem, and every phrase is a lifting term unlikely to appear by accident in a
+    /// sentence about an injury.
     ///
     /// They are keyed off `movementPattern`, so a pattern with no family here can only be reached
     /// by name. The catalogue's shoulder-relevant patterns are covered — Vertical Press, Incline
@@ -1213,10 +1215,18 @@ extension ClaudeService {
     /// family: a bare "press" phrase would match almost any report mentioning pressing and would
     /// re-create the blanket behaviour through the widest possible door. Adding a family is the
     /// right response to a real report this failed to match, never to a hypothetical one.
+    /// - Parameter treatAsMovementPattern: overrides the pattern the metadata would infer. Pass it
+    ///   where the CALLER already knows the family — a validator whose own keyword list defines
+    ///   one — because inference from a model-invented name is unreliable in exactly the cases a
+    ///   shoulder rule must not miss. "Behind-the-Neck Lat Pulldown" infers as a Vertical Pull,
+    ///   and "Push Press" carrying `muscleTarget: "Triceps"` infers as a Close-Grip Press; both
+    ///   would then match no family and the caution would vanish with no trace. A shoulder rule
+    ///   failing OPEN is the one direction this must never fail in.
     func reportedShoulderPainImplicates(
         exerciseName: String,
         muscleTarget: String,
-        injuryRiskFocus: String
+        injuryRiskFocus: String,
+        treatAsMovementPattern: String? = nil
     ) -> Bool {
         guard hasShoulderRisk(injuryRiskFocus: injuryRiskFocus) else { return false }
 
@@ -1239,7 +1249,7 @@ extension ClaudeService {
             return true
         }
 
-        let pattern = normalizedPriorityText(metadata.movementPattern)
+        let pattern = normalizedPriorityText(treatAsMovementPattern ?? metadata.movementPattern)
         let familyPhrases: [String]
         if pattern.contains("vertical press") {
             familyPhrases = [
@@ -1270,10 +1280,20 @@ extension ClaudeService {
 
     /// Whether the analysis's injury field describes a shoulder the week must work around.
     ///
-    /// This is the single gate for shoulder caution: it scores exercise selection
-    /// (`ExerciseSelection`), drives `avoidEndRangeShoulder` in the fallback's cue generation, and
-    /// gates `validateInjuryRiskAlignment`. So a phrasing it does not recognise disables shoulder
-    /// caution EVERYWHERE at once, silently.
+    /// Whether there is a shoulder problem AT ALL. It is no longer the single gate for shoulder
+    /// caution, and the difference matters: asking this question of an individual exercise is what
+    /// let one sentence about a shoulder penalise movements the lifter had never mentioned.
+    /// Anything that acts AGAINST a specific movement now goes through
+    /// `reportedShoulderPainImplicates`, which asks whether his own words reach that movement.
+    ///
+    /// What still hangs off this broad gate, because none of it costs a movement anything: the
+    /// +10 preference for shoulder-friendly options during selection, and `avoidEndRangeShoulder`
+    /// in the fallback's cue generation. Two joint-STRESS rules
+    /// (`validateJointStressBudget` and the substitution risk-delta check) do not consult this at
+    /// all — they police accumulated load for every lifter and are not injury rules.
+    ///
+    /// A phrasing this does not recognise therefore no longer disables everything at once, but it
+    /// does still switch off the preference and the cue, so it stays deliberately broad.
     ///
     /// It used to match five named conditions and nothing else. Real analyses do not write
     /// diagnoses — the owner's read "Left anterior shoulder pain during neutral-grip overhead
@@ -2367,80 +2387,55 @@ extension ClaudeService {
     /// drift apart.
     var deloadDayExerciseTarget: Int { 5 }
 
-    /// Whether a day can absorb one more movement without breaking the budgets its plan set.
+    /// Whether a day can absorb one more movement without breaking the budget its plan set.
+    ///
+    /// The budget is day FATIGUE, and it is now the only one. The session clock used to be checked
+    /// here too and no longer is: a session the lifter does not finish is his own scheduling, not
+    /// a program that is too long, so nothing may refuse him a movement for projected minutes.
     ///
     /// This is NOT the same question as "can the allocator afford another set", and the difference
-    /// is the whole point. `fatigueContribution` charges a movement its full `fatigueCost` at ONE
-    /// set — the multiplier only rises at four sets and again at five — so an appended movement
-    /// spends day fatigue and session minutes that no later pass can walk back.
+    /// is the point. `fatigueContribution` charges a movement its full `fatigueCost` from the
+    /// first set — the multiplier only rises at four sets and again at five — so an appended
+    /// movement spends day fatigue that no later pass can walk back.
     /// `allocateWeeklySetPrescription` guarantees the finished day stays inside its cap only while
-    /// the SEEDED day, every movement at one set, already fits: past that line it can decline to
-    /// fund further sets, but it cannot remove the movement that broke the budget.
+    /// the projected day already fits: past that line it can decline to fund further sets, but it
+    /// cannot remove the movement that broke the budget.
     ///
-    /// So the projection is the right test — not the finished day, which is unknown while the
-    /// menu is still being built, and not the role-default projection, which the allocator is
-    /// free to stop short of.
+    /// Projected at each movement's `minimumSetFloor` rather than at one set, because the floor is
+    /// what the day is OBLIGED to deliver and a projection should describe that. Be clear that
+    /// this currently changes no outcome: every floor is 2, or 3 for an anchor, and
+    /// `fatigueContribution`'s multiplier is 1 anywhere below four sets, so the floor projection
+    /// and a one-set projection charge identical fatigue. It is kept because it is the honest
+    /// number and because any future set-sensitive budget must not inherit the one-set fiction —
+    /// not because it is doing something today. An earlier version of this comment claimed it
+    /// tightened the callers; an audit caught that, and it did not.
     ///
-    /// But it is projected at each movement's `minimumSetFloor`, NOT at one set, and the
-    /// difference is the below-floor defect. The allocator is free to stop short of a role
-    /// default; it is NOT free to stop short of the floor — that is the number the reduction
-    /// loops refuse to cross and the validator reports on. A day that fits at one set each and
-    /// not at floors is a day that was admitted on a promise it cannot keep, and the movement
-    /// that loses the ranking ships at ONE SET.
-    ///
-    /// This changes only the session CLOCK, and deliberately so: `fatigueContribution` charges
-    /// the same multiplier anywhere below four sets, so every role floor (2, or 3 for an anchor)
-    /// carries exactly the fatigue one set did. Time was always the constraint that actually
-    /// bound here; it is now measured against what the day is obliged to deliver.
-    ///
-    /// The trade is real and is the point. Both callers — `enforceHorizontalPullCoverage` and
-    /// `enforceMaintenanceExposureBreadth` — will now give up more often, so a week can ship with
-    /// a muscle on one weekly slot and draw the maintenance-floor finding instead. That is the
-    /// better failure: a group short of breadth is a warning about the WEEK, while a movement
-    /// stranded at one set is a session the lifter actually performs badly. Neither caller owns
-    /// the zero-exposure path — `enforceBaselineMuscleCoverage` does, and it trades slots rather
-    /// than appending through here — so a tighter gate cannot leave a muscle untrained.
-    ///
-    /// Without this, a balance pass could hand the lifter a session that earns "carries too much
-    /// total fatigue load" or a session-budget finding. Both are correction-worthy under menu-lock:
-    /// a paid correction call, and the whole paid candidate set discarded if the finding survives
-    /// it. A bad trade for one accessory.
+    /// Only `sets`, `exerciseName` and `muscleTarget` are populated. `estimatedDayFatigue` reads
+    /// nothing else, and this runs inside the candidate loops of `enforceHorizontalPullCoverage`
+    /// and `enforceMaintenanceExposureBreadth` — building rep, tempo and rest strings per
+    /// candidate only to discard them was pure waste.
     func seededDayFitsItsBudgets(
         adding candidate: (name: String, target: String),
         to menu: [PreSelectedExercise],
-        plan: BlueprintDayPlan,
-        weekNumber: Int
+        plan: BlueprintDayPlan
     ) -> Bool {
-        let seeded = (menu.map { (name: $0.exerciseName, target: $0.muscleTarget) } + [candidate])
+        let projected = (menu.map { (name: $0.exerciseName, target: $0.muscleTarget) } + [candidate])
             .map { item -> WorkoutExerciseResponse in
-                let reps = proceduralRepRange(
-                    for: weekNumber,
-                    exerciseName: item.name,
-                    muscleTarget: item.target
-                )
-                return WorkoutExerciseResponse(
+                WorkoutExerciseResponse(
                     exerciseName: item.name,
                     sets: minimumSetFloor(
                         forExerciseName: item.name,
                         muscleTarget: item.target
                     ),
-                    reps: reps,
-                    tempo: proceduralTempo(
-                        for: weekNumber,
-                        exerciseName: item.name,
-                        muscleTarget: item.target,
-                        reps: reps
-                    ),
-                    restSeconds: proceduralRestSeconds(
-                        for: item.name,
-                        muscleTarget: item.target
-                    ),
+                    reps: "",
+                    tempo: "",
+                    restSeconds: 0,
                     notes: "",
                     muscleTarget: item.target
                 )
             }
 
-        return estimatedDayFatigue(for: seeded) <= plan.targetFatigueCap
+        return estimatedDayFatigue(for: projected) <= plan.targetFatigueCap
     }
 
     /// Appends one catalogue exercise to a training day that has room for it, or returns nil when
@@ -2522,8 +2517,7 @@ extension ClaudeService {
                 guard seededDayFitsItsBudgets(
                     adding: candidate,
                     to: menus[dayIndex],
-                    plan: blueprint.dayPlans[dayIndex],
-                    weekNumber: weekNumber
+                    plan: blueprint.dayPlans[dayIndex]
                 ) else { continue }
 
                 let metadata = exerciseMetadata(

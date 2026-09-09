@@ -801,7 +801,9 @@ extension ClaudeService {
                 // Calf Raise, an `.accessory` whose week-1 role default is 3
                 // (`phasePrescriptionsByWeek`). The allocator was entitled to a third set and a
                 // day-level budget refused it, so the group was short of a SET, and the same Lower
-                // day also carried a squat, an RDL and a lunge under their own role defaults.
+                // day also carried a squat, an RDL and a lunge under their own role defaults. (At
+                // the time that budget was the session CLOCK. The clock no longer refuses
+                // anything, so the message names fatigue, which is the only day budget left.)
                 // This finding is an ACCEPTABLE WARNING, not a correction — the pattern sits in
                 // `acceptableWarningIssuePatterns`, which both disposition paths consult ahead of
                 // `correctionWorthyIssuePatterns`, so it never buys a repair call. It is worth
@@ -816,7 +818,7 @@ extension ClaudeService {
                 // true by being shorter.
                 let movements = weeklyDirectMovements(forGroupAliases: aliases, days: days)
                 issues.append(
-                    "Non-priority muscle group '\(group.label)' falls below the maintenance weekly volume floor (\(formatStimulusValue(directSets)) sets vs \(formatStimulusValue(maintenanceFloor))). MAINT-001 puts maintenance near 6-10 quality sets per week. It has \(movements) movement(s) this week carrying \(formatStimulusValue(directSets)) set(s) between them. Either those movements are capped at their role defaults and the group needs another weekly exposure, or they are under their defaults and a day-level fatigue or session-time budget refused the sets — check which before adding an exercise."
+                    "Non-priority muscle group '\(group.label)' falls below the maintenance weekly volume floor (\(formatStimulusValue(directSets)) sets vs \(formatStimulusValue(maintenanceFloor))). MAINT-001 puts maintenance near 6-10 quality sets per week. It has \(movements) movement(s) this week carrying \(formatStimulusValue(directSets)) set(s) between them. Either those movements are capped at their role defaults and the group needs another weekly exposure, or they are under their defaults and the day's fatigue budget refused the sets — check which before adding an exercise."
                 )
             }
         }

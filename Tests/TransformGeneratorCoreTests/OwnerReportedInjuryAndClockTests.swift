@@ -207,6 +207,8 @@ final class OwnerReportedInjuryAndClockTests: XCTestCase {
             score("Dip (Assisted or Weighted)", "Triceps", report: quiet),
             "A shoulder report that never mentions dips must not change how a dip is ranked"
         )
+        // A guard rather than a change detector: this delta was the same before the change, and
+        // is here so narrowing the penalty cannot quietly become removing it.
         XCTAssertLessThan(
             score("Seated Dumbbell Shoulder Press", "Anterior Deltoids", report: ownersReport),
             score("Seated Dumbbell Shoulder Press", "Anterior Deltoids", report: quiet),
@@ -254,38 +256,21 @@ final class OwnerReportedInjuryAndClockTests: XCTestCase {
             service.seededDayFitsItsBudgets(
                 adding: candidate,
                 to: menu,
-                plan: plan(sessionMinutes: 1, fatigueCap: 99),
-                weekNumber: 1
+                plan: plan(sessionMinutes: 1, fatigueCap: 99)
             ),
             "A session clock must never refuse a movement again"
         )
 
-        // Fatigue still refuses, and that is the point — the recovery budget is the one that
-        // describes the lifter rather than his calendar.
+        // Fatigue still refuses. A guard rather than a change detector — the fatigue check ran
+        // first before this change too — and it is the half that must survive: the recovery budget
+        // is the one that describes the lifter rather than his calendar.
         XCTAssertFalse(
             service.seededDayFitsItsBudgets(
                 adding: candidate,
                 to: menu,
-                plan: plan(sessionMinutes: 600, fatigueCap: 1),
-                weekNumber: 1
+                plan: plan(sessionMinutes: 600, fatigueCap: 1)
             ),
             "Day fatigue must still be able to refuse a movement"
-        )
-    }
-
-    /// The estimate itself survives as a measurement and must keep working — it is only its use
-    /// as a limit that was removed. A longer day still costs more projected minutes.
-    func testTheSessionEstimateStillMeasuresEvenThoughNothingEnforcesIt() {
-        let short = day([exercise("Back Squat", "Quads", sets: 3)])
-        let long = day([
-            exercise("Back Squat", "Quads", sets: 5),
-            exercise("Barbell Romanian Deadlift", "Hamstrings", sets: 5),
-            exercise("Leg Press", "Quads", sets: 5)
-        ])
-
-        XCTAssertGreaterThan(
-            service.estimatedSessionMinutes(for: long),
-            service.estimatedSessionMinutes(for: short)
         )
     }
 }

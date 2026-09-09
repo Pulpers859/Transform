@@ -14,8 +14,11 @@ import XCTest
 ///     been removed: the owner's skips are arrival time and phone distraction, so a movement he
 ///     runs out of time for says nothing about the movement. Deprioritization survives for
 ///     EQUIPMENT skips, which is what the tests in section 2 now cover.
-///  3. `estimatedSessionMinutes` counted no time between exercises, and the same function both
-///     builds the day and grades it — so it packed a session and then certified it as short.
+///  3. `estimatedSessionMinutes` counted no time between exercises, and at the time the same
+///     function both built the day and graded it — so it packed a session and then certified it
+///     as short. It does neither now: every gate that consumed it and the finding that graded it
+///     were removed when the session clock stopped constraining the program. The estimate and
+///     these tests remain; nothing acts on the number.
 @MainActor
 final class InjuryTimeAndSessionBudgetTests: XCTestCase {
 

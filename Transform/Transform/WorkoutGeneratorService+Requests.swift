@@ -212,11 +212,17 @@ extension ClaudeService {
             rules.append("- Rewrite ONLY the flagged exercise's note so it is execution-only: a form/setup cue plus a control, ROM, or bracing cue. Remove every load- or rep-progression phrase; if that note stated working-set effort, move it to the structured targetRIR field. Change nothing else about that exercise.")
         }
 
-        // "session budget" is gone from this condition with the finding that produced it. What
-        // remains are two CROWDING findings, which are about how much work a day holds rather than
-        // how long it takes, so the instruction no longer mentions a time budget.
+        // "session budget" left this condition with the finding that produced it, and the
+        // instruction had to change with it rather than merely lose a clause. It said to bring the
+        // session inside its budget "by correcting excessive rest periods", which cannot work for
+        // either surviving finding: both are about how much WORK a day holds, and
+        // `fatigueContribution` reads only `fatigueCost` and `sets` — rest is not an input to it,
+        // and it is not an input to the exercise count the crowding rule reads either. Worse, it
+        // was the rest-cutting back door this same change closed in the system prompt, still
+        // standing open on the correction path. With sets and exercises both locked there is no
+        // honest repair, so the model is told to leave the load alone and say so.
         if issues.contains(where: { $0.contains("too crowded") || $0.contains("fatigue load") }) {
-            rules.append("- Set counts are locked. Reduce the session's load by correcting excessive rest periods within the role-specific ranges.")
+            rules.append("- Set counts and exercise selection are both locked, so this finding is not repairable in this pass. Do NOT shorten rest periods to compensate — rest is not what the finding measures, and cutting it degrades the sets. Keep rest appropriate to each movement's role and leave the day's structure as given.")
         }
 
         if issues.contains(where: { $0.contains("Pre-Selected Exercise Menu") }) {

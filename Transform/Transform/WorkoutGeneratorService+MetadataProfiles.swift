@@ -784,15 +784,23 @@ extension ClaudeService {
                 return false
             }
 
-            // Per-exercise, not just per-week. The gate above says a shoulder problem exists;
-            // this says the lifter's own words reach THIS movement. In practice every name in the
-            // list above is a vertical press and his report names overhead pressing, so this
-            // changes nothing today — it is here so the rule cannot drift into flagging a
-            // movement he never mentioned, which is what its Arms-day sibling was doing.
+            // Per-exercise, not just per-week: the gate above says a shoulder problem exists, this
+            // says the lifter's own words reach THIS movement.
+            //
+            // The family is asserted, not inferred, and that distinction is the whole safety of
+            // this rule. The keyword list above already IS the definition of the family being
+            // policed — overhead pressing — so that is what the report is asked about. Letting
+            // `exerciseMetadata` infer it instead made the rule fail OPEN on names the model can
+            // easily produce: "Behind-the-Neck Lat Pulldown" matches the list but infers as a
+            // Vertical Pull, and "Push Press" with `muscleTarget: "Triceps"` infers as a
+            // Close-Grip Press. Neither has an overhead family, so the finding vanished with no
+            // trace. An audit caught it; the first version of this comment claimed "every name in
+            // the list above is a vertical press", which is not true of a grip modifier.
             guard reportedShoulderPainImplicates(
                 exerciseName: exercise.exerciseName,
                 muscleTarget: exercise.muscleTarget,
-                injuryRiskFocus: injuryRiskFocus
+                injuryRiskFocus: injuryRiskFocus,
+                treatAsMovementPattern: "vertical press"
             ) else { return false }
 
             let note = normalizedPriorityText(exercise.notes)
@@ -1647,7 +1655,7 @@ extension ClaudeService {
         }
 
         if containsAnyKeyword(pattern, keywords: ["squat", "hinge"]) && equipment != "Machine" {
-            avoidContexts.formUnion(["short_session", "low_data_quality"])
+            avoidContexts.insert("low_data_quality")
         }
 
         if containsAnyKeyword(name, keywords: ["close grip bench", "jm press", "dip", "arnold press", "shoulder press", "overhead press"]) {
@@ -1663,10 +1671,9 @@ extension ClaudeService {
             preferredContexts.formUnion(["shift_work_friendly", "low_data_quality"])
         }
         if containsAnyKeyword(name, keywords: ["close grip bench", "jm press", "dip"]) {
-            avoidContexts.formUnion(["shoulder_risk", "arms_pump_day", "short_session"])
+            avoidContexts.formUnion(["shoulder_risk", "arms_pump_day"])
         }
         if containsAnyKeyword(name, keywords: ["back squat", "front squat", "trap bar deadlift", "romanian deadlift"]) {
-            avoidContexts.insert("short_session")
             if equipment != "Machine" {
                 avoidContexts.insert("shift_work_friendly")
             }
@@ -1683,7 +1690,7 @@ extension ClaudeService {
         }
 
         if primary.contains(normalized("Quads")) && (equipment == "Machine" || name.contains("leg press") || name.contains("hack squat")) {
-            preferredContexts.formUnion(["shift_work_friendly", "short_session"])
+            preferredContexts.insert("shift_work_friendly")
         }
 
         if equipment == "Cable" || equipment == "Machine" {

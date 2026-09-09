@@ -321,8 +321,10 @@ final class ResidueMuscleDoseTests: XCTestCase {
 
         if blueprint.dayPlans.indices.contains(dayIndex) {
             let plan = blueprint.dayPlans[dayIndex]
+            // Fatigue only. This printed "minutes N/M" as though it were a budget check; the
+            // session clock stopped refusing anything, so that ratio described a limit that does
+            // not exist and would send whoever read this diagnostic after the wrong constraint.
             lines.append("  day fatigue \(service.estimatedDayFatigue(for: responses))/\(plan.targetFatigueCap)"
-                + "  minutes \(service.estimatedSessionMinutes(for: service.proceduralTrainingDay(from: responses)))/\(plan.targetSessionMinutes)"
                 + "  focusArea=\(plan.focusArea ?? "nil")")
         }
 
