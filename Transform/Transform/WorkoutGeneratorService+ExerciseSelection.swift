@@ -1224,10 +1224,18 @@ extension ClaudeService {
         let metadata = exerciseMetadata(forExerciseName: exerciseName, muscleTarget: muscleTarget)
 
         // Named outright ("dips hurt", "the overhead press bothers my shoulder").
-        if containsAny(reported, keywords: [normalizedPriorityText(metadata.canonicalName)]) {
-            return true
-        }
-        if containsAny(reported, keywords: [normalizedPriorityText(exerciseName)]) {
+        //
+        // The empty filter is load-bearing, not defensive dressing. `containsAny` is a substring
+        // test and Swift's `String.contains("")` is TRUE, so a blank name would match every report
+        // ever written and implicate the movement unconditionally — the blanket behaviour this
+        // function exists to end, arriving through a malformed exercise rather than a keyword
+        // list. A blank name is reachable: `exerciseMetadata`'s fallback sets `canonicalName` to
+        // whatever name it was handed, so a model response with an empty name propagates one.
+        let namedOutright = [
+            normalizedPriorityText(metadata.canonicalName),
+            normalizedPriorityText(exerciseName)
+        ].filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        if containsAny(reported, keywords: namedOutright) {
             return true
         }
 

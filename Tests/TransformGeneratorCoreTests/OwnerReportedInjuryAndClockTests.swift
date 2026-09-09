@@ -131,6 +131,18 @@ final class OwnerReportedInjuryAndClockTests: XCTestCase {
             "His report names overhead pressing only, so incline pressing stays untouched"
         )
 
+        // A blank name must not become a wildcard. `containsAny` is a substring test and
+        // `"anything".contains("")` is true, so an unfiltered empty keyword would implicate every
+        // movement against every report.
+        XCTAssertFalse(
+            service.reportedShoulderPainImplicates(
+                exerciseName: "",
+                muscleTarget: "",
+                injuryRiskFocus: ownersReport
+            ),
+            "An empty exercise name must never match a report"
+        )
+
         // No reported shoulder problem at all means nothing is implicated.
         XCTAssertFalse(
             service.reportedShoulderPainImplicates(
