@@ -70,10 +70,14 @@ extension ClaudeService {
         let programmingNotes: [String]
     }
 
+    /// What exercise SELECTION is allowed to know about a day.
+    ///
+    /// It carried `targetSessionMinutes` until the session clock stopped constraining the program.
+    /// Nothing read it once the short-session scoring preference went, and a field nothing reads
+    /// is a standing invitation to re-introduce the behaviour it used to drive.
     struct ExerciseSelectionContext {
         let calibration: ProgramCalibrationProfile
         let injuryRiskFocus: String
-        let targetSessionMinutes: Int
         let style: String
     }
 

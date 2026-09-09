@@ -204,17 +204,6 @@ extension WorkoutValidatorNotice {
             )
         }
 
-        // Ordering hazard: this branch is a bare substring test and it runs BEFORE the
-        // maintenance-floor branch below, whose message ends "...a day-level fatigue or
-        // session-time budget refused the sets". The hyphen is the only thing keeping that
-        // finding out of this notice. Anyone rewording either string has to keep them disjoint.
-        if issue.contains("session budget") {
-            return notice(
-                .headsUp,
-                day.map { "Day \($0) will likely run long" } ?? "One session will likely run long",
-                "Estimated time for that day is over its planned budget. Trim the last accessory if you're short on time."
-            )
-        }
 
         if issue.contains("exceeds the maintenance weekly volume ceiling") {
             return notice(

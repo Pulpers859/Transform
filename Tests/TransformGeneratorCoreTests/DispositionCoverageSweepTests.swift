@@ -239,18 +239,6 @@ final class DispositionCoverageSweepTests: XCTestCase {
             injuryRiskFocus: "Left anterior shoulder pain during neutral-grip overhead pressing is the key flag."
         )
 
-        // A session far past its time budget.
-        findings += service.validateSessionTimeBudget(
-            on: day(1, [
-                exercise("Back Squat", "Quads", sets: 5, restSeconds: 240),
-                exercise("Barbell Romanian Deadlift", "Hamstrings", sets: 5, restSeconds: 240),
-                exercise("Leg Press", "Quads", sets: 5, restSeconds: 240),
-                exercise("Seated Leg Curl", "Hamstrings", sets: 5, restSeconds: 240),
-                exercise("Standing Calf Raise", "Calves", sets: 5, restSeconds: 240)
-            ]),
-            budgetMinutes: 45
-        )
-
         // Joint-stress overload.
         findings += service.validateJointStressBudget(on: day(1, [
             exercise("Incline Barbell Press", "Upper Chest", sets: 5),

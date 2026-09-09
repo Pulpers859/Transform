@@ -1537,7 +1537,6 @@ extension ClaudeService {
             "is not clearly adapted to the shoulder risk",
             "minimum viable stimulus threshold",
             "uses too many weekly exercise variations",
-            "session budget",
             "session notes are empty or too short",
             "session notes are generic",
             // Rewriting one sentence is the textbook correction-pass repair: it touches no

@@ -193,11 +193,9 @@ extension ClaudeService {
                     focusIntent: focusIntent,
                     supportIntents: supportIntents,
                     targetFatigueCap: plan.targetFatigueCap,
-                    targetSessionMinutes: plan.targetSessionMinutes,
                     selectionContext: ExerciseSelectionContext(
                         calibration: blueprint.calibration,
                         injuryRiskFocus: blueprint.injuryRiskFocus,
-                        targetSessionMinutes: plan.targetSessionMinutes,
                         style: style
                     ),
                     previousExercises: previousExercises
@@ -359,10 +357,6 @@ extension ClaudeService {
                             blueprint.dayPlans.first(where: { $0.dayIndex == relativeDayIndex })?.targetFatigueCap
                         }
                         ?? maxDailyFatigueThreshold(for: repaired, dayNumber: dayNumber)
-                    let targetSessionMinutes = relativeBlueprintDayIndex(for: dayNumber, dayStart: dayStart)
-                        .flatMap { relativeDayIndex in
-                            blueprint.dayPlans.first(where: { $0.dayIndex == relativeDayIndex })?.targetSessionMinutes
-                        }
                     var exercises = day.exercises
                     var dayChanged = false
                     var startedWithoutExposure = currentDirectSets <= 0.01
@@ -412,7 +406,6 @@ extension ClaudeService {
                             weekNumber: weekNumber,
                             targetFatigueCap: targetFatigueCap,
                             dayStyle: dayStyle,
-                            targetSessionMinutes: targetSessionMinutes,
                             remainingSessionDirectCapacity: remainingSessionDirectCapacity,
                             minimumDirectGainNeeded: minimumDirectGainNeeded,
                             weeklyVariationKeys: weeklyVariationKeys,
@@ -467,8 +460,7 @@ extension ClaudeService {
 
                             if !canAccommodatePriorityRepair(
                                 updatedExercises,
-                                targetFatigueCap: targetFatigueCap,
-                                targetSessionMinutes: targetSessionMinutes
+                                targetFatigueCap: targetFatigueCap
                             ) {
                                 if menuLocked,
                                    let trimIndex = focusBudgetTrimCandidate(
@@ -482,8 +474,7 @@ extension ClaudeService {
                                     )
                                     if canAccommodatePriorityRepair(
                                         updatedExercises,
-                                        targetFatigueCap: targetFatigueCap,
-                                        targetSessionMinutes: targetSessionMinutes
+                                        targetFatigueCap: targetFatigueCap
                                     ) {
                                         exercises = updatedExercises
                                         remainingDirectShortfall = max(0, remainingDirectShortfall - perSetGain)
@@ -534,7 +525,6 @@ extension ClaudeService {
                             weekNumber: weekNumber,
                             targetFatigueCap: targetFatigueCap,
                             dayStyle: dayStyle,
-                            targetSessionMinutes: targetSessionMinutes,
                             remainingSessionDirectCapacity: remainingSessionDirectCapacity,
                             minimumDirectGainNeeded: minimumDirectGainNeeded,
                             weeklyVariationKeys: updatedWeeklyVariationKeys,
@@ -599,6 +589,10 @@ extension ClaudeService {
                     normalizedPriorityText($0.area) == normalizedPriorityText(area)
                 }).map(priorityIntent(for:))
             }
+            // The unlocked branch used to be `rebalanceSessionTime`, which trimmed sets and then
+            // REMOVED movements to fit a clock. Nothing replaces it: a day that runs long is not a
+            // day with too much work in it. `setOnlyFatigueRebalance` still holds the recovery
+            // budget on the locked path, and that is the budget that describes the lifter.
             let trimmedExercises: [WorkoutExerciseResponse]
             if menuLocked {
                 trimmedExercises = setOnlyFatigueRebalance(
@@ -606,17 +600,10 @@ extension ClaudeService {
                     weekNumber: weekNumber,
                     focusIntent: focusIntent,
                     supportIntents: supportIntents,
-                    targetFatigueCap: plan.targetFatigueCap,
-                    targetSessionMinutes: plan.targetSessionMinutes
+                    targetFatigueCap: plan.targetFatigueCap
                 )
             } else {
-                trimmedExercises = rebalanceSessionTime(
-                    in: day.exercises,
-                    weekNumber: weekNumber,
-                    focusIntent: focusIntent,
-                    supportIntents: supportIntents,
-                    targetSessionMinutes: plan.targetSessionMinutes
-                )
+                trimmedExercises = day.exercises
             }
             updatedDays[index] = WorkoutDayResponse(
                 dayNumber: day.dayNumber,
@@ -763,8 +750,7 @@ extension ClaudeService {
                     guard recipientExercises.count <= 8,
                           canAccommodatePriorityRepair(
                             recipientExercises,
-                            targetFatigueCap: recipientPlan.targetFatigueCap,
-                            targetSessionMinutes: recipientPlan.targetSessionMinutes
+                            targetFatigueCap: recipientPlan.targetFatigueCap
                           ) else {
                         continue
                     }
@@ -853,7 +839,6 @@ extension ClaudeService {
         weekNumber: Int,
         targetFatigueCap: Int,
         dayStyle: String,
-        targetSessionMinutes: Int?,
         remainingSessionDirectCapacity: Double,
         minimumDirectGainNeeded: Double,
         weeklyVariationKeys: Set<String>,
@@ -937,8 +922,7 @@ extension ClaudeService {
             if exercises.count < 8,
                canAccommodatePriorityRepair(
                     appended,
-                    targetFatigueCap: targetFatigueCap,
-                    targetSessionMinutes: targetSessionMinutes
+                    targetFatigueCap: targetFatigueCap
                ) {
                 updated.append(newExercise)
                 return (exercises: updated, directGain: directGain)
@@ -962,8 +946,7 @@ extension ClaudeService {
 
             if canAccommodatePriorityRepair(
                 updated,
-                targetFatigueCap: targetFatigueCap,
-                targetSessionMinutes: targetSessionMinutes
+                targetFatigueCap: targetFatigueCap
             ) {
                 return (exercises: updated, directGain: directGain)
             }
@@ -1052,18 +1035,12 @@ extension ClaudeService {
 
     func canAccommodatePriorityRepair(
         _ exercises: [WorkoutExerciseResponse],
-        targetFatigueCap: Int,
-        targetSessionMinutes: Int?
+        targetFatigueCap: Int
     ) -> Bool {
-        guard estimatedDayFatigue(for: exercises) <= targetFatigueCap else {
-            return false
-        }
-
-        guard let targetSessionMinutes, targetSessionMinutes > 0 else {
-            return true
-        }
-
-        return estimatedSessionMinutes(for: proceduralTrainingDay(from: exercises)) <= targetSessionMinutes + 3
+        // Fatigue only; the clock no longer refuses a priority repair. Refusing one for time meant
+        // a muscle went under-trained for the week because a session was projected to run long,
+        // which is the trade this app is not allowed to make any more.
+        return estimatedDayFatigue(for: exercises) <= targetFatigueCap
     }
 
     func focusBudgetTrimCandidate(
@@ -1186,7 +1163,6 @@ extension ClaudeService {
         focusIntent: MusclePriorityIntent?,
         supportIntents: [MusclePriorityIntent],
         targetFatigueCap: Int,
-        targetSessionMinutes: Int,
         selectionContext: ExerciseSelectionContext,
         previousExercises: [WorkoutExerciseResponse]
     ) -> [WorkoutExerciseResponse] {
@@ -1307,8 +1283,7 @@ extension ClaudeService {
                 weekNumber: weekNumber,
                 focusIntent: focusIntent,
                 supportIntents: supportIntents,
-                targetFatigueCap: targetFatigueCap,
-                targetSessionMinutes: targetSessionMinutes
+                targetFatigueCap: targetFatigueCap
             ),
             avoidEndRangeShoulder: hasShoulderRisk(injuryRiskFocus: selectionContext.injuryRiskFocus)
         )

@@ -212,8 +212,11 @@ extension ClaudeService {
             rules.append("- Rewrite ONLY the flagged exercise's note so it is execution-only: a form/setup cue plus a control, ROM, or bracing cue. Remove every load- or rep-progression phrase; if that note stated working-set effort, move it to the structured targetRIR field. Change nothing else about that exercise.")
         }
 
-        if issues.contains(where: { $0.contains("session budget") || $0.contains("too crowded") || $0.contains("fatigue load") }) {
-            rules.append("- Set counts are locked. Bring the session inside its time budget by correcting excessive rest periods within the role-specific ranges.")
+        // "session budget" is gone from this condition with the finding that produced it. What
+        // remains are two CROWDING findings, which are about how much work a day holds rather than
+        // how long it takes, so the instruction no longer mentions a time budget.
+        if issues.contains(where: { $0.contains("too crowded") || $0.contains("fatigue load") }) {
+            rules.append("- Set counts are locked. Reduce the session's load by correcting excessive rest periods within the role-specific ranges.")
         }
 
         if issues.contains(where: { $0.contains("Pre-Selected Exercise Menu") }) {
@@ -331,7 +334,10 @@ extension ClaudeService {
           region breakdown in the analysis — don't default.
         - Training days: exercises and set counts exactly as listed in the Pre-Selected Exercise Menu. Rest days: empty
           exercises array.
-        - 60-75 minute sessions.
+        - Do NOT target a session duration. The exercises and set counts are already fixed by the
+          Pre-Selected Exercise Menu, so the only lever a time target leaves you is cutting rest
+          periods, and short-changing rest to hit a clock makes the sets worse. Set rest from the
+          role of each movement, and let the session take as long as that honestly takes.
         - Day theme and exercises must align (an Arms day cannot include squats; a Legs day cannot
           include bench press).
         - Follow the Weekly Blueprint exactly when deciding split structure, session emphasis,

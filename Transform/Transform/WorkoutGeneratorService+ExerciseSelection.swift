@@ -448,7 +448,6 @@ extension ClaudeService {
         focusIntent: MusclePriorityIntent?,
         supportIntents: [MusclePriorityIntent],
         targetFatigueCap: Int,
-        targetSessionMinutes: Int? = nil,
         menuLocked: Bool = false
     ) -> [WorkoutExerciseResponse] {
         var balanced = exercises
@@ -497,23 +496,13 @@ extension ClaudeService {
                 balanced.remove(at: removalIndex)
             }
 
-            if let targetSessionMinutes {
-                balanced = rebalanceSessionTime(
-                    in: balanced,
-                    weekNumber: weekNumber,
-                    focusIntent: focusIntent,
-                    supportIntents: supportIntents,
-                    targetSessionMinutes: targetSessionMinutes
-                )
-            }
         } else {
             balanced = setOnlyFatigueRebalance(
                 balanced,
                 weekNumber: weekNumber,
                 focusIntent: focusIntent,
                 supportIntents: supportIntents,
-                targetFatigueCap: targetFatigueCap,
-                targetSessionMinutes: targetSessionMinutes
+                targetFatigueCap: targetFatigueCap
             )
         }
 
@@ -525,8 +514,7 @@ extension ClaudeService {
         weekNumber: Int,
         focusIntent: MusclePriorityIntent?,
         supportIntents: [MusclePriorityIntent],
-        targetFatigueCap: Int,
-        targetSessionMinutes: Int?
+        targetFatigueCap: Int
     ) -> [WorkoutExerciseResponse] {
         var balanced = exercises
 
@@ -537,17 +525,6 @@ extension ClaudeService {
             ) else { break }
             guard balanced[idx].sets > minimumSetFloor(for: balanced[idx]) else { break }
             balanced[idx] = exerciseResponse(balanced[idx], withSets: balanced[idx].sets - 1)
-        }
-
-        if let targetSessionMinutes {
-            while estimatedSessionMinutes(for: proceduralTrainingDay(from: balanced)) > targetSessionMinutes + 3 {
-                guard let idx = volumeReductionCandidateIndex(
-                    in: balanced, weekNumber: weekNumber,
-                    focusIntent: focusIntent, supportIntents: supportIntents
-                ) else { break }
-                guard balanced[idx].sets > minimumSetFloor(for: balanced[idx]) else { break }
-                balanced[idx] = exerciseResponse(balanced[idx], withSets: balanced[idx].sets - 1)
-            }
         }
 
         return balanced
@@ -818,45 +795,6 @@ extension ClaudeService {
             }
 
             if weekNumber > 1 && rebalanced.count > 5 {
-                rebalanced.remove(at: reductionIndex)
-                continue
-            }
-
-            break
-        }
-
-        return rebalanced
-    }
-
-    func rebalanceSessionTime(
-        in exercises: [WorkoutExerciseResponse],
-        weekNumber: Int,
-        focusIntent: MusclePriorityIntent?,
-        supportIntents: [MusclePriorityIntent],
-        targetSessionMinutes: Int
-    ) -> [WorkoutExerciseResponse] {
-        var rebalanced = exercises
-
-        while estimatedSessionMinutes(for: proceduralTrainingDay(from: rebalanced)) > targetSessionMinutes + 3 {
-            guard let reductionIndex = volumeReductionCandidateIndex(
-                in: rebalanced,
-                weekNumber: weekNumber,
-                focusIntent: focusIntent,
-                supportIntents: supportIntents
-            ) else {
-                break
-            }
-
-            let minimumSets = minimumSetFloor(for: rebalanced[reductionIndex])
-            if rebalanced[reductionIndex].sets > minimumSets {
-                rebalanced[reductionIndex] = exerciseResponse(
-                    rebalanced[reductionIndex],
-                    withSets: rebalanced[reductionIndex].sets - 1
-                )
-                continue
-            }
-
-            if rebalanced.count > 5 {
                 rebalanced.remove(at: reductionIndex)
                 continue
             }
@@ -1206,24 +1144,22 @@ extension ClaudeService {
             }
         }
 
-        if selectionContext.targetSessionMinutes <= 60 {
-            if metadata.preferredContexts.contains("short_session") {
-                score += 8
-            }
-            if metadata.avoidContexts.contains("short_session") {
-                score -= 10
-            }
-            if metadata.exerciseClass == "Isolation" || metadata.exerciseClass == "Prehab" {
-                score += 4
-            }
-            score -= max(0, metadata.systemicFatigue - 1) * 2
-        }
 
-        if hasShoulderRisk(injuryRiskFocus: selectionContext.injuryRiskFocus) {
+        // Promoting a shoulder-friendly option costs no other movement anything, so it stays on
+        // the broad gate. PENALISING is the half that must be earned: it is applied only to
+        // movements the lifter's own report actually implicates. See
+        // `reportedShoulderPainImplicates`.
+        if hasShoulderRisk(injuryRiskFocus: selectionContext.injuryRiskFocus),
+           metadata.preferredContexts.contains("shoulder_risk")
+            || metadata.preferredContexts.contains("shoulder_friendly") {
+            score += 10
+        }
+        if reportedShoulderPainImplicates(
+            exerciseName: exerciseName,
+            muscleTarget: muscleTarget,
+            injuryRiskFocus: selectionContext.injuryRiskFocus
+        ) {
             score -= metadata.shoulderRisk * 5
-            if metadata.preferredContexts.contains("shoulder_risk") || metadata.preferredContexts.contains("shoulder_friendly") {
-                score += 10
-            }
             if metadata.avoidContexts.contains("shoulder_risk") {
                 score -= 14
             }
@@ -1249,6 +1185,67 @@ extension ClaudeService {
         }
 
         return score
+    }
+
+    /// Whether the lifter's OWN report implicates THIS movement.
+    ///
+    /// `hasShoulderRisk` answers "is there a shoulder problem at all", and that is the wrong
+    /// question to ask about an individual exercise. Asking it anyway did real damage: one
+    /// sentence about shoulder pain switched on a blanket penalty driven by a hardcoded keyword
+    /// list, so movements the lifter had never mentioned were pushed down the catalogue and
+    /// flagged by the validator. On the 2026-09-08 week that list cost "Dip (Assisted or
+    /// Weighted)" 34 points of selection score and produced a finding about it, for a lifter whose
+    /// report names only overhead pressing. His instruction is exact: "dips don't bother it. Don't
+    /// attack exercises that I don't mark or talk about hurting."
+    ///
+    /// So caution is per-movement and evidence-bound. A movement is implicated only when his own
+    /// words name it — by name, or by the family the movement belongs to. Anything he has actually
+    /// MARKED in the app is a separate and stronger channel that already worked: a `.skippedPain`
+    /// log becomes `painExercises`, which `preSelectedExerciseMenu` excludes outright.
+    ///
+    /// The families are deliberately small and literal. This reads a sentence a language model
+    /// wrote about a body part; inferring beyond what it says is how the blanket penalty happened.
+    func reportedShoulderPainImplicates(
+        exerciseName: String,
+        muscleTarget: String,
+        injuryRiskFocus: String
+    ) -> Bool {
+        guard hasShoulderRisk(injuryRiskFocus: injuryRiskFocus) else { return false }
+
+        let reported = normalizedPriorityText(injuryRiskFocus)
+        let metadata = exerciseMetadata(forExerciseName: exerciseName, muscleTarget: muscleTarget)
+
+        // Named outright ("dips hurt", "the overhead press bothers my shoulder").
+        if containsAny(reported, keywords: [normalizedPriorityText(metadata.canonicalName)]) {
+            return true
+        }
+        if containsAny(reported, keywords: [normalizedPriorityText(exerciseName)]) {
+            return true
+        }
+
+        let pattern = normalizedPriorityText(metadata.movementPattern)
+        let familyPhrases: [String]
+        if pattern.contains("vertical press") {
+            familyPhrases = [
+                "overhead press", "overhead pressing", "press overhead", "pressing overhead",
+                "shoulder press", "military press", "strict press", "vertical press", "overhead"
+            ]
+        } else if pattern.contains("dip") {
+            familyPhrases = ["dip"]
+        } else if pattern.contains("upright row") {
+            familyPhrases = ["upright row"]
+        } else if pattern.contains("horizontal press") {
+            familyPhrases = ["bench press", "bench pressing", "horizontal press", "flat press"]
+        } else if pattern.contains("lateral raise") {
+            familyPhrases = ["lateral raise", "side raise"]
+        } else if pattern.contains("fly") {
+            familyPhrases = ["fly", "flye", "pec deck"]
+        } else {
+            familyPhrases = []
+        }
+
+        guard !familyPhrases.isEmpty else { return false }
+        return containsAny(reported, keywords: familyPhrases)
     }
 
     /// Whether the analysis's injury field describes a shoulder the week must work around.
@@ -1653,7 +1650,6 @@ extension ClaudeService {
             let selectionContext = ExerciseSelectionContext(
                 calibration: blueprint.calibration,
                 injuryRiskFocus: blueprint.injuryRiskFocus,
-                targetSessionMinutes: plan.targetSessionMinutes,
                 style: style
             )
 
@@ -2424,9 +2420,7 @@ extension ClaudeService {
                 )
             }
 
-        guard estimatedDayFatigue(for: seeded) <= plan.targetFatigueCap else { return false }
-        return estimatedSessionMinutes(for: proceduralTrainingDay(from: seeded))
-            <= plan.targetSessionMinutes + 3
+        return estimatedDayFatigue(for: seeded) <= plan.targetFatigueCap
     }
 
     /// Appends one catalogue exercise to a training day that has room for it, or returns nil when
@@ -3498,9 +3492,11 @@ extension ClaudeService {
                     addingSet: index == exerciseIndex
                 )
             }
+            // Fatigue only. The session clock no longer refuses a set: the owner's report is that
+            // a session he does not finish is a scheduling problem of his own, not a program that
+            // is too long, and a clock that cuts sets is the app punishing him for arriving late.
+            // Recovery is still policed, by the one budget that is about his body.
             guard estimatedDayFatigue(for: dayExercises) <= plan.targetFatigueCap else { return false }
-            guard estimatedSessionMinutes(for: proceduralTrainingDay(from: dayExercises))
-                    <= plan.targetSessionMinutes + 3 else { return false }
 
             for allocIndex in allocations.indices {
                 guard accounting[dayIndex][exerciseIndex].unitDirect[allocIndex] > 0 else { continue }

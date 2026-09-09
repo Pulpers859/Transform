@@ -207,7 +207,7 @@ extension ClaudeService {
                 ? ""
                 : "; support \(dayPlan.supportAreas.joined(separator: ", "))"
             let patterns = dayPlan.emphasisPatterns.joined(separator: ", ")
-            return "- day \(dayPlan.dayIndex): \(dayPlan.style) focus \(focus)\(support); priority slots \(dayPlan.targetPrioritySlots); fatigue cap \(dayPlan.targetFatigueCap); session budget ~\(dayPlan.targetSessionMinutes) min; patterns \(patterns.isEmpty ? "(none)" : patterns)"
+            return "- day \(dayPlan.dayIndex): \(dayPlan.style) focus \(focus)\(support); priority slots \(dayPlan.targetPrioritySlots); fatigue cap \(dayPlan.targetFatigueCap); typical length ~\(dayPlan.targetSessionMinutes) min (reference only, never a target); patterns \(patterns.isEmpty ? "(none)" : patterns)"
         }.joined(separator: "\n")
 
         return """
@@ -1513,6 +1513,21 @@ extension ClaudeService {
         )
     }
 
+    /// The typical length a session of this style is expected to run. REFERENCE ONLY.
+    ///
+    /// It is named "cap" for its history and nothing else. Nothing caps anything with it any
+    /// more: the gates and trim loops that used it to refuse sets, refuse movements and delete
+    /// movements are gone, as is the correction-worthy finding that graded a day against it. It
+    /// survives in one place — a line in the printed blueprint, explicitly marked "reference only,
+    /// never a target" — because the model still needs a rough sense of the session it is writing
+    /// notes for, and because the recovery-tier ladder behind it is the thing
+    /// `InjuryTimeAndSessionBudgetTests.testEveryRecoveryTierGetsItsFullBaselineSession` watches
+    /// for silent subtraction.
+    ///
+    /// The owner's position, twice stated: a session he does not finish is his own scheduling, not
+    /// a program that is too long. Anything that turns this number back into a constraint needs
+    /// his agreement first, and the back door to watch is REST — with the menu locked, a duration
+    /// target can only be met by shortening rest, which quietly makes the sets worse.
     func sessionTimeCapMinutes(for style: String, calibration: ProgramCalibrationProfile) -> Int {
         calibration.sessionTimeCapsByStyle[canonicalTrainingStyle(style)] ?? calibration.defaultSessionTimeCapMinutes
     }

@@ -253,7 +253,16 @@ extension ClaudeService {
                 focusArea: plan.focusArea,
                 supportAreas: plan.supportAreas
             ))
-            issues.append(contentsOf: validateSessionTimeBudget(on: actualDay, budgetMinutes: plan.targetSessionMinutes))
+            // Lifted out of `validateSessionFocusDiscipline` so it can be told what the lifter
+            // actually reported. It used to fire on a hardcoded name list with no reference to the
+            // report at all, which is how a Dip drew a shoulder finding for someone whose report
+            // names only overhead pressing.
+            issues.append(contentsOf: validateArmsDayShoulderStress(
+                on: actualDay,
+                expectedStyle: canonicalTrainingStyle(plan.style),
+                focusArea: plan.focusArea,
+                injuryRiskFocus: blueprint.injuryRiskFocus
+            ))
             issues.append(contentsOf: validateSessionNoteAlignment(on: actualDay))
             issues.append(contentsOf: validateInjuryRiskAlignment(
                 on: actualDay,
@@ -277,17 +286,19 @@ extension ClaudeService {
         return issues
     }
 
-    func validateSessionTimeBudget(on day: WorkoutDayResponse, budgetMinutes: Int) -> [String] {
-        guard budgetMinutes > 0, !day.isRestDay else { return [] }
-
-        let estimatedMinutes = estimatedSessionMinutes(for: day)
-        guard estimatedMinutes > budgetMinutes + 5 else { return [] }
-
-        return [
-            "Day \(day.dayNumber) is likely to run about \(estimatedMinutes) minutes, which exceeds its ~\(budgetMinutes)-minute session budget. Trim low-value accessories or simplify setup instead of letting the session bloat."
-        ]
-    }
-
+    /// How long a session is likely to take. An ESTIMATE, and deliberately nothing more.
+    ///
+    /// It used to be a budget: `validateSessionTimeBudget` turned it into a correction-worthy
+    /// finding, and four separate gates used it to refuse sets, refuse movements, trim sets and
+    /// even delete a movement outright to make a day fit. All of that is gone. The owner's report
+    /// is that a session he does not finish is his own scheduling — arriving late, phone — and not
+    /// a program that is too long, so a clock that cuts his training is the app punishing him for
+    /// something the program did not cause. Day fatigue is the budget now; it is the one that
+    /// describes his body.
+    ///
+    /// Do not wire this back into a gate. If a future change genuinely needs a length limit, it
+    /// needs the owner's agreement first, and it must be measured against what a day OWES —
+    /// every movement at `minimumSetFloor` — not against the one-set fiction the old gates used.
     func estimatedSessionMinutes(for day: WorkoutDayResponse) -> Int {
         guard !day.isRestDay else { return 0 }
 
@@ -303,19 +314,18 @@ extension ClaudeService {
         // unloading a bar, or waiting for an occupied machine — so a six-movement session across
         // six pieces of equipment was costed as though the lifter teleported between them.
         //
-        // That blind spot was load-bearing rather than cosmetic, because the same function both
-        // BUILDS the day (the selection gates and the two trim loops in `ExerciseSelection`) and
-        // GRADES it (`validateSessionTimeBudget`). An optimistic clock therefore packed the day
-        // and then certified the packed day as comfortably inside budget: the owner's Upper day
-        // estimated ~55 minutes against a 70-minute target while three of its six movements were
-        // on his own "ran out of time" list. Nothing else in the pipeline could catch it, because
-        // there is no second opinion about how long a session takes.
+        // That blind spot WAS load-bearing, when this function both built the day and graded it.
+        // It no longer does either: the gates and trim loops that consumed it are gone and so is
+        // the finding that graded it, so the changeover charge now only makes the estimate more
+        // honest. Kept, not reverted — an estimate worth showing has to be one worth believing,
+        // and 1.5 minutes per changeover is a commercial-gym floor rather than an allowance for a
+        // busy evening.
         //
-        // 1.5 minutes per changeover is deliberately conservative — it is a commercial-gym floor,
-        // not an allowance for a busy evening — so the estimate moves toward honest without
-        // suddenly shrinking every session. It cannot starve a day below the five-exercise
-        // validator floor: the set-trim loop only ever removes SETS down to `minimumSetFloor`, and
-        // the rebalance loop drops a movement only while `count > 5`.
+        // The history is worth keeping because it is the argument against re-wiring this: an
+        // optimistic clock packed the owner's Upper day and then certified the packed day as
+        // comfortably inside budget — ~55 estimated minutes against a 70-minute target, with
+        // three of its six movements on his own "ran out of time" list. A number that both
+        // decides and marks its own work has no second opinion anywhere in the pipeline.
         let transitionMinutes = Double(max(0, day.exercises.count - 1)) * 1.5
 
         return Int(ceil(warmupMinutes + exerciseMinutes + transitionMinutes))
@@ -499,12 +509,6 @@ extension ClaudeService {
             )
         }
 
-        issues.append(contentsOf: validateArmsDayShoulderStress(
-            on: day,
-            expectedStyle: expectedCanonical,
-            focusArea: focusArea
-        ))
-
         if expectedCanonical == "Lower" && day.exercises.count >= 7 {
             issues.append(
                 "Day \(day.dayNumber) is too crowded for a fatigue-managed Lower session. In a shift-work recomposition block, prefer fewer high-value lower-body movements over extra filler."
@@ -598,10 +602,24 @@ extension ClaudeService {
         return []
     }
 
+    /// Shoulder-intensive pressing on a delt-biased Arms day, for movements the lifter has
+    /// actually reported.
+    ///
+    /// This rule used to read a hardcoded name list — "close grip bench", "dip", "shoulder
+    /// press", "overhead press", "arnold press" — and nothing else. It never looked at the
+    /// analysis, so it fired identically whether or not the lifter had a shoulder problem, and
+    /// whether or not the movement it named was one he had ever complained about. On the
+    /// 2026-09-08 week it flagged a Dip for a lifter whose report names only neutral-grip overhead
+    /// pressing, and who says dips do not bother him at all. A warning that invents its own
+    /// premise teaches him to skim the list, which costs more than the rule catches.
+    ///
+    /// The name list stays as the definition of "shoulder-intensive", but a movement is only
+    /// flagged when `reportedShoulderPainImplicates` agrees the lifter's own words reach it.
     func validateArmsDayShoulderStress(
         on day: WorkoutDayResponse,
         expectedStyle: String,
-        focusArea: String?
+        focusArea: String?,
+        injuryRiskFocus: String
     ) -> [String] {
         guard expectedStyle == "Arms" else { return [] }
 
@@ -613,7 +631,7 @@ extension ClaudeService {
 
         let shoulderIntensivePresses = day.exercises.filter { exercise in
             let normalizedName = normalizeExerciseName(exercise.exerciseName)
-            return containsAny(
+            guard containsAny(
                 normalizedName,
                 keywords: [
                     "close grip bench",
@@ -623,6 +641,11 @@ extension ClaudeService {
                     "overhead press",
                     "arnold press"
                 ]
+            ) else { return false }
+            return reportedShoulderPainImplicates(
+                exerciseName: exercise.exerciseName,
+                muscleTarget: exercise.muscleTarget,
+                injuryRiskFocus: injuryRiskFocus
             )
         }
 
@@ -760,6 +783,17 @@ extension ClaudeService {
             ) else {
                 return false
             }
+
+            // Per-exercise, not just per-week. The gate above says a shoulder problem exists;
+            // this says the lifter's own words reach THIS movement. In practice every name in the
+            // list above is a vertical press and his report names overhead pressing, so this
+            // changes nothing today — it is here so the rule cannot drift into flagging a
+            // movement he never mentioned, which is what its Arms-day sibling was doing.
+            guard reportedShoulderPainImplicates(
+                exerciseName: exercise.exerciseName,
+                muscleTarget: exercise.muscleTarget,
+                injuryRiskFocus: injuryRiskFocus
+            ) else { return false }
 
             let note = normalizedPriorityText(exercise.notes)
             return !containsAny(name, keywords: ["landmine"])
