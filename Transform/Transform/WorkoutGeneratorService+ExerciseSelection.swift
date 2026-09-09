@@ -1205,6 +1205,14 @@ extension ClaudeService {
     ///
     /// The families are deliberately small and literal. This reads a sentence a language model
     /// wrote about a body part; inferring beyond what it says is how the blanket penalty happened.
+    ///
+    /// They are keyed off `movementPattern`, so a pattern with no family here can only be reached
+    /// by name. The catalogue's shoulder-relevant patterns are covered — Vertical Press, Incline
+    /// Press, Horizontal Press, Close-Grip Press, Dip, Upright Row, Lateral Raise, and Fly (which
+    /// also catches "Rear Delt Fly"). The generic "Press" pattern is deliberately NOT given a
+    /// family: a bare "press" phrase would match almost any report mentioning pressing and would
+    /// re-create the blanket behaviour through the widest possible door. Adding a family is the
+    /// right response to a real report this failed to match, never to a hypothetical one.
     func reportedShoulderPainImplicates(
         exerciseName: String,
         muscleTarget: String,
@@ -1236,6 +1244,10 @@ extension ClaudeService {
             familyPhrases = ["upright row"]
         } else if pattern.contains("horizontal press") {
             familyPhrases = ["bench press", "bench pressing", "horizontal press", "flat press"]
+        } else if pattern.contains("incline press") {
+            familyPhrases = ["incline press", "incline pressing", "incline bench"]
+        } else if pattern.contains("close-grip press") || pattern.contains("close grip press") {
+            familyPhrases = ["close grip", "close-grip"]
         } else if pattern.contains("lateral raise") {
             familyPhrases = ["lateral raise", "side raise"]
         } else if pattern.contains("fly") {

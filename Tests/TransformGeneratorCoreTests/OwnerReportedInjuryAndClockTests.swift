@@ -111,6 +111,26 @@ final class OwnerReportedInjuryAndClockTests: XCTestCase {
             )
         )
 
+        // Every shoulder-relevant movement pattern in the catalogue must be reachable by name or
+        // by family, or a real complaint lands on a movement nothing will act on. Incline pressing
+        // is the one that matters most here: it is the owner's top priority's whole pattern.
+        XCTAssertTrue(
+            service.reportedShoulderPainImplicates(
+                exerciseName: "Incline Barbell Press",
+                muscleTarget: "Upper Chest",
+                injuryRiskFocus: "Anterior shoulder pain on incline pressing."
+            ),
+            "A report naming incline pressing must reach an incline press"
+        )
+        XCTAssertFalse(
+            service.reportedShoulderPainImplicates(
+                exerciseName: "Incline Barbell Press",
+                muscleTarget: "Upper Chest",
+                injuryRiskFocus: ownersReport
+            ),
+            "His report names overhead pressing only, so incline pressing stays untouched"
+        )
+
         // No reported shoulder problem at all means nothing is implicated.
         XCTAssertFalse(
             service.reportedShoulderPainImplicates(
