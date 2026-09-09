@@ -268,7 +268,10 @@ extension ClaudeService {
                 on: actualDay,
                 injuryRiskFocus: blueprint.injuryRiskFocus
             ))
-            issues.append(contentsOf: validateJointStressBudget(on: actualDay))
+            issues.append(contentsOf: validateJointStressBudget(
+                on: actualDay,
+                injuryRiskFocus: blueprint.injuryRiskFocus
+            ))
             issues.append(contentsOf: validateNoteContradictions(
                 on: actualDay,
                 blueprint: blueprint,
@@ -837,7 +840,33 @@ extension ClaudeService {
         var knee: Double = 0
     }
 
-    func exerciseJointStress(for exercise: WorkoutExerciseResponse) -> JointStressBudget {
+    /// Per-joint load this movement contributes to a session.
+    ///
+    /// The SHOULDER charge is evidence-bound: a movement contributes to it only when the lifter's
+    /// own report reaches that movement. Everything else — elbow, lower back, knee — is unchanged.
+    ///
+    /// The owner's instruction is what decides this, and it is worth recording exactly because the
+    /// rule reads like a neutral load budget rather than an injury rule: "Stay off of movements
+    /// that I haven't flagged." The shoulder charge is built from `metadata.shoulderRisk`, which
+    /// is a hardcoded name list that gives a dip a 4 and therefore two points a set. So a week
+    /// containing dips could still be told to "drop a redundant pressing slot" on shoulder
+    /// grounds, for a lifter who has said dips are fine — his complaint, arriving through a rule
+    /// that never read his complaint.
+    ///
+    /// The consequence is deliberate and should not be mistaken for a bug: for a lifter who has
+    /// reported no shoulder problem, `shoulder` is now ZERO and the shoulder budget can never
+    /// fire. That is what "stay off" means. Session composition is still policed by rules that
+    /// measure work rather than joints — the crowding checks, the pattern-balance rules, and the
+    /// day fatigue cap.
+    ///
+    /// The other three joints are left ungated ON PURPOSE rather than by omission: there is no
+    /// equivalent of `reportedShoulderPainImplicates` for elbow, back or knee, and inventing three
+    /// more phrase tables to match a complaint the owner has not made would be guessing at what he
+    /// wants. If he reports one, that is when to build it.
+    func exerciseJointStress(
+        for exercise: WorkoutExerciseResponse,
+        injuryRiskFocus: String
+    ) -> JointStressBudget {
         let metadata = exerciseMetadata(for: exercise)
         let name = normalizedPriorityText(exercise.exerciseName)
         let pattern = normalizedPriorityText(metadata.movementPattern)
@@ -846,12 +875,19 @@ extension ClaudeService {
         var stress = JointStressBudget()
 
         let shoulderBase = Double(metadata.shoulderRisk)
-        if containsAny(pattern, keywords: ["horizontal press", "incline press", "vertical press", "close-grip press", "dip", "fly"]) {
-            stress.shoulder += shoulderBase * sets * 0.5
-        } else if containsAny(pattern, keywords: ["row", "vertical pull", "pullover", "face pull"]) {
-            stress.shoulder += max(1, shoulderBase) * sets * 0.2
-        } else if containsAny(pattern, keywords: ["lateral raise", "upright row", "rear delt fly"]) {
-            stress.shoulder += shoulderBase * sets * 0.3
+        let shoulderIsReported = reportedShoulderPainImplicates(
+            exerciseName: exercise.exerciseName,
+            muscleTarget: exercise.muscleTarget,
+            injuryRiskFocus: injuryRiskFocus
+        )
+        if shoulderIsReported {
+            if containsAny(pattern, keywords: ["horizontal press", "incline press", "vertical press", "close-grip press", "dip", "fly"]) {
+                stress.shoulder += shoulderBase * sets * 0.5
+            } else if containsAny(pattern, keywords: ["row", "vertical pull", "pullover", "face pull"]) {
+                stress.shoulder += max(1, shoulderBase) * sets * 0.2
+            } else if containsAny(pattern, keywords: ["lateral raise", "upright row", "rear delt fly"]) {
+                stress.shoulder += shoulderBase * sets * 0.3
+            }
         }
 
         if containsAny(pattern, keywords: ["curl", "extension", "pressdown", "close-grip press"]) {
@@ -881,10 +917,10 @@ extension ClaudeService {
         return stress
     }
 
-    func sessionJointStress(for day: WorkoutDayResponse) -> JointStressBudget {
+    func sessionJointStress(for day: WorkoutDayResponse, injuryRiskFocus: String) -> JointStressBudget {
         guard !day.isRestDay else { return JointStressBudget() }
         return day.exercises.reduce(into: JointStressBudget()) { total, exercise in
-            let stress = exerciseJointStress(for: exercise)
+            let stress = exerciseJointStress(for: exercise, injuryRiskFocus: injuryRiskFocus)
             total.shoulder += stress.shoulder
             total.elbow += stress.elbow
             total.lowerBack += stress.lowerBack
@@ -892,9 +928,9 @@ extension ClaudeService {
         }
     }
 
-    func validateJointStressBudget(on day: WorkoutDayResponse) -> [String] {
+    func validateJointStressBudget(on day: WorkoutDayResponse, injuryRiskFocus: String) -> [String] {
         guard !day.isRestDay else { return [] }
-        let stress = sessionJointStress(for: day)
+        let stress = sessionJointStress(for: day, injuryRiskFocus: injuryRiskFocus)
         var issues: [String] = []
 
         if stress.shoulder > 18 {

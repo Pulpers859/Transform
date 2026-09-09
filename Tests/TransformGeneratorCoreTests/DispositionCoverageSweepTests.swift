@@ -239,14 +239,20 @@ final class DispositionCoverageSweepTests: XCTestCase {
             injuryRiskFocus: "Left anterior shoulder pain during neutral-grip overhead pressing is the key flag."
         )
 
-        // Joint-stress overload.
-        findings += service.validateJointStressBudget(on: day(1, [
-            exercise("Incline Barbell Press", "Upper Chest", sets: 5),
-            exercise("Machine Incline Press", "Upper Chest", sets: 5),
-            exercise("Dumbbell Bench Press", "Chest", sets: 5),
-            exercise("Machine Chest Press", "Chest", sets: 5),
-            exercise("Dip (Assisted or Weighted)", "Triceps", sets: 5)
-        ]))
+        // Joint-stress overload. The shoulder budget only accumulates from movements the lifter's
+        // own report reaches, so the input is a day of overhead pressing against a report that
+        // names overhead pressing — otherwise this validator contributes nothing to the sweep and
+        // the sweep stops covering it without saying so.
+        findings += service.validateJointStressBudget(
+            on: day(1, [
+                exercise("Barbell Overhead Press", "Anterior Deltoids", sets: 5),
+                exercise("Seated Dumbbell Shoulder Press", "Anterior Deltoids", sets: 5),
+                exercise("Machine Shoulder Press", "Anterior Deltoids", sets: 5),
+                exercise("Dumbbell Shoulder Press", "Anterior Deltoids", sets: 5),
+                exercise("Dumbbell Arnold Press", "Anterior Deltoids", sets: 5)
+            ]),
+            injuryRiskFocus: "Left anterior shoulder pain during neutral-grip overhead pressing is the key flag."
+        )
 
         // Blueprint day-shape violations: a planned rest day turned into training, and a planned
         // training day emptied into a rest day.

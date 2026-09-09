@@ -464,7 +464,11 @@ extension ClaudeService {
         }
 
         if let previousWeekDays {
-            let continuityIssues = validateContinuity(currentWeekDays: days, previousWeekDays: previousWeekDays)
+            let continuityIssues = validateContinuity(
+                currentWeekDays: days,
+                previousWeekDays: previousWeekDays,
+                injuryRiskFocus: blueprint.injuryRiskFocus
+            )
             issues.append(contentsOf: continuityIssues)
         }
 
@@ -1703,7 +1707,11 @@ extension ClaudeService {
         }
     }
 
-    func validateContinuity(currentWeekDays: [WorkoutDayResponse], previousWeekDays: [WorkoutDayResponse]) -> [String] {
+    func validateContinuity(
+        currentWeekDays: [WorkoutDayResponse],
+        previousWeekDays: [WorkoutDayResponse],
+        injuryRiskFocus: String
+    ) -> [String] {
         guard previousWeekDays.count == 7 else { return [] }
 
         var comparableDayCount = 0
@@ -1763,7 +1771,8 @@ extension ClaudeService {
                                 replacement: replacement,
                                 originalMeta: previousMeta,
                                 replacementMeta: replacementMeta,
-                                dayNumber: currentDays[index].dayNumber
+                                dayNumber: currentDays[index].dayNumber,
+                                injuryRiskFocus: injuryRiskFocus
                             ))
                         }
                     }
@@ -1806,7 +1815,8 @@ extension ClaudeService {
         replacement: WorkoutExerciseResponse,
         originalMeta: ExerciseMetadata,
         replacementMeta: ExerciseMetadata,
-        dayNumber: Int
+        dayNumber: Int,
+        injuryRiskFocus: String
     ) -> [String] {
         var issues: [String] = []
 
@@ -1825,8 +1835,18 @@ extension ClaudeService {
             )
         }
 
+        // Evidence-bound, like every other action this app takes against a specific movement.
+        // `shoulderRisk` is a hardcoded name list — it gives a dip a 4 — so this fired whenever a
+        // swap landed on a name that list dislikes, whether or not the lifter had ever said the
+        // movement bothered him. His instruction: "Stay off of movements that I haven't flagged."
+        // The muscle-target and fatigue-cost checks above are untouched, because neither claims
+        // anything about his joints.
         let riskDelta = replacementMeta.shoulderRisk - originalMeta.shoulderRisk
-        if riskDelta >= 2 {
+        if riskDelta >= 2, reportedShoulderPainImplicates(
+            exerciseName: replacement.exerciseName,
+            muscleTarget: replacement.muscleTarget,
+            injuryRiskFocus: injuryRiskFocus
+        ) {
             issues.append(
                 "Day \(dayNumber): '\(original.exerciseName)' was replaced with '\(replacement.exerciseName)', but the substitution significantly increases shoulder risk (\(originalMeta.shoulderRisk) → \(replacementMeta.shoulderRisk)). Prefer lower-risk alternatives."
             )

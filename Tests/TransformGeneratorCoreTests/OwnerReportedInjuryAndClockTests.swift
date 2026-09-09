@@ -273,4 +273,94 @@ final class OwnerReportedInjuryAndClockTests: XCTestCase {
             "Day fatigue must still be able to refuse a movement"
         )
     }
+
+    // MARK: - 3. Joint-stress and substitution rules stay off unflagged movements
+
+    /// The rule that could still tell him to "drop a redundant pressing slot" on a day containing
+    /// dips. It reads like a neutral load budget, but its shoulder charge is built from
+    /// `metadata.shoulderRisk` — a hardcoded name list that gives a dip a 4 — so it was his
+    /// complaint arriving through a rule that never read his complaint.
+    func testShoulderLoadIsOnlyCountedForMovementsTheReportReaches() {
+        let pressingDay = day([
+            exercise("Dip (Assisted or Weighted)", "Triceps", sets: 5),
+            exercise("Dip (Assisted or Weighted)", "Chest", sets: 5),
+            exercise("Machine Chest Press", "Chest", sets: 5),
+            exercise("Dumbbell Bench Press", "Chest", sets: 5)
+        ])
+
+        XCTAssertTrue(
+            service.validateJointStressBudget(
+                on: pressingDay,
+                injuryRiskFocus: ownersReport
+            ).allSatisfy { !$0.contains("shoulder joint stress") },
+            "A report naming only overhead pressing must not accumulate shoulder load from dips"
+        )
+        XCTAssertEqual(
+            service.sessionJointStress(for: pressingDay, injuryRiskFocus: ownersReport).shoulder,
+            0,
+            accuracy: 0.001,
+            "Nothing on this day is a movement he flagged, so the shoulder budget must read zero"
+        )
+
+        // The rule is gated, not gutted: a day of the movement he DID name still accumulates.
+        let overheadDay = day([
+            exercise("Barbell Overhead Press", "Anterior Deltoids", sets: 5),
+            exercise("Seated Dumbbell Shoulder Press", "Anterior Deltoids", sets: 5),
+            exercise("Machine Shoulder Press", "Anterior Deltoids", sets: 5),
+            exercise("Dumbbell Shoulder Press", "Anterior Deltoids", sets: 5)
+        ])
+        XCTAssertGreaterThan(
+            service.sessionJointStress(for: overheadDay, injuryRiskFocus: ownersReport).shoulder,
+            0,
+            "Overhead pressing is what his report names, so it must still be counted"
+        )
+
+        // Joints he has said nothing about are untouched by this change — elbow load still
+        // accumulates from curl and extension work regardless of any report.
+        let armDay = day([
+            exercise("EZ-Bar Curl", "Biceps", sets: 5),
+            exercise("Rope Triceps Pressdown", "Triceps", sets: 5)
+        ])
+        XCTAssertGreaterThan(
+            service.sessionJointStress(for: armDay, injuryRiskFocus: "No injuries reported.").elbow,
+            0,
+            "Only the shoulder charge is evidence-bound; the other three joints are unchanged"
+        )
+    }
+
+    /// The same principle on the substitution path: swapping in a movement the name list dislikes
+    /// is only a shoulder finding if his report reaches that movement.
+    func testASubstitutionIsOnlyAShoulderFindingForAMovementHeFlagged() {
+        func issues(replacing original: String, _ originalTarget: String,
+                    with replacement: String, _ replacementTarget: String,
+                    report: String) -> [String] {
+            let from = exercise(original, originalTarget)
+            let to = exercise(replacement, replacementTarget)
+            return service.validateSubstituteQuality(
+                original: from,
+                replacement: to,
+                originalMeta: service.exerciseMetadata(for: from),
+                replacementMeta: service.exerciseMetadata(for: to),
+                dayNumber: 2,
+                injuryRiskFocus: report
+            )
+        }
+
+        XCTAssertTrue(
+            issues(
+                replacing: "Machine Chest Press", "Chest",
+                with: "Dip (Assisted or Weighted)", "Chest",
+                report: ownersReport
+            ).allSatisfy { !$0.contains("increases shoulder risk") },
+            "He has not flagged dips, so swapping one in is not a shoulder finding"
+        )
+        XCTAssertTrue(
+            issues(
+                replacing: "Machine Chest Press", "Chest",
+                with: "Barbell Overhead Press", "Anterior Deltoids",
+                report: ownersReport
+            ).contains { $0.contains("increases shoulder risk") },
+            "He HAS flagged overhead pressing, so swapping one in still is"
+        )
+    }
 }
