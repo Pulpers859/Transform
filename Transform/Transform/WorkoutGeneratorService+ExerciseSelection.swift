@@ -2923,19 +2923,6 @@ extension ClaudeService {
 
     // MARK: - Priority Direct-Set Feasibility (the "fight")
 
-    /// Guarantees each priority actually has directly-crediting exercises spread across enough
-    /// distinct training days that its weekly `directSetTarget` is reachable under the blueprint's
-    /// per-session caps — BEFORE the allocator funds set counts.
-    ///
-    /// Without this, a small priority (e.g. Upper Chest, Lateral Deltoids) that the per-day
-    /// selection only trained on its single focus day collapses the weekly ceiling to one
-    /// session's cap (~8 sets). The allocator then physically cannot reach a ~10-set target, and
-    /// the validator reports an unfixable "missed its direct-set target" — the exact failure this
-    /// pass removes at the root. It mirrors `enforceBaselineMuscleCoverage`, but keyed on priority
-    /// frequency/slot targets instead of zero-coverage, and it only ever swaps a redundant
-    /// (duplicated-pattern, non-focus, non-anchor) slot, so no muscle loses its last exposure and
-    /// no session grows in length. Menu-locked-safe: the deterministic builder owns the menu here,
-    /// exactly where exercise selection is allowed to add work.
     /// How many exercise slots for one priority a single session can actually FUND to a real
     /// dose — never more than the flat two-per-session ceiling.
     ///
@@ -2977,6 +2964,19 @@ extension ClaudeService {
         return max(1, min(2, fundableSlots))
     }
 
+    /// Guarantees each priority actually has directly-crediting exercises spread across enough
+    /// distinct training days that its weekly `directSetTarget` is reachable under the blueprint's
+    /// per-session caps — BEFORE the allocator funds set counts.
+    ///
+    /// Without this, a small priority (e.g. Upper Chest, Lateral Deltoids) that the per-day
+    /// selection only trained on its single focus day collapses the weekly ceiling to one
+    /// session's cap (~8 sets). The allocator then physically cannot reach a ~10-set target, and
+    /// the validator reports an unfixable "missed its direct-set target" — the exact failure this
+    /// pass removes at the root. It mirrors `enforceBaselineMuscleCoverage`, but keyed on priority
+    /// frequency/slot targets instead of zero-coverage, and it only ever swaps a redundant
+    /// (duplicated-pattern, non-focus, non-anchor) slot, so no muscle loses its last exposure and
+    /// no session grows in length. Menu-locked-safe: the deterministic builder owns the menu here,
+    /// exactly where exercise selection is allowed to add work.
     func enforcePriorityDirectSetFeasibility(
         _ menus: [[PreSelectedExercise]],
         blueprint: ProgramBlueprint,
@@ -3059,7 +3059,24 @@ extension ClaudeService {
             // Enough weekly exercise slots that each occurrence can stay near the ~4-set ceiling.
             // A repeated movement on another day is a valid slot and is preferred over needless
             // within-week variation.
-            let neededSlots = min(allocation.targetExerciseSlots, candidateDays.count * 2)
+            //
+            // The capacity term is the sum of what each candidate day can actually FUND, not a
+            // flat two per day. Those have to be the same rule: the placement guard below refuses
+            // a day its second slot when the day's direct-set cap cannot pay two role floors, so
+            // a target that still counted two would send this loop hunting for a slot no day will
+            // accept. It terminates either way — `guardRail` and `if !placed` both bound it — but
+            // it would be aiming at a number the week is not allowed to reach, and that is the
+            // shape of promise this whole change exists to stop making.
+            let fundableSlotCapacity = candidateDays.reduce(0) { total, dayIndex in
+                let dayIsFocus = blueprint.dayPlans[dayIndex].focusArea.map {
+                    normalizedPriorityText($0) == normalizedPriorityText(allocation.area)
+                } ?? false
+                return total + fundablePrioritySlotsPerSession(
+                    for: allocation,
+                    isFocusDay: dayIsFocus
+                )
+            }
+            let neededSlots = min(allocation.targetExerciseSlots, fundableSlotCapacity)
 
             var guardRail = neededSlots + candidateDays.count + 2
             while guardRail > 0 {

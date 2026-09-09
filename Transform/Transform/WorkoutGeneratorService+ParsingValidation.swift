@@ -802,8 +802,12 @@ extension ClaudeService {
                 // (`phasePrescriptionsByWeek`). The allocator was entitled to a third set and a
                 // day-level budget refused it, so the group was short of a SET, and the same Lower
                 // day also carried a squat, an RDL and a lunge under their own role defaults.
-                // The finding is correction-worthy, so a confidently wrong cause spends a paid
-                // correction call on the wrong repair.
+                // This finding is an ACCEPTABLE WARNING, not a correction — the pattern sits in
+                // `acceptableWarningIssuePatterns`, which both disposition paths consult ahead of
+                // `correctionWorthyIssuePatterns`, so it never buys a repair call. It is worth
+                // getting right anyway, and for a better reason than money: nothing downstream
+                // acts on it, so its whole job is to tell a PERSON what to look at. A warning
+                // that names the wrong cause is worse than no warning, because it is followed.
                 //
                 // Telling the two apart needs each movement's role default, which needs the week
                 // number, and this validator is not given one (`ProgramBlueprint` carries no

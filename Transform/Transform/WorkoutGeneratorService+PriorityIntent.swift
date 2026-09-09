@@ -694,7 +694,9 @@ extension ClaudeService {
     /// was simply false: Calves shipped 2 sets from ONE movement whose accessory role default is
     /// 3, so the group was short of a set the allocator was entitled to spend and had been
     /// refused by a day-level budget. The finding is on the correction path, so a confidently
-    /// wrong cause spends a paid correction call chasing the wrong repair.
+    /// wrong cause sends a person to the wrong repair. (It is an acceptable warning, not a
+    /// correction — `acceptableWarningIssuePatterns` catches it first on both paths — so nothing
+    /// downstream acts on it, which is exactly why its wording is the whole of its value.)
     ///
     /// Matching mirrors `weeklyDirectSets` exactly, so the count and the set total can never
     /// describe different sets of exercises.

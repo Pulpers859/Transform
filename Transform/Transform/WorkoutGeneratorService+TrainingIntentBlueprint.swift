@@ -363,8 +363,13 @@ extension ClaudeService {
                 return allocation
             }
 
-            // Two prime slots per session is the same ceiling `enforcePriorityDirectSetFeasibility`
-            // applies when it places them, so the printed plan matches what can be built.
+            // Two prime slots per session is the CEILING `enforcePriorityDirectSetFeasibility`
+            // applies when it places them — it is no longer always the number. That pass now
+            // asks `fundablePrioritySlotsPerSession` per day, which returns one where the
+            // session's own direct-set cap cannot fund two movements to their role floors. So
+            // this printed figure is an upper bound on what can be built rather than a match to
+            // it, and the gap is a "was planned for N priority slots" warning, never a discarded
+            // week. Tightening it here would need the per-day caps this function does not have.
             let feasibleSlots = min(allocation.targetExerciseSlots, compatibleDays * 2)
 
             func recut(directSetTarget: Double, weightedStimulusTarget: Double) -> BlueprintPriorityAllocation {
@@ -552,9 +557,19 @@ extension ClaudeService {
         if trainingDays >= 5 {
             let armDemand = demandByStyle["Arms", default: 0]
             // One bucket, not the sum. `styleDemandScore` now matches styles canonically, so
-            // "Legs" and "Lower" hold the SAME score and adding them counted every lower-body
-            // allocation twice against `armDemand`. The sum existed only to reunite a demand
-            // split across the two spellings; that split is gone, so the sum has to go with it.
+            // "Legs" and "Lower" hold the SAME score and adding them counts every lower-body
+            // allocation twice against `armDemand`.
+            //
+            // The sum was reuniting a split, but only on ONE of the three intent paths, and the
+            // difference is worth recording. `sanitizedPreferredStyles` dedupes by canonical
+            // style, so a priority built from a structured intent carries exactly one of the two
+            // spellings and the sum genuinely rejoined it. The other two paths —
+            // `trainingIntentPlan(from:)` with no structured intent, and
+            // `fallbackTrainingIntentPlan` — build priorities through
+            // `musclePriorityIntent(area:rank:...)`, which assigns `profile.preferredStyles`
+            // RAW; every lower-body profile lists both spellings, so on those paths the old
+            // expression was a straight doubling and never a reunification at all. One bucket is
+            // right on all three, for two different reasons.
             let legsDemand = demandByStyle["Lower", default: 0]
             if armDemand <= legsDemand && !selected.contains("Legs") {
                 replaceLowestDemandStyle(
@@ -601,6 +616,26 @@ extension ClaudeService {
         }
     }
 
+    /// Demand for a day of this style, summed over the priorities that would train on it.
+    ///
+    /// Matching is canonical, and the consequence is worth stating because it is a real change in
+    /// how splits get chosen. `evidenceProfile.allowedStyles` carries "Legs" AND "Lower" as two
+    /// separate day slots, so once the comparison folds them the two keys hold IDENTICAL scores
+    /// for every input. Before, a priority registered demand only against whichever spelling it
+    /// happened to carry: on the owner's 2026-09-08 week Core/Abs fed "Legs" and the "Lower" day
+    /// the week actually built read as having no demand from it at all. That was the bug.
+    ///
+    /// The tie does not by itself decide anything. `ensureStylePresence("Lower")` and the
+    /// `trainingDays >= 5` Legs-versus-Arms block own whether a week carries one lower-body day or
+    /// two, and `templateIndex` breaks the tie deterministically ("Lower" sits at index 1, "Legs"
+    /// at 4, and every allowed style is in the template, so the sort is a strict total order).
+    /// What does change is how often both keys rank highly together, which makes a second
+    /// lower-body day easier to reach for a lifter whose lower-body demand was previously split.
+    /// That is the intended reading — one session type, one score — not a side effect.
+    ///
+    /// Measured, not assumed, and only this far: the `five-maintenance-errors` fixture pins a
+    /// whole generated week by exact menu signature, and it is unchanged by this. That is one real
+    /// configuration holding still, which is evidence but not a proof about all of them.
     func styleDemandScore(for style: String, allocations: [BlueprintPriorityAllocation]) -> Int {
         allocations.reduce(0) { partialResult, allocation in
             guard allocationPrefersStyle(allocation, style) else { return partialResult }

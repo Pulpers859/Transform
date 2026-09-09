@@ -7,11 +7,14 @@ import XCTest
 /// places it lived.
 ///
 /// `sanitizedPreferredStyles` deduplicates by CANONICAL style but returns the first literal
-/// spelling it saw, so a Core/Abs allocation falling back to the catalogue list
-/// `["Legs", "Lower", "Upper"]` ships `["Upper", "Legs"]`. Day plans carry the canonical "Lower".
-/// Eight planner sites asked "does this allocation belong on this day's style"; three folded both
-/// sides and five compared them raw. For the raw five, every lower-body day in the week was
-/// invisible to a priority spelled "Legs".
+/// spelling it saw. With the model supplying "Upper" and the Core/Abs catalogue list
+/// `["Legs", "Lower", "Upper"]` behind it, the seed is `["Upper"] + ["Legs", "Lower", "Upper"]`
+/// and the result is `["Upper", "Legs"]` — the spelling the owner's blueprint actually printed.
+/// (A pure fallback ships `["Legs", "Upper"]`; either way a lower-body day arrives as "Legs".)
+/// Day plans carry the canonical "Lower". Eight planner sites asked "does this allocation belong
+/// on this day's style"; three folded both sides, four compared them raw, and one folded only the
+/// day. For those five, every lower-body day in the week was invisible to a priority spelled
+/// "Legs".
 ///
 /// What that produced on the owner's actual week:
 ///   - `companionSupportAreas` left Core/Abs off the Lower day, so it was never seeded there.
@@ -24,8 +27,13 @@ import XCTest
 ///   - Findings 2-5 (1/2 exposure days, 1/2 meaningful exposures, 3/6 direct sets, 3/8.5 weighted
 ///     stimulus) are the same stacking seen from the weekly ledger instead of the daily one.
 ///
-/// Both halves are pinned here: the comparison is now spelling-independent everywhere, and a
-/// session is never handed more slots for a priority than it is allowed to fund.
+/// Both halves are pinned here, and the second is narrower than it sounds. The style comparison
+/// is now spelling-independent everywhere. The funding rule governs
+/// `enforcePriorityDirectSetFeasibility`, the pass that TOPS UP a priority's exposures; it does
+/// not govern the base menu, whose focus slots come from `focusExerciseTargetCount` and can still
+/// reach three per session with no reference to the per-session direct cap. A session can
+/// therefore still be handed more slots than it can fund. What is fixed is the pass that was
+/// doing it on the owner's week.
 @MainActor
 final class PriorityStyleAndSlotCapacityTests: XCTestCase {
 
@@ -300,6 +308,90 @@ final class PriorityStyleAndSlotCapacityTests: XCTestCase {
             targetPrioritySlots: 1,
             emphasisPatterns: [],
             isRestDay: false
+        )
+    }
+
+    // MARK: - 4. The maintenance-floor finding counts its movements
+
+    /// The finding used to assert its own cause — "short of exercise SLOTS, not sets" — without
+    /// ever counting the slots, and on the owner's week that assertion was false. `Calves` shipped
+    /// 2 sets from ONE Standing Calf Raise, an `.accessory` whose week-1 role default is 3, so the
+    /// group was short of a SET a day budget refused, not short of an exercise. Nothing downstream
+    /// acts on this finding, so its wording is the whole of its value; this pins that the number
+    /// it now reports is real.
+    func testTheMovementCountBehindAMaintenanceShortfallIsCountedNotAssumed() {
+        let aliases = service.normalizedGroupAliases(forSeed: "calf")
+
+        func week(_ exercises: [(String, String, Int)]) -> [WorkoutDayResponse] {
+            (1...7).map { dayNumber in
+                WorkoutDayResponse(
+                    dayNumber: dayNumber,
+                    dayName: dayNumber == 1 ? "Lower" : "Rest",
+                    muscleGroups: "",
+                    isRestDay: dayNumber != 1,
+                    notes: "",
+                    exercises: dayNumber == 1 ? exercises.map {
+                        WorkoutExerciseResponse(
+                            exerciseName: $0.0,
+                            sets: $0.2,
+                            reps: "",
+                            tempo: "",
+                            restSeconds: 0,
+                            notes: "",
+                            muscleTarget: $0.1
+                        )
+                    } : []
+                )
+            }
+        }
+
+        // The owner's week: one calf movement, two sets.
+        XCTAssertEqual(
+            service.weeklyDirectMovements(
+                forGroupAliases: aliases,
+                days: week([
+                    ("Back Squat", "Quads", 3),
+                    ("Standing Calf Raise", "Calves", 2)
+                ])
+            ),
+            1,
+            "One calf movement is one movement, however many sets it carries"
+        )
+
+        // Two distinct calf movements is a genuine slot count of two, and the squat still must
+        // not be counted as calf work.
+        XCTAssertEqual(
+            service.weeklyDirectMovements(
+                forGroupAliases: aliases,
+                days: week([
+                    ("Back Squat", "Quads", 3),
+                    ("Standing Calf Raise", "Calves", 2),
+                    ("Seated Calf Raise", "Calves", 2)
+                ])
+            ),
+            2
+        )
+
+        // The same movement repeated is one SLOT, not two — the count is distinct movements, which
+        // is the number the "needs another weekly exposure" repair is about.
+        XCTAssertEqual(
+            service.weeklyDirectMovements(
+                forGroupAliases: aliases,
+                days: week([
+                    ("Standing Calf Raise", "Calves", 2),
+                    ("Standing Calf Raise", "Calves", 2)
+                ])
+            ),
+            1
+        )
+
+        XCTAssertEqual(
+            service.weeklyDirectMovements(
+                forGroupAliases: aliases,
+                days: week([("Back Squat", "Quads", 3)])
+            ),
+            0,
+            "A week with no calf work has no calf movements"
         )
     }
 }
