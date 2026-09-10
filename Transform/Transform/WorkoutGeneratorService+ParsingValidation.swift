@@ -804,10 +804,16 @@ extension ClaudeService {
                 // owner's 2026-09-08 week that was false: Calves shipped 2 sets from ONE Standing
                 // Calf Raise, an `.accessory` whose week-1 role default is 3
                 // (`phasePrescriptionsByWeek`). The allocator was entitled to a third set and a
-                // day-level budget refused it, so the group was short of a SET, and the same Lower
-                // day also carried a squat, an RDL and a lunge under their own role defaults. (At
-                // the time that budget was the session CLOCK. The clock no longer refuses
-                // anything, so the message names fatigue, which is the only day budget left.)
+                // budget refused it, so the group was short of a SET, and the same Lower day also
+                // carried a squat, an RDL and a lunge under their own role defaults.
+                //
+                // The message lists `canAddSet`'s ceilings rather than naming one. Naming the day
+                // FATIGUE cap was wrong and provably so: `fatigueContribution`'s multiplier is 1
+                // below four sets, so taking an accessory from 2 to 3 changes day fatigue by
+                // nothing at all and the fatigue cap cannot have been what refused it. A message
+                // that confidently names the wrong ceiling sends a reader after the wrong repair,
+                // which is the defect this rewrite exists to fix — committed twice now, once with
+                // the clock and once with fatigue.
                 // This finding is an ACCEPTABLE WARNING, not a correction — the pattern sits in
                 // `acceptableWarningIssuePatterns`, which both disposition paths consult ahead of
                 // `correctionWorthyIssuePatterns`, so it never buys a repair call. It is worth
@@ -822,7 +828,7 @@ extension ClaudeService {
                 // true by being shorter.
                 let movements = weeklyDirectMovements(forGroupAliases: aliases, days: days)
                 issues.append(
-                    "Non-priority muscle group '\(group.label)' falls below the maintenance weekly volume floor (\(formatStimulusValue(directSets)) sets vs \(formatStimulusValue(maintenanceFloor))). MAINT-001 puts maintenance near 6-10 quality sets per week. It has \(movements) movement(s) this week carrying \(formatStimulusValue(directSets)) set(s) between them. Either those movements are capped at their role defaults and the group needs another weekly exposure, or they are under their defaults and the day's fatigue budget refused the sets — check which before adding an exercise."
+                    "Non-priority muscle group '\(group.label)' falls below the maintenance weekly volume floor (\(formatStimulusValue(directSets)) sets vs \(formatStimulusValue(maintenanceFloor))). MAINT-001 puts maintenance near 6-10 quality sets per week. It has \(movements) movement(s) this week carrying \(formatStimulusValue(directSets)) set(s) between them. Either those movements are capped at their role defaults and the group needs another weekly exposure, or they are under their defaults and one of the allocator's ceilings refused the sets — the movement's own role default, this group's weekly maintenance ceiling, a priority's weekly target, a per-session direct cap, or the day's fatigue cap. Check which before adding an exercise."
                 )
             }
         }
@@ -1681,7 +1687,24 @@ extension ClaudeService {
             "excessive lower-back stress",
             "excessive knee joint stress",
             "substitution changes the primary muscle target",
-            "substitution significantly increases fatigue"
+            "substitution significantly increases fatigue",
+            // The two CROWDING findings, joining the siblings above for the same reason and found
+            // the same way — an audit, not a judgement call. Both measure how much work a day
+            // holds: one counts exercises (seven or more on a Lower day), the other sums
+            // `fatigueContribution`, which reads only `fatigueCost` and `sets`. Under a locked
+            // menu the model owns neither number, so there is no legal move that resolves either
+            // one. Leaving them correction-worthy bought a doomed paid call and then discarded the
+            // paid candidate with it.
+            //
+            // This was made worse, briefly, by the fix that removed "session budget" from
+            // `correctionTactics`: the surviving instruction told the model the finding was not
+            // repairable, which was true and therefore guaranteed the whole sequence. Telling the
+            // model the truth is not a repair; not charging for the call is.
+            //
+            // They stay correction-worthy on the UNLOCKED path, which does not consult this list
+            // and where exercise selection is genuinely still in play.
+            "too crowded for a fatigue-managed",
+            "carries too much total fatigue load"
         ]
     }
 

@@ -212,17 +212,17 @@ extension ClaudeService {
             rules.append("- Rewrite ONLY the flagged exercise's note so it is execution-only: a form/setup cue plus a control, ROM, or bracing cue. Remove every load- or rep-progression phrase; if that note stated working-set effort, move it to the structured targetRIR field. Change nothing else about that exercise.")
         }
 
-        // "session budget" left this condition with the finding that produced it, and the
-        // instruction had to change with it rather than merely lose a clause. It said to bring the
-        // session inside its budget "by correcting excessive rest periods", which cannot work for
-        // either surviving finding: both are about how much WORK a day holds, and
-        // `fatigueContribution` reads only `fatigueCost` and `sets` — rest is not an input to it,
-        // and it is not an input to the exercise count the crowding rule reads either. Worse, it
-        // was the rest-cutting back door this same change closed in the system prompt, still
-        // standing open on the correction path. With sets and exercises both locked there is no
-        // honest repair, so the model is told to leave the load alone and say so.
+        // These two reach a correction pass only on the UNLOCKED path now — both sit in
+        // `menuLockedDemotionPatterns`, so a locked menu ships them as warnings rather than buying
+        // a call the model cannot answer. That is what makes an instruction possible here: with
+        // selection in play, removing the least valuable movement is a real repair.
+        //
+        // The instruction it replaces said to "correct excessive rest periods", which could not
+        // work for either finding — one counts exercises, the other sums `fatigueContribution`,
+        // which reads only `fatigueCost` and `sets`. Rest is an input to neither, and cutting it
+        // to satisfy a load finding is the back door this change closed in the system prompt.
         if issues.contains(where: { $0.contains("too crowded") || $0.contains("fatigue load") }) {
-            rules.append("- Set counts and exercise selection are both locked, so this finding is not repairable in this pass. Do NOT shorten rest periods to compensate — rest is not what the finding measures, and cutting it degrades the sets. Keep rest appropriate to each movement's role and leave the day's structure as given.")
+            rules.append("- That day holds too much work. Remove the single least valuable movement from it — the one furthest from the day's stated focus and the week's priorities — and leave every other exercise, its set count and its rest period exactly as given. Do NOT shorten rest to compensate: rest is not what the finding measures, and cutting it degrades the sets without reducing the load.")
         }
 
         if issues.contains(where: { $0.contains("Pre-Selected Exercise Menu") }) {

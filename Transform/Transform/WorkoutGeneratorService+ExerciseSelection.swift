@@ -1250,32 +1250,129 @@ extension ClaudeService {
         }
 
         let pattern = normalizedPriorityText(treatAsMovementPattern ?? metadata.movementPattern)
-        let familyPhrases: [String]
+        let familyPhrases = shoulderFamilyPhrases(forMovementPattern: pattern)
+        if !familyPhrases.isEmpty, containsAny(reported, keywords: familyPhrases) {
+            return true
+        }
+
+        // A report that describes a shoulder problem but names NO movement falls back to the broad
+        // behaviour, and this is the most important line in the function.
+        //
+        // `hasShoulderRisk`'s first arm matches pure diagnoses — "shoulder impingement", "rotator
+        // cuff", "labral", "ac joint", "internal rotation", "upper crossed", "shoulder health" —
+        // none of which contains a movement word. Without this, such a report matched no family
+        // and no name, so this returned false for EVERY exercise in the catalogue and switched off
+        // all five gated rules at once. That is the fail-open direction the override above exists
+        // to prevent, arriving through the front door instead. `InjuryTimeAndSessionBudgetTests`
+        // lists five reports that must register and four of them are exactly this shape.
+        //
+        // The owner's instruction is about SPECIFICITY, not about doing less: he objected to dips
+        // being penalised by a report that named only overhead pressing. When his report names no
+        // movement at all there is nothing to be specific about, so the app is cautious generally —
+        // which is the behaviour he never objected to. Be specific when he was specific; be
+        // general when he was not.
+        guard reportNamesAnyMovement(reported) else { return true }
+        return false
+    }
+
+    /// Everyday phrases a lifter might use for the movement family a pattern belongs to.
+    ///
+    /// Keyed off `movementPattern`, so a pattern absent from this table can only be reached by
+    /// exact name. Two audits have found gaps here, both in the same direction — a genuine
+    /// complaint reaching nothing — so the table now covers every shoulder-relevant pattern the
+    /// catalogue declares AND every one `inferredExerciseMetadata` can invent, including its
+    /// "Shoulder" and "Rear Delt" catch-alls.
+    ///
+    /// The generic "Press" pattern is deliberately absent. A bare "press" phrase would match
+    /// almost any report that mentions pressing at all, which is the blanket behaviour this whole
+    /// mechanism exists to end, entering through the widest door available.
+    func shoulderFamilyPhrases(forMovementPattern pattern: String) -> [String] {
         if pattern.contains("vertical press") {
-            familyPhrases = [
+            return [
                 "overhead press", "overhead pressing", "press overhead", "pressing overhead",
                 "shoulder press", "military press", "strict press", "vertical press", "overhead"
             ]
-        } else if pattern.contains("dip") {
-            familyPhrases = ["dip"]
-        } else if pattern.contains("upright row") {
-            familyPhrases = ["upright row"]
-        } else if pattern.contains("horizontal press") {
-            familyPhrases = ["bench press", "bench pressing", "horizontal press", "flat press"]
-        } else if pattern.contains("incline press") {
-            familyPhrases = ["incline press", "incline pressing", "incline bench"]
-        } else if pattern.contains("close-grip press") || pattern.contains("close grip press") {
-            familyPhrases = ["close grip", "close-grip"]
-        } else if pattern.contains("lateral raise") {
-            familyPhrases = ["lateral raise", "side raise"]
-        } else if pattern.contains("fly") {
-            familyPhrases = ["fly", "flye", "pec deck"]
-        } else {
-            familyPhrases = []
         }
+        if pattern.contains("landmine press") {
+            return ["landmine"]
+        }
+        if pattern.contains("dip") {
+            return ["dip"]
+        }
+        if pattern.contains("upright row") {
+            return ["upright row"]
+        }
+        if pattern.contains("close-grip press") || pattern.contains("close grip press") {
+            return ["close grip", "close-grip"]
+        }
+        if pattern.contains("incline press") {
+            return ["incline press", "incline pressing", "incline bench"]
+        }
+        if pattern.contains("horizontal press") {
+            return ["bench press", "bench pressing", "horizontal press", "flat press"]
+        }
+        if pattern.contains("lateral raise") {
+            return ["lateral raise", "side raise"]
+        }
+        // Checked before "fly" and "row", because both catalogue rear-delt patterns are named
+        // "Rear Delt Fly" and "Rear Delt Row" and would otherwise be claimed by the generic
+        // branch. The family therefore has to carry BOTH movement vocabularies, or a report
+        // saying "flyes hurt" or "rows hurt" would reach neither.
+        if pattern.contains("rear delt") {
+            return [
+                "rear delt", "rear deltoid", "reverse fly", "reverse flye",
+                "fly", "flye", "row", "rowing"
+            ]
+        }
+        if pattern.contains("face pull") {
+            return ["face pull"]
+        }
+        if pattern.contains("scapular raise") {
+            return ["pull apart", "pull-apart", "y raise", "y-raise", "scapular"]
+        }
+        if pattern.contains("pullover") {
+            return ["pullover", "straight arm", "straight-arm"]
+        }
+        if pattern.contains("vertical pull") {
+            return ["pulldown", "pull down", "pull up", "pull-up", "chin up", "chin-up"]
+        }
+        if pattern.contains("row") {
+            return ["row", "rowing"]
+        }
+        if pattern.contains("fly") {
+            return ["fly", "flye", "pec deck"]
+        }
+        // The inferred catch-all for anything whose name or target says shoulder or delt.
+        if pattern.contains("shoulder") {
+            return ["shoulder", "delt"]
+        }
+        return []
+    }
 
-        guard !familyPhrases.isEmpty else { return false }
-        return containsAny(reported, keywords: familyPhrases)
+    /// Whether a shoulder report names ANY movement, in any family.
+    ///
+    /// This is what separates "my shoulder hurts when I press overhead" from "rotator cuff
+    /// irritation". The first is specific and caution should follow it; the second names no
+    /// movement, so there is nothing to narrow to.
+    func reportNamesAnyMovement(_ normalizedReport: String) -> Bool {
+        // Joint and muscle words are stripped out, and getting this wrong silently undoes the
+        // fallback it exists to trigger. `shoulderFamilyPhrases` gives the "Shoulder" catch-all
+        // pattern the phrases "shoulder" and "delt" — correct there, because a movement whose
+        // pattern IS "Shoulder" is reached by a report naming the shoulder. Left in this union
+        // they are fatal: `hasShoulderRisk` already requires the report to name the joint, so
+        // EVERY report that gets this far contains "shoulder" or "delt", this would always return
+        // true, the fallback would never fire, and the fail-open hole would still be open behind
+        // a fix that looked like it closed it. Same for "rear delt" and "rear deltoid", which name
+        // a muscle rather than a movement.
+        let jointAndMuscleWords: Set<String> = ["shoulder", "delt", "rear delt", "rear deltoid"]
+        let movementPhrases = [
+            "Vertical Press", "Landmine Press", "Dip", "Upright Row", "Close-Grip Press",
+            "Incline Press", "Horizontal Press", "Lateral Raise", "Rear Delt", "Face Pull",
+            "Scapular Raise", "Pullover", "Vertical Pull", "Row", "Fly", "Shoulder"
+        ]
+        .flatMap { shoulderFamilyPhrases(forMovementPattern: normalizedPriorityText($0)) }
+        .filter { !jointAndMuscleWords.contains($0) }
+        return containsAny(normalizedReport, keywords: movementPhrases)
     }
 
     /// Whether the analysis's injury field describes a shoulder the week must work around.
@@ -1286,14 +1383,21 @@ extension ClaudeService {
     /// Anything that acts AGAINST a specific movement now goes through
     /// `reportedShoulderPainImplicates`, which asks whether his own words reach that movement.
     ///
-    /// What still hangs off this broad gate, because none of it costs a movement anything: the
-    /// +10 preference for shoulder-friendly options during selection, and `avoidEndRangeShoulder`
-    /// in the fallback's cue generation. Two joint-STRESS rules
-    /// (`validateJointStressBudget` and the substitution risk-delta check) do not consult this at
-    /// all — they police accumulated load for every lifter and are not injury rules.
+    /// What hangs off this broad gate directly: the +10 preference for shoulder-friendly options
+    /// during selection, `avoidEndRangeShoulder` in the fallback's cue generation, and
+    /// `validateInjuryRiskAlignment`, which consults it before its own per-movement check.
     ///
-    /// A phrasing this does not recognise therefore no longer disables everything at once, but it
-    /// does still switch off the preference and the cue, so it stays deliberately broad.
+    /// Everything else reaches it THROUGH `reportedShoulderPainImplicates`, whose first line is a
+    /// guard on this function — the selection penalty, the Arms-day rule, the shoulder joint-stress
+    /// charge and the substitution risk-delta check. So a phrasing this does not recognise still
+    /// disables shoulder caution everywhere at once, and it stays deliberately broad for exactly
+    /// that reason.
+    ///
+    /// An earlier version of this comment said the two joint-stress rules "do not consult this at
+    /// all — they police accumulated load for every lifter and are not injury rules". That was
+    /// true when it was written and false one commit later, when the owner asked for those rules
+    /// to stay off movements he had not flagged. Two comments in one tree asserted opposite things
+    /// about the same rule until an audit caught it.
     ///
     /// It used to match five named conditions and nothing else. Real analyses do not write
     /// diagnoses — the owner's read "Left anterior shoulder pain during neutral-grip overhead

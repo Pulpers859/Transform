@@ -625,10 +625,19 @@ extension ClaudeService {
     /// happened to carry: on the owner's 2026-09-08 week Core/Abs fed "Legs" and the "Lower" day
     /// the week actually built read as having no demand from it at all. That was the bug.
     ///
-    /// The tie does not by itself decide anything. `ensureStylePresence("Lower")` and the
-    /// `trainingDays >= 5` Legs-versus-Arms block own whether a week carries one lower-body day or
-    /// two, and `templateIndex` breaks the tie deterministically ("Lower" sits at index 1, "Legs"
-    /// at 4, and every allowed style is in the template, so the sort is a strict total order).
+    /// The tie does not by itself decide anything on a 5- or 6-day week: `ensureStylePresence`
+    /// and the `trainingDays >= 5` Legs-versus-Arms block own whether such a week carries one
+    /// lower-body day or two. That block does NOT run on a four-day week, so nothing owns the
+    /// question there — worth stating plainly, because an earlier version of this comment claimed
+    /// the case was owned elsewhere without checking the guard.
+    ///
+    /// `templateIndex` still breaks the Legs/Lower tie deterministically in every template:
+    /// "Lower" is at index 1 in all of them, "Legs" at 4 on a 5- or 6-day week and absent from
+    /// the four-day template `["Push", "Lower", "Pull", "Upper"]`, which scores it
+    /// `template.count`. What that does NOT settle, and what the earlier claim "every allowed
+    /// style is in the template" hid: on four days "Legs" and "Arms" are both absent and both
+    /// score `template.count`, a genuine tie in a comparator handed to a `sorted` Swift does not
+    /// document as stable. That tie predates this change and is not created by it.
     /// What does change is how often both keys rank highly together, which makes a second
     /// lower-body day easier to reach for a lifter whose lower-body demand was previously split.
     /// That is the intended reading — one session type, one score — not a side effect.
@@ -1407,7 +1416,7 @@ extension ClaudeService {
         case .restricted:
             notes.append("Recovery modulation RESTRICTED (\(recoveryAudit)): weekly priority set targets are capped at the bottom of their evidence band. Take the cut from back-off and accessory sets — preserve the first 1-2 hard sets of each exercise and the session's identity, keep accessories about 1 rep further from failure, and do NOT reduce loads.")
         case .constrained:
-            notes.append("Recovery modulation CONSTRAINED (\(recoveryAudit)): weekly priority set targets are capped at the midpoint of their evidence band. Session design should stay tight for shift-work recovery: trim filler first, keep compounds honest, and protect the weekly time budget.")
+            notes.append("Recovery modulation CONSTRAINED (\(recoveryAudit)): weekly priority set targets are capped at the midpoint of their evidence band. Session design should stay tight for shift-work recovery: trim filler first and keep compounds honest.")
         case .insufficientData:
             notes.append("Recovery modulation OFF (\(recoveryAudit)): volume targets are unchanged rather than guessed from stale context.")
         case .ready:

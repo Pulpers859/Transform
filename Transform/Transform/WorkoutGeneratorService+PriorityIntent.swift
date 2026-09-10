@@ -693,10 +693,12 @@ extension ClaudeService {
     /// not sets" — without ever counting the slots. On the owner's 2026-09-08 week that assertion
     /// was simply false: Calves shipped 2 sets from ONE movement whose accessory role default is
     /// 3, so the group was short of a set the allocator was entitled to spend and had been
-    /// refused by a day-level budget. The finding is on the correction path, so a confidently
-    /// wrong cause sends a person to the wrong repair. (It is an acceptable warning, not a
-    /// correction — `acceptableWarningIssuePatterns` catches it first on both paths — so nothing
-    /// downstream acts on it, which is exactly why its wording is the whole of its value.)
+    /// refused by one of the allocator's ceilings. This finding is an ACCEPTABLE WARNING, not a
+    /// correction — `acceptableWarningIssuePatterns` catches it ahead of
+    /// `correctionWorthyIssuePatterns` on both paths — so nothing downstream acts on it and it
+    /// costs nothing. That is precisely why its wording is the whole of its value: its only job is
+    /// to tell a PERSON what to look at, and a confidently wrong cause sends them to the wrong
+    /// repair.
     ///
     /// Matching mirrors `weeklyDirectSets` exactly, so the count and the set total can never
     /// describe different sets of exercises.

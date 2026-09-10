@@ -204,7 +204,6 @@ extension WorkoutValidatorNotice {
             )
         }
 
-
         if issue.contains("exceeds the maintenance weekly volume ceiling") {
             return notice(
                 .headsUp,

@@ -299,6 +299,13 @@ extension ClaudeService {
     /// something the program did not cause. Day fatigue is the budget now; it is the one that
     /// describes his body.
     ///
+    /// Be exact about its status: it has NO production caller. Nothing gates on it, nothing
+    /// displays it, and the Generator Lab does not print it. Its only callers are the tests in
+    /// `InjuryTimeAndSessionBudgetTests` that pin its arithmetic. It is kept rather than deleted
+    /// because the model it encodes — including the changeover charge, which took an incident to
+    /// get right — is the thing anyone would have to rebuild to show the owner a length, and
+    /// rebuilding it from scratch is how the optimistic version came back last time.
+    ///
     /// Do not wire this back into a gate. If a future change genuinely needs a length limit, it
     /// needs the owner's agreement first, and it must be measured against what a day OWES —
     /// every movement at `minimumSetFloor` — not against the one-set fiction the old gates used.
@@ -632,23 +639,32 @@ extension ClaudeService {
             || normalizedFocus.contains("shoulder")
         guard isDeltBiasedArmDay else { return [] }
 
+        // The family is ASSERTED per keyword, not inferred, for the same reason its sibling
+        // `validateInjuryRiskAlignment` asserts one: `exerciseMetadata` resolves a family from a
+        // name the model invented, and it resolves the wrong one exactly where it matters. An
+        // "Arnold Press" carrying `muscleTarget: "Triceps"` is not in the catalogue under that
+        // name, so it is inferred — and the triceps branch claims it first, yielding
+        // "Close-Grip Press". A report naming overhead pressing would then miss it and the finding
+        // would vanish. This list spans two families rather than one, so each keyword names its
+        // own rather than the whole rule sharing a single override.
+        let shoulderIntensiveKeywords: [(keyword: String, family: String)] = [
+            ("close grip bench", "close-grip press"),
+            ("close-grip bench", "close-grip press"),
+            ("dip", "dip"),
+            ("shoulder press", "vertical press"),
+            ("overhead press", "vertical press"),
+            ("arnold press", "vertical press")
+        ]
         let shoulderIntensivePresses = day.exercises.filter { exercise in
             let normalizedName = normalizeExerciseName(exercise.exerciseName)
-            guard containsAny(
-                normalizedName,
-                keywords: [
-                    "close grip bench",
-                    "close-grip bench",
-                    "dip",
-                    "shoulder press",
-                    "overhead press",
-                    "arnold press"
-                ]
-            ) else { return false }
+            guard let matched = shoulderIntensiveKeywords.first(where: {
+                containsAny(normalizedName, keywords: [$0.keyword])
+            }) else { return false }
             return reportedShoulderPainImplicates(
                 exerciseName: exercise.exerciseName,
                 muscleTarget: exercise.muscleTarget,
-                injuryRiskFocus: injuryRiskFocus
+                injuryRiskFocus: injuryRiskFocus,
+                treatAsMovementPattern: matched.family
             )
         }
 

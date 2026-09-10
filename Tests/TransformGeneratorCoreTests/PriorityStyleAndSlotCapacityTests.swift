@@ -202,7 +202,7 @@ final class PriorityStyleAndSlotCapacityTests: XCTestCase {
         )
     }
 
-    // MARK: - 4. The maintenance-floor finding counts its movements
+    // MARK: - 3. The maintenance-floor finding counts its movements
 
     /// The finding used to assert its own cause — "short of exercise SLOTS, not sets" — without
     /// ever counting the slots, and on the owner's week that assertion was false. `Calves` shipped

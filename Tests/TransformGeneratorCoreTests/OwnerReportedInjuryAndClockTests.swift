@@ -47,8 +47,7 @@ final class OwnerReportedInjuryAndClockTests: XCTestCase {
     private func exercise(
         _ name: String,
         _ target: String,
-        sets: Int = 3,
-        notes: String = ""
+        sets: Int = 3
     ) -> WorkoutExerciseResponse {
         WorkoutExerciseResponse(
             exerciseName: name,
@@ -56,7 +55,7 @@ final class OwnerReportedInjuryAndClockTests: XCTestCase {
             reps: "10-12",
             tempo: "2-0-1-1",
             restSeconds: 90,
-            notes: notes,
+            notes: "",
             muscleTarget: target
         )
     }
@@ -185,6 +184,29 @@ final class OwnerReportedInjuryAndClockTests: XCTestCase {
         XCTAssertTrue(issues[0].contains("Seated Dumbbell Shoulder Press"), issues[0])
     }
 
+    /// The trap inside the fallback above, pinned because I built it and then nearly shipped it.
+    ///
+    /// `shoulderFamilyPhrases` gives the "Shoulder" catch-all pattern the phrases "shoulder" and
+    /// "delt". Those belong there — a movement whose pattern IS "Shoulder" should be reached by a
+    /// report naming the shoulder — but they must NOT count as "the report named a movement",
+    /// because `hasShoulderRisk` already requires the report to name the joint. Every report that
+    /// reaches this code contains one of them. Left in the union, the specificity check would
+    /// always say "specific", the general fallback would never fire, and the fail-open hole would
+    /// still be open behind a fix that read as though it had closed it.
+    func testNamingOnlyTheJointDoesNotCountAsNamingAMovement() {
+        XCTAssertFalse(
+            service.reportNamesAnyMovement(
+                service.normalizedPriorityText("Left shoulder and delt pain, worse in the evening.")
+            ),
+            "Naming the joint is not naming a movement — this is what triggers the general fallback"
+        )
+        XCTAssertTrue(
+            service.reportNamesAnyMovement(
+                service.normalizedPriorityText("Left shoulder pain when I overhead press.")
+            )
+        )
+    }
+
     /// Selection scoring, the half that was doing the quiet damage. A dip must score the same
     /// whether or not the analysis mentions a shoulder; an overhead press must not.
     func testShoulderCautionDoesNotMoveAnUnreportedMovementDownTheCatalogue() {
@@ -194,7 +216,16 @@ final class OwnerReportedInjuryAndClockTests: XCTestCase {
                 muscleTarget: target,
                 focusIntent: nil,
                 selectionContext: ClaudeService.ExerciseSelectionContext(
-                    calibration: service.calibrationProfile(from: blankAnalysis()),
+                    // Injected through `calibrationProfile`'s parameter seam rather than left to
+                    // read stored state. `RecoveryModulationTests` records why: `swift test
+                    // --parallel` runs classes in separate processes sharing one defaults plist,
+                    // so a test that reads stored recovery state can be flipped mid-run by a
+                    // sibling that writes it. These assertions are differential, so a flip would
+                    // not fail them — it would make them stop measuring, which is worse.
+                    calibration: service.calibrationProfile(
+                        from: blankAnalysis(),
+                        recoveryDecision: RecoveryDecision(tier: .ready, audit: "injected for test")
+                    ),
                     injuryRiskFocus: report,
                     style: "Arms"
                 )
@@ -361,6 +392,97 @@ final class OwnerReportedInjuryAndClockTests: XCTestCase {
                 report: ownersReport
             ).contains { $0.contains("increases shoulder risk") },
             "He HAS flagged overhead pressing, so swapping one in still is"
+        )
+    }
+
+    // MARK: - 4. A report that names no movement must not switch caution off
+
+    /// The hole a third audit found, and the most dangerous shape this whole mechanism can take.
+    ///
+    /// `hasShoulderRisk`'s first arm matches pure diagnoses — "shoulder impingement", "rotator
+    /// cuff", "labral", "ac joint", "internal rotation", "upper crossed", "shoulder health" —
+    /// none of which contains a movement word. Narrowing caution to named movements therefore
+    /// returned false for EVERY exercise in the catalogue on exactly those reports, switching off
+    /// all five gated rules at once. A shoulder rule failing silently is the one direction that is
+    /// not acceptable, and `InjuryTimeAndSessionBudgetTests` lists five such reports as ones that
+    /// must register.
+    ///
+    /// The rule is specificity, not doing less: be specific when he was specific, general when he
+    /// was not.
+    func testADiagnosisThatNamesNoMovementKeepsCautionOnEverything() {
+        let diagnosisOnly = [
+            "Shoulder impingement noted on the left side.",
+            "Internally rotated shoulders with upper crossed posture.",
+            "Shoulder health is a priority this block.",
+            "Left shoulder aches through the day."
+        ]
+
+        for report in diagnosisOnly {
+            XCTAssertTrue(
+                service.hasShoulderRisk(injuryRiskFocus: report),
+                "Premise: this report must register as a shoulder problem at all — \(report)"
+            )
+            XCTAssertTrue(
+                service.reportedShoulderPainImplicates(
+                    exerciseName: "Dip (Assisted or Weighted)",
+                    muscleTarget: "Triceps",
+                    injuryRiskFocus: report
+                ),
+                "A report naming no movement must leave caution ON, not silently off — \(report)"
+            )
+            XCTAssertTrue(
+                service.reportedShoulderPainImplicates(
+                    exerciseName: "Seated Dumbbell Shoulder Press",
+                    muscleTarget: "Anterior Deltoids",
+                    injuryRiskFocus: report
+                ),
+                "\(report)"
+            )
+        }
+
+        // And the narrowing still works the moment he names one. This is the pair that matters:
+        // same joint, same severity, different specificity, different outcome for the dip.
+        XCTAssertFalse(
+            service.reportedShoulderPainImplicates(
+                exerciseName: "Dip (Assisted or Weighted)",
+                muscleTarget: "Triceps",
+                injuryRiskFocus: ownersReport
+            )
+        )
+    }
+
+    /// Two audits found families missing from the table, both in the same direction — a real
+    /// complaint reaching nothing. These are the ones a lifter is most likely to name.
+    func testAReportReachesTheMovementFamiliesALifterWouldActuallyName() {
+        let cases: [(report: String, exercise: String, target: String)] = [
+            ("Shoulder pain on the landmine press.", "Landmine Press", "Anterior Deltoids"),
+            ("Shoulder pain during face pulls.", "Cable Face Pull", "Rear Deltoids"),
+            ("Shoulder pain on lateral raises.", "Cable Lateral Raise", "Lateral Deltoids"),
+            ("Shoulder pain on incline pressing.", "Incline Barbell Press", "Upper Chest"),
+            ("Shoulder pain when I bench press.", "Dumbbell Bench Press", "Chest"),
+            ("Shoulder pain on pulldowns.", "Lat Pulldown", "Lats")
+        ]
+
+        for item in cases {
+            XCTAssertTrue(
+                service.reportedShoulderPainImplicates(
+                    exerciseName: item.exercise,
+                    muscleTarget: item.target,
+                    injuryRiskFocus: item.report
+                ),
+                "\(item.report) must reach \(item.exercise)"
+            )
+        }
+
+        // Each of those reports names ONE family, so the narrowing is real rather than everything
+        // falling through to the general case.
+        XCTAssertFalse(
+            service.reportedShoulderPainImplicates(
+                exerciseName: "Dip (Assisted or Weighted)",
+                muscleTarget: "Triceps",
+                injuryRiskFocus: "Shoulder pain on the landmine press."
+            ),
+            "A report naming the landmine press must not reach a dip"
         )
     }
 }
