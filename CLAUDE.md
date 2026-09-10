@@ -67,6 +67,63 @@
     it. "Correct-by-inspection" is a claim about what you read, not a substitute for reading it.
   - A green check is not evidence on its own. Confirm the work actually ran.
 
+## A Claim About Behavior Needs A Test, Not A Sentence (COMPANION TO "NEVER ASSUME")
+- "Never Assume" says verify before you speak. This says what verification has to LOOK like, and
+  it exists because roughly half the errors in this repo are sentences, not code. A wrong
+  initialiser fails the build and costs one cycle. A wrong sentence in a comment, a commit
+  message, or a message to the owner compiles perfectly and ships, and the only reader who could
+  have caught it is the one being misled by it.
+- Scope: code comments, doc comments, commit messages, PR bodies, and every message to the owner.
+- Three kinds of sentence, three different obligations:
+  - **A claim about what the code DOES.** Name the test that pins it, or do not write the
+    sentence. "This gate refuses a set once the day is over its fatigue cap" is a claim. If no
+    test covers it, either write the test or write the sentence with "not covered by a test" in
+    it. Both are acceptable. Asserting it bare is not.
+  - **A claim about WHY something exists, or what happened before.** History is allowed without a
+    test, but it must read as history and must not smuggle in a claim about current behavior. The
+    failure to watch for: a history paragraph that was true when written and false one commit
+    later. In this repo one such paragraph said the joint-stress rules "do not consult
+    `hasShoulderRisk` at all" while a comment in the same tree said the opposite, because the
+    rule had changed underneath it.
+  - **A claim that a change FIXES something.** Name the evidence: the test, the CI run that went
+    green and was confirmed to have executed, or the code path read end to end.
+- The cheap discipline, in order: before writing a sentence about behavior, ask whether a test
+  names it. If yes, cite it. If no, write the test, or label the sentence. There is no fourth
+  option.
+- Watch specifically for a comment that JUSTIFIES a design with an example. An example is a claim
+  and it is the easiest thing in this file to get wrong, because it feels like illustration rather
+  than assertion. Real instance: a comment justified an override by saying
+  "Behind-the-Neck Lat Pulldown matches the list", which it did not, because the list held spaced
+  keywords and the name held hyphens. The design was right; the example was invented.
+- Where the tests go. Do not add a bespoke test built from the one example that inspired a rule —
+  that is the blind spot, not a cure for it. Extend the existing tables:
+  - `Tests/TransformGeneratorCoreTests/ShoulderReportCorpusTests.swift` — report shapes crossed
+    with movements, for anything reading the lifter's injury note.
+  - `tools/check_shoulder_families.py` and `tools/check_validator_patterns.py` — structural
+    invariants that no Swift test can express, each with its own self-test of pinned attacks.
+
+## An Audit Delivers A Failing Test, Not A Paragraph
+- Audits and review lanes do find real defects here; four rounds in one session each found real
+  ones. The weak link is what comes back. A finding arrives as prose, the spawning agent decides
+  whether to believe it, and the spawning agent is the author. A paragraph can be argued with. A
+  red test cannot.
+- So the deliverable for any finding that claims a behavior is wrong is, in order of preference:
+  1. A test committed to the repo that FAILS on the current code. The spawning agent must see it
+     red before writing a fix and green after. Do not "fix" first and add the test afterwards:
+     a test written after the fix proves the fix compiles, not that the bug existed.
+  2. When it cannot be expressed as a test — a prompt-shape problem, a cost problem, an
+     owner-facing wording problem — the exact file and line, the exact input, and the exact
+     output that is wrong, so it can be checked in under a minute without re-deriving anything.
+- A finding that is neither is still worth reporting and must be LABELED "reasoned, not
+  reproduced" in the audit output, in the commit message, and in the message to the owner. That
+  label is not a formality: this session shipped a slot-placement fix that no test drives end to
+  end, and saying so plainly is the difference between a known gap and a false claim of coverage.
+- The same rule binds the spawning agent. A subagent's finding is an unverified claim until it is
+  checked against the code; a subagent's failing test is checked by running it. Prefer the second.
+- Never weaken a rule to make a test pass, and never write a test that asserts current behavior
+  just to make a finding go away. If the fix is genuinely not worth making, say so and leave the
+  finding reported.
+
 ## Branch Policy
 - Use `main` as the only working branch for this repository.
 - Commit directly to `main` and push directly to `origin/main`.
