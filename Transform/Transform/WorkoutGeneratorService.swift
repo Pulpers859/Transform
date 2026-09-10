@@ -353,6 +353,7 @@ extension ClaudeService {
                     toolName: programToolName,
                     toolSchema: toolSchema,
                     issues: best.issues,
+                    menuLocked: true,
                     context: context,
                     originalUserPrompt: userPrompt,
                     previousPayloadJSON: try? encodeDebugJSONString(best.response)
@@ -689,6 +690,7 @@ extension ClaudeService {
                     toolName: weekToolName,
                     toolSchema: toolSchema,
                     issues: best.issues,
+                    menuLocked: true,
                     context: context,
                     originalUserPrompt: userPrompt,
                     previousPayloadJSON: try? encodeDebugJSONString(best.response)
@@ -1025,6 +1027,7 @@ extension ClaudeService {
                                 toolName: programToolName,
                                 toolSchema: toolSchema,
                                 issues: issues,
+                                menuLocked: true,
                                 context: context,
                                 originalUserPrompt: userPrompt,
                                 previousPayloadJSON: sanitizedPayload ?? jsonString
@@ -1050,6 +1053,7 @@ extension ClaudeService {
                                 toolName: programToolName,
                                 toolSchema: toolSchema,
                                 issues: [issue],
+                                menuLocked: true,
                                 context: context,
                                 originalUserPrompt: userPrompt
                             )
@@ -1099,6 +1103,7 @@ extension ClaudeService {
                             toolName: programToolName,
                             toolSchema: toolSchema,
                             issues: [correctionIssue(for: error)],
+                            menuLocked: true,
                             context: context,
                             originalUserPrompt: userPrompt
                         )
@@ -1440,6 +1445,7 @@ extension ClaudeService {
                                 toolName: weekToolName,
                                 toolSchema: toolSchema,
                                 issues: issues,
+                                menuLocked: true,
                                 context: context,
                                 originalUserPrompt: userPrompt,
                                 previousPayloadJSON: sanitizedPayload ?? jsonString
@@ -1465,6 +1471,7 @@ extension ClaudeService {
                                 toolName: weekToolName,
                                 toolSchema: toolSchema,
                                 issues: [issue],
+                                menuLocked: true,
                                 context: context,
                                 originalUserPrompt: userPrompt
                             )
@@ -1512,6 +1519,7 @@ extension ClaudeService {
                             toolName: weekToolName,
                             toolSchema: toolSchema,
                             issues: [correctionIssue(for: error)],
+                            menuLocked: true,
                             context: context,
                             originalUserPrompt: userPrompt
                         )

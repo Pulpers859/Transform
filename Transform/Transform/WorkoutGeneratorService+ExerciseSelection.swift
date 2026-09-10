@@ -1202,11 +1202,16 @@ extension ClaudeService {
     ///
     /// The families are deliberately small and literal. This reads a sentence a language model
     /// wrote about a body part; inferring beyond what it says is how the blanket penalty happened.
-    /// Matching is plain substring (`containsAny`), so a phrase can catch a longer word — "fly"
-    /// inside "flying". That is tolerable here and not worth a word-boundary pass: the direction
-    /// of the error is one extra movement treated carefully on a report that already describes a
-    /// shoulder problem, and every phrase is a lifting term unlikely to appear by accident in a
-    /// sentence about an injury.
+    ///
+    /// Matching is whole-token (`containsPluralTolerantPriorityPhrase`), never raw substring.
+    /// An earlier version of this comment argued a substring test was tolerable because "the
+    /// direction of the error is one extra movement treated carefully". That was wrong, and
+    /// wrong in the dangerous direction. The same phrase list is what `reportNamesAnyMovement`
+    /// asks "did he name a movement at all", so a phrase matching by accident does not add
+    /// caution — it SUBTRACTS it, by making a vague report look specific and switching off the
+    /// general fallback. "narrowing of the subacromial space" is ordinary impingement language
+    /// and contains the substring "row"; under the old test it cleared every press and
+    /// implicated every row.
     ///
     /// They are keyed off `movementPattern`, so a pattern with no family here can only be reached
     /// by name. The catalogue's shoulder-relevant patterns are covered — Vertical Press, Incline
@@ -1235,23 +1240,25 @@ extension ClaudeService {
 
         // Named outright ("dips hurt", "the overhead press bothers my shoulder").
         //
-        // The empty filter is load-bearing, not defensive dressing. `containsAny` is a substring
-        // test and Swift's `String.contains("")` is TRUE, so a blank name would match every report
-        // ever written and implicate the movement unconditionally — the blanket behaviour this
-        // function exists to end, arriving through a malformed exercise rather than a keyword
-        // list. A blank name is reachable: `exerciseMetadata`'s fallback sets `canonicalName` to
-        // whatever name it was handed, so a model response with an empty name propagates one.
+        // The empty filter stays, now belt-and-braces rather than the only guard. It was written
+        // against `containsAny`, a raw substring test where Swift's `String.contains("")` is TRUE
+        // — a blank name matched every report ever written and implicated the movement
+        // unconditionally. `containsPluralTolerantPriorityPhrase` refuses an empty token list
+        // outright, so the hole is closed twice. A blank name is reachable either way:
+        // `exerciseMetadata`'s fallback sets `canonicalName` to whatever name it was handed, so a
+        // model response with an empty name propagates one.
         let namedOutright = [
             normalizedPriorityText(metadata.canonicalName),
             normalizedPriorityText(exerciseName)
         ].filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-        if containsAny(reported, keywords: namedOutright) {
+        if containsPluralTolerantPriorityPhrase(in: reported, keywords: namedOutright) {
             return true
         }
 
         let pattern = normalizedPriorityText(treatAsMovementPattern ?? metadata.movementPattern)
         let familyPhrases = shoulderFamilyPhrases(forMovementPattern: pattern)
-        if !familyPhrases.isEmpty, containsAny(reported, keywords: familyPhrases) {
+        if !familyPhrases.isEmpty,
+           containsPluralTolerantPriorityPhrase(in: reported, keywords: familyPhrases) {
             return true
         }
 
@@ -1364,7 +1371,18 @@ extension ClaudeService {
         // true, the fallback would never fire, and the fail-open hole would still be open behind
         // a fix that looked like it closed it. Same for "rear delt" and "rear deltoid", which name
         // a muscle rather than a movement.
-        let jointAndMuscleWords: Set<String> = ["shoulder", "delt", "rear delt", "rear deltoid"]
+        // "scapular" and "straight arm" are the same trap one word further out, and both are
+        // ordinary in a POSTURE analysis: "scapular dyskinesis", "poor scapular control", "pain
+        // with straight arm elevation". Each names anatomy or a position, not a movement, yet
+        // each sits in a real family here ("Scapular Raise", "Pullover"). Left in this union they
+        // make a diagnosis-only report read as specific, and caution then narrows onto band
+        // pull-aparts and Y-raises — the two corrective movements a hurting shoulder most wants —
+        // while clearing every press. They stay in their families, where a report naming them
+        // SHOULD reach those movements; they are only disqualified from proving specificity.
+        let jointAndMuscleWords: Set<String> = [
+            "shoulder", "delt", "rear delt", "rear deltoid",
+            "scapular", "straight arm", "straight-arm"
+        ]
         let movementPhrases = [
             "Vertical Press", "Landmine Press", "Dip", "Upright Row", "Close-Grip Press",
             "Incline Press", "Horizontal Press", "Lateral Raise", "Rear Delt", "Face Pull",
@@ -1372,7 +1390,7 @@ extension ClaudeService {
         ]
         .flatMap { shoulderFamilyPhrases(forMovementPattern: normalizedPriorityText($0)) }
         .filter { !jointAndMuscleWords.contains($0) }
-        return containsAny(normalizedReport, keywords: movementPhrases)
+        return containsPluralTolerantPriorityPhrase(in: normalizedReport, keywords: movementPhrases)
     }
 
     /// Whether the analysis's injury field describes a shoulder the week must work around.

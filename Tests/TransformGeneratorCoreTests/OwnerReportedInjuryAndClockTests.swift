@@ -485,4 +485,188 @@ final class OwnerReportedInjuryAndClockTests: XCTestCase {
             "A report naming the landmine press must not reach a dip"
         )
     }
+
+    // MARK: - 3. What a third audit found in the two fixes above
+
+    /// Clinical prose must not be mistaken for a lifter naming a movement.
+    ///
+    /// The shoulder phrases used to be matched as raw substrings, and several of them are three
+    /// letters long. "narrowing of the subacromial space" is ordinary impingement language and
+    /// contains "row"; "scapular dyskinesis" is ordinary posture language and contains the
+    /// scapular-raise family's own phrase. Either one made a report that names NO movement look
+    /// specific, which switched off the general fallback — so caution vanished from the presses
+    /// and landed on rows, or on band pull-aparts and Y-raises, the corrective movements a
+    /// hurting shoulder most wants. The failure direction is the dangerous one: less caution,
+    /// arriving silently, out of a fix that read as though it had closed exactly this hole.
+    func testClinicalProseIsNotAMovementName() {
+        let diagnosisOnly = [
+            "Shoulder pain with narrowing of the subacromial space on the left.",
+            "Left shoulder pain with scapular dyskinesis and poor scapular control.",
+            "Shoulder pain and discomfort with straight arm elevation."
+        ]
+
+        for report in diagnosisOnly {
+            XCTAssertTrue(
+                service.hasShoulderRisk(injuryRiskFocus: report),
+                "Premise: this must register as a shoulder problem at all — \(report)"
+            )
+            XCTAssertFalse(
+                service.reportNamesAnyMovement(service.normalizedPriorityText(report)),
+                "Clinical wording names no movement — \(report)"
+            )
+            for (name, target) in [
+                ("Seated Dumbbell Shoulder Press", "Anterior Deltoids"),
+                ("Chest-Supported Row", "Upper Back"),
+                ("Band Pull-Apart", "Shoulders")
+            ] {
+                XCTAssertTrue(
+                    service.reportedShoulderPainImplicates(
+                        exerciseName: name,
+                        muscleTarget: target,
+                        injuryRiskFocus: report
+                    ),
+                    "\(name) must stay covered by a report that names no movement — \(report)"
+                )
+            }
+        }
+    }
+
+    /// Plurals are how a person writes, and whole-token matching must not lose them.
+    func testAReportReachesAMovementNamedInThePlural() {
+        let cases: [(report: String, exercise: String, target: String)] = [
+            ("Shoulder pain on dips.", "Dip (Assisted or Weighted)", "Triceps"),
+            ("Shoulder pain during face pulls.", "Cable Face Pull", "Rear Deltoids"),
+            ("Shoulder pain on lateral raises.", "Cable Lateral Raise", "Lateral Deltoids"),
+            ("Shoulder pain on lat pulldowns.", "Lat Pulldown", "Lats")
+        ]
+
+        for item in cases {
+            XCTAssertTrue(
+                service.reportedShoulderPainImplicates(
+                    exerciseName: item.exercise,
+                    muscleTarget: item.target,
+                    injuryRiskFocus: item.report
+                ),
+                "\(item.report) must reach \(item.exercise)"
+            )
+        }
+    }
+
+    /// A locked correction pass must never be handed a finding it is forbidden to repair.
+    ///
+    /// The two crowding findings are demoted to warnings under a locked menu because the model
+    /// does not own exercise selection there. They still arrived in the correction prompt, and
+    /// the repair instruction written for them says to remove a movement — so the same prompt
+    /// told the model to keep the menu exactly and to delete something from it. Obeying costs a
+    /// menu-mismatch finding, or a day under the five-exercise floor, and the paid candidates and
+    /// the paid correction call are discarded together.
+    func testALockedCorrectionPassIsNeverToldToRemoveAMovement() {
+        let repairable = "Day 3: notes contain load/rep progression instructions."
+        let crowding = "Day 4 is too crowded for a fatigue-managed Lower session."
+        let fatigue = "Day 2 carries too much total fatigue load for a hypertrophy week (28)."
+
+        // Premise, asserted rather than assumed: one is repairable under lock, two are not.
+        XCTAssertEqual(service.validationDisposition(for: repairable, menuLocked: true), .correctionPass)
+        XCTAssertEqual(service.validationDisposition(for: crowding, menuLocked: true), .acceptableWarning)
+        XCTAssertEqual(service.validationDisposition(for: fatigue, menuLocked: true), .acceptableWarning)
+
+        let body = service.correctionRequestBody(
+            config: ClaudeService.GenerationConfig(model: "test-model", maxTokens: 8192, timeout: 180),
+            systemPrompt: "system",
+            toolName: service.programToolName,
+            toolSchema: [String: Any](),
+            issues: [repairable, crowding, fatigue],
+            menuLocked: true,
+            context: "context",
+            originalUserPrompt: "original"
+        )
+
+        guard let messages = body["messages"] as? [[String: Any]],
+              let content = messages.first?["content"] as? [[String: Any]],
+              let prompt = content.first?["text"] as? String else {
+            return XCTFail("Correction body did not carry a user prompt")
+        }
+
+        XCTAssertTrue(prompt.contains(repairable), "The repairable finding must still be sent")
+        XCTAssertFalse(
+            prompt.contains("too crowded for a fatigue-managed"),
+            "A finding the locked model cannot repair must not be listed as one to correct"
+        )
+        XCTAssertFalse(
+            prompt.contains("carries too much total fatigue load"),
+            "A finding the locked model cannot repair must not be listed as one to correct"
+        )
+        XCTAssertFalse(
+            prompt.contains("Remove the single least valuable movement"),
+            "Nothing may tell a locked menu to drop a movement"
+        )
+    }
+
+    /// The filter drops ONLY what the lock took away, and this is the other half of that.
+    ///
+    /// The first version filtered on "not repairable at this lock state", which was simpler and
+    /// wrong: it also threw away findings the model DOES own under a locked menu. A rep-band leap
+    /// is the clearest one — reps are the model's to write, the finding is a warning only because
+    /// nothing is broken, and the correction call is already paid for, so asking is free. A
+    /// synthetic decode failure matches no pattern at all and must survive for the same reason.
+    func testACorrectionPassKeepsTheWarningsTheModelCanStillFix() {
+        let repairable = "Day 3: notes contain load/rep progression instructions."
+        let repBands = "Day 2 exercise Lat Pulldown: rep prescription moved from 5-8 to 15-20, "
+            + "which is 3 rep bands in one week. The working load has to move with it."
+
+        XCTAssertEqual(service.validationDisposition(for: repBands, menuLocked: true), .acceptableWarning)
+
+        let body = service.correctionRequestBody(
+            config: ClaudeService.GenerationConfig(model: "test-model", maxTokens: 8192, timeout: 180),
+            systemPrompt: "system",
+            toolName: service.programToolName,
+            toolSchema: [String: Any](),
+            issues: [repairable, repBands],
+            menuLocked: true,
+            context: "context",
+            originalUserPrompt: "original"
+        )
+
+        guard let messages = body["messages"] as? [[String: Any]],
+              let content = messages.first?["content"] as? [[String: Any]],
+              let prompt = content.first?["text"] as? String else {
+            return XCTFail("Correction body did not carry a user prompt")
+        }
+        XCTAssertTrue(
+            prompt.contains("rep bands in one week"),
+            "A warning the locked model can still repair must stay in the correction prompt"
+        )
+    }
+
+    func testACorrectionPassWithNoClassifiedFindingStillSendsIt() {
+        let synthetic = "Payload decode failed: The data couldn\u{2019}t be read."
+        XCTAssertNotEqual(
+            service.validationDisposition(for: synthetic, menuLocked: true),
+            .correctionPass,
+            "Premise: this matches no repair pattern"
+        )
+        XCTAssertEqual(
+            service.validationDisposition(for: synthetic, menuLocked: false),
+            .hardFailure,
+            "Premise: it is not correction-worthy unlocked either, so the lock took nothing away"
+        )
+
+        let body = service.correctionRequestBody(
+            config: ClaudeService.GenerationConfig(model: "test-model", maxTokens: 8192, timeout: 180),
+            systemPrompt: "system",
+            toolName: service.programToolName,
+            toolSchema: [String: Any](),
+            issues: [synthetic],
+            menuLocked: true,
+            context: "context",
+            originalUserPrompt: "original"
+        )
+
+        guard let messages = body["messages"] as? [[String: Any]],
+              let content = messages.first?["content"] as? [[String: Any]],
+              let prompt = content.first?["text"] as? String else {
+            return XCTFail("Correction body did not carry a user prompt")
+        }
+        XCTAssertTrue(prompt.contains("Payload decode failed"))
+    }
 }

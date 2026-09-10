@@ -152,12 +152,48 @@ extension ClaudeService {
         toolName: String,
         toolSchema: [String: Any],
         issues: [String],
+        menuLocked: Bool,
         context: String,
         originalUserPrompt: String,
         previousPayloadJSON: String? = nil
     ) -> [String: Any] {
-        let issueBlock = issues.enumerated().map { "\($0.offset + 1). \($0.element)" }.joined(separator: "\n")
-        let tacticBlock = correctionTactics(for: issues)
+        // Only the findings this pass is actually allowed to repair reach the model.
+        //
+        // The callers hand over the candidate's WHOLE issue list, warnings included, and that was
+        // fine while every tactic was a note rewrite. It stopped being fine the moment a tactic
+        // said "remove the least valuable movement": under a locked menu the two crowding findings
+        // are demoted to warnings precisely because the model may not touch exercise selection,
+        // yet they still arrived in this list and still matched that tactic. The model would then
+        // be told, in the same prompt, to keep the menu exactly and to delete a movement from it.
+        // Obeying costs a menu-mismatch finding — or a day under the five-exercise floor, which is
+        // a hard failure — and the paid candidates plus the paid correction call are all discarded.
+        // That is the exact failure the demotion existed to prevent, re-entered from the other end.
+        //
+        // Asking for something unrepairable is never free even without a dangerous tactic: the
+        // prompt says "fix ONLY the listed issues", so an unfixable entry either wastes the call
+        // or invites an illegal edit.
+        //
+        // The predicate is deliberately narrow — it drops ONLY what the lock itself took away:
+        // a finding that would be correction-worthy with selection in play, but is demoted to a
+        // warning because the menu is locked. That is exactly `menuLockedDemotionPatterns`, plus
+        // the prime-hypertrophy miss `validationDisposition` demotes inline, and it is exactly
+        // the set the model is forbidden to act on. Filtering on "not `.correctionPass`" instead
+        // would have been simpler and worse: it would also have dropped warnings the model DOES
+        // own under lock — a rep-band leap is a free fix while the call is already paid for.
+        //
+        // The fallback still matters for the debug paths, which call this whenever the issue list
+        // is non-empty rather than only when something repairable is in it. When nothing survives
+        // the filter, send what we were given rather than a correction request with no issues.
+        let repairable = issues.filter { issue in
+            guard menuLocked else { return true }
+            let demotedByTheLock =
+                validationDisposition(for: issue, menuLocked: false) == .correctionPass
+                && validationDisposition(for: issue, menuLocked: true) != .correctionPass
+            return !demotedByTheLock
+        }
+        let targetedIssues = repairable.isEmpty ? issues : repairable
+        let issueBlock = targetedIssues.enumerated().map { "\($0.offset + 1). \($0.element)" }.joined(separator: "\n")
+        let tacticBlock = correctionTactics(for: targetedIssues)
 
         // Without the previous payload the model regenerates blind and "preserve everything
         // that was already good" is unenforceable — corrections drift instead of converging.
@@ -212,10 +248,13 @@ extension ClaudeService {
             rules.append("- Rewrite ONLY the flagged exercise's note so it is execution-only: a form/setup cue plus a control, ROM, or bracing cue. Remove every load- or rep-progression phrase; if that note stated working-set effort, move it to the structured targetRIR field. Change nothing else about that exercise.")
         }
 
-        // These two reach a correction pass only on the UNLOCKED path now — both sit in
-        // `menuLockedDemotionPatterns`, so a locked menu ships them as warnings rather than buying
-        // a call the model cannot answer. That is what makes an instruction possible here: with
-        // selection in play, removing the least valuable movement is a real repair.
+        // Reachable only with exercise selection in play, and that is enforced by the filter in
+        // `correctionRequestBody`, NOT by the demotion on its own. The comment here used to claim
+        // the demotion was enough. It was not, and the gap was this instruction's alone to answer
+        // for: demotion only decides whether a finding BUYS a correction call, while the callers
+        // still handed the whole issue list to this function, so a demoted crowding finding riding
+        // alongside any repairable one matched this rule and told a locked model to delete a
+        // movement from a menu it had just been told to copy exactly.
         //
         // The instruction it replaces said to "correct excessive rest periods", which could not
         // work for either finding — one counts exercises, the other sums `fatigueContribution`,

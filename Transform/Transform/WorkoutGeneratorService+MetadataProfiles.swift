@@ -795,7 +795,14 @@ extension ClaudeService {
 
         let dayNote = normalizedPriorityText(day.notes)
         let riskyVerticalPresses = day.exercises.filter { exercise in
-            let name = normalizedPriorityText(exercise.exerciseName)
+            // `normalizeExerciseName`, not `normalizedPriorityText`. The latter lowercases and
+            // nothing else, so a hyphen survives and the spaced keywords below never matched a
+            // hyphenated name: "Behind-the-Neck Press" and "Close-Grip Bench Press" walked
+            // straight past a rule written to catch them. Its sibling
+            // `validateArmsDayShoulderStress` had always used the punctuation-folding key; the
+            // two shoulder rules disagreeing about what a name IS is how one of them quietly
+            // policed less than it claimed.
+            let name = normalizeExerciseName(exercise.exerciseName)
             guard containsAny(
                 name,
                 keywords: ["shoulder press", "overhead press", "arnold press", "military press", "push press", "behind the neck"]
@@ -809,12 +816,18 @@ extension ClaudeService {
             // The family is asserted, not inferred, and that distinction is the whole safety of
             // this rule. The keyword list above already IS the definition of the family being
             // policed — overhead pressing — so that is what the report is asked about. Letting
-            // `exerciseMetadata` infer it instead made the rule fail OPEN on names the model can
-            // easily produce: "Behind-the-Neck Lat Pulldown" matches the list but infers as a
-            // Vertical Pull, and "Push Press" with `muscleTarget: "Triceps"` infers as a
-            // Close-Grip Press. Neither has an overhead family, so the finding vanished with no
-            // trace. An audit caught it; the first version of this comment claimed "every name in
-            // the list above is a vertical press", which is not true of a grip modifier.
+            // `exerciseMetadata` infer it instead made the rule fail OPEN on a name the model can
+            // easily produce: "Push Press" carrying `muscleTarget: "Triceps"` matches the list,
+            // and `inferredExerciseMetadata` gives it the pattern "Close-Grip Press" — the
+            // triceps branch claims any name containing "press" before the shoulder branch is
+            // reached. That family has no overhead phrase, so the finding vanished with no trace.
+            //
+            // An audit caught the original overstatement ("every name in the list above is a
+            // vertical press", untrue of a grip modifier). A later audit caught the REPLACEMENT
+            // example: it cited "Behind-the-Neck Lat Pulldown", which under the old
+            // `normalizedPriorityText` did not match the keyword list at all, because the hyphens
+            // survived. It matches now that the name is folded properly above, and it does infer
+            // as a Vertical Pull — but the sentence was asserted before either half was checked.
             guard reportedShoulderPainImplicates(
                 exerciseName: exercise.exerciseName,
                 muscleTarget: exercise.muscleTarget,
@@ -2148,6 +2161,50 @@ extension ClaudeService {
                 if slice == needleTokens {
                     return true
                 }
+            }
+
+            return false
+        }
+    }
+
+    /// `containsPriorityPhrase`, but tolerant of the plural a person actually writes.
+    ///
+    /// Whole TOKENS, never raw substrings, and that is the whole reason this exists. The shoulder
+    /// rules match lifting phrases against free prose an analysis model wrote about a joint, and
+    /// several of those phrases are three letters long. `"narrowing of the subacromial space"` —
+    /// ordinary impingement language — contains the substring "row", so a plain `contains` read it
+    /// as a report naming the row. That is not a harmless extra bit of caution: the same phrase
+    /// list decides whether a report named ANY movement, so one accidental hit switches OFF the
+    /// general fallback and narrows every shoulder rule onto rows while clearing every press.
+    ///
+    /// The plural allowance is on the LAST token only, because that is where English puts it:
+    /// "dips", "pulldowns", "face pulls", "lateral raises", "presses". `containsPriorityPhrase`
+    /// demands exact tokens and would miss every one of them, which is why the shoulder rules
+    /// cannot simply call it.
+    func containsPluralTolerantPriorityPhrase(in text: String, keywords: [String]) -> Bool {
+        let haystackTokens = priorityTextTokens(text)
+
+        return keywords.contains { keyword in
+            let needleTokens = priorityTextTokens(keyword)
+            guard !needleTokens.isEmpty, needleTokens.count <= haystackTokens.count else {
+                return false
+            }
+
+            let lastNeedleIndex = needleTokens.count - 1
+            for startIndex in 0...(haystackTokens.count - needleTokens.count) {
+                var matched = true
+                for offset in needleTokens.indices {
+                    let candidate = haystackTokens[startIndex + offset]
+                    let wanted = needleTokens[offset]
+                    if candidate == wanted { continue }
+                    if offset == lastNeedleIndex,
+                       candidate == wanted + "s" || candidate == wanted + "es" {
+                        continue
+                    }
+                    matched = false
+                    break
+                }
+                if matched { return true }
             }
 
             return false
