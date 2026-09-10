@@ -70,6 +70,25 @@ jobs:
           python3 tools/test_check_validator_patterns.py
           python3 tools/check_validator_patterns.py
 
+      # The same idea aimed at the other half of the generator that fails SILENTLY.
+      #
+      # Shoulder caution is evidence-bound: a movement is treated carefully only when the
+      # lifter's own injury note reaches it. Three separate rounds of fixes shipped a phrase
+      # table that could not reach a movement a real complaint would name, and each time the
+      # app was less careful than it reported being, with nothing failing. This proves the
+      # wiring between the three pieces that have to agree — the family table, the
+      # specificity union that decides whether a note named a movement at all, and the list
+      # of patterns that can be charged shoulder load.
+      #
+      # It proves WIRING, not vocabulary. Whether the words are the words a person would use
+      # is `ShoulderReportCorpusTests`, in the Swift suite above. Read the two together.
+      - name: Check shoulder families are reachable
+        if: always()
+        run: |
+          set -euo pipefail
+          python3 tools/test_check_shoulder_families.py
+          python3 tools/check_shoulder_families.py
+
       - name: Upload generator test log
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
