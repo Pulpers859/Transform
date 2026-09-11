@@ -358,6 +358,89 @@ final class ShoulderReportCorpusTests: XCTestCase {
         }
     }
 
+    /// Every family is PROVEN by a row that does not quote the exercise's own name.
+    ///
+    /// This is the test that audits the table, and it exists because the table looked complete
+    /// and was not. Checking by hand — deleting each family from a faithful simulation and seeing
+    /// which rows changed — four families turned out to be carried by nothing:
+    ///
+    ///   * Pullover and the "Shoulder" catch-all had no row at all.
+    ///   * Fly LOOKED covered. The row "Shoulder pain with cable flyes." expects Cable Fly, but
+    ///     that report quotes the exercise's own name, so the `namedOutright` branch answers it
+    ///     and the family is never consulted. Delete the family and the row still passes.
+    ///   * Scapular Raise had the same problem through "band pull-aparts".
+    ///
+    /// A row whose answer comes from the name proves the name matching, which is worth having and
+    /// is not what it appears to prove. So the requirement is specific: for every movement there
+    /// must be a row that reaches it through its FAMILY WORDS ALONE.
+    func testEveryFamilyIsProvenByARowThatNamesNoExercise() {
+        for probe in Self.probes {
+            let provingRows = Self.corpus.filter { row in
+                guard case .only(let names) = row.reach, names.contains(probe.name) else {
+                    return false
+                }
+                // The report must not contain the movement's own name, or `namedOutright`
+                // answers before the family is ever consulted.
+                return !service.containsPluralTolerantPriorityPhrase(
+                    in: service.normalizedPriorityText(row.report),
+                    keywords: [service.normalizedPriorityText(probe.name)]
+                )
+            }
+            XCTAssertFalse(
+                provingRows.isEmpty,
+                "No row reaches \(probe.name) through the \(probe.family) family alone. "
+                + "Delete that family and nothing in this table would notice."
+            )
+        }
+    }
+
+    /// A movement the app cannot classify is treated as a shoulder movement, deliberately.
+    ///
+    /// `inferredExerciseMetadata` has a catch-all: anything whose name or target says shoulder or
+    /// delt, and which matched no more specific branch, gets the pattern "Shoulder". Its family is
+    /// the words "shoulder" and "delt", so any report naming the joint reaches it — including a
+    /// report that otherwise names only one other movement.
+    ///
+    /// That is a real tension with "stay off movements I haven't flagged" and it is resolved on
+    /// purpose in the cautious direction: the app does not know what the movement is, and the
+    /// lifter's own note says that joint hurts. Pinned rather than left implicit, because it is
+    /// the one place where naming one movement does not fully narrow the week.
+    func testAnUnclassifiedShoulderMovementStaysCoveredByAnyShoulderReport() {
+        let unclassified = WorkoutExerciseResponse(
+            exerciseName: "Shoulder Circles",
+            sets: 2,
+            reps: "10-12",
+            tempo: "2-0-1-1",
+            restSeconds: 60,
+            notes: "",
+            muscleTarget: "Shoulders"
+        )
+
+        XCTAssertEqual(
+            service.exerciseMetadata(for: unclassified).movementPattern,
+            "Shoulder",
+            "Premise: this is the inference catch-all. If it now resolves elsewhere, this test "
+            + "is measuring something other than what it names."
+        )
+
+        XCTAssertTrue(
+            service.reportedShoulderPainImplicates(
+                exerciseName: unclassified.exerciseName,
+                muscleTarget: unclassified.muscleTarget,
+                injuryRiskFocus: "Anterior shoulder pain on dips."
+            ),
+            "A movement the app cannot classify stays covered even when the note names another one"
+        )
+        XCTAssertFalse(
+            service.reportedShoulderPainImplicates(
+                exerciseName: unclassified.exerciseName,
+                muscleTarget: unclassified.muscleTarget,
+                injuryRiskFocus: "No injuries reported."
+            ),
+            "A lifter who reported nothing is still not penalised anywhere"
+        )
+    }
+
     /// The table itself: every report against every movement.
     func testCautionReachesExactlyTheMovementsEachReportNames() {
         for row in Self.corpus {
