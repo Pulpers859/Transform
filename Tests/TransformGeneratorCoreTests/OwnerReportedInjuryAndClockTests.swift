@@ -32,15 +32,38 @@ final class OwnerReportedInjuryAndClockTests: XCTestCase {
     /// Copied from `InjuryTimeAndSessionBudgetTests`, which constructs the same type. Written out
     /// rather than recalled: this initialiser has 19 labels and typing one from memory is how two
     /// earlier tests in this repo broke the build.
-    private func blankAnalysis() -> BodyAnalysisResult {
+    private func blankAnalysis(
+        inputContext: AnalysisInputContext? = nil,
+        injuryRiskNotes: String = ""
+    ) -> BodyAnalysisResult {
         BodyAnalysisResult(
             overallAssessment: "", trainingAssessment: "", nutritionAssessment: "",
             recoveryRiskAssessment: "", adherenceAssessment: "", analysisLimitations: "",
-            inputContext: nil, regionBreakdown: [], topLeverageChange: "",
+            inputContext: inputContext, regionBreakdown: [], topLeverageChange: "",
             priorityMuscles: [], workoutRecommendations: [], dietRecommendations: [],
             posturalNotes: "", estimatedBodyFat: "", metabolicHealthNotes: "",
-            psychologicalInsights: "", injuryRiskNotes: "", macroTargets: nil,
+            psychologicalInsights: "", injuryRiskNotes: injuryRiskNotes, macroTargets: nil,
             structuredTrainingIntent: nil
+        )
+    }
+
+    private func inputContext(
+        painHistory: String,
+        sorenessPain: String
+    ) -> AnalysisInputContext {
+        AnalysisInputContext(
+            profile: AnalysisProfileSnapshot(
+                age: "", sex: "", build: "", height: "", currentWeight: "",
+                occupation: "", trainingFrequency: "", trainingAge: "",
+                equipmentAccess: "", averageSleep: "", painHistory: painHistory,
+                activityLevel: "", primaryGoal: "", lifestyleConstraints: ""
+            ),
+            checkIn: AnalysisCheckInSnapshot(
+                trainingContext: "", bodyweightTrend: "", recoverySleep: "",
+                stressSchedule: "", sorenessPain: sorenessPain,
+                nutritionAdherence: ""
+            ),
+            progress: nil
         )
     }
 
@@ -346,17 +369,158 @@ final class OwnerReportedInjuryAndClockTests: XCTestCase {
             "Overhead pressing is what his report names, so it must still be counted"
         )
 
-        // Joints he has said nothing about are untouched by this change — elbow load still
-        // accumulates from curl and extension work regardless of any report.
+        // The same evidence boundary applies to every joint. A joint he has not reported must
+        // not alter the plan through a hardcoded exercise-name list.
         let armDay = day([
             exercise("EZ-Bar Curl", "Biceps", sets: 5),
             exercise("Rope Triceps Pressdown", "Triceps", sets: 5)
         ])
-        XCTAssertGreaterThan(
+        XCTAssertEqual(
             service.sessionJointStress(for: armDay, injuryRiskFocus: "No injuries reported.").elbow,
             0,
-            "Only the shoulder charge is evidence-bound; the other three joints are unchanged"
+            accuracy: 0.001,
+            "An unreported elbow must contribute no elbow warning load"
         )
+    }
+
+    func testEveryJointStressChargeRequiresAReportForThatJoint() {
+        let unreported = "No injuries reported."
+
+        XCTAssertEqual(
+            service.exerciseJointStress(
+                for: exercise("EZ-Bar Curl", "Biceps", sets: 5),
+                injuryRiskFocus: unreported
+            ).elbow,
+            0,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            service.exerciseJointStress(
+                for: exercise("Barbell Romanian Deadlift", "Hamstrings", sets: 5),
+                injuryRiskFocus: unreported
+            ).lowerBack,
+            0,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            service.exerciseJointStress(
+                for: exercise("Dumbbell Walking Lunge", "Quads/Glutes", sets: 5),
+                injuryRiskFocus: unreported
+            ).knee,
+            0,
+            accuracy: 0.001
+        )
+    }
+
+    func testSpecificJointReportsOnlyChargeTheMovementFamilyNamed() {
+        let elbowReport = "Left elbow pain during curls."
+        XCTAssertGreaterThan(
+            service.exerciseJointStress(
+                for: exercise("EZ-Bar Curl", "Biceps"),
+                injuryRiskFocus: elbowReport
+            ).elbow,
+            0
+        )
+        XCTAssertEqual(
+            service.exerciseJointStress(
+                for: exercise("Rope Triceps Pressdown", "Triceps"),
+                injuryRiskFocus: elbowReport
+            ).elbow,
+            0,
+            accuracy: 0.001
+        )
+
+        let backReport = "Lower-back pain during deadlifts."
+        XCTAssertGreaterThan(
+            service.exerciseJointStress(
+                for: exercise("Barbell Romanian Deadlift", "Hamstrings"),
+                injuryRiskFocus: backReport
+            ).lowerBack,
+            0
+        )
+        XCTAssertEqual(
+            service.exerciseJointStress(
+                for: exercise("Barbell Bent-Over Row", "Upper Back"),
+                injuryRiskFocus: backReport
+            ).lowerBack,
+            0,
+            accuracy: 0.001
+        )
+
+        let kneeReport = "Right knee pain during lunges."
+        XCTAssertGreaterThan(
+            service.exerciseJointStress(
+                for: exercise("Dumbbell Walking Lunge", "Quads/Glutes"),
+                injuryRiskFocus: kneeReport
+            ).knee,
+            0
+        )
+        XCTAssertEqual(
+            service.exerciseJointStress(
+                for: exercise("Leg Press", "Quads"),
+                injuryRiskFocus: kneeReport
+            ).knee,
+            0,
+            accuracy: 0.001
+        )
+    }
+
+    func testVagueJointReportsKeepBroadCautionForThatJoint() {
+        let cases: [(report: String, exercise: WorkoutExerciseResponse, stress: (ClaudeService.JointStressBudget) -> Double)] = [
+            ("Elbow pain with no clear aggravating movement.", exercise("Rope Triceps Pressdown", "Triceps"), { $0.elbow }),
+            ("Lower-back pain with no clear aggravating movement.", exercise("Barbell Bent-Over Row", "Upper Back"), { $0.lowerBack }),
+            ("Knee pain with no clear aggravating movement.", exercise("Leg Press", "Quads"), { $0.knee })
+        ]
+
+        for item in cases {
+            let budget = service.exerciseJointStress(
+                for: item.exercise,
+                injuryRiskFocus: item.report
+            )
+            XCTAssertGreaterThan(item.stress(budget), 0, item.report)
+        }
+    }
+
+    func testShoulderBudgetWarnsOnlyAboveTwelve() {
+        let atBudget = day([
+            exercise("Barbell Overhead Press", "Anterior Deltoids", sets: 4),
+            exercise("Seated Dumbbell Shoulder Press", "Anterior Deltoids", sets: 4)
+        ])
+        XCTAssertEqual(
+            service.sessionJointStress(for: atBudget, injuryRiskFocus: ownersReport).shoulder,
+            12,
+            accuracy: 0.001
+        )
+        XCTAssertTrue(
+            service.validateJointStressBudget(on: atBudget, injuryRiskFocus: ownersReport).isEmpty,
+            "The twelve-point boundary itself remains allowed"
+        )
+
+        let aboveBudget = day([
+            exercise("Barbell Overhead Press", "Anterior Deltoids", sets: 5),
+            exercise("Seated Dumbbell Shoulder Press", "Anterior Deltoids", sets: 4)
+        ])
+        let issues = service.validateJointStressBudget(
+            on: aboveBudget,
+            injuryRiskFocus: ownersReport
+        )
+        XCTAssertEqual(issues.count, 1, "A planner-legal two-press overload must reach the warning")
+        XCTAssertTrue(issues[0].contains("vs 12 budget"), issues[0])
+    }
+
+    func testDirectPainHistoryAndCheckInSurviveIntoWorkoutPlanning() {
+        let analysis = blankAnalysis(
+            inputContext: inputContext(
+                painHistory: "Elbow pain during curls.",
+                sorenessPain: "Lower-back pain during deadlifts."
+            ),
+            injuryRiskNotes: "Knee pain during lunges."
+        )
+
+        let injuryContext = service.trainingIntentPlan(from: analysis).injuryRiskFocus
+        XCTAssertTrue(injuryContext.contains("Elbow pain during curls."), injuryContext)
+        XCTAssertTrue(injuryContext.contains("Lower-back pain during deadlifts."), injuryContext)
+        XCTAssertTrue(injuryContext.contains("Knee pain during lunges."), injuryContext)
     }
 
     /// The same principle on the substitution path: swapping in a movement the name list dislikes

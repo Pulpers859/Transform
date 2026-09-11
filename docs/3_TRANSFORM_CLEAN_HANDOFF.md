@@ -217,6 +217,15 @@ Routine work does not use a promotion branch. Commit directly to `main` and push
   - `repairCandidateDayNumbersExpanded` (FallbackCore.swift): when frequency target is unmet, expands candidate days beyond focus/support to include any style-compatible training day.
 **How to detect**: If the error says "Procedural fallback generated an invalid Week 1 program", check the specific issues listed. If they are all quality/near-miss issues (not structural), the fix is in `isHeuristicValidationIssue`. If a specific muscle group is severely under-served (< 70% of target), the fix is in the repair loop's injection and candidate day expansion logic.
 
+## Potential Future Updates
+
+### Injury-note negation and clearance
+The injury matcher currently detects which movement the user mentions, not whether the sentence
+says that movement hurts or is pain-free. The corpus deliberately pins this limitation with
+`"dips are pain free"`. On 2026-09-11 the owner deferred this work because it is not a near-term
+concern. A future implementation must define a safe language policy and extend the corpus before
+changing production matching; do not guess at negation from one phrase.
+
 ## Agent Working Style
 - Inspect current code before assuming prior context is still accurate.
 - Make direct changes when the path is clear.

@@ -65,6 +65,33 @@ final class PriorityStyleAndSlotCapacityTests: XCTestCase {
         )
     }
 
+    private func dayPlan(_ index: Int, style: String) -> ClaudeService.BlueprintDayPlan {
+        ClaudeService.BlueprintDayPlan(
+            dayIndex: index,
+            style: style,
+            focusArea: nil,
+            supportAreas: [],
+            targetFatigueCap: 99,
+            targetSessionMinutes: 75,
+            targetPrioritySlots: 1,
+            emphasisPatterns: [],
+            isRestDay: false
+        )
+    }
+
+    private func slot(_ name: String, _ target: String) -> ClaudeService.PreSelectedExercise {
+        ClaudeService.PreSelectedExercise(
+            exerciseName: name,
+            muscleTarget: target,
+            movementPattern: service.exerciseMetadata(
+                forExerciseName: name,
+                muscleTarget: target
+            ).movementPattern,
+            role: service.proceduralExerciseRole(for: name, muscleTarget: target),
+            prescribedSets: 1
+        )
+    }
+
     // MARK: - 1. Style compatibility is about the session, not the spelling
 
     /// The single predicate every other site now delegates to. "Legs" and "Lower" are one
@@ -199,6 +226,74 @@ final class PriorityStyleAndSlotCapacityTests: XCTestCase {
                 isFocusDay: false
             ),
             1
+        )
+    }
+
+    /// End-to-end proof of the exact 2026-09-08 failure: a Core/Abs allocation spelled its lower
+    /// preference "Legs", while the day plan called the same session "Lower". The feasibility
+    /// pass used to stack two core slots on Upper, and the allocator could fund only 1 + 2 sets
+    /// under that day's three-set cap. The passes must now distribute one slot per compatible day
+    /// before set allocation begins.
+    func testFeasibilityPassDistributesEverySlotBeforeTheAllocatorFundsSets() {
+        let allocation = coreAbsAllocation()
+        let intent = service.fallbackTrainingIntentPlan(from: ["Core/Abs"])
+        let blueprint = ClaudeService.ProgramBlueprint(
+            evidenceVersion: "test",
+            splitRecommendation: "Upper / Lower",
+            weeklyTrainingDays: 2,
+            priorityAllocations: [allocation],
+            dayPlans: [dayPlan(1, style: "Upper"), dayPlan(2, style: "Lower")],
+            topLeverageChange: "",
+            posturalFocus: "(none)",
+            injuryRiskFocus: "(none)",
+            programmingNotes: [],
+            calibration: service.neutralCalibrationProfile()
+        )
+        let seededMenus = [
+            [slot("Cable Crunch", "Abs")],
+            [slot("Back Squat", "Quads")]
+        ]
+
+        let feasibleMenus = service.enforcePriorityDirectSetFeasibility(
+            seededMenus,
+            blueprint: blueprint,
+            trainingIntent: intent,
+            weekNumber: 1,
+            avoidedExercises: []
+        )
+        let coreSlotsByDay = feasibleMenus.map { menu in
+            menu.filter {
+                service.focusStimulusKind(
+                    exerciseName: $0.exerciseName,
+                    muscleTarget: $0.muscleTarget,
+                    focusArea: "Core/Abs"
+                ) == .prime
+            }.count
+        }
+        XCTAssertEqual(coreSlotsByDay, [1, 1], "Core work must be spread before dosage is funded")
+
+        let allocatedMenus = service.allocateWeeklySetPrescription(
+            feasibleMenus,
+            blueprint: blueprint,
+            weekNumber: 1
+        )
+        let coreSets = allocatedMenus.joined().filter {
+            service.focusStimulusKind(
+                exerciseName: $0.exerciseName,
+                muscleTarget: $0.muscleTarget,
+                focusArea: "Core/Abs"
+            ) == .prime
+        }.map(\.prescribedSets).sorted()
+
+        XCTAssertEqual(coreSets, [3, 3])
+        XCTAssertTrue(
+            allocatedMenus.joined().allSatisfy {
+                $0.prescribedSets >= service.minimumSetFloor(
+                    forExerciseName: $0.exerciseName,
+                    muscleTarget: $0.muscleTarget
+                )
+            },
+            "No planned movement may survive below its role's useful set floor"
         )
     }
 
