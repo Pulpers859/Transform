@@ -173,23 +173,26 @@ extension ClaudeService {
         // prompt says "fix ONLY the listed issues", so an unfixable entry either wastes the call
         // or invites an illegal edit.
         //
-        // The predicate is deliberately narrow — it drops ONLY what the lock itself took away:
-        // a finding that would be correction-worthy with selection in play, but is demoted to a
-        // warning because the menu is locked. That is exactly `menuLockedDemotionPatterns`, plus
-        // the prime-hypertrophy miss `validationDisposition` demotes inline, and it is exactly
-        // the set the model is forbidden to act on. Filtering on "not `.correctionPass`" instead
-        // would have been simpler and worse: it would also have dropped warnings the model DOES
-        // own under lock — a rep-band leap is a free fix while the call is already paid for.
+        // The predicate is `isDemotedByMenuLock`, the same function `validationDisposition` uses
+        // to assign the tier. That shared call is the fix for an audit finding: this used to ask
+        // its own question — "was it correction-worthy unlocked and is it not now" — which is a
+        // DIFFERENT set, and wrong in both directions. It dropped "exceeds its per-session
+        // direct-set cap", which is in the hard-failure list as well as the correction-worthy one
+        // and is therefore promoted rather than demoted under lock, and it kept "receives zero
+        // direct sets this week", a real demotion that was never correction-worthy unlocked. The
+        // second is reachable in production and hands the model a finding whose only repair is
+        // adding an exercise to a menu it was just told to copy exactly.
+        //
+        // Narrow on purpose. Filtering on "not `.correctionPass`" would be simpler and worse: it
+        // would also drop warnings the model DOES own under lock, and a rep-band leap is a free
+        // fix while the call is already paid for.
         //
         // The fallback still matters for the debug paths, which call this whenever the issue list
         // is non-empty rather than only when something repairable is in it. When nothing survives
         // the filter, send what we were given rather than a correction request with no issues.
         let repairable = issues.filter { issue in
             guard menuLocked else { return true }
-            let demotedByTheLock =
-                validationDisposition(for: issue, menuLocked: false) == .correctionPass
-                && validationDisposition(for: issue, menuLocked: true) != .correctionPass
-            return !demotedByTheLock
+            return !isDemotedByMenuLock(issue)
         }
         let targetedIssues = repairable.isEmpty ? issues : repairable
         let issueBlock = targetedIssues.enumerated().map { "\($0.offset + 1). \($0.element)" }.joined(separator: "\n")

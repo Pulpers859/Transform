@@ -10,7 +10,9 @@ session: a family is missing or unreachable, a real complaint matches nothing, a
 LESS careful than it reports being. Nothing catches that. It compiles, no test fails, and the
 generated week looks fine.
 
-Three structural invariants hold the mechanism together. Each one has already been broken once.
+Four structural invariants hold the mechanism together. The first three have each been broken
+once; the fourth was added after an audit found this script asserting a coverage claim it had
+never actually evaluated.
 
   1. EVERY FAMILY IS IN THE SPECIFICITY UNION. `reportNamesAnyMovement` decides whether a report
      named a movement at all, and it builds its word list by naming each family. Add a family to
@@ -27,6 +29,13 @@ Three structural invariants hold the mechanism together. Each one has already be
   3. EVERY MOVEMENT THAT CAN BE CHARGED SHOULDER LOAD CAN BE NAMED. `exerciseJointStress` charges
      shoulder load per set to a list of movement patterns. If one of those patterns has no family,
      the only way a report can ever reach it is by writing the exercise's exact catalogue name.
+
+  4. EVERY SHOULDER-ISH PATTERN THE APP CAN PRODUCE HAS A FAMILY, OR A WRITTEN REASON NOT TO.
+     `EXPECTED_NO_FAMILY` is that list of reasons. This invariant is only as good as the set of
+     patterns the parser can see, which is why `parse_declared_patterns` reads ternaries too:
+     `movementPattern: rowLikePattern ? "Row" : "Pull"` produces a real pattern, and an earlier
+     regex that demanded a quote straight after the colon skipped it. "Pull" was therefore never
+     put to this decision at all while the script printed OK.
 
 WHAT IT DOES NOT DO
 -------------------
@@ -59,6 +68,18 @@ EXPECTED_NO_FAMILY = {
     "Pressdown": "a triceps movement. It loads the elbow, not the shoulder joint.",
     "Calf Raise": 'shares the word "raise" with a shoulder family and nothing else.',
     "Leg Raise": 'shares the word "raise" with a shoulder family and nothing else.',
+    "Pull": 'the generic pull pattern, the mirror of "Press" above. `inferredExerciseMetadata` '
+            "gives it to a back-targeted name it can place no more precisely than that. A bare "
+            '"pull" phrase would swallow pulldown, pull-up, pull-apart and face pull reports at '
+            "once, which is the blanket behaviour the families exist to end.",
+}
+
+# Union entries that deliberately contribute NO words to the specificity check, with the reason.
+EXPECTED_NO_PHRASES = {
+    "Shoulder": "its family is the joint words themselves, and those must never prove that a "
+                "report named a MOVEMENT — `hasShoulderRisk` already requires one of them, so "
+                "counting them would make every report look specific and switch off the broad "
+                "fallback entirely.",
 }
 
 # Words in a pattern name that make it worth asking whether a shoulder report could name it.
@@ -168,7 +189,20 @@ def parse_shoulder_loaded_patterns(source):
 
 
 def parse_declared_patterns(source):
-    declared = sorted(set(re.findall(r'movementPattern:\s*"([^"]+)"', source)))
+    """Every movement pattern the app can attach to an exercise.
+
+    Both shapes count. `movementPattern: "Row"` is the common one; `movementPattern: cond ? "Row"
+    : "Pull"` is real too, and the regex that demanded a quote straight after the colon silently
+    skipped both of its branches. That is how "Pull" stayed out of the EXPECTED_NO_FAMILY decision
+    while this script reported clean.
+    """
+    declared = set()
+    for line in source.splitlines():
+        at = line.find("movementPattern:")
+        if at < 0:
+            continue
+        declared.update(re.findall(r'"([^"\\]+)"', line[at:]))
+    declared = sorted(declared)
     if not declared:
         raise CheckFailed("no movementPattern literals found in the metadata source")
     return declared
@@ -182,17 +216,31 @@ def run(selection_source, metadata_source):
 
     problems = []
 
-    # 1. Every family is reachable from the specificity union.
+    # 1. Every family is reachable from the specificity union AND actually contributes words.
+    #
+    # "Named" is the weaker claim and was the one being checked. A family every one of whose
+    # phrases is filtered out by `jointAndMuscleWords` contributes nothing, which is the same
+    # failure as omitting it and is invisible from the union list alone. `EXPECTED_NO_PHRASES`
+    # is the deliberate case: a movement whose pattern IS "Shoulder" is reached by a report
+    # naming the shoulder, and the joint words are exactly what must not prove specificity.
     reached = set()
     for name in union_patterns:
-        keys, _ = resolve(families, name)
+        keys, phrases = resolve(families, name)
         if keys is None:
             problems.append(
                 f'`reportNamesAnyMovement` lists "{name}", which resolves to no family. '
                 "It contributes nothing to the specificity check."
             )
-        else:
-            reached.add(tuple(keys))
+            continue
+        reached.add(tuple(keys))
+        surviving = [phrase for phrase in phrases if phrase not in filtered_words]
+        if not surviving and name not in EXPECTED_NO_PHRASES:
+            problems.append(
+                f'family {keys!r} contributes no words to the specificity check: every phrase '
+                "it returns is filtered out by `jointAndMuscleWords`. Naming it in "
+                "`reportNamesAnyMovement` does nothing. Add it to EXPECTED_NO_PHRASES with the "
+                "reason, or stop filtering one of its phrases."
+            )
     for keys, _ in families:
         if tuple(keys) not in reached:
             problems.append(

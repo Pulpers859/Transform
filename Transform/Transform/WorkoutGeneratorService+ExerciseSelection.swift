@@ -1328,7 +1328,7 @@ extension ClaudeService {
         if pattern.contains("rear delt") {
             return [
                 "rear delt", "rear deltoid", "reverse fly", "reverse flye",
-                "fly", "flye", "row", "rowing"
+                "fly", "flye", "flies", "row", "rowing"
             ]
         }
         if pattern.contains("face pull") {
@@ -1347,7 +1347,10 @@ extension ClaudeService {
             return ["row", "rowing"]
         }
         if pattern.contains("fly") {
-            return ["fly", "flye", "pec deck"]
+            // "flies" is listed because it is IRREGULAR. The plural tolerance in
+            // `containsPluralTolerantPriorityPhrase` adds "s" or "es" to the last token, which
+            // reaches "flys" and "flyes" and never reaches the spelling most people write.
+            return ["fly", "flye", "flies", "pec deck"]
         }
         // The inferred catch-all for anything whose name or target says shoulder or delt.
         if pattern.contains("shoulder") {
@@ -1379,9 +1382,16 @@ extension ClaudeService {
         // pull-aparts and Y-raises — the two corrective movements a hurting shoulder most wants —
         // while clearing every press. They stay in their families, where a report naming them
         // SHOULD reach those movements; they are only disqualified from proving specificity.
+        // "overhead" is the same trap again and the most common of all of them. It is a
+        // POSITION, not a lift: "pain with overhead reaching", "provoked by overhead activity",
+        // "limits overhead range" are all ordinary shoulder prose that name no exercise. Left in
+        // this union they made such a report read as SPECIFIC, so caution narrowed to the
+        // shoulder press and cleared the other fifteen movements — dips and lateral raises with
+        // them. It stays in the Vertical Press family, so "overhead press" and "pressing
+        // overhead" still narrow exactly as before; only the bare word stops counting as proof.
         let jointAndMuscleWords: Set<String> = [
             "shoulder", "delt", "rear delt", "rear deltoid",
-            "scapular", "straight arm", "straight-arm"
+            "scapular", "straight arm", "straight-arm", "overhead"
         ]
         let movementPhrases = [
             "Vertical Press", "Landmine Press", "Dip", "Upright Row", "Close-Grip Press",
@@ -1434,7 +1444,14 @@ extension ClaudeService {
             normalized,
             keywords: [
                 "shoulder impingement", "internal rotation", "internally rotated", "upper crossed",
-                "shoulder health", "rotator cuff", "labral", "labrum", "ac joint"
+                "shoulder health", "rotator cuff", "labral", "labrum", "ac joint",
+                // Anatomy that IS the shoulder and never spells the word. Without these,
+                // "Subacromial impingement on the left" registered as no injury at all — not
+                // narrowed caution, ZERO caution, through the one gate everything hangs off.
+                // Every term here names a structure that exists nowhere else in the body, so
+                // widening cannot reach a knee or a back.
+                "subacromial", "glenohumeral", "supraspinatus", "infraspinatus",
+                "acromial", "acromion", "scapular dyskinesis"
             ]
         ) {
             return true

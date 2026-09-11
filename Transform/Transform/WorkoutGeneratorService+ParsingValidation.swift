@@ -1378,7 +1378,7 @@ extension ClaudeService {
             if matchesValidationIssue(issue, patterns: acceptableWarningIssuePatterns) {
                 return .acceptableWarning
             }
-            if matchesValidationIssue(issue, patterns: menuLockedDemotionPatterns) || isPrimeHypertrophyMiss {
+            if isDemotedByMenuLock(issue) {
                 return .acceptableWarning
             }
             if matchesValidationIssue(issue, patterns: correctionWorthyIssuePatterns) {
@@ -1471,6 +1471,36 @@ extension ClaudeService {
             // usable 7-day program, which is exactly the Shape category this list exists for.
             "is missing from the generated output."
         ]
+    }
+
+    /// Whether the MENU LOCK is the only reason this finding is not correction-worthy.
+    ///
+    /// One function because two places need the same answer and they drifted the moment there
+    /// were two copies. `validationDisposition` uses it to decide the tier;
+    /// `correctionRequestBody` uses it to decide whether the finding may be put in front of the
+    /// model at all. Those must agree: a finding demoted here is one the AI is FORBIDDEN to act
+    /// on under a locked menu, so listing it as an issue to correct either wastes the call or
+    /// invites an illegal edit.
+    ///
+    /// It is not the same question as "does this stop being correction-worthy under lock", and
+    /// an audit caught `correctionRequestBody` asking that instead. The two differ in both
+    /// directions:
+    ///
+    ///   * "receives zero direct sets this week" is demoted here and appears in no other list,
+    ///     so unlocked it falls through to `.hardFailure`. Asking the other question answers NO
+    ///     and the finding reaches the model, whose only repair is adding an exercise to a menu
+    ///     it was told to copy exactly.
+    ///   * "exceeds its per-session direct-set cap" is in `lockedMenuHardFailurePatterns` AND
+    ///     `correctionWorthyIssuePatterns`, so under lock it is PROMOTED to a hard failure.
+    ///     Asking the other question answers YES and drops the one finding that blocks the week.
+    ///
+    /// `lockedMenuHardFailurePatterns` and `acceptableWarningIssuePatterns` are both checked
+    /// ahead of this in `validationDisposition`, and neither shares a string with
+    /// `menuLockedDemotionPatterns` today, so callers may use this on its own without
+    /// re-deriving the ordering.
+    func isDemotedByMenuLock(_ issue: String) -> Bool {
+        let isPrimeHypertrophyMiss = issue.contains("targets") && issue.contains("but never includes a prime")
+        return matchesValidationIssue(issue, patterns: menuLockedDemotionPatterns) || isPrimeHypertrophyMiss
     }
 
     func matchesValidationIssue(_ issue: String, patterns: [String]) -> Bool {

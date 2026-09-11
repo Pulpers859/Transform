@@ -850,10 +850,15 @@ extension ClaudeService {
             // ("is not clearly adapted to the shoulder risk") is matched by
             // `correctionWorthyIssuePatterns` and by `WorkoutValidatorNotice`; both moved with it.
             //
-            // `correctionWorthyIssuePatterns` — NOT `menuLockedDemotionPatterns`, which contains no
-            // shoulder entry at all. An earlier version of this comment said otherwise and the
-            // mistake propagated straight into a test that asserted the wrong tier. The finding is
-            // repairable under a locked menu even though the exercise is not: the check below
+            // `correctionWorthyIssuePatterns`, and NOT demoted under a locked menu — checked by
+            // reading both arrays, not recalled. Two earlier versions of this sentence were
+            // wrong in opposite directions: the first put the finding in the demotion list, and
+            // the mistake propagated into a test that asserted the wrong tier; the second said
+            // `menuLockedDemotionPatterns` "contains no shoulder entry at all", which an audit
+            // disproved — it holds "uses shoulder-intensive pressing on an Arms/Lateral focus
+            // day" and "excessive shoulder joint stress". Neither of those is this finding.
+            //
+            // It is repairable under a locked menu even though the exercise is not: the check below
             // clears the day as soon as the note carries a "neutral grip" / "pain free" style cue,
             // so a correction pass has something real to do.
             "Day \(day.dayNumber) includes shoulder pressing that is not clearly adapted to the shoulder risk in the analysis (\(names)). Use more shoulder-friendly setup cues or choose a better-aligned press variation."

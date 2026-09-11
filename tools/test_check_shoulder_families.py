@@ -186,7 +186,9 @@ check(
     SELECTION,
     METADATA.replace(
         'movementPattern: "Curl", fatigueCost: 1',
-        'movementPattern: rowLike ? "Row" : "Shoulder Pull", fatigueCost: 1',
+        # The second branch must be shoulder-ish AND resolve to no family, or the attack proves
+        # nothing about the parser. "Shoulder Pull" would resolve to the Shoulder family.
+        'movementPattern: rowLike ? "Row" : "Overhead Raise", fatigueCost: 1',
     ),
     must_fail=True,
     expect_phrase="reaches nothing",
