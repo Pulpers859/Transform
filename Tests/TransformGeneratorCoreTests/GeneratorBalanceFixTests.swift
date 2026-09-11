@@ -259,6 +259,18 @@ final class GeneratorBalanceFixTests: XCTestCase {
         XCTAssertTrue(issues.isEmpty, "\(issues)")
     }
 
+    func testInferredChestExercisesDoNotTreatRowInsideNarrowAsARow() {
+        for chestExercise in [
+            exercise("Narrow-Grip Bench Press", "Chest", sets: 3),
+            exercise("Narrow-Stance Push-Up", "Chest", sets: 3)
+        ] {
+            let metadata = service.exerciseMetadata(for: chestExercise)
+
+            XCTAssertEqual(metadata.primaryAreas, ["Chest"], chestExercise.exerciseName)
+            XCTAssertEqual(metadata.movementPattern, "Press", chestExercise.exerciseName)
+        }
+    }
+
     /// Directional on purpose — rows still load the lats through a full range, so a week built on
     /// rowing is not told off for lacking a pulldown.
     func testAWeekOfRowsIsNotFlaggedForLackingAVerticalPull() {
