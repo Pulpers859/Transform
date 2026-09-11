@@ -223,6 +223,39 @@ final class ShoulderReportCorpusTests: XCTestCase {
             reach: .only(["Cable Face Pull"])
         ),
 
+        // ---- Rows that prove a family by its WORDS, not by quoting the exercise ------------
+        //
+        // Each of these exists because `testEveryFamilyIsProvenByARowThatNamesNoExercise` went
+        // red without it. The rows above that look like they cover these families do not: their
+        // reports quote the movement's own name, so `namedOutright` answers first and the family
+        // is never consulted. Deleting the family left every one of those rows passing.
+
+        Row(
+            report: "Shoulder pain on the pec deck.",
+            shape: "the Fly family reached by a machine name, not by the word fly",
+            reach: .only(["Cable Fly"])
+        ),
+        Row(
+            report: "Shoulder pain on Y raises.",
+            shape: "the Scapular Raise family by its other vocabulary",
+            reach: .only(["Band Pull-Apart"])
+        ),
+        Row(
+            report: "Shoulder pain with landmine work.",
+            shape: "the Landmine Press family without the word press",
+            reach: .only(["Landmine Press"])
+        ),
+        Row(
+            report: "Shoulder pain on chin-ups.",
+            shape: "the Vertical Pull family by a movement that is not a pulldown",
+            reach: .only(["Lat Pulldown"])
+        ),
+        Row(
+            report: "Shoulder pain with cable pullovers.",
+            shape: "the Pullover family, which no row reached at all before this one",
+            reach: .only(["Straight-Arm Pulldown"])
+        ),
+
         // ---- Named movements that legitimately reach more than one family ------------------
         //
         // These rows look surprising and are correct. They are here so the overlap is a recorded

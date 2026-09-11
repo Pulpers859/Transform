@@ -140,7 +140,7 @@
   - `git fetch --prune`
   - `git rev-list --left-right --count origin/main...main` — expect `0   0`; any large "behind" count or divergence is a red flag.
   - `git merge-base main origin/main` — EMPTY output means UNRELATED histories = the local `main` is a stale/junk snapshot, NOT your real tree.
-  - Sanity-check the tree: the app source must exist (e.g. `Transform/Transform/WorkoutGeneratorService.swift`) and the tracked Swift file count should look right (`git ls-files "*.swift" | wc -l` — currently 49), not a smaller different layout.
+  - Sanity-check the tree: the app source must exist (e.g. `Transform/Transform/WorkoutGeneratorService.swift`) and the tracked Swift file count should look right (`git ls-files "*.swift" | wc -l` — **118** on 2026-09-11, and it only grows), not a smaller different layout. Treat anything under ~100 as the stale-snapshot smell, not the exact number: this figure said 49 for months while the real tree held 118, so an agent following it literally would have read a CORRECT tree as the junk one. If you update it, run the command first.
 - If local `main` is behind, diverged, or unrelated: do NOT commit on it. Re-point onto the real tree first with `git checkout -B main origin/main`, re-verify the source is present, THEN make changes.
 - NEVER `git push --force` / `--force-with-lease` to `origin/main`. Push clean fast-forwards only. If a push is non-fast-forward, STOP and reconcile — never overwrite the remote.
 - After pushing, confirm it was a fast-forward (`old..new`), not a forced replacement, and that the prior `origin/main` commits are still ancestors.
