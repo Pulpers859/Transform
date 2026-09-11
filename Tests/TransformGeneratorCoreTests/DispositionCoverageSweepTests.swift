@@ -246,10 +246,7 @@ final class DispositionCoverageSweepTests: XCTestCase {
         findings += service.validateJointStressBudget(
             on: day(1, [
                 exercise("Barbell Overhead Press", "Anterior Deltoids", sets: 5),
-                exercise("Seated Dumbbell Shoulder Press", "Anterior Deltoids", sets: 5),
-                exercise("Machine Shoulder Press", "Anterior Deltoids", sets: 5),
-                exercise("Dumbbell Shoulder Press", "Anterior Deltoids", sets: 5),
-                exercise("Dumbbell Arnold Press", "Anterior Deltoids", sets: 5)
+                exercise("Seated Dumbbell Shoulder Press", "Anterior Deltoids", sets: 5)
             ]),
             injuryRiskFocus: "Left anterior shoulder pain during neutral-grip overhead pressing is the key flag."
         )

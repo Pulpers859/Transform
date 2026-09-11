@@ -24,7 +24,7 @@ extension ClaudeService {
         if pattern.contains("dip") {
             return ["dip"]
         }
-        if pattern.contains("close-grip press") || pattern.contains("close grip press") {
+        if pattern.contains("close-grip press") {
             return ["close grip", "close-grip"]
         }
         if pattern.contains("rear delt") {

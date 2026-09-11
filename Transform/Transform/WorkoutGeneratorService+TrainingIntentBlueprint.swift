@@ -1,6 +1,27 @@
 import Foundation
 
 extension ClaudeService {
+    /// The workout planner must retain the user's own pain reports even if the photo-analysis
+    /// summary omits or paraphrases them. These are three views of the same safety context, so
+    /// preserve the original wording, remove exact duplicates, and pass one deterministic string
+    /// through every downstream selector and validator.
+    func resolvedInjuryRiskFocus(from analysis: BodyAnalysisResult) -> String {
+        let candidates = [
+            analysis.inputContext?.profile.painHistory ?? "",
+            analysis.inputContext?.checkIn?.sorenessPain ?? "",
+            analysis.injuryRiskNotes
+        ]
+        var seen = Set<String>()
+        let retained = candidates.compactMap { value -> String? in
+            let cleaned = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !cleaned.isEmpty else { return nil }
+            let key = normalizedPriorityText(cleaned)
+            guard seen.insert(key).inserted else { return nil }
+            return cleaned
+        }
+        return retained.isEmpty ? "(none)" : retained.joined(separator: "\n")
+    }
+
     func trainingIntentPlan(
         from analysis: BodyAnalysisResult
     ) -> TrainingIntentPlan {
@@ -30,7 +51,7 @@ extension ClaudeService {
             priorities: mergedPriorityIntents(priorities),
             topLeverageChange: analysis.topLeverageChange.trimmedOr(default: "(not provided)"),
             posturalFocus: analysis.posturalNotes.trimmedOr(default: "(none)"),
-            injuryRiskFocus: analysis.injuryRiskNotes.trimmedOr(default: "(none)"),
+            injuryRiskFocus: resolvedInjuryRiskFocus(from: analysis),
             calibration: neutralCalibrationProfile()
         )
         return calibratedTrainingIntentPlan(
@@ -77,7 +98,7 @@ extension ClaudeService {
             priorities: mergedPriorityIntents(priorities),
             topLeverageChange: analysis.topLeverageChange.trimmedOr(default: "(not provided)"),
             posturalFocus: analysis.posturalNotes.trimmedOr(default: "(none)"),
-            injuryRiskFocus: analysis.injuryRiskNotes.trimmedOr(default: "(none)"),
+            injuryRiskFocus: resolvedInjuryRiskFocus(from: analysis),
             calibration: neutralCalibrationProfile()
         )
         return calibratedTrainingIntentPlan(

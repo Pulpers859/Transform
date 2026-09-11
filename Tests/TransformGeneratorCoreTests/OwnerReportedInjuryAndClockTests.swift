@@ -412,6 +412,98 @@ final class OwnerReportedInjuryAndClockTests: XCTestCase {
         )
     }
 
+    func testAReportForOneJointDoesNotSpillIntoTheOthers() {
+        XCTAssertEqual(
+            service.exerciseJointStress(
+                for: exercise("EZ-Bar Curl", "Biceps"),
+                injuryRiskFocus: "Knee pain during lunges."
+            ).elbow,
+            0,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            service.exerciseJointStress(
+                for: exercise("Barbell Romanian Deadlift", "Hamstrings"),
+                injuryRiskFocus: "Elbow pain during curls."
+            ).lowerBack,
+            0,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            service.exerciseJointStress(
+                for: exercise("Dumbbell Walking Lunge", "Quads/Glutes"),
+                injuryRiskFocus: "Lower-back pain during deadlifts."
+            ).knee,
+            0,
+            accuracy: 0.001
+        )
+    }
+
+    func testCommonJointDiagnosisLanguageActivatesCaution() {
+        let cases: [(report: String, exercise: WorkoutExerciseResponse, stress: (ClaudeService.JointStressBudget) -> Double)] = [
+            ("Elbow tendinopathy.", exercise("EZ-Bar Curl", "Biceps"), { $0.elbow }),
+            ("Lumbar disc herniation.", exercise("Barbell Romanian Deadlift", "Hamstrings"), { $0.lowerBack }),
+            ("History of ACL reconstruction.", exercise("Dumbbell Walking Lunge", "Quads/Glutes"), { $0.knee })
+        ]
+
+        for item in cases {
+            let budget = service.exerciseJointStress(
+                for: item.exercise,
+                injuryRiskFocus: item.report
+            )
+            XCTAssertGreaterThan(item.stress(budget), 0, item.report)
+        }
+    }
+
+    func testEveryJointStressMovementFamilyHasARealExerciseAndReportPhrases() {
+        typealias Joint = ClaudeService.ReportedJointStressArea
+        typealias Family = ClaudeService.JointStressMovementFamily
+        let cases: [(joint: Joint, name: String, target: String, family: Family)] = [
+            (.elbow, "EZ-Bar Curl", "Biceps", .curl),
+            (.elbow, "Rope Triceps Pressdown", "Triceps", .tricepsExtension),
+            (.elbow, "Close-Grip Barbell Bench Press", "Triceps", .closeGripPress),
+            (.elbow, "Dip (Assisted or Weighted)", "Triceps", .dip),
+            (.elbow, "Barbell Overhead Press", "Anterior Deltoids", .verticalPress),
+            (.elbow, "Incline Dumbbell Press", "Upper Chest", .inclinePress),
+            (.elbow, "Flat Barbell Bench Press", "Chest", .horizontalPress),
+            (.lowerBack, "Barbell Romanian Deadlift", "Hamstrings", .hinge),
+            (.lowerBack, "Back Squat", "Quads", .squat),
+            (.lowerBack, "Barbell Bent-Over Row", "Upper Back", .row),
+            (.knee, "Bulgarian Split Squat", "Quads/Glutes", .splitSquat),
+            (.knee, "Dumbbell Walking Lunge", "Quads/Glutes", .lunge),
+            (.knee, "Leg Press", "Quads", .legPress),
+            (.knee, "Machine Leg Extension", "Quads", .kneeExtension)
+        ]
+
+        for item in cases {
+            let metadata = service.exerciseMetadata(
+                forExerciseName: item.name,
+                muscleTarget: item.target
+            )
+            XCTAssertEqual(
+                service.jointStressMovementFamily(for: item.joint, metadata: metadata),
+                item.family,
+                item.name
+            )
+            XCTAssertFalse(service.jointStressPhrases(for: item.family).isEmpty, item.name)
+        }
+
+        XCTAssertEqual(
+            Set(cases.map(\.family)),
+            Set(Family.allCases),
+            "Every declared family needs an exercised production path"
+        )
+    }
+
+    func testKneeExtensionIsNotMistakenForElbowExtension() {
+        let stress = service.exerciseJointStress(
+            for: exercise("Machine Leg Extension", "Quads"),
+            injuryRiskFocus: "Elbow pain with no clear aggravating movement."
+        )
+
+        XCTAssertEqual(stress.elbow, 0, accuracy: 0.001)
+    }
+
     func testSpecificJointReportsOnlyChargeTheMovementFamilyNamed() {
         let elbowReport = "Left elbow pain during curls."
         XCTAssertGreaterThan(
@@ -481,6 +573,24 @@ final class OwnerReportedInjuryAndClockTests: XCTestCase {
         }
     }
 
+    /// Specificity belongs to the sentence that reports the joint problem, not to an unrelated
+    /// movement word elsewhere in the merged profile/check-in/analysis context. A vague knee
+    /// complaint must remain broad even when another source merely says the quads are sore from
+    /// yesterday's squats.
+    func testUnrelatedMovementTextCannotNarrowAVagueJointReport() {
+        let mergedContext = """
+        Knee pain with no clear cause.
+        Sore quads from squats yesterday.
+        """
+
+        let legPressStress = service.exerciseJointStress(
+            for: exercise("Leg Press", "Quads"),
+            injuryRiskFocus: mergedContext
+        ).knee
+
+        XCTAssertGreaterThan(legPressStress, 0, "The vague knee report must stay broadly cautious")
+    }
+
     func testShoulderBudgetWarnsOnlyAboveTwelve() {
         let atBudget = day([
             exercise("Barbell Overhead Press", "Anterior Deltoids", sets: 4),
@@ -521,6 +631,16 @@ final class OwnerReportedInjuryAndClockTests: XCTestCase {
         XCTAssertTrue(injuryContext.contains("Elbow pain during curls."), injuryContext)
         XCTAssertTrue(injuryContext.contains("Lower-back pain during deadlifts."), injuryContext)
         XCTAssertTrue(injuryContext.contains("Knee pain during lunges."), injuryContext)
+    }
+
+    func testResolvedInjuryContextDeduplicatesExactSourcesAndDefaultsToNone() {
+        let repeated = "Elbow pain during curls."
+        let analysis = blankAnalysis(
+            inputContext: inputContext(painHistory: repeated, sorenessPain: repeated),
+            injuryRiskNotes: repeated
+        )
+        XCTAssertEqual(service.resolvedInjuryRiskFocus(from: analysis), repeated)
+        XCTAssertEqual(service.resolvedInjuryRiskFocus(from: blankAnalysis()), "(none)")
     }
 
     /// The same principle on the substitution path: swapping in a movement the name list dislikes

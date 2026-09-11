@@ -874,10 +874,201 @@ extension ClaudeService {
         var knee: Double = 0
     }
 
+    enum ReportedJointStressArea {
+        case elbow
+        case lowerBack
+        case knee
+    }
+
+    enum JointStressMovementFamily: CaseIterable, Hashable {
+        case curl
+        case tricepsExtension
+        case closeGripPress
+        case dip
+        case verticalPress
+        case inclinePress
+        case horizontalPress
+        case hinge
+        case squat
+        case row
+        case splitSquat
+        case lunge
+        case legPress
+        case kneeExtension
+    }
+
+    func hasReportedRisk(
+        for joint: ReportedJointStressArea,
+        injuryRiskFocus: String
+    ) -> Bool {
+        let reported = normalizedPriorityText(injuryRiskFocus)
+        let jointPhrases: [String]
+        switch joint {
+        case .elbow:
+            jointPhrases = ["elbow"]
+        case .lowerBack:
+            jointPhrases = ["lower back", "low back", "lumbar", "lumbosacral"]
+        case .knee:
+            jointPhrases = [
+                "knee", "patella", "patellar", "meniscus", "meniscal",
+                "acl", "mcl", "pcl", "lcl"
+            ]
+        }
+        guard containsPriorityPhrase(in: reported, keywords: jointPhrases) else { return false }
+
+        return containsAny(
+            reported,
+            keywords: [
+                "pain", "painful", "hurt", "ache", "discomfort", "injur", "irritat",
+                "flare", "tender", "sore", "tight", "strain", "sprain", "instability",
+                "surgery", "repair", "reconstruct", "tear", "rupture", "swelling",
+                "aggravat", "bothers", "history", "tendin", "herniat", "fracture", "degenerat"
+            ]
+        )
+    }
+
+    func jointStressPhrases(for family: JointStressMovementFamily) -> [String] {
+        switch family {
+        case .curl:
+            return ["curl", "curling"]
+        case .tricepsExtension:
+            return [
+                "triceps extension", "tricep extension", "extension",
+                "pressdown", "pushdown", "skull crusher"
+            ]
+        case .closeGripPress:
+            return ["close grip", "close-grip", "jm press"]
+        case .dip:
+            return ["dip"]
+        case .verticalPress:
+            return [
+                "overhead press", "overhead pressing", "press overhead", "pressing overhead",
+                "shoulder press", "military press", "strict press", "vertical press"
+            ]
+        case .inclinePress:
+            return ["incline press", "incline pressing", "incline bench"]
+        case .horizontalPress:
+            return ["bench press", "bench pressing", "horizontal press", "flat press"]
+        case .hinge:
+            return ["deadlift", "rdl", "romanian deadlift", "hinge", "good morning"]
+        case .squat:
+            return ["squat", "squatting"]
+        case .row:
+            return ["row", "rowing"]
+        case .splitSquat:
+            return ["split squat", "bulgarian"]
+        case .lunge:
+            return ["lunge", "lunging"]
+        case .legPress:
+            return ["leg press"]
+        case .kneeExtension:
+            return ["leg extension", "knee extension"]
+        }
+    }
+
+    func jointStressMovementFamily(
+        for joint: ReportedJointStressArea,
+        metadata: ExerciseMetadata
+    ) -> JointStressMovementFamily? {
+        let name = normalizedPriorityText(metadata.canonicalName)
+        let pattern = normalizedPriorityText(metadata.movementPattern)
+        let primary = normalizedPriorityText(metadata.primaryAreas.joined(separator: " "))
+
+        switch joint {
+        case .elbow:
+            if pattern.contains("curl") && containsAny(primary, keywords: ["bicep", "brachialis", "forearm"]) {
+                return .curl
+            }
+            if pattern.contains("close-grip press") || name.contains("jm press") {
+                return .closeGripPress
+            }
+            if containsAny(pattern, keywords: ["extension", "pressdown"]) && primary.contains("tricep") {
+                return .tricepsExtension
+            }
+            if pattern.contains("dip") {
+                return .dip
+            }
+            if pattern.contains("vertical press") {
+                return .verticalPress
+            }
+            if pattern.contains("incline press") {
+                return .inclinePress
+            }
+            if pattern.contains("horizontal press") {
+                return .horizontalPress
+            }
+        case .lowerBack:
+            if pattern.contains("hinge") {
+                return .hinge
+            }
+            if pattern.contains("squat") {
+                return .squat
+            }
+            if pattern.contains("row") {
+                return .row
+            }
+        case .knee:
+            if name.contains("split squat") || name.contains("bulgarian") {
+                return .splitSquat
+            }
+            if pattern.contains("lunge") {
+                return .lunge
+            }
+            if pattern.contains("squat") {
+                return .squat
+            }
+            if name.contains("leg press") {
+                return .legPress
+            }
+            if pattern.contains("extension") && containsAny(primary, keywords: ["quad", "glute"]) {
+                return .kneeExtension
+            }
+        }
+        return nil
+    }
+
+    func reportNamesAnyJointStressMovement(_ reported: String) -> Bool {
+        let movementPhrases = JointStressMovementFamily.allCases.flatMap {
+            jointStressPhrases(for: $0)
+        }
+        return containsPluralTolerantPriorityPhrase(in: reported, keywords: movementPhrases)
+    }
+
+    func reportedJointPainImplicates(
+        _ joint: ReportedJointStressArea,
+        exerciseName: String,
+        muscleTarget: String,
+        injuryRiskFocus: String
+    ) -> Bool {
+        guard hasReportedRisk(for: joint, injuryRiskFocus: injuryRiskFocus) else { return false }
+
+        let reported = normalizedPriorityText(injuryRiskFocus)
+        let metadata = exerciseMetadata(forExerciseName: exerciseName, muscleTarget: muscleTarget)
+        let namedOutright = [metadata.canonicalName, exerciseName]
+            .map { normalizedPriorityText($0) }
+            .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        if containsPluralTolerantPriorityPhrase(in: reported, keywords: namedOutright) {
+            return true
+        }
+
+        if let family = jointStressMovementFamily(for: joint, metadata: metadata),
+           containsPluralTolerantPriorityPhrase(
+               in: reported,
+               keywords: jointStressPhrases(for: family)
+           ) {
+            return true
+        }
+
+        // A vague complaint stays broad. Once the user names a movement, however, only that
+        // movement's family is charged; this is the same specificity contract as the shoulder.
+        return !reportNamesAnyJointStressMovement(reported)
+    }
+
     /// Per-joint load this movement contributes to a session.
     ///
-    /// The SHOULDER charge is evidence-bound: a movement contributes to it only when the lifter's
-    /// own report reaches that movement. Everything else — elbow, lower back, knee — is unchanged.
+    /// Every charge is evidence-bound: a movement contributes only when the user's saved pain
+    /// history, current check-in, or analysis reports that joint and reaches this movement. A
+    /// vague joint report stays broadly cautious; a specific report stays on its named family.
     ///
     /// The owner's instruction is what decides this, and it is worth recording exactly because the
     /// rule reads like a neutral load budget rather than an injury rule: "Stay off of movements
@@ -893,10 +1084,6 @@ extension ClaudeService {
     /// measure work rather than joints — the crowding checks, the pattern-balance rules, and the
     /// day fatigue cap.
     ///
-    /// The other three joints are left ungated ON PURPOSE rather than by omission: there is no
-    /// equivalent of `reportedShoulderPainImplicates` for elbow, back or knee, and inventing three
-    /// more phrase tables to match a complaint the owner has not made would be guessing at what he
-    /// wants. If he reports one, that is when to build it.
     func exerciseJointStress(
         for exercise: WorkoutExerciseResponse,
         injuryRiskFocus: String
@@ -904,6 +1091,7 @@ extension ClaudeService {
         let metadata = exerciseMetadata(for: exercise)
         let name = normalizedPriorityText(exercise.exerciseName)
         let pattern = normalizedPriorityText(metadata.movementPattern)
+        let primary = normalizedPriorityText(metadata.primaryAreas.joined(separator: " "))
         let sets = Double(exercise.sets)
 
         var stress = JointStressBudget()
@@ -924,27 +1112,58 @@ extension ClaudeService {
             }
         }
 
-        if containsAny(pattern, keywords: ["curl", "extension", "pressdown", "close-grip press"]) {
-            stress.elbow += sets * 0.4
-        }
-        if containsAny(name, keywords: ["skull crusher", "preacher curl", "jm press"]) {
-            stress.elbow += sets * 0.3
-        }
-        if containsAny(pattern, keywords: ["horizontal press", "incline press", "vertical press", "dip"]) {
-            stress.elbow += sets * 0.2
+        let elbowIsReported = reportedJointPainImplicates(
+            .elbow,
+            exerciseName: exercise.exerciseName,
+            muscleTarget: exercise.muscleTarget,
+            injuryRiskFocus: injuryRiskFocus
+        )
+        if elbowIsReported {
+            let isArmIsolation = (
+                pattern.contains("curl")
+                    && containsAny(primary, keywords: ["bicep", "brachialis", "forearm"])
+            ) || (
+                containsAny(pattern, keywords: ["extension", "pressdown"])
+                    && primary.contains("tricep")
+            )
+            if isArmIsolation || pattern.contains("close-grip press") {
+                stress.elbow += sets * 0.4
+            }
+            if containsAny(name, keywords: ["skull crusher", "preacher curl", "jm press"]) {
+                stress.elbow += sets * 0.3
+            }
+            if containsAny(pattern, keywords: ["horizontal press", "incline press", "vertical press", "dip"]) {
+                stress.elbow += sets * 0.2
+            }
         }
 
-        if containsAny(pattern, keywords: ["hinge", "squat"]) && metadata.equipment != "Machine" {
-            stress.lowerBack += Double(metadata.fatigueCost) * sets * 0.4
-        }
-        if containsAny(pattern, keywords: ["row"]) && !containsAny(name, keywords: ["chest supported", "machine", "cable", "seated cable"]) {
-            stress.lowerBack += sets * 0.3
-        }
-        if containsAny(name, keywords: ["good morning"]) {
-            stress.lowerBack += sets * 0.5
+        let lowerBackIsReported = reportedJointPainImplicates(
+            .lowerBack,
+            exerciseName: exercise.exerciseName,
+            muscleTarget: exercise.muscleTarget,
+            injuryRiskFocus: injuryRiskFocus
+        )
+        if lowerBackIsReported {
+            if containsAny(pattern, keywords: ["hinge", "squat"]) && metadata.equipment != "Machine" {
+                stress.lowerBack += Double(metadata.fatigueCost) * sets * 0.4
+            }
+            if pattern.contains("row") && !containsAny(name, keywords: ["chest supported", "machine", "cable", "seated cable"]) {
+                stress.lowerBack += sets * 0.3
+            }
+            if name.contains("good morning") {
+                stress.lowerBack += sets * 0.5
+            }
         }
 
-        if containsAny(pattern, keywords: ["squat", "press", "lunge", "split squat", "extension"]) && containsAny(normalizedPriorityText(metadata.primaryAreas.joined(separator: " ")), keywords: ["quad", "glute"]) {
+        let kneeIsReported = reportedJointPainImplicates(
+            .knee,
+            exerciseName: exercise.exerciseName,
+            muscleTarget: exercise.muscleTarget,
+            injuryRiskFocus: injuryRiskFocus
+        )
+        if kneeIsReported,
+           containsAny(pattern, keywords: ["squat", "press", "lunge", "split squat", "extension"]),
+           containsAny(primary, keywords: ["quad", "glute"]) {
             stress.knee += Double(metadata.fatigueCost) * sets * 0.3
         }
 
@@ -967,9 +1186,10 @@ extension ClaudeService {
         let stress = sessionJointStress(for: day, injuryRiskFocus: injuryRiskFocus)
         var issues: [String] = []
 
-        if stress.shoulder > 18 {
+        let shoulderBudget = 12.0
+        if stress.shoulder > shoulderBudget {
             issues.append(
-                "Day \(day.dayNumber) accumulates excessive shoulder joint stress (\(String(format: "%.0f", stress.shoulder)) vs 18 budget). Swap a compound press for a machine or cable alternative, or drop a redundant pressing slot."
+                "Day \(day.dayNumber) accumulates excessive shoulder joint stress (\(String(format: "%.0f", stress.shoulder)) vs \(String(format: "%.0f", shoulderBudget)) budget). Swap a compound press for a machine or cable alternative, or drop a redundant pressing slot."
             )
         }
         if stress.elbow > 14 {

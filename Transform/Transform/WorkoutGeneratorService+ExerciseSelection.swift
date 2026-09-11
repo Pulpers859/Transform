@@ -1309,7 +1309,7 @@ extension ClaudeService {
         if pattern.contains("upright row") {
             return ["upright row"]
         }
-        if pattern.contains("close-grip press") || pattern.contains("close grip press") {
+        if pattern.contains("close-grip press") {
             return ["close grip", "close-grip"]
         }
         if pattern.contains("incline press") {
