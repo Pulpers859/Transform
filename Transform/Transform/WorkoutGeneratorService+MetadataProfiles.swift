@@ -1592,14 +1592,14 @@ extension ClaudeService {
         if containsAny(combinedText, keywords: ["shoulder", "delt", "deltoid"]) {
             return Self.enrichedExerciseMetadata(ExerciseMetadata(canonicalName: exercise.exerciseName, primaryAreas: ["Shoulders"], secondaryAreas: ["Triceps"], movementPattern: "Shoulder", fatigueCost: 1))
         }
-        if targetsUpperBack || containsAny(combinedText, keywords: ["row", "chest supported", "upper back", "mid back", "machine row", "t bar row"]) {
+        if targetsUpperBack || containsPluralTolerantPriorityPhrase(in: combinedText, keywords: ["row", "chest supported", "upper back", "mid back", "machine row", "t bar row"]) {
             return Self.enrichedExerciseMetadata(ExerciseMetadata(canonicalName: exercise.exerciseName, primaryAreas: ["Upper Back"], secondaryAreas: ["Lats", "Biceps"], movementPattern: "Row", fatigueCost: 2))
         }
         if targetsLats || containsPriorityPhrase(in: combinedText, keywords: ["lats", "lat", "latissimus dorsi", "pullup", "pull up", "chinup", "chin up", "pulldown", "straight arm pulldown"]) {
             return Self.enrichedExerciseMetadata(ExerciseMetadata(canonicalName: exercise.exerciseName, primaryAreas: ["Lats"], secondaryAreas: ["Biceps"], movementPattern: "Vertical Pull", fatigueCost: 2))
         }
         if targetsBack {
-            let rowLikePattern = containsAny(nameText, keywords: ["row", "chest supported", "machine row", "t bar row"])
+            let rowLikePattern = containsPluralTolerantPriorityPhrase(in: nameText, keywords: ["row", "chest supported", "machine row", "t bar row"])
             return Self.enrichedExerciseMetadata(ExerciseMetadata(
                 canonicalName: exercise.exerciseName,
                 primaryAreas: ["Back"],

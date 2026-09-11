@@ -271,6 +271,26 @@ final class GeneratorBalanceFixTests: XCTestCase {
         }
     }
 
+    func testInferredBackPullDoesNotTreatRowInsideNarrowAsARow() {
+        let backExercise = exercise("Narrow-Grip High Cable Pull", "Back", sets: 3)
+        let metadata = service.exerciseMetadata(for: backExercise)
+
+        XCTAssertEqual(metadata.primaryAreas, ["Back"])
+        XCTAssertEqual(metadata.movementPattern, "Pull")
+    }
+
+    func testInferredUnknownRowNamesStillMatchWholeRowTokens() {
+        for rowExercise in [
+            exercise("Unlisted Gorilla Row", "Rhomboids", sets: 3),
+            exercise("Unlisted Gorilla Rows", "Rhomboids", sets: 3)
+        ] {
+            let metadata = service.exerciseMetadata(for: rowExercise)
+
+            XCTAssertEqual(metadata.primaryAreas, ["Upper Back"], rowExercise.exerciseName)
+            XCTAssertEqual(metadata.movementPattern, "Row", rowExercise.exerciseName)
+        }
+    }
+
     /// Directional on purpose — rows still load the lats through a full range, so a week built on
     /// rowing is not told off for lacking a pulldown.
     func testAWeekOfRowsIsNotFlaggedForLackingAVerticalPull() {
