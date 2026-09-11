@@ -181,6 +181,28 @@ check(
     expect_phrase="parse failure",
 )
 
+check(
+    "attack: a movement pattern written as a ternary, which the parser must still see",
+    SELECTION,
+    METADATA.replace(
+        'movementPattern: "Curl", fatigueCost: 1',
+        'movementPattern: rowLike ? "Row" : "Shoulder Pull", fatigueCost: 1',
+    ),
+    must_fail=True,
+    expect_phrase="reaches nothing",
+)
+
+check(
+    "attack: a family whose every phrase is filtered out, so it contributes nothing",
+    SELECTION.replace(
+        '["shoulder", "delt", "rear delt"]',
+        '["shoulder", "delt", "rear delt", "dip"]',
+    ),
+    METADATA,
+    must_fail=True,
+    expect_phrase="contributes no words",
+)
+
 # ---- Benign edits that must be tolerated ---------------------------------------------------
 check(
     "tolerated: a phrase added to an existing family",

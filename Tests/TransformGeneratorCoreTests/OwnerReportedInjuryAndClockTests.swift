@@ -602,6 +602,70 @@ final class OwnerReportedInjuryAndClockTests: XCTestCase {
         )
     }
 
+    /// The filter must drop what the LOCK demoted — which is not the same set as "whatever stops
+    /// being correction-worthy once the menu is locked".
+    ///
+    /// An audit found the predicate wrong in both directions, and the comment above it wrong with
+    /// it. Two real findings show it:
+    ///
+    ///   * "receives zero direct sets this week" is in `menuLockedDemotionPatterns` and in no
+    ///     other list, so unlocked it falls through to `.hardFailure` and locked it is an
+    ///     acceptable warning. The predicate asks whether it WAS correction-worthy unlocked, so
+    ///     it answers no, and the finding survives into the prompt. The model is then told to fix
+    ///     a coverage hole whose only repair is adding an exercise to a menu it was just told to
+    ///     copy exactly. That is reachable in production.
+    ///
+    ///   * "exceeds its per-session direct-set cap" is in BOTH `lockedMenuHardFailurePatterns`
+    ///     and `correctionWorthyIssuePatterns`, so it looks demoted to the predicate while really
+    ///     being PROMOTED to a hard failure. It gets dropped. Only the Generator Lab's retry loop
+    ///     reaches that, because the production paths skip the correction pass when a locked hard
+    ///     failure is present, but dropping the one finding that blocks acceptance is the wrong
+    ///     behaviour wherever it happens.
+    func testTheCorrectionFilterDropsDemotionsAndNothingElse() {
+        let repairable = "Day 3: notes contain load/rep progression instructions."
+        let demoted = "Muscle group 'Hamstrings' receives zero direct sets this week. BASE-001 "
+            + "requires every major muscle group to keep at least a minimal weekly exposure — "
+            + "even maintenance is not zero."
+        let promoted = "Blueprint priority 'Lateral Deltoids' exceeds its per-session direct-set "
+            + "cap on day 3 (12 vs 9). Distribute the work more intelligently across the week."
+
+        // Premises, asserted rather than assumed, because the whole defect lives in the gap
+        // between these two rows.
+        XCTAssertEqual(service.validationDisposition(for: demoted, menuLocked: false), .hardFailure)
+        XCTAssertEqual(service.validationDisposition(for: demoted, menuLocked: true), .acceptableWarning)
+        XCTAssertEqual(service.validationDisposition(for: promoted, menuLocked: false), .correctionPass)
+        XCTAssertEqual(service.validationDisposition(for: promoted, menuLocked: true), .hardFailure)
+
+        func prompt(_ issues: [String]) -> String {
+            let body = service.correctionRequestBody(
+                config: ClaudeService.GenerationConfig(model: "test-model", maxTokens: 8192, timeout: 180),
+                systemPrompt: "system",
+                toolName: service.programToolName,
+                toolSchema: [String: Any](),
+                issues: issues,
+                menuLocked: true,
+                context: "context",
+                originalUserPrompt: "original"
+            )
+            guard let messages = body["messages"] as? [[String: Any]],
+                  let content = messages.first?["content"] as? [[String: Any]],
+                  let text = content.first?["text"] as? String else {
+                XCTFail("Correction body did not carry a user prompt")
+                return ""
+            }
+            return text
+        }
+
+        XCTAssertFalse(
+            prompt([repairable, demoted]).contains("receives zero direct sets this week"),
+            "A finding the lock demoted must not be listed as one to correct"
+        )
+        XCTAssertTrue(
+            prompt([repairable, promoted]).contains("exceeds its per-session direct-set cap"),
+            "A finding the lock PROMOTED to a hard failure must not be quietly dropped"
+        )
+    }
+
     /// The filter drops ONLY what the lock took away, and this is the other half of that.
     ///
     /// The first version filtered on "not repairable at this lock state", which was simpler and

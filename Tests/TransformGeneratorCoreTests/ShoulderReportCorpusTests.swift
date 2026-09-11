@@ -170,6 +170,16 @@ final class ShoulderReportCorpusTests: XCTestCase {
             shape: "a clinical position that shares a phrase with the pullover family",
             reach: .everything
         ),
+        Row(
+            report: "Left shoulder pain with overhead reaching and difficulty sleeping on that side.",
+            shape: "a POSITION, not a lift — and it shares a word with the vertical-press family",
+            reach: .everything
+        ),
+        Row(
+            report: "Subacromial impingement on the left; pain provoked by overhead activity at work.",
+            shape: "an anatomical diagnosis that never writes the word shoulder",
+            reach: .everything
+        ),
 
         // ---- One movement named ------------------------------------------------------------
 
@@ -275,6 +285,15 @@ final class ShoulderReportCorpusTests: XCTestCase {
         Row(
             report: "Shoulder pain with cable flyes.",
             shape: "fly vocabulary, spelled the way lifters spell it, same overlap",
+            reach: .only([
+                "Cable Fly",
+                "Cable Rear Delt Fly",
+                "Chest-Supported Rear Delt Row"
+            ])
+        ),
+        Row(
+            report: "Shoulder pain with cable flies.",
+            shape: "the OTHER spelling — an irregular plural the +s/+es rule cannot reach",
             reach: .only([
                 "Cable Fly",
                 "Cable Rear Delt Fly",
