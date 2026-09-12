@@ -1278,9 +1278,27 @@ extension ClaudeService {
                 let metadata = exerciseMetadata(for: exercise)
                 return metadata.fatigueCost >= 3
             }.count
-            if heavyCompoundCount >= 2 {
+            // The deload week is exempt, because there the proxy is simply wrong. Counting heavy
+            // compounds stands in for "this session is hard", and on weeks 1-3 that holds: a note
+            // promising low fatigue over two fatigueCost-3 lifts is the contradiction this rule
+            // was written for. A deload KEEPS the main lifts and cuts the sets — that is what a
+            // deload is — so the same day carries the same compounds while genuinely being
+            // easier, and the note saying "deload" is accurate rather than contradictory.
+            //
+            // Found by the user-journey simulation, which produced this finding on week 4 for two
+            // of five personas and on no other week. It was not free: the finding is
+            // `.correctionPass`, so on the AI path every deload week bought a paid correction
+            // call — and one demanding a repair the menu lock forbids, since the model may not
+            // change exercise selection. Set counts on this week belong to the allocator and are
+            // already reduced, so nothing the model could legally do would clear it.
+            let weekNumber = ((dayStart - 1) / 7) + 1
+            if heavyCompoundCount >= 2, !MesocyclePhase.isDeloadWeek(weekNumber) {
                 issues.append(
-                    "Day \(day.dayNumber) notes describe a low-fatigue or recovery session, but it includes \(heavyCompoundCount) heavy compounds. Align the exercise selection with the session intent."
+                    // The remedy names the field the model actually OWNS. It used to say "Align
+                    // the exercise selection with the session intent", which under menu lock is
+                    // an instruction it is forbidden to follow; the note is the model's to write,
+                    // and rewriting it is what genuinely resolves the contradiction.
+                    "Day \(day.dayNumber) notes describe a low-fatigue or recovery session, but it includes \(heavyCompoundCount) heavy compounds. Rewrite the session note to match the work actually prescribed."
                 )
             }
         }

@@ -306,6 +306,20 @@ final class UserJourneySimulationTests: XCTestCase {
                 if week.findings.isEmpty {
                     report.append("      (no validator findings)")
                 }
+
+                // Promoted to an assertion on the evidence of the first run, which reported
+                // zero across all five personas and all four weeks. A hard failure here is not
+                // a quality opinion: it means the procedural week the athlete actually receives
+                // is one the app itself classifies as structurally broken, with no further
+                // fallback behind it.
+                let hardFailures = week.findings.filter {
+                    service.validationDisposition(for: $0, menuLocked: true) == .hardFailure
+                }
+                XCTAssertTrue(
+                    hardFailures.isEmpty,
+                    "\(persona.name) week \(weekNumber) ships a structurally broken week: "
+                        + hardFailures.joined(separator: " | ")
+                )
             }
 
             // The deload must actually deload: week 4 carries less work than week 3.

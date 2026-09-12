@@ -227,6 +227,95 @@ final class ValidatorCoverageGapTests: XCTestCase {
         assertNotFallbackNotice(issue)
     }
 
+    // MARK: - The deload exemption
+
+    /// A deload KEEPS the main lifts and cuts the sets. Counting heavy compounds is a proxy for
+    /// "this session is hard", and on the deload week that proxy is simply wrong: the same day
+    /// carries the same compounds while genuinely being easier, so a note saying "deload" is
+    /// accurate rather than contradictory.
+    ///
+    /// Found by `UserJourneySimulationTests`, which produced this finding on week 4 for two of
+    /// five personas and on no other week. It was not free: the finding is `.correctionPass`, so
+    /// on the AI path every deload week bought a paid correction call — demanding a repair the
+    /// menu lock forbids, since the model may not change exercise selection and the reduced set
+    /// counts belong to the allocator.
+    func testADeloadNoteOverRetainedCompoundsIsNotAContradiction() {
+        let deloadDay = day(
+            1,
+            exercises: [
+                exercise("Back Squat", "Quads", sets: 2),
+                exercise("Barbell Romanian Deadlift", "Hamstrings", sets: 2)
+            ],
+            notes: "Deload week: keep the same lifts, cut the volume, and leave two reps in reserve."
+        )
+        let weekFourDayStart = ((MesocyclePhase.deloadWeek - 1) * 7) + 1
+
+        let issues = service.validateNoteContradictions(
+            on: deloadDay,
+            blueprint: minimalBlueprint(),
+            dayStart: weekFourDayStart
+        )
+
+        XCTAssertFalse(
+            issues.contains { $0.contains("notes describe a low-fatigue") },
+            "A deload note over the lifts a deload is supposed to retain is not a contradiction: \(issues)"
+        )
+    }
+
+    /// The exemption must be scoped to the deload, not a blanket disable. The identical day on
+    /// an accumulation week is still the contradiction the rule exists for.
+    func testTheSameNoteOnAnAccumulationWeekIsStillFlagged() {
+        let deloadWordedDay = day(
+            1,
+            exercises: [
+                exercise("Back Squat", "Quads", sets: 3),
+                exercise("Barbell Romanian Deadlift", "Hamstrings", sets: 3)
+            ],
+            notes: "Deload week: keep the same lifts, cut the volume, and leave two reps in reserve."
+        )
+        let weekThreeDayStart = ((3 - 1) * 7) + 1
+
+        let issues = service.validateNoteContradictions(
+            on: deloadWordedDay,
+            blueprint: minimalBlueprint(),
+            dayStart: weekThreeDayStart
+        )
+
+        XCTAssertTrue(
+            issues.contains { $0.contains("notes describe a low-fatigue") },
+            "A note calling week 3 a deload over two heavy compounds still contradicts the work: \(issues)"
+        )
+    }
+
+    /// The remedy has to name a field the model OWNS under menu lock. It used to say "Align the
+    /// exercise selection with the session intent", which is an instruction the lock forbids it
+    /// from following — so the paid correction call could not succeed even in principle.
+    func testTheLowFatigueRemedyAsksForANoteRewriteNotAnExerciseSwap() {
+        let heavyDay = day(
+            1,
+            exercises: [
+                exercise("Back Squat", "Quads", sets: 3),
+                exercise("Barbell Romanian Deadlift", "Hamstrings", sets: 3)
+            ],
+            notes: "A balanced lower session to maintain leg mass without adding fatigue "
+                + "that would steal from your priority areas."
+        )
+        let issues = service.validateNoteContradictions(on: heavyDay, blueprint: minimalBlueprint(), dayStart: 1)
+        guard let issue = issues.first(where: { $0.contains("notes describe a low-fatigue") }) else {
+            XCTFail("Expected a low-fatigue contradiction finding: \(issues)")
+            return
+        }
+
+        XCTAssertTrue(
+            issue.contains("Rewrite the session note"),
+            "The remedy must point at the note, which the model writes: \(issue)"
+        )
+        XCTAssertFalse(
+            issue.contains("Align the exercise selection"),
+            "Under menu lock the model cannot change exercise selection: \(issue)"
+        )
+    }
+
     // MARK: - GAP 3: priority frequency OVERSHOOT
 
     private func frequencyAllocation(area: String, targetFrequency: Int) -> ClaudeService.BlueprintPriorityAllocation {
