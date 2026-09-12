@@ -1667,7 +1667,22 @@ extension ClaudeService {
             ("Weighted Chin-Up", "Chin-Up"),
             ("Neutral Grip Lat Pulldown", "Neutral-Grip Lat Pulldown"),
             ("Neutral Grip Pulldown", "Neutral-Grip Lat Pulldown"),
-            ("Close Grip Lat Pulldown", "Close-Grip Lat Pulldown"),
+            // "Close Grip Lat Pulldown" deliberately has NO alias. It used to point at
+            // "Close-Grip Lat Pulldown", which is not a catalogue entry — the only one of 173
+            // aliases that renamed a model-emitted name into an identity with no metadata
+            // behind it, leaving it to `inferredExerciseMetadata`.
+            //
+            // Removed rather than repointed, because repointing is not history-safe.
+            // `ExerciseWeightEntry.canonicalLookupKey` folds punctuation to spaces, so
+            // "Close Grip Lat Pulldown" and "Close-Grip Lat Pulldown" are already the SAME
+            // weight-history key and dropping the rename moves nobody's logged loads. Aliasing
+            // it to "Neutral-Grip Lat Pulldown" instead would have keyed future prescriptions
+            // to a different bucket and silently stranded whatever the athlete had logged.
+            // Adding a catalogue entry was the other option and is worse still: selection order
+            // in `metadataFocusExerciseCatalog` is tie-broken by catalogue POSITION, so a new
+            // entry shifts the deterministic menu for every Lats-priority athlete.
+            //
+            // Enforced by `ExerciseAliasIntegrityTests`.
             ("Cable Pullovers", "Cable Pullover"),
             ("Machine Pulldown", "Machine Lat Pulldown"),
             ("Single Arm Cable Row", "Single-Arm Cable Row"),
