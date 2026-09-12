@@ -3749,20 +3749,42 @@ extension ClaudeService {
 
         // Fill useful maintenance work toward role defaults without ever exceeding a
         // shared weekly budget. Multi-primary exercises debit every affected group.
-        var madeProgress = true
-        var guardRail = 160
-        while madeProgress && guardRail > 0 {
-            guardRail -= 1
-            madeProgress = false
-            for dayIndex in allocated.indices {
-                for exerciseIndex in allocated[dayIndex].indices {
-                    let targetsMaintenance = accounting[dayIndex][exerciseIndex].groupTargets.contains(true)
-                    guard targetsMaintenance else { continue }
-                    guard canAddSet(dayIndex: dayIndex, exerciseIndex: exerciseIndex) else { continue }
-                    allocated[dayIndex][exerciseIndex].prescribedSets += 1
-                    madeProgress = true
+        //
+        // FLOOR FIRST, exactly as the priority loop above does it, and for the same reason. This
+        // used to sweep day/exercise in index order, adding one set to every eligible movement
+        // per pass. That reads as fair round-robin and is not: `canAddSet` starts refusing part
+        // way through a sweep once the day's fatigue cap is reached, so whichever movements sit
+        // later in the day's order are the ones left short — and the loop is indifferent to
+        // whether a movement has reached `minimumSetFloor`, so it will happily take an exercise
+        // from three sets to four while another sits at ONE, below the dose this app itself
+        // treats as the minimum worth programming. The floor pass afterwards cannot rescue it,
+        // because by then the budget it would need is spent.
+        //
+        // The simulation measured 25 below-floor prescriptions across five personas before this
+        // — Trap Bar Deadlift at 1 set against a floor of 3, lateral raises and pressdowns at 1
+        // against 2. As in the priority loop, a bonus larger than any set count guarantees every
+        // movement reaches a dose worth performing before any movement is pushed beyond it.
+        // Nothing is spent that would not have been spent anyway; only the order changes, and
+        // `canAddSet` still owns every ceiling.
+        //
+        // The guard rail counts SETS now, not sweeps, because this adds one set per iteration
+        // rather than one per exercise per iteration. Sized to the most the ceilings could ever
+        // permit so the bound can never truncate a legitimate fill.
+        var maintenanceGuardRail = allocated.reduce(0) { $0 + $1.count } * 8 + 16
+        while maintenanceGuardRail > 0 {
+            maintenanceGuardRail -= 1
+            let candidates = allocated.indices.flatMap { dayIndex in
+                allocated[dayIndex].indices.compactMap { exerciseIndex -> (Int, Int, Int)? in
+                    let acct = accounting[dayIndex][exerciseIndex]
+                    guard acct.groupTargets.contains(true) else { return nil }
+                    guard canAddSet(dayIndex: dayIndex, exerciseIndex: exerciseIndex) else { return nil }
+                    let prescribed = allocated[dayIndex][exerciseIndex].prescribedSets
+                    let belowFloorBonus = prescribed < acct.setFloor ? 100 : 0
+                    return (dayIndex, exerciseIndex, belowFloorBonus - prescribed)
                 }
             }
+            guard let target = candidates.max(by: { $0.2 < $1.2 }) else { break }
+            allocated[target.0][target.1].prescribedSets += 1
         }
 
         // Per-exercise minimum-dose floor. The funding loops above optimize weekly aggregate
