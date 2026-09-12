@@ -22,6 +22,10 @@ jobs:
     timeout-minutes: 12
     env:
       TRANSFORM_FIXTURE_SNAPSHOT_OUTPUT: ${{ github.workspace }}/generator-fixture-snapshot.txt
+      # Where the user-journey simulation writes its readable report. It needs its own path:
+      # `swift test --parallel` runs the suites concurrently, so sharing the fixture-snapshot
+      # file would have the two tests overwrite each other's output at random.
+      TRANSFORM_JOURNEY_REPORT_OUTPUT: ${{ github.workspace }}/user-journey-report.txt
 
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
@@ -88,6 +92,19 @@ jobs:
           set -euo pipefail
           python3 tools/test_check_shoulder_families.py
           python3 tools/check_shoulder_families.py
+
+      # The simulation's assertions fail the job on their own; this is the readable half —
+      # training days, exercise and set counts per week, and the deload drop for each persona.
+      # Uploaded rather than printed because `swift test --parallel` swallows test stdout, so
+      # the report was invisible in the log on the run that introduced it.
+      - name: Upload user journey report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: user-journey-report
+          path: ${{ github.workspace }}/user-journey-report.txt
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Upload generator test log
         if: failure()

@@ -267,7 +267,25 @@ final class UserJourneySimulationTests: XCTestCase {
             report.append("  deload check: week 3 \(week3Sets) sets -> week 4 \(week4Sets) sets")
         }
 
-        print(report.joined(separator: "\n"))
+        // Written to a file rather than printed. `swift test --parallel` swallows test stdout,
+        // so the first run of this simulation produced a report nobody could read; the workflow
+        // uploads this path as an artifact instead.
+        try writeArtifactIfRequested(
+            report.joined(separator: "\n"),
+            environmentKey: "TRANSFORM_JOURNEY_REPORT_OUTPUT"
+        )
+    }
+
+    private func writeArtifactIfRequested(_ contents: String, environmentKey: String) throws {
+        guard let path = ProcessInfo.processInfo.environment[environmentKey], !path.isEmpty else {
+            return
+        }
+        let url = URL(fileURLWithPath: path)
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try contents.write(to: url, atomically: true, encoding: .utf8)
     }
 
     /// Same analysis in, same program out. A person who regenerates without changing anything
