@@ -127,6 +127,22 @@ final class GeneratorBalanceFixTests: XCTestCase {
         }
     }
 
+    /// The same shape as `week`, numbered as the DELOAD week. Day numbers are what carry the
+    /// week through to `validateNonPriorityMuscleVolume`, which is given no week of its own.
+    private func deloadWeek(_ exercises: [WorkoutExerciseResponse]) -> [WorkoutDayResponse] {
+        let dayStart = ((MesocyclePhase.deloadWeek - 1) * 7) + 1
+        return (dayStart...(dayStart + 6)).map { dayNumber in
+            WorkoutDayResponse(
+                dayNumber: dayNumber,
+                dayName: dayNumber == dayStart ? "Training" : "Rest",
+                muscleGroups: "",
+                isRestDay: dayNumber != dayStart,
+                notes: "",
+                exercises: dayNumber == dayStart ? exercises : []
+            )
+        }
+    }
+
     // MARK: - 1. ORD-001: anchors lead, core trails
 
     /// The defect verbatim: a heavy compound must never be preceded by direct core work.
@@ -631,6 +647,75 @@ final class GeneratorBalanceFixTests: XCTestCase {
         )
 
         XCTAssertFalse(issues.contains { $0.contains("'Triceps' falls below") }, "\(issues)")
+    }
+
+    /// The deload week is exempt from the FLOOR, and this pins that it is the deload week doing
+    /// it rather than anything about the sets themselves: the identical day trips the rule on a
+    /// loading week and stays quiet on week 4.
+    ///
+    /// A deload cuts sets on purpose and carries one fewer movement per day on purpose, so
+    /// judging it against a loading week's floor measures the wrong thing. The simulation showed
+    /// the cost: 20 of 31 floor findings across five personas landed on week 4, 20 of the 23 that
+    /// week produced at all — a list of "problems" the planner deliberately created, shown to the
+    /// athlete every fourth week. The rule's own comment warns against exactly that, saying a
+    /// floor firing on every group merely sitting low would "teach the owner to skim past the
+    /// list".
+    func testTheMaintenanceFloorIsNotEnforcedOnTheDeloadWeek() throws {
+        let (blueprint, _) = try plannedWeek()
+        let thin = [exercise("Rope Triceps Pressdown", "Triceps", sets: 2)]
+
+        XCTAssertTrue(
+            service.validateNonPriorityMuscleVolume(
+                days: week(thin),
+                blueprint: blueprint,
+                recoveryTight: false
+            ).contains { $0.contains("'Triceps' falls below") },
+            "Premise: this same day is a floor violation on a loading week"
+        )
+        XCTAssertFalse(
+            service.validateNonPriorityMuscleVolume(
+                days: deloadWeek(thin),
+                blueprint: blueprint,
+                recoveryTight: false
+            ).contains { $0.contains("'Triceps' falls below") },
+            "The deload week reduces volume deliberately; the floor does not apply to it"
+        )
+    }
+
+    /// The exemption covers the FLOOR only. A muscle receiving nothing at all is still worth
+    /// reporting in any week — the same line `enforceBaselineMuscleCoverage` draws when it keeps
+    /// the flat day ceiling for a zero-coverage rescue but not for a breadth top-up.
+    func testZeroCoverageIsStillReportedOnTheDeloadWeek() throws {
+        let (blueprint, _) = try plannedWeek()
+
+        let issues = service.validateNonPriorityMuscleVolume(
+            days: deloadWeek([exercise("Rope Triceps Pressdown", "Triceps", sets: 4)]),
+            blueprint: blueprint,
+            recoveryTight: false
+        )
+
+        XCTAssertTrue(
+            issues.contains { $0.contains("receives zero direct sets this week") },
+            "A group with no work at all must still be reported on a deload: \(issues)"
+        )
+    }
+
+    /// The ceiling half is not exempted either — a deload that somehow stacked volume is still
+    /// a deload that failed to deload.
+    func testTheMaintenanceCeilingStillAppliesOnTheDeloadWeek() throws {
+        let (blueprint, _) = try plannedWeek()
+
+        let issues = service.validateNonPriorityMuscleVolume(
+            days: deloadWeek([exercise("Rope Triceps Pressdown", "Triceps", sets: 8),
+                              exercise("Overhead Cable Triceps Extension", "Triceps", sets: 8)]),
+            blueprint: blueprint,
+            recoveryTight: false
+        )
+
+        XCTAssertTrue(
+            issues.contains { $0.contains("exceeds the maintenance weekly volume ceiling") },
+            "\(issues)"
+        )
     }
 
     /// Constrained recovery lowers the whole band, floor included (SLEEP-002).

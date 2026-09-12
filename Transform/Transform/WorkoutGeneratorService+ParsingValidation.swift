@@ -775,6 +775,34 @@ extension ClaudeService {
         // Constrained recovery lowers the whole band, floor included, per SLEEP-002.
         let maintenanceFloor = recoveryTight ? 3.0 : 4.0
 
+        // The FLOOR half of this rule does not apply on the deload week, and the reason is the
+        // rule's own stated design principle two paragraphs up: a floor "that fired on every
+        // group merely sitting low would fire on almost every honest week and teach the owner to
+        // skim past the list, which costs more than it catches."
+        //
+        // A deload week is the honest week par excellence. It cuts sets on purpose and carries
+        // one fewer movement per day on purpose — `comfortableDayExerciseCeiling` refuses to
+        // grow a deload day at all, and says so: "Reduction weeks do not grow... the three
+        // loading weeks around it carry the coverage." Judging that week against the same
+        // weekly floor as a loading week measures the wrong thing, and the simulation shows the
+        // cost precisely: 20 of the 31 floor findings across five personas land on week 4,
+        // which is 20 of the 23 findings that week produces at all. The athlete is shown a list
+        // of "problems" the planner deliberately created, every fourth week, which is how a
+        // warning list stops being read.
+        //
+        // The ZERO-coverage branch below is deliberately NOT exempted. A muscle receiving no
+        // work at all is worth reporting in any week, which is the same line
+        // `enforceBaselineMuscleCoverage` draws when it keeps the flat day ceiling for a
+        // zero-coverage rescue but not for a breadth top-up.
+        //
+        // Nothing programmed changes here. This decides only what the athlete is TOLD.
+        //
+        // The week is derived rather than plumbed: `ProgramBlueprint` carries no week number
+        // (see the note on the finding below), but day numbers do — a week's days run
+        // ((week - 1) * 7) + 1 through week * 7 in every caller.
+        let weekNumber = days.map(\.dayNumber).min().map { (($0 - 1) / 7) + 1 } ?? 1
+        let enforcesMaintenanceFloor = !MesocyclePhase.isDeloadWeek(weekNumber)
+
         // Prioritized groups stay exempt here ON PURPOSE, even though `allocateWeeklySetPrescription`
         // now keeps a residue ledger for them (see `exerciseCountsTowardMaintenance`). The allocator
         // enforces the residue ceiling while building the locked menu, so a validator rule would be
@@ -795,7 +823,7 @@ extension ClaudeService {
                 issues.append(
                     "Muscle group '\(group.label)' receives zero direct sets this week. BASE-001 requires every major muscle group to keep at least a minimal weekly exposure — even maintenance is not zero."
                 )
-            } else if directSets + 0.01 < maintenanceFloor {
+            } else if directSets + 0.01 < maintenanceFloor, enforcesMaintenanceFloor {
                 // EvidenceProfile.md MAINT-001 / BASE-001 [confidence: low-moderate]
                 //
                 // The movement count is COUNTED; the cause is no longer asserted.
