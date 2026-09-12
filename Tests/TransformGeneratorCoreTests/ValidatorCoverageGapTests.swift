@@ -375,6 +375,45 @@ final class ValidatorCoverageGapTests: XCTestCase {
         )
     }
 
+    /// A day carrying ONE token set is not a day the muscle was trained, and counting it as one
+    /// is what made this finding overstate reality.
+    ///
+    /// `dayMatches` counts any day with a single direct set, so a compound on a day built for
+    /// something else — a Trap Bar Deadlift crediting Back on a Legs day — read as "trained on
+    /// that day". Against a two-day target the +2 threshold then tripped on two incidental sets,
+    /// and told the athlete his back was trained on four days when two of those were one set
+    /// apiece. `minimumMeaningfulPriorityExposureSets` is the app's own answer to "is this a
+    /// real exposure" — two sets for a small muscle, three otherwise.
+    func testIncidentalSingleSetDaysDoNotCountAsTrainingDays() {
+        let blueprint = minimalBlueprint(
+            priorityAllocations: [frequencyAllocation(area: "Core/Abs", targetFrequency: 1)]
+        )
+        // Three days carry abs work, but only day 1 carries a meaningful dose.
+        let days = (1...7).map { number -> WorkoutDayResponse in
+            switch number {
+            case 1:
+                return day(number, exercises: [
+                    exercise("Cable Crunch", "Abs", sets: 2),
+                    exercise("Incline Barbell Press", "Upper Chest", sets: 3)
+                ])
+            case 2, 4:
+                return day(number, exercises: [
+                    exercise("Hanging Leg Raise", "Lower Abs", sets: 1),
+                    exercise("Leg Press", "Quads", sets: 3)
+                ])
+            default:
+                return day(number, exercises: [], isRestDay: true)
+            }
+        }
+
+        let issues = service.validateBlueprint(days: days, blueprint: blueprint, dayStart: 1)
+
+        XCTAssertFalse(
+            issues.contains { $0.contains("overshot its frequency target") },
+            "Two one-set incidental exposures are not two training days: \(issues)"
+        )
+    }
+
     func testFrequencyOvershootIsAnAcceptableWarningBothLockedAndUnlockedAndGetsPlainLanguageCopy() {
         let blueprint = minimalBlueprint(priorityAllocations: [frequencyAllocation(area: "Core/Abs", targetFrequency: 1)])
         let issues = service.validateBlueprint(days: daysWithAbsWork(on: [1, 2, 4]), blueprint: blueprint, dayStart: 1)

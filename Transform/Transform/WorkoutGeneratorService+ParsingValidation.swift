@@ -656,10 +656,23 @@ extension ClaudeService {
             // safety problem — more frequency at the same weekly volume is usually neutral-to-good
             // for hypertrophy — so it does not belong with the direct-set overshoot findings that
             // hard-fail.
-            let frequencyOvershoot = coverage.dayMatches >= allocation.targetFrequency + 2
+            // Counted in MEANINGFUL days, not bare exposures, and the distinction is the whole
+            // accuracy of the finding. `dayMatches` counts any day carrying a single direct set,
+            // so a compound on a day built for something else — a Trap Bar Deadlift crediting
+            // Back on a Legs day — read as "trained on that day". Against a two-day target the
+            // +2 threshold then trips on two incidental sets, and the message told the athlete
+            // his back was "trained on 4 days" when two of those were one set apiece.
+            //
+            // `meaningfulDayMatches` is the app's existing answer to "is this a real exposure",
+            // thresholded by `minimumMeaningfulPriorityExposureSets` (2 sets for small muscles,
+            // 3 otherwise), and the under-frequency sibling already reports in both currencies.
+            // Real spread — the shipped 3-vs-1 this rule was written for — still trips it,
+            // because three genuine exposures are three meaningful days. This is a measurement
+            // fix, not a relaxation: nothing about the threshold or the tier changes.
+            let frequencyOvershoot = coverage.meaningfulDayMatches >= allocation.targetFrequency + 2
             if frequencyOvershoot {
                 issues.append(
-                    "Blueprint priority '\(coverage.label)' overshot its frequency target, trained on \(coverage.dayMatches) days against a planned \(allocation.targetFrequency)."
+                    "Blueprint priority '\(coverage.label)' overshot its frequency target, trained on \(coverage.meaningfulDayMatches) days against a planned \(allocation.targetFrequency)."
                 )
             }
             if meaningfulFrequencyMiss {
