@@ -3878,6 +3878,66 @@ extension ClaudeService {
             }
         }
 
+        // Redistribution backstop. The floor pass above can only ADD sets, so it is helpless
+        // exactly where the week has no room left to add — and that, not day fatigue, is what
+        // strands the last below-floor movements. `fatigueContribution` charges a movement its
+        // full `fatigueCost` from its FIRST set and only raises the multiplier at four sets, so
+        // taking an accessory from one set to two costs no day fatigue at all and the fatigue
+        // cap cannot have been the refusal. What refuses is volume: the priority's weekly
+        // ceiling, or the per-session direct cap. The week already holds those sets. They are
+        // simply on the wrong movements — one lift at four sets beside another at one.
+        //
+        // So move a set instead of buying one. A same-day transfer leaves the weekly and
+        // per-session ledgers untouched, which is why it can succeed where adding cannot, and
+        // it lowers day fatigue if anything, because the donor may drop back below the
+        // four-set multiplier. Trading 4+1 for 3+2 turns one movement that was not worth
+        // performing into two that are.
+        //
+        // Every guard is the existing one: the donor is decremented first and the recipient is
+        // then offered to `canAddSet`, so no ceiling is re-implemented here and none can be
+        // bypassed. A donor never falls below its own floor, so this cannot rob one movement to
+        // pay another. Total sets for the day are unchanged.
+        //
+        // Terminating: each successful trade strictly reduces the day's total below-floor
+        // deficit and never creates a new one, and the guard rail bounds the pathological case.
+        for dayIndex in allocated.indices {
+            var tradeGuardRail = allocated[dayIndex].count * 4 + 8
+            while tradeGuardRail > 0 {
+                tradeGuardRail -= 1
+                guard let needy = allocated[dayIndex].indices.first(where: { index in
+                    allocated[dayIndex][index].prescribedSets < accounting[dayIndex][index].setFloor
+                }) else { break }
+
+                // Deepest donor first, index as the tie-break so the choice is reproducible.
+                let donors = allocated[dayIndex].indices
+                    .filter { index in
+                        index != needy
+                            && allocated[dayIndex][index].prescribedSets > accounting[dayIndex][index].setFloor
+                    }
+                    .sorted { lhs, rhs in
+                        let lhsSets = allocated[dayIndex][lhs].prescribedSets
+                        let rhsSets = allocated[dayIndex][rhs].prescribedSets
+                        return lhsSets == rhsSets ? lhs < rhs : lhsSets > rhsSets
+                    }
+
+                var traded = false
+                for donor in donors {
+                    allocated[dayIndex][donor].prescribedSets -= 1
+                    if canAddSet(
+                        dayIndex: dayIndex,
+                        exerciseIndex: needy,
+                        allowFloorOvershoot: true
+                    ) {
+                        allocated[dayIndex][needy].prescribedSets += 1
+                        traded = true
+                        break
+                    }
+                    allocated[dayIndex][donor].prescribedSets += 1
+                }
+                guard traded else { break }
+            }
+        }
+
         let consistencyIssues = allocationLedgerConsistencyIssues(
             allocated,
             blueprint: blueprint
