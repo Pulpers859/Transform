@@ -791,10 +791,27 @@ extension ClaudeService {
     func phaseGuidance(for weekNumber: Int) -> String {
         switch weekNumber {
         // The volume arc is NOT yours to write — the deterministic allocator has already
-        // applied it to the Pre-Selected Exercise Menu you are given (week 2 lands ~26% above
-        // week 1, week 3 peaks, week 4 drops ~46% off week 3 and also carries one fewer
-        // exercise). These strings therefore describe the phase's INTENT and the fields you
-        // actually control: reps, targetRIR, tempo, rest, and what the coaching emphasizes.
+        // applied it to the Pre-Selected Exercise Menu you are given. These strings therefore
+        // describe the phase's INTENT and the fields you actually control: reps, targetRIR,
+        // tempo, rest, and what the coaching emphasizes.
+        //
+        // The numbers this note used to quote were wrong, and worth recording because they
+        // read as precise. It claimed week 2 lands "~26% above week 1", week 4 drops "~46% off
+        // week 3", and week 4 "carries one fewer exercise". Measured over five personas driven
+        // end to end by `UserJourneySimulationTests`, the DELIVERED totals are:
+        //
+        //   week 1 -> week 2   +5% to +9% total sets
+        //   week 2 -> week 3   0% to +2%   (identical for three of the five)
+        //   week 3 -> week 4   -12% to -27%, and 3 to 9 fewer exercises, not one
+        //
+        // The gap is not a bug in either place: `phasePrescriptionsByWeek` really does step
+        // per-exercise sets 3.25 -> 4.0 -> 4.25 -> 2.75 on average, and the weekly, per-session
+        // and fatigue caps then clamp most of that back out. Week 3 also intensifies through
+        // its REP ranges rather than its set count — anchors move 6-10 to 5-8 — which is why a
+        // flat week 2 to week 3 in total sets is a real accumulation block and not a stalled
+        // one. Quote delivered numbers from the simulation artifact if this note is ever
+        // updated; do not re-derive them from the prescription table, which is the mistake
+        // that produced the old figures.
         //
         // They used to instruct set changes ("Add ~15-25% productive sets", "drop sets") while
         // five other lines of the same prompt forbade touching set counts. Two ways that cost

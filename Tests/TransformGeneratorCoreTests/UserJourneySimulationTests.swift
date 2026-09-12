@@ -290,6 +290,14 @@ final class UserJourneySimulationTests: XCTestCase {
 
     /// Same analysis in, same program out. A person who regenerates without changing anything
     /// should not get a different week, and the menu is supposed to be deterministic.
+    ///
+    /// KNOWN LIMIT, stated so this is not over-trusted: both runs happen in ONE process, and
+    /// Swift seeds its hasher per process — so a Dictionary-ordering bug produces the same
+    /// wrong answer twice here and passes. This catches ordering that varies WITHIN a run; it
+    /// cannot catch the launch-to-launch class. That class is addressed by sorting at the
+    /// sites that feed output (`peakDirectSession`, the pattern-stacking loop,
+    /// `priorityProfileSpecificitySort`, candidate scoring), and those are what to re-check
+    /// when this area changes. A cross-process version would need the suite to re-exec itself.
     func testTheSameAnalysisProducesTheSameProgramTwice() throws {
         for persona in personas {
             let first = try fullMesocycle(for: persona)
