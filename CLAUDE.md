@@ -1,5 +1,56 @@
 # Transform Claude Code Memory
 
+## Evidence Before Sentence (READ FIRST — OUTRANKS EVERY OTHER RULE IN THIS FILE)
+
+The owner's standing instruction, in his words: **never make findings or claims without double
+checking what you are saying.** Overstatement is not a style problem here. It sends him down false
+paths, costs him hours, and burns tokens re-doing work that should not have been started. He has
+raised this more than once. Raising it again is a failure.
+
+This rule is PERMANENT, has NO exceptions, and binds every agent, subagent, lane, and reviewer
+spawned from this repo. Put it in their brief verbatim.
+
+### The order is: check, then speak. Never speak, then check.
+Two real failures from one session, both the same shape:
+- Wrote "a four-day week cannot give two priority muscles a full dose and still give every other
+  muscle four sets — that is arithmetic." Nothing had been computed. When actually computed, the
+  week had ~94 sets of capacity against a ~52-set requirement. The claim was not merely wrong, it
+  was presented as a mathematical certainty and it redirected the whole investigation.
+- Wrote "I have now disproved my own claim. Let me verify the numbers before I retract it." The
+  verdict and the admission that it was unverified sat in the SAME sentence.
+
+So: **a message may contain a verdict, or a statement that you are about to check something. Never
+both about the same claim.** If the evidence does not exist yet, the only honest sentence is "I am
+checking X" — with no hint of which way it will land.
+
+### Banned openings (each one is a verdict shipped ahead of its evidence)
+Do not write any of these unless the check is ALREADY DONE and you can name its output:
+- "I've now confirmed / disproved / verified …" followed by the work that confirms it
+- "This is definitely / clearly / obviously …"
+- "That is just arithmetic" / "that is structural" / "that is physics"
+- "There are N bugs" before N has been counted from a list you can produce
+- "This is the root cause" before the causal chain has been read end to end
+- Any number — a count, a percentage, a capacity, a threshold — that was estimated rather than
+  computed from source or measured from output
+
+### Every claim carries its evidence grade
+When stating a finding, the grade is part of the finding, not an optional footnote:
+- **Verified** — name the file and line you read, the script you ran and its output, or the CI run
+  you confirmed actually executed. No name, no "verified".
+- **Reasoned, not reproduced** — you followed the logic but did not observe it. Say exactly this
+  phrase. It is fully acceptable to report; it is not acceptable to leave unlabeled.
+- **Guess** — say "I am guessing". Usually the right move instead is to go check.
+
+### Quantitative claims
+Any sentence containing a number about this codebase's behavior must be produced by reading the
+constant, running a script that parses the constant out of the source, or measuring real output.
+Never by mental estimate. Scripting it costs a minute; being wrong costs the owner an afternoon.
+
+### Retractions
+When you are wrong, correct it in one plain sentence, say what is true instead, and continue. Do
+not narrate the mistake, tally past mistakes, or apologise repeatedly — that is its own kind of
+waste. The one thing that must never happen is the same overstatement shipped twice.
+
 ## Start Here
 - Source-of-truth repo root: `C:\Dev\Transform_clean`
 - Current working branch: `main`
