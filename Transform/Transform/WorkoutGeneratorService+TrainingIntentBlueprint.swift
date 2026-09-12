@@ -275,10 +275,28 @@ extension ClaudeService {
             calibration: trainingIntent.calibration
         )
 
+        // Describe the week that was BUILT, not the one that was asked for.
+        //
+        // `defaultRestPattern` is the only thing that decides how many sessions a week
+        // actually carries, and for six days on a deload it returns two rest days, not one —
+        // five sessions against a requested six. Reporting the request here made the
+        // blueprint contradict its own day plans, and `validateWeekResponse` compares the
+        // generated week against THIS number: "Blueprint calls for 6 training days, but the
+        // generated week has 5." That string is in `lockedMenuHardFailurePatterns`, so under
+        // menu lock it is a hard failure, the correction pass is skipped outright, and every
+        // parallel candidate the athlete paid for is discarded in favour of the procedural
+        // week — every deload week, for every six-day lifter, with nothing in the validator
+        // aware that deloads exist.
+        //
+        // Derived rather than hardcoded so the same contradiction cannot come back through a
+        // future edit to the rest patterns. The extra deload rest day is left exactly as it
+        // was: this changes what the blueprint SAYS, never what it prescribes.
+        let plannedTrainingDays = dayPlans.filter { !$0.isRestDay }.count
+
         return ProgramBlueprint(
             evidenceVersion: evidenceProfile.version,
             splitRecommendation: trainingIntent.splitRecommendation,
-            weeklyTrainingDays: trainingDays,
+            weeklyTrainingDays: plannedTrainingDays,
             priorityAllocations: styleFeasibleAllocations(allocations, dayPlans: dayPlans),
             dayPlans: dayPlans,
             topLeverageChange: trainingIntent.topLeverageChange,

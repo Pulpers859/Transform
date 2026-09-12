@@ -782,7 +782,7 @@ struct WorkoutView: View {
             WorkoutGenerationDiagnostics.markStage("archiving prior programs")
 
             for program in programs where !program.isArchived {
-                if program.hasCompletedExercises {
+                if program.hasAthleteHistory {
                     program.isArchived = true
                 } else {
                     modelContext.delete(program)

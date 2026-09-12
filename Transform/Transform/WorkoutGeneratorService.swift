@@ -276,7 +276,7 @@ extension ClaudeService {
         try Task.checkCancellation()
         WorkoutGenerationDiagnostics.markStage("scoring week 1 parallel candidates")
 
-        var scoredCandidates: [(response: WorkoutProgramResponse, issues: [String], score: Int)] = []
+        var scoredCandidates: [(response: WorkoutProgramResponse, issues: [String], score: Int, index: Int)] = []
         var candidateErrors: [Error] = []
 
         for (i, result) in candidateResults {
@@ -288,7 +288,7 @@ extension ClaudeService {
                 )
                 let issues = validateProgramResponse(prescribed, blueprint: blueprint, expectedExerciseMenus: exerciseMenus, progressionVerdicts: progressionVerdicts)
                 let score = issues.isEmpty ? 0 : scoreValidationIssues(issues, menuLocked: true)
-                scoredCandidates.append((response: prescribed, issues: issues, score: score))
+                scoredCandidates.append((response: prescribed, issues: issues, score: score, index: i))
                 if issues.isEmpty {
                     attemptTrace.append("Candidate \(i): Accepted — no issues")
                 } else {
@@ -311,7 +311,12 @@ extension ClaudeService {
             )
         }
 
-        scoredCandidates.sort { $0.score < $1.score }
+        // Tie-break on the candidate's own number. Swift's `sort` is introsort and is NOT
+        // stable, so two candidates that score identically — the ordinary case when both
+        // come back clean-but-for-the-same-warning — could swap places between runs and
+        // hand the athlete a different week for the same input. The score decides first;
+        // the candidate number only settles ties, so the winner is reproducible.
+        scoredCandidates.sort { ($0.score, $0.index) < ($1.score, $1.index) }
 
         // Accept the best candidate if it's clean or has only acceptable warnings
         if let best = scoredCandidates.first {
@@ -494,7 +499,10 @@ extension ClaudeService {
             for: blueprint,
             trainingIntent: trainingIntent,
             weekNumber: weekNumber,
-            previousWeekDays: previousWeekDays.isEmpty ? nil : previousWeekDays,
+            // Same gate as the prompt and the continuity validator. Using `.isEmpty` here
+            // let a partial decode (1-6 days) drive accessory variation cycling while both
+            // of those layers were told there was no previous week at all.
+            previousWeekDays: hasValidPreviousWeek ? previousWeekDays : nil,
             exerciseHistory: exerciseHistory
         )
         let menuContext = exerciseMenuContext(from: exerciseMenus, blueprint: blueprint, dayStart: dayStart)
@@ -604,7 +612,7 @@ extension ClaudeService {
         try Task.checkCancellation()
         WorkoutGenerationDiagnostics.markStage("scoring week \(weekNumber) parallel candidates")
 
-        var scoredCandidates: [(response: WorkoutWeekResponse, issues: [String], score: Int)] = []
+        var scoredCandidates: [(response: WorkoutWeekResponse, issues: [String], score: Int, index: Int)] = []
         var candidateErrors: [Error] = []
 
         for (i, result) in candidateResults {
@@ -625,7 +633,7 @@ extension ClaudeService {
                     progressionVerdicts: progressionVerdicts
                 )
                 let score = issues.isEmpty ? 0 : scoreValidationIssues(issues, menuLocked: true)
-                scoredCandidates.append((response: prescribed, issues: issues, score: score))
+                scoredCandidates.append((response: prescribed, issues: issues, score: score, index: i))
                 if issues.isEmpty {
                     attemptTrace.append("Candidate \(i): Accepted — no issues")
                 } else {
@@ -648,7 +656,12 @@ extension ClaudeService {
             )
         }
 
-        scoredCandidates.sort { $0.score < $1.score }
+        // Tie-break on the candidate's own number. Swift's `sort` is introsort and is NOT
+        // stable, so two candidates that score identically — the ordinary case when both
+        // come back clean-but-for-the-same-warning — could swap places between runs and
+        // hand the athlete a different week for the same input. The score decides first;
+        // the candidate number only settles ties, so the winner is reproducible.
+        scoredCandidates.sort { ($0.score, $0.index) < ($1.score, $1.index) }
 
         // Accept the best candidate if it's clean or has only acceptable warnings
         if let best = scoredCandidates.first {
@@ -729,7 +742,14 @@ extension ClaudeService {
                         )
                     }
 
-                    // Accept correction result if it's better than the parallel best
+                    // Accept only when every remaining finding is an acceptable warning.
+                    // This is NOT a comparison against the parallel best — the comment here
+                    // used to say it was, and no such comparison exists or ever did.
+                    // `shouldAcceptAIOutput` reads the corrected issues alone. A correction
+                    // that came back worse than the candidate it was repairing still falls
+                    // through to the procedural week below, because "worse than the best"
+                    // and "good enough to ship" are different questions and only the second
+                    // one decides this branch. The score is for the trace only.
                     let correctedScore = scoreValidationIssues(correctedIssues, menuLocked: true)
                     if shouldAcceptAIOutput(despite: correctedIssues, menuLocked: true) {
                         attemptTrace.append("Correction pass: Accepted with warnings (score \(correctedScore))")
@@ -1194,7 +1214,8 @@ extension ClaudeService {
             for: blueprint,
             trainingIntent: trainingIntent,
             weekNumber: weekNumber,
-            previousWeekDays: previousWeekDays.isEmpty ? nil : previousWeekDays
+            // Same gate as the prompt and the continuity validator — see generateNextWeek.
+            previousWeekDays: hasValidPreviousWeek ? previousWeekDays : nil
         )
         let menuContext = exerciseMenuContext(from: exerciseMenus, blueprint: blueprint, dayStart: dayStart)
         let config = nextWeekConfig

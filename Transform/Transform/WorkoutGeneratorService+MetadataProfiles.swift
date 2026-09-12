@@ -1028,9 +1028,32 @@ extension ClaudeService {
     }
 
     func reportNamesAnyJointStressMovement(_ reported: String) -> Bool {
-        let movementPhrases = JointStressMovementFamily.allCases.flatMap {
-            jointStressPhrases(for: $0)
-        }
+        // A bare JOINT ACTION is not a lift, and it must not be allowed to prove that a report
+        // named one. This is the same trap `reportNamesAnyMovement` documents at length on the
+        // shoulder side, one joint further out, and it was open here.
+        //
+        // "extension" sits in the Triceps Extension family, which is right for that family: a
+        // report saying "pain with triceps extension" should reach those movements. But it is
+        // also ordinary anatomical prose everywhere else — "lower back pain with lumbar
+        // extension", "limited thoracic extension", "pain on hip extension" — and this union
+        // is what decides whether a complaint is SPECIFIC. Counting it made a report that
+        // names no lift at all read as specific, which switched off the vague-report fallback
+        // in `reportedJointPainImplicates`:
+        //
+        //   injuryRiskFocus "Lower back pain with lumbar extension." + Barbell Romanian
+        //   Deadlift -> the hinge family phrases do not match, this returned true on the bare
+        //   token "extension", so the `!reportNamesAnyJointStressMovement` fallback never
+        //   fired and the function returned false. `exerciseJointStress` then charged
+        //   lowerBack 0 and `validateJointStressBudget`'s lower-back rule could not fire for
+        //   that week. A lifter reporting lumbar pain got zero lower-back caution — failing
+        //   OPEN, in the one direction an injury rule must never fail.
+        //
+        // Disqualified from proving specificity only. The word stays in its family, so a
+        // report that does name the movement still narrows exactly as before.
+        let jointActionWords: Set<String> = ["extension"]
+        let movementPhrases = JointStressMovementFamily.allCases
+            .flatMap { jointStressPhrases(for: $0) }
+            .filter { !jointActionWords.contains($0) }
         return containsPluralTolerantPriorityPhrase(in: reported, keywords: movementPhrases)
     }
 

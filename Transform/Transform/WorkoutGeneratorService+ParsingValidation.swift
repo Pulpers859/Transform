@@ -1503,6 +1503,27 @@ extension ClaudeService {
         return matchesValidationIssue(issue, patterns: menuLockedDemotionPatterns) || isPrimeHypertrophyMiss
     }
 
+    /// Acceptable warnings the MODEL can still act on while the exercise menu is locked.
+    ///
+    /// Under lock the model owns reps, tempo, rest, targetRIR and note text, and nothing else.
+    /// A rep-band leap is therefore its to fix and the correction call is already paid for, so
+    /// asking is free. Every OTHER acceptable warning is a verdict on which exercises the menu
+    /// holds or how many sets the deterministic allocator gave them — see the reasoning beside
+    /// each entry in `acceptableWarningIssuePatterns`, which says outright that neither the
+    /// model nor the procedural planner can act on them.
+    ///
+    /// This is an allow-list rather than another deny-list on purpose. A deny-list would have
+    /// to be extended every time a new acceptable warning is added, and forgetting is silent:
+    /// the finding just starts appearing in paid correction prompts again. Here the default
+    /// for a new warning is "the model does not own it", which is the safe direction.
+    ///
+    /// Covered by `CorrectionPromptScopeTests`.
+    var modelOwnedAcceptableWarningPatterns: [String] {
+        [
+            "rep bands in one week"
+        ]
+    }
+
     func matchesValidationIssue(_ issue: String, patterns: [String]) -> Bool {
         patterns.contains { issue.contains($0) }
     }

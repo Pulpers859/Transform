@@ -192,7 +192,25 @@ extension ClaudeService {
         // the filter, send what we were given rather than a correction request with no issues.
         let repairable = issues.filter { issue in
             guard menuLocked else { return true }
-            return !isDemotedByMenuLock(issue)
+            if isDemotedByMenuLock(issue) { return false }
+            // The demotion list alone was not the whole question, and the gap was live: all ten
+            // `acceptableWarningIssuePatterns` survived it, because the two lists share no
+            // entry. A correction pass only runs when the candidate ALSO carries a
+            // correction-worthy finding, so those warnings rode along into the paid prompt —
+            // which tells the model "fix ONLY the listed issues" and "the listed validator
+            // issues are not optional" — and nine of the ten can only be satisfied by adding
+            // or swapping an exercise, or by changing a set count the allocator owns. Both are
+            // forbidden under the lock the same prompt just imposed. The model then either
+            // ignored the instruction, or obeyed it and broke the menu, which fails validation
+            // outright and throws away the paid correction as well as the paid candidate.
+            //
+            // So the question is ownership, not demotion: does the model control the field
+            // this finding is about? Correction-worthy findings are already model-owned by
+            // construction; among the warnings only the allow-list is.
+            if validationDisposition(for: issue, menuLocked: true) == .acceptableWarning {
+                return matchesValidationIssue(issue, patterns: modelOwnedAcceptableWarningPatterns)
+            }
+            return true
         }
         let targetedIssues = repairable.isEmpty ? issues : repairable
         let issueBlock = targetedIssues.enumerated().map { "\($0.offset + 1). \($0.element)" }.joined(separator: "\n")
@@ -724,6 +742,19 @@ extension ClaudeService {
         let days = decodePreviousWeekDays(from: previousWeekJSON)
         let summary = decodePreviousWeekSummary(from: previousWeekJSON)
         let trimmed = previousWeekJSON.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // A week the generator can carry continuity from is exactly 7 days; every caller
+        // gates on that count. Anything between 1 and 6 decoded without throwing but is not
+        // a week, and it used to pass through unremarked: `warning` stayed nil, so the
+        // prompt fell back to the generic "no previous week context" line and the continuity
+        // validator was handed nil, while those same partial days were still fed to the
+        // deterministic exercise menu. Three layers, two different answers, no signal
+        // anywhere. Naming it here is what lets the prompt say something true.
+        if !days.isEmpty && days.count != 7 {
+            let warning = "Previous week context decoded only \(days.count) of 7 days, so this week was planned without progression continuity."
+            print("[WorkoutGeneratorService] \(warning)")
+            return PreviousWeekDecodeResult(days: days, weekSummary: summary, warning: warning)
+        }
 
         guard days.isEmpty && summary == nil && !trimmed.isEmpty else {
             return PreviousWeekDecodeResult(days: days, weekSummary: summary, warning: nil)

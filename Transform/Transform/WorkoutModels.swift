@@ -99,6 +99,34 @@ class WorkoutProgram {
             day.exercises.contains { $0.isCompleted }
         }
     }
+
+    /// Whether this program holds athlete-authored history worth preserving when a new
+    /// program replaces it.
+    ///
+    /// Regeneration archives a program that has history and DELETES one that does not
+    /// (see `WorkoutView.generateFirstWeek`). That decision used `hasCompletedExercises`,
+    /// which is narrower than the history the generator actually reads back.
+    /// `recurringSkipHistory` counts every non-`.completed` status, `.substituted`
+    /// included, and feeds them into the next generation prompt — but `.substituted` is the
+    /// one settling status that deliberately does NOT set `isCompleted`
+    /// (`ExerciseCompletionStatus.marksExerciseFinished`), because a substitution is work
+    /// still to be performed. A program whose only athlete input was substitutions therefore
+    /// read as empty and was hard-deleted, taking that signal with it.
+    ///
+    /// Logged weights are counted for the same reason. The `ExerciseWeightEntry` rows
+    /// themselves survive deletion (`.nullify`), so this is not about losing the numbers —
+    /// it is that a program the athlete actually put load into is not an empty shell.
+    ///
+    /// Covered by `ProgramRetentionTests`.
+    var hasAthleteHistory: Bool {
+        days.contains { day in
+            day.exercises.contains { exercise in
+                exercise.isCompleted
+                    || !exercise.completionStatusRaw.isEmpty
+                    || !exercise.weightLogs.isEmpty
+            }
+        }
+    }
 }
 
 /// Which week of the mesocycle is the deload — in ONE place.
