@@ -315,7 +315,13 @@ extension ClaudeService {
         }
 
         if issues.contains(where: { $0.contains("is missing targetRIR") || $0.contains("has an out-of-range targetRIR") }) {
-            rules.append("- Set `targetRIR` on each flagged exercise to a whole number from 0 to 5 that matches the rep range you prescribed: a range meant to be taken close to failure needs a low value, a range programmed with reserve needs a higher one. State effort only in that field, never in the note.")
+            // 0 to 4, matching `exerciseSchema`'s `targetRIR` bounds. This asked for 0 to 5,
+            // which the model's own tool schema rejects — a paid correction call was being
+            // told to emit a value it could not legally return. The decoder and the
+            // validator's range check both tolerate 5, deliberately, because replay JSON and
+            // pre-field programs decode through them; the SCHEMA is the binding constraint on
+            // what a live call may produce, so the prompt follows the schema, not the decoder.
+            rules.append("- Set `targetRIR` on each flagged exercise to a whole number from 0 to 4 that matches the rep range you prescribed: a range meant to be taken close to failure needs a low value, a range programmed with reserve needs a higher one. State effort only in that field, never in the note.")
         }
 
         return rules.joined(separator: "\n")

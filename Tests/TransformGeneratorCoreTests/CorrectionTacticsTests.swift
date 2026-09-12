@@ -80,7 +80,7 @@ final class CorrectionTacticsTests: XCTestCase {
             "Day 1 exercise Cable Crunch has an out-of-range targetRIR of 9 — working-set effort belongs between 0 and 5 reps in reserve."
         ] {
             let tactics = service.correctionTactics(for: [finding])
-            XCTAssertTrue(tactics.contains("0 to 5"), "\(finding) -> \(tactics)")
+            XCTAssertTrue(tactics.contains("0 to 4"), "\(finding) -> \(tactics)")
             XCTAssertTrue(tactics.contains("never in the note"), "\(finding) -> \(tactics)")
         }
     }
@@ -105,7 +105,7 @@ final class CorrectionTacticsTests: XCTestCase {
         ])
 
         XCTAssertTrue(tactics.contains("isRestDay"), tactics)
-        XCTAssertTrue(tactics.contains("0 to 5"), tactics)
+        XCTAssertTrue(tactics.contains("0 to 4"), tactics)
         XCTAssertGreaterThanOrEqual(tactics.components(separatedBy: "\n").count, 3, tactics)
     }
 

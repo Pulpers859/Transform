@@ -586,7 +586,14 @@ extension ClaudeService {
             exerciseMetadata(for: exercise).movementPattern
         }
 
-        for (pattern, exercises) in patternGroups where exercises.count >= 3 {
+        // Sorted keys, not raw Dictionary iteration. This loop RETURNS on its first hit, so
+        // when a day qualifies under two patterns at once the unordered version decided which
+        // of the two findings the athlete was shown — and suppressed the other — by hash
+        // order, differently between app launches. The finding reaches both the user-facing
+        // notice and the correction prompt, which is the same reason the daily-fatigue and
+        // substitute-quality loops in `validateContinuity` already sort their keys.
+        for pattern in patternGroups.keys.sorted() {
+            guard let exercises = patternGroups[pattern], exercises.count >= 3 else { continue }
             let normalizedPattern = normalizedPriorityText(pattern)
             let shouldFlagPattern = containsAny(
                 normalizedPattern,
@@ -2470,7 +2477,21 @@ extension ClaudeService {
 
         let lhsKeywordLength = lhs.triggerKeywords.map(\.count).max() ?? 0
         let rhsKeywordLength = rhs.triggerKeywords.map(\.count).max() ?? 0
-        return lhsKeywordLength > rhsKeywordLength
+        if lhsKeywordLength != rhsKeywordLength {
+            return lhsKeywordLength > rhsKeywordLength
+        }
+
+        // Final tie-break on the label, because both keys above genuinely tie for several real
+        // pairs in `priorityProfiles` — among them (1 token, 6 chars) for Biceps / Glutes /
+        // Calves and (2 tokens, 16 chars) for Lats / Lateral Deltoids. This comparator decides
+        // profile IDENTITY: the winner supplies `preferredStyles`, `accessoryCatalog` and the
+        // canonical area name. Swift's sort is not stable, so a compound request like
+        // "Glutes and Calves" had no contractual winner, while
+        // `priorityAreaNamesMultipleMuscles` warns the athlete about exactly that case by
+        // naming the muscle that won — a sentence that assumes there is a determinate one.
+        // Alphabetical is arbitrary on the merits and reproducible, which is the property that
+        // was missing.
+        return lhs.label < rhs.label
     }
 
     func exerciseMatchesTrainingIntent(name: String, target: String, intent: MusclePriorityIntent) -> Bool {
@@ -2517,21 +2538,45 @@ extension ClaudeService {
     /// NOTE ON MATCHING: these are raw substring tests against "<name> <muscleTarget>" lowercased,
     /// so a keyword can match inside a longer word. "back" matches "kick*back*", which is how a
     /// `Cable Glute Kickback` passed as legitimate Upper-day work — it hit the "back" PREFERRED
-    /// keyword and nothing in the forbidden list stopped it. Glute wording is now forbidden
-    /// outright on every upper-body style, which closes that hole for the case that can actually
-    /// reach a menu. The general substring weakness is untouched here on purpose: widening it to
+    /// keyword and nothing in the forbidden list stopped it.
+    ///
+    /// An earlier version of this note said forbidding glute wording "closes that hole for the
+    /// case that can actually reach a menu". It did not. Replaying every catalogue entry through
+    /// this matcher found eleven wrong pairings still live, and the biggest was not the kickback
+    /// at all: "lat" matches inside "*lat*eral raise", so SIX lateral-raise variants qualified as
+    /// Pull-day work. Also live were `Cable Kickback` (Triceps) on Pull via "kick*back*",
+    /// `Flat Dumbbell Fly` (Chest) on Pull via "f*lat*", `Straight-Arm Pulldown` (Lats) and
+    /// `Dumbbell Farmer's Walk` (Anterior Core) on Arms via "*arm*", and `Nordic Hamstring Curl`
+    /// on Arms via "curl". None of those qualify for that day for any training reason — only on
+    /// letters sitting inside another word.
+    ///
+    /// The entries added below kill exactly those eleven and nothing else: replayed over the
+    /// whole catalogue, no other pairing changes and no exercise is left matching no style.
+    ///
+    /// The general substring weakness is still untouched on purpose: widening this to
     /// word-boundary matching moves every selection in the app and is not a change to make while
-    /// fixing something else.
+    /// fixing something else. Note it would not even fix all of these — `priorityTextTokens`
+    /// splits on the hyphen, so "arm" is a whole token of "Straight-Arm Pulldown" and that case
+    /// would survive. Treat this list as the place to kill a proven wrong pairing, and re-run the
+    /// replay before trusting a claim that a hole is closed.
     func forbiddenKeywords(for style: String) -> [String] {
         switch style.lowercased() {
         case "arms":
-            return ["squat", "deadlift", "lunge", "leg press", "leg extension", "leg curl", "calf raise", "hip thrust", "glute", "lat pulldown", "pull-up", "pull up", "row", "rear delt row"]
+            // "pulldown", "farmer" and "hamstring" are here because the PREFERRED keyword "arm"
+            // matches inside "straight-*arm*" and "f*arm*er's", and "curl" matches a hamstring
+            // curl. No arm session wants a lat pulldown, a loaded carry, or a leg curl.
+            return ["squat", "deadlift", "lunge", "leg press", "leg extension", "leg curl", "calf raise", "hip thrust", "glute", "lat pulldown", "pulldown", "farmer", "hamstring", "pull-up", "pull up", "row", "rear delt row"]
         case "legs", "lower":
             return ["bench", "chest press", "row", "pulldown", "pull-up", "triceps", "biceps", "lateral raise", "shoulder press"]
         case "push":
             return ["squat", "deadlift", "lunge", "leg press", "leg extension", "leg curl", "calf raise", "glute"]
         case "pull":
-            return ["squat", "deadlift", "lunge", "leg press", "leg extension", "leg curl", "calf raise", "glute", "bench press"]
+            // "lateral raise", "kickback" and "flat" are here because the PREFERRED keyword
+            // "lat" matches inside "*lat*eral" and "f*lat*", and "back" matches inside
+            // "kick*back*". A lateral raise, a triceps kickback and a flat fly are all pushing
+            // or shoulder work; none of them is a pulling movement. Lateral raises keep their
+            // legitimate home on Push and Upper, which list them explicitly.
+            return ["squat", "deadlift", "lunge", "leg press", "leg extension", "leg curl", "calf raise", "glute", "bench press", "lateral raise", "kickback", "flat"]
         case "upper":
             return ["squat", "leg press", "leg extension", "leg curl", "walking lunge", "calf raise", "hip thrust", "glute"]
         default:

@@ -401,7 +401,27 @@ extension ClaudeService {
             totalsByDay[entry.dayNumber, default: 0] += directSets
         }
 
-        guard let peak = totalsByDay.max(by: { lhs, rhs in lhs.value < rhs.value }) else {
+        // Sorted with an explicit day-number tie-break rather than `max(by:)` on the
+        // dictionary. `max(by:)` resolves a tie by whichever equal element Dictionary
+        // iteration reaches first, and Swift seeds its hasher per process — so the answer
+        // could differ between app launches for byte-identical input.
+        //
+        // That is not cosmetic here. This day number goes straight to
+        // `allowedPerSessionDirectSetCap`, which returns the larger focus-day cap on a
+        // blueprint focus day and the smaller one otherwise. A week that puts the same direct
+        // set count on a focus day and a non-focus day could therefore be accepted on one
+        // launch and, on the next, emit "exceeds its per-session direct-set cap" — which is in
+        // `lockedMenuHardFailurePatterns`, so under menu lock it discards the paid week
+        // uncorrected. Same input, same menu, two different outcomes.
+        //
+        // Lowest day number wins a tie: any of the tied days is equally "the peak", so the
+        // only property that matters is that the choice is reproducible.
+        guard let peak = totalsByDay
+            .sorted(by: { lhs, rhs in
+                lhs.value == rhs.value ? lhs.key < rhs.key : lhs.value > rhs.value
+            })
+            .first
+        else {
             return nil
         }
         return (dayNumber: peak.key, directSets: peak.value)
