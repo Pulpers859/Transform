@@ -1877,10 +1877,22 @@ extension ClaudeService {
                 weekNumber: weekNumber,
                 priorMesocycleExercises: exerciseHistory?.priorMesocycleExercises ?? []
             )
+            let focusPrimeCap = focusPrimeSlotCap(targetPrioritySlots: plan.targetPrioritySlots)
             for candidate in catalog where selected.count < targetCount {
                 let key = normalizeExerciseName(candidate.name)
                 guard !used.contains(key) else { continue }
                 guard dayPatternCapAllows(candidateName: candidate.name, candidateTarget: candidate.target, in: selected) else { continue }
+                // Skipping here does not shorten the day: the loop simply moves to the next
+                // catalogue entry, and the generic-catalogue and cross-day rescue sweeps below
+                // still run if the day comes up short. The focus area stops crowding out every
+                // other muscle on the day, which is the whole point.
+                guard focusPrimeSelectionAllows(
+                    candidateName: candidate.name,
+                    candidateTarget: candidate.target,
+                    focusArea: focusIntent?.area,
+                    selectedToday: selected,
+                    cap: focusPrimeCap
+                ) else { continue }
                 guard menuPlanningBudgetAllows(
                     candidateName: candidate.name,
                     candidateTarget: candidate.target,
@@ -3099,6 +3111,59 @@ extension ClaudeService {
     /// `styleFeasibleAllocations` already accepts when it trims a frequency the day plans were
     /// built from. It is the right side to err on: an honest single slot beats a second slot
     /// that ships at one set.
+    /// How many movements on a day may be PRIME for that day's focus area, and the reason
+    /// selection needs the question at all.
+    ///
+    /// `dayPatternCapAllows` limits repeats of the same movement PATTERN, and nothing limited
+    /// repeats of the same focus AREA. So a Chest focus day filled from a chest-led catalogue
+    /// took Incline Dumbbell Press, Machine Chest Press and Machine Incline Press as three
+    /// different patterns, all prime for Chest, and kept going. The simulation measured five
+    /// prime Chest movements on a day planned for two priority slots.
+    ///
+    /// That one shape produced three separate validator findings at once, which is why it is
+    /// worth stopping here rather than reporting three times:
+    ///  * "uses N prime X exercises for Y planned priority slots" — this, directly.
+    ///  * "below its role-based minimum of N set(s)" — the day's fatigue budget spread across
+    ///    five movements funds none of them to a real dose, and the floor pass cannot recover
+    ///    budget that is already spent.
+    ///  * "falls below the maintenance weekly volume floor" — every slot the focus area takes
+    ///    is a slot some other muscle does not get.
+    ///
+    /// The limit is `validateSessionFocusDiscipline`'s OWN formula, deliberately. Selection was
+    /// producing exactly the shape the validator then complained about, so the fix is to honour
+    /// the existing rule rather than invent a second policy that could drift from it.
+    ///
+    /// Per-session direct-set volume is unchanged by this: `maxFocusSessionDirectSets` already
+    /// caps what one session may take, so three movements funded properly reach the same
+    /// ceiling five starved ones did. Fewer movements, same volume, real doses.
+    func focusPrimeSlotCap(targetPrioritySlots: Int) -> Int {
+        max(3, targetPrioritySlots + 1)
+    }
+
+    func focusPrimeSelectionAllows(
+        candidateName: String,
+        candidateTarget: String,
+        focusArea: String?,
+        selectedToday: [(name: String, target: String)],
+        cap: Int
+    ) -> Bool {
+        guard let focusArea else { return true }
+        guard focusStimulusKind(
+            exerciseName: candidateName,
+            muscleTarget: candidateTarget,
+            focusArea: focusArea
+        ) == .prime else { return true }
+
+        let primeCount = selectedToday.filter { entry in
+            focusStimulusKind(
+                exerciseName: entry.name,
+                muscleTarget: entry.target,
+                focusArea: focusArea
+            ) == .prime
+        }.count
+        return primeCount < cap
+    }
+
     func fundablePrioritySlotsPerSession(
         for allocation: BlueprintPriorityAllocation,
         isFocusDay: Bool
