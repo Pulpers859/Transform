@@ -335,7 +335,16 @@ extension ClaudeService {
             target -= 0.5
         }
 
-        return max(3, target)
+        // EvidenceProfile.md VOL-001 [confidence: moderate]. The bias adjustments move the
+        // target WITHIN the tier's band; they do not leave it. Two reasons the clamp is load
+        // bearing rather than tidy:
+        //  * Without the upper clamp the adjustments (up to +2.5) carried High to 12.5 against a
+        //    documented 8-12 band, so the band described nothing.
+        //  * Weekly slots are `max(levelTarget, minimumExerciseSlots(setTarget))` and
+        //    `maximumUsefulVariationCount` caps distinct primary exercises at 4/3/2. A target
+        //    above `ceiling * 4` therefore demands a movement VAR-001 forbids, and the blueprint
+        //    prints a number no menu can fund. `tools/check_evidence_profile.py` pins that bound.
+        return min(baseRange.upperBound, max(baseRange.lowerBound, target))
     }
 
     func weeklyStimulusTarget(for priorityLevel: String, volumeBias: String, directWorkBias: String) -> Double {
