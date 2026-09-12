@@ -136,6 +136,40 @@ final class CorrectionPromptScopeTests: XCTestCase {
         )
     }
 
+    /// The gap that let a regression through green CI.
+    ///
+    /// `testACorrectionPassWithNoClassifiedFindingStillSendsIt` pins that an UNCLASSIFIED
+    /// finding reaches the model, but it passes that finding alone — so `repairable` comes back
+    /// empty and the fallback sends the original list regardless of what the filter did. The
+    /// filter's behaviour on an unclassified finding was therefore never actually observed.
+    ///
+    /// It matters because the menu-locked disposition's inverted default resolves every
+    /// unclassified finding to `.acceptableWarning`, exactly like the ten explicit ones. A
+    /// filter written against the DISPOSITION rather than the explicit list drops them, and
+    /// only in this combination, where the fallback cannot mask it.
+    func testAnUnclassifiedFindingSurvivesBesideARepairableOne() {
+        let synthetic = "Payload decode failed: The data couldn\u{2019}t be read."
+
+        XCTAssertEqual(
+            service.validationDisposition(for: synthetic, menuLocked: true),
+            .acceptableWarning,
+            "Premise: the inverted default puts an unclassified finding in the same tier as the ten"
+        )
+        XCTAssertFalse(
+            service.matchesValidationIssue(synthetic, patterns: service.acceptableWarningIssuePatterns),
+            "Premise: it reaches that tier by default, not by matching the explicit list"
+        )
+
+        guard let prompt = correctionPrompt(issues: [repairable, synthetic]) else {
+            return XCTFail("Correction body did not carry a user prompt")
+        }
+        XCTAssertTrue(
+            prompt.contains("Payload decode failed"),
+            "Nobody has reasoned about an unclassified finding, so nobody can say the model "
+                + "cannot fix it — it must still be sent"
+        )
+    }
+
     /// The existing fallback must survive: when nothing repairable is left, send what we were
     /// given rather than a correction request with an empty issue list. The debug paths rely
     /// on this, because they correct whenever the issue list is non-empty.

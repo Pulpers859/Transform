@@ -60,16 +60,52 @@ final class ProgramRetentionTests: XCTestCase {
         )
     }
 
-    /// Load was put into this program even though nothing was ticked off.
-    func testLoggedWeightsCountAsAthleteHistory() {
+    /// The partial-logging case, and the reason `sessionStartedAt` is in the predicate.
+    ///
+    /// `autoCompleteAfterFinalSet` only sets `isCompleted` when the LAST prescribed set is
+    /// logged, so an athlete who logged two sets of four and stopped leaves `isCompleted`
+    /// false and no status at all. `SessionLifecycle.noteSetLogged` stamps `sessionStartedAt`
+    /// on the first logged set, and that is the only mark such a program carries.
+    func testAPartiallyLoggedSessionCountsAsAthleteHistory() {
+        let program = makeProgram { _ in }
+        program.days.first?.sessionStartedAt = Date()
+
+        XCTAssertFalse(
+            program.hasCompletedExercises,
+            "Premise: logging some but not all sets never sets isCompleted"
+        )
+        XCTAssertTrue(
+            program.hasAthleteHistory,
+            "An athlete who started training this program has not left an empty shell"
+        )
+    }
+
+    /// A rated session is history even if every exercise was left unticked.
+    func testARatedSessionCountsAsAthleteHistory() {
+        let program = makeProgram { _ in }
+        program.days.first?.feedbackSubmittedAt = Date()
+
+        XCTAssertTrue(program.hasAthleteHistory)
+    }
+
+    /// `WorkoutExercise.weightLogs` is NOT the signal, and this pins why rather than leaving
+    /// the next reader to re-derive it. `summaryEntryOrCreate` fetches `ExerciseWeightEntry`
+    /// globally by `canonicalExerciseKey` and never sets the inverse, so the relationship is
+    /// always empty in the app — the only assignment to `ExerciseWeightEntry.exercise` in the
+    /// tree is `survivor.exercise = nil`. A first version of `hasAthleteHistory` tested it and
+    /// was therefore a guard no producer could reach. If a future change starts populating the
+    /// relationship, this test failing is the signal to revisit the predicate.
+    func testWeightLogsRelationshipIsNotPopulatedSoItCannotBeTheSignal() {
         let program = makeProgram { exercise in
             let entry = ExerciseWeightEntry(exerciseName: "Barbell Bench Press", weightLbs: 185)
-            entry.exercise = exercise
             exercise.weightLogs.append(entry)
         }
 
-        XCTAssertFalse(program.hasCompletedExercises)
-        XCTAssertTrue(program.hasAthleteHistory)
+        XCTAssertFalse(
+            program.hasAthleteHistory,
+            "Appending a weight log must not be what saves a program — the app never builds "
+                + "this link, so relying on it would be a guard nothing can reach"
+        )
     }
 
     // MARK: - The predicate must still say no to a genuinely untouched program

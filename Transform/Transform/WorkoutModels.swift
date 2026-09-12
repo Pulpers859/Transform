@@ -105,26 +105,41 @@ class WorkoutProgram {
     ///
     /// Regeneration archives a program that has history and DELETES one that does not
     /// (see `WorkoutView.generateFirstWeek`). That decision used `hasCompletedExercises`,
-    /// which is narrower than the history the generator actually reads back.
-    /// `recurringSkipHistory` counts every non-`.completed` status, `.substituted`
-    /// included, and feeds them into the next generation prompt — but `.substituted` is the
-    /// one settling status that deliberately does NOT set `isCompleted`
-    /// (`ExerciseCompletionStatus.marksExerciseFinished`), because a substitution is work
-    /// still to be performed. A program whose only athlete input was substitutions therefore
-    /// read as empty and was hard-deleted, taking that signal with it.
+    /// which is only `isCompleted`, and that is narrower than the history the app keeps.
     ///
-    /// Logged weights are counted for the same reason. The `ExerciseWeightEntry` rows
-    /// themselves survive deletion (`.nullify`), so this is not about losing the numbers —
-    /// it is that a program the athlete actually put load into is not an empty shell.
+    /// Each clause is here because some real athlete action sets it and nothing else does:
+    ///
+    ///  * `completionStatusRaw` — `.substituted` is the one settling status that deliberately
+    ///    does NOT set `isCompleted` (`ExerciseCompletionStatus.marksExerciseFinished` returns
+    ///    false, because a substitution is work still to be performed), while
+    ///    `WorkoutView.recurringSkipHistory` counts `.substituted` and feeds it into every later
+    ///    generation prompt. A program whose only input was substitutions read as an empty shell.
+    ///  * `sessionStartedAt` — set by `SessionLifecycle.noteSetLogged` on the FIRST logged set,
+    ///    and by the manual "start session" tap. This is what covers partial logging:
+    ///    `autoCompleteAfterFinalSet` only sets `isCompleted` when the LAST prescribed set is
+    ///    logged, so an athlete who logged two sets of four and stopped left no other mark.
+    ///  * `feedbackSubmittedAt` and `WorkoutDay.isCompleted` — a rated or closed session.
+    ///
+    /// Deliberately NOT `WorkoutExercise.weightLogs`. That relationship reads like the obvious
+    /// signal and is always empty: `summaryEntryOrCreate` fetches `ExerciseWeightEntry` globally
+    /// by `canonicalExerciseKey` and never sets the inverse, so the only assignment to
+    /// `ExerciseWeightEntry.exercise` in the whole tree is `survivor.exercise = nil`. A first
+    /// version of this property tested it, which was a guard no producer could reach.
+    ///
+    /// `ExercisePerformanceLog` is not consulted either, and cannot be: it carries no program or
+    /// day relationship, only a `workoutDayNumber` that repeats across programs. Matching it by
+    /// canonical key would protect a brand-new empty program because the same lift was logged
+    /// months ago under a different one, and the delete branch would never fire again.
     ///
     /// Covered by `ProgramRetentionTests`.
     var hasAthleteHistory: Bool {
         days.contains { day in
-            day.exercises.contains { exercise in
-                exercise.isCompleted
-                    || !exercise.completionStatusRaw.isEmpty
-                    || !exercise.weightLogs.isEmpty
-            }
+            day.isCompleted
+                || day.sessionStartedAt != nil
+                || day.feedbackSubmittedAt != nil
+                || day.exercises.contains { exercise in
+                    exercise.isCompleted || !exercise.completionStatusRaw.isEmpty
+                }
         }
     }
 }

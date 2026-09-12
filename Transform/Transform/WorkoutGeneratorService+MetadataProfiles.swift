@@ -2116,12 +2116,32 @@ extension ClaudeService {
 
     func priorityProfile(for focusArea: String) -> PriorityFocusProfile {
         let normalizedArea = normalizedPriorityText(focusArea)
+        // DECLARATION ORDER is the tie-break, and it has to be, because both specificity keys
+        // genuinely tie for several real pairs in `priorityProfiles`: (1 token, 6 chars) for
+        // Biceps / Glutes / Calves, (1, 8) for Obliques / Arms, and (2, 16) for Lats / Lateral
+        // Deltoids. This comparator decides profile IDENTITY — the winner supplies
+        // `preferredStyles`, `accessoryCatalog` and the canonical area name — so a compound
+        // request like "Lats and Lateral Deltoids" needs a winner that is written down.
+        //
+        // Swift's sort is not stable, so relying on it was resting on an implementation detail.
+        // But the fix must PRESERVE the order that detail was producing, not pick a new one:
+        // sorting ties alphabetically instead would have handed those three pairs to the other
+        // profile and quietly re-pointed a back request at the shoulders. Catalogue position is
+        // the same tie-break `metadataFocusExerciseCatalog` and `weekDiff` already use, and it
+        // is reviewable — reorder the table and you have changed the precedence on purpose.
         if let matchedProfile = priorityProfiles
-            .sorted(by: priorityProfileSpecificitySort)
+            .enumerated()
+            .sorted(by: { lhs, rhs in
+                let lhsRank = priorityProfileSpecificityRank(lhs.element)
+                let rhsRank = priorityProfileSpecificityRank(rhs.element)
+                if lhsRank.tokens != rhsRank.tokens { return lhsRank.tokens > rhsRank.tokens }
+                if lhsRank.length != rhsRank.length { return lhsRank.length > rhsRank.length }
+                return lhs.offset < rhs.offset
+            })
             .first(where: { profile in
-                profile.triggerKeywords.contains(where: { containsPriorityPhrase(in: normalizedArea, keywords: [$0]) })
+                profile.element.triggerKeywords.contains(where: { containsPriorityPhrase(in: normalizedArea, keywords: [$0]) })
             }) {
-            return matchedProfile
+            return matchedProfile.element
         }
 
         return PriorityFocusProfile(
@@ -2483,30 +2503,24 @@ extension ClaudeService {
         }
     }
 
+    /// How specific a profile's trigger list is: most tokens first, then longest keyword.
+    ///
+    /// Split out from the comparator so the ordering key and the TIE-BREAK can be reasoned
+    /// about separately — see `priorityProfile(for:)`, which supplies the tie-break.
+    func priorityProfileSpecificityRank(_ profile: PriorityFocusProfile) -> (tokens: Int, length: Int) {
+        (
+            tokens: profile.triggerKeywords.map { priorityTextTokens($0).count }.max() ?? 0,
+            length: profile.triggerKeywords.map(\.count).max() ?? 0
+        )
+    }
+
     func priorityProfileSpecificitySort(_ lhs: PriorityFocusProfile, _ rhs: PriorityFocusProfile) -> Bool {
-        let lhsSpecificity = lhs.triggerKeywords.map { priorityTextTokens($0).count }.max() ?? 0
-        let rhsSpecificity = rhs.triggerKeywords.map { priorityTextTokens($0).count }.max() ?? 0
-        if lhsSpecificity != rhsSpecificity {
-            return lhsSpecificity > rhsSpecificity
+        let lhsRank = priorityProfileSpecificityRank(lhs)
+        let rhsRank = priorityProfileSpecificityRank(rhs)
+        if lhsRank.tokens != rhsRank.tokens {
+            return lhsRank.tokens > rhsRank.tokens
         }
-
-        let lhsKeywordLength = lhs.triggerKeywords.map(\.count).max() ?? 0
-        let rhsKeywordLength = rhs.triggerKeywords.map(\.count).max() ?? 0
-        if lhsKeywordLength != rhsKeywordLength {
-            return lhsKeywordLength > rhsKeywordLength
-        }
-
-        // Final tie-break on the label, because both keys above genuinely tie for several real
-        // pairs in `priorityProfiles` — among them (1 token, 6 chars) for Biceps / Glutes /
-        // Calves and (2 tokens, 16 chars) for Lats / Lateral Deltoids. This comparator decides
-        // profile IDENTITY: the winner supplies `preferredStyles`, `accessoryCatalog` and the
-        // canonical area name. Swift's sort is not stable, so a compound request like
-        // "Glutes and Calves" had no contractual winner, while
-        // `priorityAreaNamesMultipleMuscles` warns the athlete about exactly that case by
-        // naming the muscle that won — a sentence that assumes there is a determinate one.
-        // Alphabetical is arbitrary on the merits and reproducible, which is the property that
-        // was missing.
-        return lhs.label < rhs.label
+        return lhsRank.length > rhsRank.length
     }
 
     func exerciseMatchesTrainingIntent(name: String, target: String, intent: MusclePriorityIntent) -> Bool {

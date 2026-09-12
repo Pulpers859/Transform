@@ -134,10 +134,16 @@ final class UserJourneySimulationTests: XCTestCase {
     // MARK: - The journey
 
     /// Runs one persona through all four weeks and returns every week's days in order.
-    private func fullMesocycle(for persona: Persona) throws -> [[WorkoutDayResponse]] {
+    /// One week as the athlete receives it, plus what the validator says about it.
+    private struct SimulatedWeek {
+        let days: [WorkoutDayResponse]
+        let findings: [String]
+    }
+
+    private func fullMesocycle(for persona: Persona) throws -> [SimulatedWeek] {
         let result = analysis(for: persona)
         let intent = service.trainingIntentPlan(from: result)
-        var weeks: [[WorkoutDayResponse]] = []
+        var weeks: [SimulatedWeek] = []
         var previous: [WorkoutDayResponse]?
 
         for weekNumber in 1...4 {
@@ -169,7 +175,35 @@ final class UserJourneySimulationTests: XCTestCase {
                     exerciseMenus: menus
                 ).days
             }
-            weeks.append(days)
+            // Run the same validator the shipping path runs. The procedural week is what the
+            // athlete actually receives whenever generation falls back, so a finding here is a
+            // finding against a real delivered program — and several rules are heuristic counts
+            // that no structural assertion in this file would ever notice.
+            let findings: [String]
+            if weekNumber == 1 {
+                findings = service.validateProgramResponse(
+                    WorkoutProgramResponse(
+                        programName: "Simulation",
+                        programSummary: "Simulation",
+                        splitType: intent.splitRecommendation,
+                        daysPerWeek: days.filter { !$0.isRestDay }.count,
+                        days: days
+                    ),
+                    blueprint: blueprint,
+                    expectedExerciseMenus: menus
+                )
+            } else {
+                findings = service.validateWeekResponse(
+                    WorkoutWeekResponse(weekSummary: "Simulation", days: days),
+                    dayStart: ((weekNumber - 1) * 7) + 1,
+                    dayEnd: weekNumber * 7,
+                    previousWeekDays: previous,
+                    blueprint: blueprint,
+                    expectedExerciseMenus: menus
+                )
+            }
+
+            weeks.append(SimulatedWeek(days: days, findings: findings))
             previous = days
         }
         return weeks
@@ -184,7 +218,8 @@ final class UserJourneySimulationTests: XCTestCase {
             report.append("")
             report.append("PERSONA: \(persona.name)")
 
-            for (index, days) in weeks.enumerated() {
+            for (index, week) in weeks.enumerated() {
+                let days = week.days
                 let weekNumber = index + 1
                 let dayStart = ((weekNumber - 1) * 7) + 1
                 let trainingDays = days.filter { !$0.isRestDay }
@@ -253,11 +288,29 @@ final class UserJourneySimulationTests: XCTestCase {
                     "  week \(weekNumber): \(trainingDays.count) training days, "
                         + "\(exerciseCount) exercises, \(totalSets) total sets"
                 )
+                // Validator findings, tiered the way the shipping path tiers them. Reported
+                // rather than asserted for now: a quality verdict belongs to a human reading
+                // this, and several of these rules are heuristic counts. A HARD FAILURE here
+                // would be different in kind — it means the procedural week the athlete
+                // actually receives is one the app considers structurally broken — so those
+                // are called out separately and loudly.
+                for finding in week.findings {
+                    let tier: String
+                    switch service.validationDisposition(for: finding, menuLocked: true) {
+                    case .hardFailure: tier = "HARD FAILURE"
+                    case .correctionPass: tier = "repairable"
+                    case .acceptableWarning: tier = "warning"
+                    }
+                    report.append("      [\(tier)] \(finding)")
+                }
+                if week.findings.isEmpty {
+                    report.append("      (no validator findings)")
+                }
             }
 
             // The deload must actually deload: week 4 carries less work than week 3.
-            let week3Sets = weeks[2].flatMap(\.exercises).reduce(0) { $0 + $1.sets }
-            let week4Sets = weeks[3].flatMap(\.exercises).reduce(0) { $0 + $1.sets }
+            let week3Sets = weeks[2].days.flatMap(\.exercises).reduce(0) { $0 + $1.sets }
+            let week4Sets = weeks[3].days.flatMap(\.exercises).reduce(0) { $0 + $1.sets }
             XCTAssertLessThan(
                 week4Sets,
                 week3Sets,
@@ -304,12 +357,12 @@ final class UserJourneySimulationTests: XCTestCase {
             let second = try fullMesocycle(for: persona)
 
             for (index, weeks) in zip(first, second).enumerated() {
-                let lhs = weeks.0.map { day in
+                let lhs = weeks.0.days.map { day in
                     "\(day.dayNumber)|\(day.isRestDay)|"
                         + day.exercises.map { "\($0.exerciseName):\($0.sets):\($0.reps)" }
                             .joined(separator: ",")
                 }
-                let rhs = weeks.1.map { day in
+                let rhs = weeks.1.days.map { day in
                     "\(day.dayNumber)|\(day.isRestDay)|"
                         + day.exercises.map { "\($0.exerciseName):\($0.sets):\($0.reps)" }
                             .joined(separator: ",")

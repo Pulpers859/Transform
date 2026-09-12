@@ -207,7 +207,18 @@ extension ClaudeService {
             // So the question is ownership, not demotion: does the model control the field
             // this finding is about? Correction-worthy findings are already model-owned by
             // construction; among the warnings only the allow-list is.
-            if validationDisposition(for: issue, menuLocked: true) == .acceptableWarning {
+            // Keyed on the EXPLICIT warning list, deliberately, and NOT on
+            // `validationDisposition(...) == .acceptableWarning`. Those are not the same set.
+            // Under menu lock the disposition's inverted default sends every UNCLASSIFIED
+            // finding to `.acceptableWarning` as well, and an unclassified finding must still
+            // be sent: nobody has reasoned about it, so nobody can say the model cannot fix
+            // it, and `testACorrectionPassWithNoClassifiedFindingStillSendsIt` pins that
+            // contract. A first version of this filter asked the disposition and silently
+            // dropped those findings whenever they arrived beside a repairable one — which is
+            // the only way they ever reach this filter at all, since a lone warning leaves
+            // `repairable` empty and falls back to the full list. That combination had no
+            // test, so it went green.
+            if matchesValidationIssue(issue, patterns: acceptableWarningIssuePatterns) {
                 return matchesValidationIssue(issue, patterns: modelOwnedAcceptableWarningPatterns)
             }
             return true
