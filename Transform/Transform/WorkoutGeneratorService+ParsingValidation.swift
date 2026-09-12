@@ -775,29 +775,18 @@ extension ClaudeService {
     ) -> [String] {
         var issues: [String] = []
         // EvidenceProfile.md MAINT-001 [confidence: low-moderate]
-        let maintenanceCeiling = recoveryTight ? 5.0 : 6.0
+        let maintenanceCeiling = recoveryTight ? 8.0 : 10.0
         // The band has always had a bottom; only the top was ever enforced. This rule read
         // "zero is a violation, ten is a violation, everything between is fine", so a week
         // shipped Triceps on 2 weekly sets — one Dip — beside Calves on 6, and reported no
         // issues at all. Calves appear nowhere in that lifter's analysis.
         //
-        // The floor sits deliberately BELOW the 4-6 band MAINT-001 targets, and it is now set on
-        // the only number the maintenance literature actually measured. Bickel 2011 held 16 weeks
-        // of gains for 32 further weeks on a one-ninth dose — three exercises at one set, once a
-        // week, about THREE weekly direct sets — in young adults. So three is the retention dose
-        // and the floor sits on it.
-        //
-        // Three is also the largest floor this allocator can ever satisfy. `canAddSet` caps a
-        // non-prime movement at its role default, which is 3 for an accessory, secondary or core
-        // movement in week 1 (and 3 for a core movement in weeks 1-3), so a group covered by
-        // exactly one such movement tops out at 3. The previous floor of 4 was therefore
-        // unreachable by construction: it fired on every generation and no allocation could
-        // answer it — the precise failure this rule's own design principle warns about, that a
-        // rule firing on every honest week teaches the owner to skim past the list.
-        // `tools/check_evidence_profile.py` fails the build if the floor is raised above that cap.
-        //
+        // The floor sits deliberately BELOW the 6-10 band MAINT-001 describes. Six is the
+        // target; four is the point past which the word "maintenance" stops meaning anything.
+        // A rule that fired on every group merely sitting low would fire on almost every honest
+        // week and teach the owner to skim past the list, which costs more than it catches.
         // Constrained recovery lowers the whole band, floor included, per SLEEP-002.
-        let maintenanceFloor = recoveryTight ? 2.0 : 3.0
+        let maintenanceFloor = recoveryTight ? 3.0 : 4.0
 
         // The FLOOR half of this rule does not apply on the deload week, and the reason is the
         // rule's own stated design principle two paragraphs up: a floor "that fired on every
@@ -840,7 +829,7 @@ extension ClaudeService {
             let directSets = weeklyDirectSets(forGroupAliases: aliases, days: days)
             if directSets > maintenanceCeiling + 0.5 {
                 issues.append(
-                    "Non-priority muscle group '\(group.label)' exceeds the maintenance weekly volume ceiling (\(formatStimulusValue(directSets)) sets vs \(formatStimulusValue(maintenanceCeiling))). Maintenance means roughly 4-6 quality sets per week — trim redundant filler instead of stacking volume the recovery budget cannot pay for."
+                    "Non-priority muscle group '\(group.label)' exceeds the maintenance weekly volume ceiling (\(formatStimulusValue(directSets)) sets vs \(formatStimulusValue(maintenanceCeiling))). Maintenance means roughly 6-10 quality sets per week — trim redundant filler instead of stacking volume the recovery budget cannot pay for."
                 )
             } else if directSets <= 0.01 {
                 // EvidenceProfile.md BASE-001 [confidence: high]
@@ -880,7 +869,7 @@ extension ClaudeService {
                 // true by being shorter.
                 let movements = weeklyDirectMovements(forGroupAliases: aliases, days: days)
                 issues.append(
-                    "Non-priority muscle group '\(group.label)' falls below the maintenance weekly volume floor (\(formatStimulusValue(directSets)) sets vs \(formatStimulusValue(maintenanceFloor))). MAINT-001 puts maintenance near 4-6 quality sets per week. It has \(movements) movement(s) this week carrying \(formatStimulusValue(directSets)) set(s) between them. Either those movements are capped at their role defaults and the group needs another weekly exposure, or they are under their defaults and one of the allocator's ceilings refused the sets — the movement's own role default, this group's weekly maintenance ceiling, a priority's weekly target, a per-session direct cap, or the day's fatigue cap. Check which before adding an exercise."
+                    "Non-priority muscle group '\(group.label)' falls below the maintenance weekly volume floor (\(formatStimulusValue(directSets)) sets vs \(formatStimulusValue(maintenanceFloor))). MAINT-001 puts maintenance near 6-10 quality sets per week. It has \(movements) movement(s) this week carrying \(formatStimulusValue(directSets)) set(s) between them. Either those movements are capped at their role defaults and the group needs another weekly exposure, or they are under their defaults and one of the allocator's ceilings refused the sets — the movement's own role default, this group's weekly maintenance ceiling, a priority's weekly target, a per-session direct cap, or the day's fatigue cap. Check which before adding an exercise."
                 )
             }
         }

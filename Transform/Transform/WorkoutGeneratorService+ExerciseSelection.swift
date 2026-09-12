@@ -1578,7 +1578,7 @@ extension ClaudeService {
     ) -> Bool {
         let recoveryTight = blueprint.calibration.recoveryConstrained
             || blueprint.calibration.poorNutritionAdherence
-        let maintenanceCeiling = recoveryTight ? 5 : 6
+        let maintenanceCeiling = recoveryTight ? 8 : 10
         // How many DISTINCT movements a non-priority group may hold is decided by what its
         // weekly ceiling can pay for at a dose worth programming. That dose is three sets, not
         // two.
@@ -2914,18 +2914,10 @@ extension ClaudeService {
     /// reachable at all.
     ///
     /// EvidenceProfile.md BASE-001 asks for two weekly exposures per major group and MAINT-001
-    /// targets 4-6 sets, capped at 6 (5 when recovery-tight). The allocator can only fill an
-    /// exercise up to its ROLE DEFAULT (3 sets for an accessory, secondary or core movement in
-    /// week 1), so a group holding one slot is structurally capped at 3 sets no matter how much
-    /// weekly budget is left — no set-level rule can repair it, because the shortage is slots,
-    /// not sets.
-    ///
-    /// That cap is why MAINT-001's floor is 3 and not 4. This comment stated the cap correctly
-    /// while the floor sat at 4, so a group covered by exactly one such movement tripped a floor
-    /// that no allocation could satisfy, on every generation, in weeks 1-3. It is also why this
-    /// breadth pass matters: two slots at the role default deliver 6 sets, which is the whole
-    /// band. `tools/check_evidence_profile.py` now fails the build if the floor is ever raised
-    /// above what a single covering movement can actually deliver.
+    /// puts the maintenance band at roughly 6-10 sets. The allocator can only fill an exercise up
+    /// to its ROLE DEFAULT (about 3 sets), so a group holding one slot is structurally capped near
+    /// 3 sets no matter how much weekly budget is left — no set-level rule can repair it, because
+    /// the shortage is slots, not sets.
     ///
     /// That is exactly what shipped: Triceps held one slot (a single Dip) and received 2 sets for
     /// the week, while Calves held two slots and received 6. Calves are not mentioned anywhere in
@@ -3478,7 +3470,7 @@ extension ClaudeService {
         }
         let recoveryTight = blueprint.calibration.recoveryConstrained
             || blueprint.calibration.poorNutritionAdherence
-        let maintenanceCeiling = recoveryTight ? 5.0 : 6.0
+        let maintenanceCeiling = recoveryTight ? 8.0 : 10.0
         // Every major group keeps a ledger. A prioritized group keeps a RESIDUE ledger — only the
         // work in it that no priority allocation pays for. Dropping prioritized groups entirely
         // (the previous behaviour) left that residue funded by nothing and capped by nothing: the

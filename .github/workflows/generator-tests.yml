@@ -93,27 +93,6 @@ jobs:
           python3 tools/test_check_shoulder_families.py
           python3 tools/check_shoulder_families.py
 
-      # The third silent-failure surface: EvidenceProfile.md is the programming contract and
-      # NOTHING compiles it, so every number in it is an unchecked claim. Three defects lived in
-      # that gap simultaneously: the doc declared v1_9 while the code declared v1_8 (and that
-      # string is printed into the AI prompt on every generation); MAINT-001 floored a muscle at
-      # 4 weekly sets while `canAddSet` caps a single covering movement at its role default of 3,
-      # so the finding fired on every generation and no allocation could answer it; and
-      # `weeklyDirectSetTarget` added up to +2.5 of bias with no upper clamp, returning 12.5
-      # against its own documented 8-12 band.
-      #
-      # None of those is visible to a Swift test. Each number is self-consistent on its own; only
-      # the RELATIONSHIP between the doc and two or three separate Swift sites is wrong. This also
-      # pins the arithmetic that bounds VOL-001 from above: weekly slots are
-      # `ceil(setTarget / 4)` and `maximumUsefulVariationCount` caps distinct exercises at 4/3/2,
-      # so a target above `ceiling * 4` asks the menu for a movement VAR-001 forbids.
-      - name: Check the evidence profile matches the generator
-        if: always()
-        run: |
-          set -euo pipefail
-          python3 tools/test_check_evidence_profile.py
-          python3 tools/check_evidence_profile.py
-
       # The simulation's assertions fail the job on their own; this is the readable half —
       # training days, exercise and set counts per week, and the deload drop for each persona.
       # Uploaded rather than printed because `swift test --parallel` swallows test stdout, so

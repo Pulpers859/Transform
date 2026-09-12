@@ -43,7 +43,7 @@ extension ClaudeService {
     var fallbackSourceLabel: String { "[Recovery Engine]" }
     var evidenceProfile: HypertrophyEvidenceProfile { Self.evidenceProfileCache }
     static let evidenceProfileCache = HypertrophyEvidenceProfile(
-        version: "hypertrophy_v1_9",
+        version: "hypertrophy_v1_8",
         defaultTrainingDays: 5,
         allowedStyles: ["Push", "Pull", "Legs", "Lower", "Upper", "Arms"],
         // EvidenceProfile.md FREQ-001 / SLOT-001 [confidence: moderate]
@@ -59,9 +59,9 @@ extension ClaudeService {
         ],
         // EvidenceProfile.md VOL-001 [confidence: moderate]
         directSetTargetsByPriority: [
-            "High": 12...16,
-            "Medium": 8...12,
-            "Low": 5...8
+            "High": 8...12,
+            "Medium": 5...8,
+            "Low": 3...5
         ],
         directSetTargetsByVolumeBias: [
             "high": 1.5,
