@@ -591,8 +591,18 @@ extension ClaudeService {
             }
             // The unlocked branch used to be `rebalanceSessionTime`, which trimmed sets and then
             // REMOVED movements to fit a clock. Nothing replaces it: a day that runs long is not a
-            // day with too much work in it. `setOnlyFatigueRebalance` still holds the recovery
-            // budget on the locked path, and that is the budget that describes the lifter.
+            // day with too much work in it. The recovery budget — the one that describes the
+            // lifter — is held by `setOnlyFatigueRebalance` instead.
+            //
+            // But NOT by the branch below, and the previous version of this note implied it was.
+            // `repairedProceduralDays` has exactly one call site, and it passes
+            // `menuLocked: false` (see the `exerciseMenus == nil` guard in `buildProceduralWeek`),
+            // so `trimmedExercises = day.exercises` is the only arm that ever runs here and this
+            // whole pass rebuilds each day unchanged. The live call is
+            // `balancedProceduralExercises` in `+ExerciseSelection.swift`, which is on the menu
+            // path every generation takes. Kept rather than deleted because the `exerciseMenus ==
+            // nil` path is still exercised by the legacy-input tests; read it as reachable only
+            // from there.
             let trimmedExercises: [WorkoutExerciseResponse]
             if menuLocked {
                 trimmedExercises = setOnlyFatigueRebalance(
