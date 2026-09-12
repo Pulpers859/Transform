@@ -138,6 +138,9 @@ final class UserJourneySimulationTests: XCTestCase {
     private struct SimulatedWeek {
         let days: [WorkoutDayResponse]
         let findings: [String]
+        /// Per-training-day "style x movement count", so a session-shape finding can be read
+        /// against the day that produced it instead of inferred from week totals.
+        let shape: String
     }
 
     private func fullMesocycle(for persona: Persona) throws -> [SimulatedWeek] {
@@ -203,7 +206,12 @@ final class UserJourneySimulationTests: XCTestCase {
                 )
             }
 
-            weeks.append(SimulatedWeek(days: days, findings: findings))
+            let shape = zip(blueprint.dayPlans, days).compactMap { plan, day -> String? in
+                guard !day.isRestDay else { return nil }
+                return "d\(day.dayNumber):\(service.canonicalTrainingStyle(plan.style))x\(day.exercises.count)"
+            }.joined(separator: " ")
+
+            weeks.append(SimulatedWeek(days: days, findings: findings, shape: shape))
             previous = days
         }
         return weeks
@@ -288,6 +296,7 @@ final class UserJourneySimulationTests: XCTestCase {
                     "  week \(weekNumber): \(trainingDays.count) training days, "
                         + "\(exerciseCount) exercises, \(totalSets) total sets"
                 )
+                report.append("      shape: \(week.shape)")
                 // Validator findings, tiered the way the shipping path tiers them. Reported
                 // rather than asserted for now: a quality verdict belongs to a human reading
                 // this, and several of these rules are heuristic counts. A HARD FAILURE here
