@@ -52,6 +52,19 @@ final class GeneratorTroubleshootingTests: XCTestCase {
             expectedExerciseMenus: menus
         )
         let signature = menuSignature(menus)
+        let stimulus = service.buildWeekStimulusReport(from: program.days)
+        for allocation in blueprint.priorityAllocations {
+            let coverage = service.priorityCoverage(for: allocation, stimulusReport: stimulus)
+            XCTAssertGreaterThanOrEqual(coverage.directSets + 0.01,
+                floor(service.normalWeeklyPrioritySetCeiling(for: allocation)),
+                "Removing a redundant appearance must preserve \(allocation.area)'s whole-set target")
+            XCTAssertGreaterThanOrEqual(coverage.meaningfulDayMatches, allocation.targetFrequency,
+                "Removing a redundant appearance must preserve \(allocation.area)'s meaningful frequency")
+        }
+        for exercise in program.days.flatMap(\.exercises) {
+            XCTAssertGreaterThanOrEqual(exercise.sets, service.minimumSetFloor(for: exercise),
+                "The original fixture may not contain an underfunded appearance: \(exercise.exerciseName)")
+        }
 
         XCTAssertEqual(program.days.count, 7, "Regression fixture must produce a complete calendar week")
         XCTAssertEqual(

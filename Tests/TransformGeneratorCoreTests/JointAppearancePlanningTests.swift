@@ -11,6 +11,34 @@ final class JointAppearancePlanningTests: XCTestCase {
               role: service.proceduralExerciseRole(for: name, muscleTarget: target), prescribedSets: 1)
     }
 
+    func testFractionalTargetIsAnExecutedAllocationCeiling() {
+        let allocation = ClaudeService.BlueprintPriorityAllocation(area: "Core/Abs", priorityLevel: "Medium",
+            rationale: "", targetFrequency: 2, targetExerciseSlots: 2, directSetTarget: 7.5,
+            weightedStimulusTarget: 7.5, maxPerSessionDirectSets: 4, maxFocusSessionDirectSets: 4,
+            preferredStyles: ["Upper", "Lower"], preferredMovementPatterns: [], volumeBias: "Moderate", directWorkBias: "High")
+        let blueprint = ClaudeService.ProgramBlueprint(evidenceVersion: "test", splitRecommendation: "Upper / Lower",
+            weeklyTrainingDays: 2, priorityAllocations: [allocation], dayPlans: (1...2).map { day in
+                .init(dayIndex: day, style: day == 1 ? "Upper" : "Lower", focusArea: "Core/Abs", supportAreas: [],
+                    targetFatigueCap: 48, targetSessionMinutes: 75, targetPrioritySlots: 1, emphasisPatterns: [], isRestDay: false)
+            }, topLeverageChange: "", posturalFocus: "(none)", injuryRiskFocus: "(none)", programmingNotes: [],
+            calibration: service.neutralCalibrationProfile())
+        let menus = [
+            [slot("Cable Crunch", "Abs"), slot("Standing Calf Raise", "Calves"),
+             slot("Machine Chest Press", "Chest"), slot("Rope Triceps Pressdown", "Triceps"), slot("EZ-Bar Curl", "Biceps")],
+            [slot("Cable Crunch", "Abs"), slot("Seated Calf Raise", "Calves"),
+             slot("Seated Cable Row", "Mid Back"), slot("Cable Lateral Raise", "Lateral Deltoids"), slot("Seated Leg Curl", "Hamstrings")]
+        ]
+        var reports: [String] = []
+        let funded = service.allocateWeeklySetPrescription(menus, blueprint: blueprint, weekNumber: 1,
+            appearancePlanningReport: { reports.append($0) })
+        XCTAssertTrue(reports.contains { $0.hasPrefix("reserved role floors") })
+        let coreSets = funded.joined().filter { $0.exerciseName == "Cable Crunch" }.map(\.prescribedSets)
+        XCTAssertEqual(coreSets.reduce(0, +), 7, "The real allocator cannot buy an eighth set under its 7.5-set ceiling")
+        XCTAssertTrue(coreSets.allSatisfy { $0 >= 2 })
+        XCTAssertEqual(service.normalWeeklyPrioritySetCeiling(for: allocation), 7.51, accuracy: 0.0001)
+        XCTAssertGreaterThan(8, service.normalWeeklyPrioritySetCeiling(for: allocation))
+    }
+
     func testOverfullEarlyArmsDayCannotSpendLateFocusReservation() {
         let allocation = ClaudeService.BlueprintPriorityAllocation(area: "Triceps", priorityLevel: "High",
             rationale: "", targetFrequency: 2, targetExerciseSlots: 3, directSetTarget: 12,

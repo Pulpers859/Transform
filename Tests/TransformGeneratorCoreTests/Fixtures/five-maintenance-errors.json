@@ -87,7 +87,6 @@
     "poorNutritionAdherence": true,
     "recompositionGoal": true,
     "validatorIssues": [
-      "Day 1 exercise Behind-the-Back Cable Lateral Raise is prescribed 1 set(s), below its role-based minimum of 2 set(s).",
       "The week's back work is 6 overhead-pulling sets against only 2 rowing set(s) — more than twice as much vertical as horizontal. One token row does not cover the rhomboids and mid-traps in their shortened position; this needs rowing volume closer to its pulldown volume, not another pulldown variation."
     ],
     "forbiddenIssueFragments": [
@@ -98,7 +97,7 @@
       "Non-priority muscle group 'Glutes' exceeds the maintenance weekly volume ceiling"
     ],
     "menuSignature": [
-      "Day 1: Incline Barbell Press#4#Upper Chest | Machine Incline Press#3#Upper Chest | Cable Fly#3#Chest | Cable Lateral Raise#2#Lateral Deltoids | Behind-the-Back Cable Lateral Raise#1#Lateral Deltoids | Cable Crunch#2#Abs",
+      "Day 1: Incline Barbell Press#4#Upper Chest | Machine Incline Press#3#Upper Chest | Cable Fly#3#Chest | Cable Lateral Raise#2#Lateral Deltoids | Cable Crunch#2#Abs",
       "Day 2: Hanging Knee Raise#4#Lower Abs | Leg Press#3#Quads | Seated Leg Curl#3#Hamstrings | Machine Leg Extension#3#Quads | Cable Pull-Through#3#Glutes | Standing Calf Raise#3#Calves",
       "Day 3: REST",
       "Day 4: Incline Dumbbell Press#3#Upper Chest | Leaning Dumbbell Lateral Raise#2#Lateral Deltoids | Machine Lateral Raise#2#Lateral Deltoids | Machine Chest Press#3#Chest | Rope Triceps Pressdown#2#Triceps | V-Bar Pressdown#2#Triceps",

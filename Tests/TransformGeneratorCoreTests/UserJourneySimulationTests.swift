@@ -172,6 +172,23 @@ final class UserJourneySimulationTests: XCTestCase {
         let directSetTarget: Double
         let targetFrequency: Int
         let targetExerciseSlots: Int
+        let deliveredDirectSets: Double
+        let directSetShortfall: Double
+        let meaningfulDays: Int
+    }
+
+    // directSetCredit currently awards 0 or one credit per whole working set.
+    // The allocator's normal target is also a ceiling, so 7.5 permits seven, not eight.
+    // This observer must fail if direct-credit semantics change; weighted credit is separate.
+    private func meetsWholeSetTarget(delivered: Double, ceiling: Double) -> Bool {
+        delivered + 0.01 >= floor(ceiling)
+    }
+
+    func testWholeSetTargetObserverRejectsMissingAttainableSets() {
+        XCTAssertTrue(meetsWholeSetTarget(delivered: 7, ceiling: 7.51))
+        XCTAssertFalse(meetsWholeSetTarget(delivered: 6, ceiling: 7.51))
+        XCTAssertFalse(meetsWholeSetTarget(delivered: 7, ceiling: 8.01))
+        XCTAssertFalse(meetsWholeSetTarget(delivered: 0, ceiling: 7.51))
     }
 
     private func fullMesocycle(for persona: Persona) throws -> [SimulatedWeek] {
@@ -262,16 +279,22 @@ final class UserJourneySimulationTests: XCTestCase {
                 name: persona.name,
                 analysis: analysis(for: persona),
                 weeks: weeks.enumerated().map { index, week in
-                    WeekEvidence(
+                    let stimulus = service.buildWeekStimulusReport(from: week.days)
+                    return WeekEvidence(
                         weekNumber: index + 1,
                         evidenceVersion: week.blueprint.evidenceVersion,
                         plannedTrainingDays: week.blueprint.weeklyTrainingDays,
-                        priorities: week.blueprint.priorityAllocations.map {
-                            PriorityEvidence(
-                                area: $0.area,
-                                directSetTarget: $0.directSetTarget,
-                                targetFrequency: $0.targetFrequency,
-                                targetExerciseSlots: $0.targetExerciseSlots
+                        priorities: week.blueprint.priorityAllocations.map { allocation in
+                            let coverage = service.priorityCoverage(for: allocation,
+                                stimulusReport: stimulus)
+                            return PriorityEvidence(
+                                area: allocation.area,
+                                directSetTarget: allocation.directSetTarget,
+                                targetFrequency: allocation.targetFrequency,
+                                targetExerciseSlots: allocation.targetExerciseSlots,
+                                deliveredDirectSets: coverage.directSets,
+                                directSetShortfall: max(0, allocation.directSetTarget - coverage.directSets),
+                                meaningfulDays: coverage.meaningfulDayMatches
                             )
                         },
                         days: week.days,
@@ -294,8 +317,17 @@ final class UserJourneySimulationTests: XCTestCase {
                     let stimulus = service.buildWeekStimulusReport(from: days)
                     for allocation in week.blueprint.priorityAllocations {
                         let coverage = service.priorityCoverage(for: allocation, stimulusReport: stimulus)
-                        XCTAssertGreaterThanOrEqual(coverage.directSets + 0.01, allocation.directSetTarget,
-                            "\(persona.name) week \(weekNumber): \(allocation.area) direct target missed")
+                        for exercise in days.flatMap(\.exercises) {
+                            guard exercise.sets > 0 else {
+                                XCTFail("Cannot audit direct-credit units for a nonpositive prescription")
+                                continue
+                            }
+                            let unit = service.directSetCredit(for: exercise, area: allocation.area) / Double(exercise.sets)
+                            XCTAssertTrue(unit == 0 || unit == 1, "Direct-credit semantics changed; revisit whole-set observer")
+                        }
+                        XCTAssertTrue(meetsWholeSetTarget(delivered: coverage.directSets,
+                            ceiling: service.normalWeeklyPrioritySetCeiling(for: allocation)),
+                            "\(persona.name) week \(weekNumber): \(allocation.area) whole-set target missed")
                         XCTAssertGreaterThanOrEqual(coverage.meaningfulDayMatches, allocation.targetFrequency,
                             "\(persona.name) week \(weekNumber): \(allocation.area) meaningful frequency missed")
                     }

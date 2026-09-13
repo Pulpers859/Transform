@@ -1,6 +1,13 @@
 import Foundation
 
 extension ClaudeService {
+    // Shared by normal allocation and its whole-set observer. This preserves the existing
+    // soft-ceiling policy, including its numerical tolerance; it does not round budgets up.
+    // JointAppearancePlanningTests.testFractionalTargetIsAnExecutedAllocationCeiling pins it.
+    func normalWeeklyPrioritySetCeiling(for allocation: BlueprintPriorityAllocation) -> Double {
+        allocation.directSetTarget + 0.01
+    }
+
     struct AppearanceReservation {
         let menus: [[PreSelectedExercise]]
         let outcome: WorkoutAppearancePlanner.Outcome

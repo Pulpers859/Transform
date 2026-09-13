@@ -3718,7 +3718,7 @@ extension ClaudeService {
                     ceiling = allocations[allocIndex].directSetTarget * moderateMultiplier
                         + moderateBuffer - 0.02
                 } else {
-                    ceiling = allocations[allocIndex].directSetTarget + 0.01
+                    ceiling = normalWeeklyPrioritySetCeiling(for: allocations[allocIndex])
                 }
                 guard !addsDirectCredit || projected.direct <= ceiling else {
                     return false

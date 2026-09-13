@@ -72,9 +72,38 @@ authorized by this refactor. Final integration proof remains the owner's iPhone.
   explicit remaining limitation, not a universal feasibility guarantee. Diagnostics
   are captured per week in the JSON evidence artifact, but not yet surfaced in the app UI.
 - Deload allocation policy is unchanged. Volume retuning and retirement of legacy
-  repair logic remain pending. Loading-week role floors, delivered priority targets,
+  repair logic remain pending. Loading-week role floors, whole-set priority targets,
   meaningful frequency and actual daily fatigue are now regression assertions.
 - The standalone Windows solver checks run with:
   `swiftc Transform/Transform/WorkoutAppearancePlanner.swift tools/check_workout_appearance_planner.swift -o <temporary-executable>`.
   Executing that binary does not test app metadata or the complete generator.
 - Windows checks are syntax/toolchain checks only; macOS CI executes Swift tests.
+
+### First integration evidence (`d0179bf`)
+
+The app build passed. The generator run executed 638 tests, but failed on the stale
+captured snapshot and an incorrect new exact-target assertion: nine loading-week
+cases delivered seven sets against a 7.5 target. All exercise names, sets and targets
+for the first four personas (16 weeks) matched the prior artifact exactly. These
+were existing fractional budget gaps, not new losses of priority work.
+
+`directSetCredit` awards zero or one credit per whole set; the normal allocator
+also uses the target as a ceiling. The corrected observer requires the largest
+integer not exceeding that ceiling, explicitly checks unit-credit semantics, and
+exports the raw target, delivered credit and fractional shortfall. Seven against
+eight still fails. This is not proof of biological adequacy or nonregression from
+earlier above-target output; before/after comparison remains separate.
+
+Fractional-target handling is intentionally preserved to isolate this architectural
+change from the separately agreed volume-policy work. Pinning today's ceiling does
+not endorse rounding down as optimal or permanent. Choosing rounded whole-set
+blueprint targets (up, nearest, or down), and reconciling their session caps, remains
+a policy decision for that later step; no such choice is being smuggled into this fix.
+
+Independent raw-prescription arithmetic counted zero one-set prescriptions in all
+20 weeks (baseline six). Arms loading weeks retained their total sets with one fewer
+appearance each; all other exercise/set/target signatures, including all five deloads,
+were unchanged. The older recovery-tight fixture lost only its one-set lateral-raise
+appearance: its rowing imbalance remains. The beginner's glute-volume/crowded-lower
+warnings and lumbar persona's other reported warnings also remain. This step does
+not claim those findings are resolved.
