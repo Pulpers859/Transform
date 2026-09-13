@@ -109,7 +109,7 @@ days at menu-construction time rather than checking a running total.
 
 ## 5. Known defects NOT fixed
 
-- **Trim order cuts the main lift first.** `volumeReductionPriority`
+- **Trim order cuts the main lift first — fix this FIRST, see section 6.** `volumeReductionPriority`
   (`+ExerciseSelection.swift` ~834-876) trims the highest scorer; a non-focus anchor scores ~42
   against ~31 for an accessory, so a Romanian deadlift is cut before calf raises when a day is over
   cap. A focus-direct anchor gets `-10` and is protected, so this bites non-focus compounds.
@@ -132,21 +132,69 @@ days at menu-construction time rather than checking a running total.
   integer division. Under the linear model the `max(1, ...)` floor stops being load-bearing for most
   rows. Not wrong, but its shape changed and it was not re-tuned.
 
-## 6. Open decisions nobody has made
+## 6. Decisions — MADE, by a science lane, verified where it mattered
 
-A science lane was briefed to DECIDE these and **never returned** — its answers do not exist, so do
-not assume any of them:
-1. Which of the three constraints in section 3 gives way.
-2. Whether non-priority muscles should be held at retention at all, given Bickel's higher dose grew
-   muscle and the sets are being performed anyway.
-3. Whether priority volume goes to 12-16, and whether TOTAL weekly volume needs its own ceiling.
-4. Whether 5 training days is the right default, or 4 fuller days beats 5 thinner ones.
-5. The correct trim order when a session is over cap.
-6. Whether the mandatory week-4 deload should exist. Coleman 2024 (PeerJ 12:e16777) found no
-   benefit and a strength decrement; Pancar 2026 found nothing either way.
+The lane returned after this handoff was first written. Its rulings, with the two premises it
+overturned. Work in this order; 1 is a prerequisite for 3.
 
-**The owner is explicitly not a training expert and does not want to adjudicate these.** Get them
-decided by someone who can cite sources, then verify the citations yourself before acting.
+**The "bind" in section 3 is NOT arithmetic — computed, and this overturns my own framing.**
+The lane modelled the slot problem: at maintenance 5, a 5-day week has 30 slots' worth of
+>=2-set capacity against a 25-slot requirement. The scheme I reverted was never forced to produce
+single-set movements. It produced them because the allocator takes exercise count as the INPUT and
+derives set count as the OUTPUT, with no per-exercise floor. The constraint that must give is
+neither volume nor days nor dose — it is **"a muscle's exercise count is decided independently of
+its set budget."** That is software, not physiology. Section 3's root cause (name-vs-exposure
+counting) is the mechanism; this is the shape of the fix.
+
+1. **Fix the trim sort key FIRST.** Smallest change, largest damage prevented. Fatigue score is
+   `sets x exerciseCost`, and `exerciseCost` is high *because* a movement is a big compound — so
+   ranking by it deletes the most valuable movement in the session by construction. Correct order:
+   core sets above minimum -> sets (not exercises) from whichever muscle is furthest above its
+   weekly target -> redundant exercises -> non-priority isolation -> non-priority secondary
+   compounds. NEVER the day's anchor or any priority-muscle movement; if the cap still cannot be
+   met, reduce the day's exercise target instead. Shaving one set off a cost-3 compound saves the
+   same 3 points as deleting an entire cost-1 isolation, at far lower cost to the program.
+2. **Invert the allocator.** Per-exercise sets fixed (floor 2, target 3); exercise count per muscle
+   DERIVED from the weekly budget. This dissolves the bind.
+3. **Then retune volumes**: priority 12-16 (mid 14), medium 8-10, low 5-6, background 6-8, plus a
+   per-muscle weekly cap of 20 and per-exercise cap of 5. Computed, not estimated: this LOWERS total
+   weekly volume 18-26% (current worst case 106 weekly sets; proposed 78-87), because maintenance
+   comes down as priority goes up. The premise that raising priority volume raises the total does
+   not hold. **No total-weekly-set ceiling** — the lane searched and could not verify one; the
+   per-session fatigue caps are the right instrument and are what the literature actually names.
+4. **Rename "maintenance" to "background".** Retention is the wrong goal for someone training 5
+   days a week. Bickel's ~9-set dose GREW muscle in the young while ~3 only held it, and Iversen
+   2021 puts the minimum at 4 weekly sets. The cost of the higher dose is session time (~4-6 min),
+   not systemic recovery — the lane searched for evidence that high total volume across all muscles
+   impairs the prioritised ones and **found none**; every source that names a constraint names a
+   per-SESSION one. That absence is weak evidence, and it is labelled as such.
+5. **Keep 5 days as the default**, present 4 as an equal option rather than a downgrade. Frequency
+   does not affect hypertrophy when volume is equated (Schoenfeld 2019); 4 days compresses the same
+   volume into fewer sessions and pushes harder against the fatigue caps.
+6. **Deload: leave it alone** unless 1-5 are done and the block model is cheap to change. Moving
+   4 weeks -> 6 recovers 2.5% of annual volume. Not worth a day of work.
+
+**A citation I got wrong, corrected here.** This handoff originally cited Coleman 2024 (PeerJ
+12:e16777) as evidence against the week-4 deload. I verified the abstract: participants
+"abstained from RT for 1 week" — **total cessation, not a reduced-volume week.** It does not test
+what this app does and must not be cited against it. Pancar 2026 DID test a reduced-volume deload
+and found no interaction either way (p = 0.239-0.955), in untrained men, n = 19.
+
+**A second premise overturned: a 1-set prescription is not untrainable.** Schoenfeld 2019 (MSSE
+51(1):94-103) had trained men do ONE set per exercise, 3x/week for 8 weeks, and they matched the
+3-set and 5-set groups for strength and endurance and gained muscle at most sites; Hermann/Enes
+2025 (MSSE 57(9):2021-31) found a single set of nine exercises twice weekly produced "appreciable
+gains". Krieger 2010 puts 1 set at roughly 70% of 2-3 sets, not zero. So the nine-single-set week
+measured in section 3 was a **product-quality and redundancy failure, not a physiological one** —
+it reads as pointless and matches the redundant-variation pattern Kassiano 2022 warns against.
+Still worth fixing. Not evidence the volume math was impossible.
+
+**Explicitly flagged by the lane as judgement, not evidence** — revisit these first if something
+goes wrong: the 2-set-per-exercise floor (product reasoning, not physiology, and the assumption
+most worth dropping if it makes the allocator expensive); the exact midpoints 14 and 6-8 (fitted to
+make slot arithmetic land cleanly); leaving total weekly volume ungoverned; the claim that
+cross-muscle volume does not impair priorities (absence of evidence, genuinely weak); and the
+ordering within trim steps 3-5.
 
 ## 7. How to verify anything here
 
@@ -185,3 +233,19 @@ Two claims that did NOT survive checking, recorded so they are not repeated: a l
 maintenance volume above ~3 sets "buys retention 3 sets already bought" (Bickel says the higher dose
 grew MORE), and a lane cited Knowles 2018 for a hypertrophy claim it does not make (it is about
 acute performance).
+
+Added after the decisions in section 6, each verified against its abstract:
+- Krieger 2010, J Strength Cond Res 24(4):1150-9, PMID 20300012. 1 set ES 0.24, 2-3 sets 0.34,
+  4-6 sets 0.44.
+- Hammarstrom 2020, J Physiol 598(3):543-565, PMID 31813190. 3 sets vs 1 set within-subject:
+  CSA +5.2% vs +3.7%.
+- Hermann/Enes 2025, Med Sci Sports Exerc 57(9):2021-31, PMID 40249908. Single-set program gave
+  "appreciable gains in most of the assessed outcomes".
+- Iversen 2021, Sports Med 51(10):2079-95, PMID 34125411. Minimum 4 weekly sets per muscle group.
+- Amirthalingam 2017, PMID 27941492 and Hackett 2018, PMID 29910312. >5 sets per exercise does not
+  promote greater gains -- the only verified ceiling is per-EXERCISE, not per-week.
+- Rogerson 2024, Sports Med Open 10(1):26, PMID 38499934. 246 strength/physique athletes deload
+  every 5.6 +/- 2.3 weeks, by cutting volume and load while keeping frequency and exercise
+  selection -- which is what week 4 already does.
+- Coleman 2024, PeerJ 12:e16777, PMID 38274324. VERIFIED as total cessation ("abstained from RT for
+  1 week"), NOT a reduced-volume week. Do not cite it against this app's deload.
