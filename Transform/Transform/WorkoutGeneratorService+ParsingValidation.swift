@@ -848,13 +848,17 @@ extension ClaudeService {
                 // budget refused it, so the group was short of a SET, and the same Lower day also
                 // carried a squat, an RDL and a lunge under their own role defaults.
                 //
-                // The message lists `canAddSet`'s ceilings rather than naming one. Naming the day
-                // FATIGUE cap was wrong and provably so: `fatigueContribution`'s multiplier is 1
-                // below four sets, so taking an accessory from 2 to 3 changes day fatigue by
-                // nothing at all and the fatigue cap cannot have been what refused it. A message
-                // that confidently names the wrong ceiling sends a reader after the wrong repair,
-                // which is the defect this rewrite exists to fix — committed twice now, once with
-                // the clock and once with fatigue.
+                // The message lists `canAddSet`'s ceilings rather than naming one, and that stays
+                // right for a new reason. Under the old step model, naming the day FATIGUE cap was
+                // provably wrong: the multiplier was 1 below four sets, so taking an accessory from
+                // 2 to 3 changed day fatigue by nothing and the cap could not have been what
+                // refused. FAT-001's linear model makes fatigue a genuine candidate again — a
+                // second set now costs `fatigueCost`. That is an argument for continuing to list
+                // the ceilings rather than naming one, not against it: the answer is now
+                // week-dependent, so a message that picked one would be wrong more often, not less.
+                // A message that confidently names the wrong ceiling sends a reader after the wrong
+                // repair, which is the defect this rewrite exists to fix — committed twice now,
+                // once with the clock and once with fatigue.
                 // This finding is an ACCEPTABLE WARNING, not a correction — the pattern sits in
                 // `acceptableWarningIssuePatterns`, which both disposition paths consult ahead of
                 // `correctionWorthyIssuePatterns`, so it never buys a repair call. It is worth

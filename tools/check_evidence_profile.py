@@ -238,6 +238,44 @@ def main() -> int:
             f"that role default."
         )
 
+    # --- 6. every session fatigue cap must admit a FULL-SIZE day --------------------------
+    # `seededDayFitsItsBudgets` decides whether a day may take another movement by projecting the
+    # WHOLE day at `minimumSetFloor` and comparing to the style's cap. Under FAT-001's linear
+    # model that projection is large: an anchor alone projects fatigueCost 3 x floor 3 = 9. A cap
+    # below the projection makes a full-size day unbuildable before a single extra set is funded --
+    # the day silently collapses to 4-5 movements and the validator then hard-fails it for being
+    # short. Nothing in Swift catches this: the cap is valid on its own and the projection is valid
+    # on its own; only the relationship is wrong.
+    linear = re.search(r"func fatigueContribution\([^)]*\)\s*->\s*Int\s*\{\s*\n\s*metadata\.fatigueCost \* max\(0, exercise\.sets\)",
+                       priority)
+    if not linear:
+        failures.append(
+            "fatigueContribution is no longer `fatigueCost * sets`. The full-day projection check "
+            "below assumes the linear model; re-derive it before changing the model, or this "
+            "checker silently stops describing the code."
+        )
+    else:
+        caps = {m.group(1): int(m.group(2))
+                for m in re.finditer(r'"(push|pull|upper|legs|lower|arms)": (\d+)', svc)}
+        if len(caps) != 6:
+            die(f"could not parse all six sessionFatigueCapsByStyle entries (got {sorted(caps)})")
+        lower_ceiling = need(re.search(r'canonicalTrainingStyle\(style\) == "Lower" \? (\d+) : (\d+)', selection),
+                             "comfortableDayExerciseCeiling day sizes")
+        sizes = {"lower": int(lower_ceiling.group(1)), "legs": int(lower_ceiling.group(1))}
+        # A deliberately CONSERVATIVE composition: two anchors and the rest accessories, each at
+        # its `minimumSetFloor` (3 for an anchor, 2 otherwise). Real days carry secondaries too and
+        # so project higher, which means passing this check is necessary, not sufficient.
+        for style, cap in caps.items():
+            movements = sizes.get(style, int(lower_ceiling.group(2)))
+            projection = 2 * (3 * 3) + max(0, movements - 2) * (1 * 2)
+            if cap < projection:
+                failures.append(
+                    f"session fatigue cap for '{style}' is {cap}, below the {projection} that a "
+                    f"{movements}-movement day projects at minimumSetFloor (2 anchors + "
+                    f"{movements - 2} accessories). `seededDayFitsItsBudgets` would refuse to build "
+                    f"a full-size day, and the validator hard-fails a day under 5 movements."
+                )
+
     if failures:
         print(f"FAIL: {len(failures)} EvidenceProfile/code inconsistency(ies)\n", file=sys.stderr)
         for i, f in enumerate(failures, 1):

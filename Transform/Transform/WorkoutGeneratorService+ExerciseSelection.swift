@@ -2545,21 +2545,20 @@ extension ClaudeService {
     /// a program that is too long, so nothing may refuse him a movement for projected minutes.
     ///
     /// This is NOT the same question as "can the allocator afford another set", and the difference
-    /// is the point. `fatigueContribution` charges a movement its full `fatigueCost` from the
-    /// first set — the multiplier only rises at four sets and again at five — so an appended
-    /// movement spends day fatigue that no later pass can walk back.
+    /// is the point. Under FAT-001's linear model an appended movement spends `fatigueCost` x
+    /// its floor sets of day fatigue that no later pass can walk back.
     /// `allocateWeeklySetPrescription` guarantees the finished day stays inside its cap only while
     /// the projected day already fits: past that line it can decline to fund further sets, but it
     /// cannot remove the movement that broke the budget.
     ///
     /// Projected at each movement's `minimumSetFloor` rather than at one set, because the floor is
-    /// what the day is OBLIGED to deliver and a projection should describe that. Be clear that
-    /// this currently changes no outcome: every floor is 2, or 3 for an anchor, and
-    /// `fatigueContribution`'s multiplier is 1 anywhere below four sets, so the floor projection
-    /// and a one-set projection charge identical fatigue. It is kept because it is the honest
-    /// number and because any future set-sensitive budget must not inherit the one-set fiction —
-    /// not because it is doing something today. An earlier version of this comment claimed it
-    /// tightened the callers; an audit caught that, and it did not.
+    /// what the day is OBLIGED to deliver and a projection should describe that. Under the step
+    /// model this distinction provably changed nothing, and the comment here said so. Under
+    /// FAT-001's linear model it is load bearing and it is the binding constraint on every cap in
+    /// `sessionFatigueCapsByStyle`: a full day projects 29-30 in the linear unit (an anchor alone
+    /// projects 3 x 3 = 9), so any cap below that makes a full-size day unbuildable before a single
+    /// extra set is funded. That is why the caps were re-derived rather than scaled, and why
+    /// `tools/check_evidence_profile.py` now fails the build if a cap drops under the projection.
     ///
     /// Only `sets`, `exerciseName` and `muscleTarget` are populated. `estimatedDayFatigue` reads
     /// nothing else, and this runs inside the candidate loops of `enforceHorizontalPullCoverage`
@@ -3879,12 +3878,14 @@ extension ClaudeService {
         }
 
         // Redistribution backstop. The floor pass above can only ADD sets, so it is helpless
-        // exactly where the week has no room left to add — and that, not day fatigue, is what
-        // strands the last below-floor movements. `fatigueContribution` charges a movement its
-        // full `fatigueCost` from its FIRST set and only raises the multiplier at four sets, so
-        // taking an accessory from one set to two costs no day fatigue at all and the fatigue
-        // cap cannot have been the refusal. What refuses is volume: the priority's weekly
-        // ceiling, or the per-session direct cap. The week already holds those sets. They are
+        // exactly where the week has no room left to add. Under the step model day fatigue
+        // provably could not have been the refusal — a movement was charged its full cost at one
+        // set and the multiplier did not move until four, so a second set was free. Under
+        // FAT-001's linear model that is no longer true: a second set costs `fatigueCost`, so the
+        // day cap CAN now be what refuses. Volume is still the usual refusal — the priority's
+        // weekly ceiling or the per-session direct cap — but it is no longer the only one. The
+        // transfer below is safe either way, because it is set-neutral within the day and every
+        // guard still decides. The week already holds those sets. They are
         // simply on the wrong movements — one lift at four sets beside another at one.
         //
         // So move a set instead of buying one. A same-day transfer leaves the weekly and

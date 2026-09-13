@@ -765,16 +765,45 @@ extension ClaudeService {
         return StimulusCredit(directSets: directSets, weightedStimulus: weightedStimulus)
     }
 
+    /// EvidenceProfile.md FAT-001 [confidence: low]. A movement's modeled session fatigue is
+    /// LINEAR in its working sets.
+    ///
+    /// It used to be a step: full cost at set one, nothing for sets two and three, double at four,
+    /// triple at five. That shape had a measured contradiction with PROG-001. Replaying the real
+    /// constants, one unchanged full day costs 16 / 29 / 35 / 13 across weeks 1-4 against a Push
+    /// cap of 19, and 18 / 30 / 34 / 12 against a Lower cap of 22 — so weeks 2 and 3, the weeks
+    /// the mesocycle exists to add volume in, were the only weeks that could not be built at their
+    /// own role defaults. The generator was forced to refuse sets exactly when it meant to add them.
+    ///
+    /// Why linear and not a curve: no published work fits a curve to within-session fatigue as a
+    /// function of set count. The diminishing-returns findings people reach for here (Pelland 2026;
+    /// Remmert 2025 preprint) describe diminishing BENEFIT, which belongs in a cap, not rising
+    /// COST, which is what a convex exponent would assert. The one measurement that attaches the
+    /// word linear to fatigue is Refalo 2023 (Sports Med Open 9:10), and that is proximity to
+    /// failure, not set count. So linear is the shape with the least invented in it. Anyone
+    /// offering an exponent is making it up.
+    ///
+    /// What this deliberately gives up: the step accidentally encoded "spread volume across
+    /// movements rather than piling it on one", because the fourth set doubled a movement's whole
+    /// cost. Linear removes that opinion — and in the direction that helps, since appending a new
+    /// movement now costs its floor (2 sets) where deepening an existing one costs 1. The per-
+    /// movement ceiling in `canAddSet` (role default, at most 5) is what caps depth now.
     func fatigueContribution(for exercise: WorkoutExerciseResponse, metadata: ExerciseMetadata) -> Int {
-        let setMultiplier = exercise.sets >= 5 ? 3 : exercise.sets >= 4 ? 2 : 1
-        return metadata.fatigueCost * setMultiplier
+        metadata.fatigueCost * max(0, exercise.sets)
     }
 
+    /// Re-derived for the linear fatigue unit (FAT-001). The old 18 / 22 / 19 were step-unit
+    /// numbers; every threshold in this unit had to move or it would silently become a no-op or a
+    /// permanent blocker. Scaled by 2.3, the mean ratio of the new per-style caps to the old ones.
+    ///
+    /// Not known to be reachable: a whole-repo grep finds no caller passing a `MusclePriorityIntent`
+    /// — both live call sites pass a `BlueprintPriorityAllocation` to the overload below. Kept in
+    /// step with its twin rather than deleted, because "appears unused by grep" is not proof.
     func maxSessionFatigue(for intent: MusclePriorityIntent) -> Int {
         if intent.weeklyDayTarget >= 2 {
-            return 18
+            return 41
         }
-        return normalizedPriorityLevel(intent.priorityLevel, rank: intent.rank) == "High" ? 22 : 19
+        return normalizedPriorityLevel(intent.priorityLevel, rank: intent.rank) == "High" ? 50 : 44
     }
 
     func maxSessionFatigue(for allocation: BlueprintPriorityAllocation) -> Int {
@@ -782,15 +811,18 @@ extension ClaudeService {
             return evidenceProfile.maxSessionPriorityFatigue
         }
         return normalizedPriorityLevel(allocation.priorityLevel, rank: 0) == "High"
-            ? evidenceProfile.maxSessionPriorityFatigue + 4
-            : evidenceProfile.maxSessionPriorityFatigue + 1
+            // Additive offsets in the fatigue unit, so they do NOT scale with the base on their
+            // own — left as 4 and 1 they would have shrunk a High priority's headroom from 22% to 7%.
+            ? evidenceProfile.maxSessionPriorityFatigue + 9
+            : evidenceProfile.maxSessionPriorityFatigue + 2
     }
 
     func maxDailyFatigueThreshold(for days: [WorkoutDayResponse], dayNumber: Int) -> Int {
-        guard let day = days.first(where: { $0.dayNumber == dayNumber }) else { return 13 }
+        // Both literals re-derived for the linear unit (FAT-001); 13 and 18 were step-unit values.
+        guard let day = days.first(where: { $0.dayNumber == dayNumber }) else { return 30 }
         let style = inferredDayStyle(dayName: day.dayName, muscleGroups: day.muscleGroups) ?? ""
 
-        return evidenceProfile.sessionFatigueCapsByStyle[style.lowercased()] ?? 18
+        return evidenceProfile.sessionFatigueCapsByStyle[style.lowercased()] ?? 41
     }
 
     func formatStimulusValue(_ value: Double) -> String {

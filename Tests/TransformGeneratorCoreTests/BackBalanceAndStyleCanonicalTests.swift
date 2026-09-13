@@ -118,7 +118,7 @@ final class BackBalanceAndStyleCanonicalTests: XCTestCase {
             style: style,
             focusArea: nil,
             supportAreas: [],
-            targetFatigueCap: 20,
+            targetFatigueCap: 46,
             targetSessionMinutes: 70,
             targetPrioritySlots: 1,
             emphasisPatterns: [],

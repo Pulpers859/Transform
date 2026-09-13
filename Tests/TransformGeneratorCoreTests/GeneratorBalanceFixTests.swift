@@ -62,7 +62,7 @@ final class GeneratorBalanceFixTests: XCTestCase {
         style: String,
         focusArea: String? = nil,
         isRestDay: Bool = false,
-        fatigueCap: Int = 20
+        fatigueCap: Int = 46
     ) -> ClaudeService.BlueprintDayPlan {
         ClaudeService.BlueprintDayPlan(
             dayIndex: index,
@@ -905,9 +905,9 @@ final class GeneratorBalanceFixTests: XCTestCase {
 
     // MARK: - Budgets the balance passes must not break
 
-    /// `fatigueContribution` charges a movement its full `fatigueCost` at ONE set — the multiplier
-    /// only rises at four sets and again at five — so an appended movement spends day fatigue that
-    /// no later pass can walk back. `allocateWeeklySetPrescription` keeps a finished day inside its
+    /// Under FAT-001's linear model an appended movement spends `fatigueCost` x its floor sets of
+    /// day fatigue that no later pass can walk back. (This used to read "full cost at ONE set, the
+    /// multiplier only rises at four" — true of the step model this replaced, and false now.) `allocateWeeklySetPrescription` keeps a finished day inside its
     /// cap only while the SEEDED day already fits; past that line it can decline to fund sets but
     /// cannot remove the movement that broke the budget.
     ///

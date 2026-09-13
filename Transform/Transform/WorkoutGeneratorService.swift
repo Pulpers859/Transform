@@ -89,15 +89,39 @@ extension ClaudeService {
             "accessory": 75,
             "core": 60
         ],
+        // EvidenceProfile.md FAT-001 [confidence: low]. Re-derived for the LINEAR fatigue unit,
+        // from a stated maximum session rather than by preserving the old numbers:
+        //   Push/Pull/Upper  1 anchor x5 + 3 secondary x4 + 3 accessory x3 = 48 weighted, 26 raw sets
+        //   Legs/Lower       2 anchor x4 + 2 secondary x4 + 2 accessory x4 = 48 weighted, 24 raw sets
+        //   Arms             3 secondary x4 + 4 accessory x3               = 36 weighted, 24 raw sets
+        // Arms lands at 34 rather than 36 so week 1 (33) passes while weeks 2-3 bind; at 36 the
+        // most concentrated day the app generates would be nearly unconstrained in week 2.
+        //
+        // Each is about 24-26 working sets, roughly 10 per muscle. Those two figures carry what
+        // evidence there is: Schoenfeld 2019 (MSSE 51(1):94-103) ran trained men at 5 sets x 7
+        // exercises x 3 d/wk — 35 sets a session — and that arm had the GREATEST hypertrophy, so a
+        // low session cap is not supported; and Remmert 2025 (SportRxiv preprint, NOT peer
+        // reviewed) puts per-muscle diminishing returns near 11 sets per session. No trial has
+        // found a per-session set count at which hypertrophy gets worse. These caps are therefore
+        // reasonable practice with an evidence-informed anchor, NOT a measured threshold. Arms is
+        // lower because an arms day funnels every set into two small muscles and so passes that
+        // per-muscle figure fastest — not because single-joint work is cheap, which is false:
+        // Soares 2015 (JSCR 29(9):2594-9) measured a 26.8% elbow-flexor torque loss after preacher
+        // curls against 15.1% after rows.
+        //
+        // HARD LOWER BOUND on every value here: `seededDayFitsItsBudgets` decides whether a day may
+        // take another movement by projecting the whole day at `minimumSetFloor`. In the linear
+        // unit a full day projects 29-30, so a cap below that makes a full-size day unbuildable
+        // before one extra set is funded. `tools/check_evidence_profile.py` pins this.
         sessionFatigueCapsByStyle: [
-            "push": 19,
-            "pull": 19,
-            "upper": 19,
-            "legs": 22,
-            "lower": 22,
-            "arms": 16
+            "push": 48,
+            "pull": 48,
+            "upper": 48,
+            "legs": 48,
+            "lower": 48,
+            "arms": 34
         ],
-        maxSessionPriorityFatigue: 18,
+        maxSessionPriorityFatigue: 41,
         // EvidenceProfile.md CONC-001 [confidence: low-moderate]
         focusSessionDirectSetShareByPriority: [
             "High": 0.75,

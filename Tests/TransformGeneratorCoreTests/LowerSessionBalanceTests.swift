@@ -23,7 +23,7 @@ final class LowerSessionBalanceTests: XCTestCase {
             style: style,
             focusArea: focusArea,
             supportAreas: supportAreas,
-            targetFatigueCap: 22,
+            targetFatigueCap: 48,
             targetSessionMinutes: 70,
             targetPrioritySlots: 1,
             emphasisPatterns: [],

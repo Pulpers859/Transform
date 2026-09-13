@@ -71,7 +71,7 @@ final class PriorityStyleAndSlotCapacityTests: XCTestCase {
             style: style,
             focusArea: nil,
             supportAreas: [],
-            targetFatigueCap: 99,
+            targetFatigueCap: 220,
             targetSessionMinutes: 75,
             targetPrioritySlots: 1,
             emphasisPatterns: [],
