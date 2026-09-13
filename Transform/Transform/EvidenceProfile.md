@@ -53,9 +53,11 @@ This file is the programming contract for the workout generator. The goal is not
 
 ### Deterministic dosage ownership
 - The pre-selected exercise menu owns both exercise identity and working-set dosage before any
-  AI request. Priority targets are allocated first; every non-priority movement then spends from
-  the applicable major-muscle maintenance budget, including every group credited by shared-primary
-  metadata.
+  AI request. Loading weeks first attempt a whole-week reservation of existing role floors;
+  admitted appearances then receive optional priority funding followed by maintenance funding.
+  Every non-priority movement spends from the applicable major-muscle maintenance budget,
+  including every group credited by shared-primary metadata. Unresolved admission searches
+  retain the legacy allocator with an explicit console conflict; deload remains on that path.
 - Recovery-tight maintenance groups are limited to at most four meaningful exercise identities
   under the 8-set ceiling. Fallback and AI output consume the same prescription; neither creates
   a separate role-default set budget or repairs maintenance volume after generation.

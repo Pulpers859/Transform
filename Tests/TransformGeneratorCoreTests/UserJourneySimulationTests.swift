@@ -141,6 +141,7 @@ final class UserJourneySimulationTests: XCTestCase {
         /// against the day that produced it instead of inferred from week totals.
         let shape: String
         let blueprint: ClaudeService.ProgramBlueprint
+        let appearancePlanning: [String]
     }
 
     // Test-only export: no changes to production models or the generation contract.
@@ -163,6 +164,7 @@ final class UserJourneySimulationTests: XCTestCase {
         let priorities: [PriorityEvidence]
         let days: [WorkoutDayResponse]
         let validatorFindings: [String]
+        let appearancePlanning: [String]
     }
 
     private struct PriorityEvidence: Encodable {
@@ -180,11 +182,13 @@ final class UserJourneySimulationTests: XCTestCase {
 
         for weekNumber in 1...4 {
             let blueprint = service.programBlueprint(for: intent, weekNumber: weekNumber)
+            var appearancePlanning: [String] = []
             let menus = service.preSelectedExerciseMenu(
                 for: blueprint,
                 trainingIntent: intent,
                 weekNumber: weekNumber,
-                previousWeekDays: previous
+                previousWeekDays: previous,
+                appearancePlanningReport: { appearancePlanning.append($0) }
             )
             let days: [WorkoutDayResponse]
             if weekNumber == 1 {
@@ -240,7 +244,8 @@ final class UserJourneySimulationTests: XCTestCase {
                 return "d\(day.dayNumber):\(service.canonicalTrainingStyle(plan.style))x\(day.exercises.count)"
             }.joined(separator: " ")
 
-            weeks.append(SimulatedWeek(days: days, findings: findings, shape: shape, blueprint: blueprint))
+            weeks.append(SimulatedWeek(days: days, findings: findings, shape: shape, blueprint: blueprint,
+                appearancePlanning: appearancePlanning))
             previous = days
         }
         return weeks
@@ -270,7 +275,8 @@ final class UserJourneySimulationTests: XCTestCase {
                             )
                         },
                         days: week.days,
-                        validatorFindings: week.findings
+                        validatorFindings: week.findings,
+                        appearancePlanning: week.appearancePlanning
                     )
                 }
             ))
@@ -284,6 +290,16 @@ final class UserJourneySimulationTests: XCTestCase {
                 let trainingDays = days.filter { !$0.isRestDay }
                 let totalSets = trainingDays.flatMap(\.exercises).reduce(0) { $0 + $1.sets }
                 let exerciseCount = trainingDays.reduce(0) { $0 + $1.exercises.count }
+                if !MesocyclePhase.isDeloadWeek(weekNumber) {
+                    let stimulus = service.buildWeekStimulusReport(from: days)
+                    for allocation in week.blueprint.priorityAllocations {
+                        let coverage = service.priorityCoverage(for: allocation, stimulusReport: stimulus)
+                        XCTAssertGreaterThanOrEqual(coverage.directSets + 0.01, allocation.directSetTarget,
+                            "\(persona.name) week \(weekNumber): \(allocation.area) direct target missed")
+                        XCTAssertGreaterThanOrEqual(coverage.meaningfulDayMatches, allocation.targetFrequency,
+                            "\(persona.name) week \(weekNumber): \(allocation.area) meaningful frequency missed")
+                    }
+                }
 
                 // --- Structural invariants: a person would call any of these broken. ---
 
@@ -327,6 +343,10 @@ final class UserJourneySimulationTests: XCTestCase {
                             (1...8).contains(exercise.sets),
                             "\(label): \(exercise.sets) sets is outside 1-8"
                         )
+                        if !MesocyclePhase.isDeloadWeek(weekNumber) {
+                            XCTAssertGreaterThanOrEqual(exercise.sets, service.minimumSetFloor(for: exercise),
+                                "\(label): loading-week appearance was not funded to its role floor")
+                        }
                         XCTAssertFalse(
                             exercise.reps.trimmingCharacters(in: .whitespaces).isEmpty,
                             "\(label): empty rep prescription"
@@ -340,6 +360,9 @@ final class UserJourneySimulationTests: XCTestCase {
                             "\(label): no coaching note at all"
                         )
                     }
+                    let plan = week.blueprint.dayPlans[day.dayNumber - dayStart]
+                    XCTAssertLessThanOrEqual(service.estimatedDayFatigue(for: day.exercises), plan.targetFatigueCap,
+                        "\(persona.name) week \(weekNumber) day \(day.dayNumber): delivered fatigue exceeds budget")
                 }
 
                 // --- Reported, not asserted. ---

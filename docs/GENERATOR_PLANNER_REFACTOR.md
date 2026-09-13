@@ -59,6 +59,22 @@ authorized by this refactor. Final integration proof remains the owner's iPhone.
 
 ## Current state
 
-- Evidence export/checker implemented; generator behavior unchanged.
-- Planner refactor, volume retuning, and retirement of old repair logic pending.
+- Evidence export/checker implemented.
+- Provisional loading-week admission now reserves role floors across the whole
+  candidate week before optional set funding. It uses actual per-appearance costs,
+  shared priority/maintenance ledgers, daily fatigue and direct-set caps. A bounded
+  search chooses a subset; it does not place new exercises or move them across days.
+- Required coverage, focus days, anchors and retained prefixes constrain admission.
+  Existing candidate-pool gaps are not repaired by this step. Independent maximum
+  capacity is only a necessary condition for priority targets, not a sufficient one.
+- If no subset is found, or the search limit is reached, the legacy allocation is
+  retained with an `APPEARANCE PLANNING CONFLICT` console diagnostic. This is an
+  explicit remaining limitation, not a universal feasibility guarantee. Diagnostics
+  are captured per week in the JSON evidence artifact, but not yet surfaced in the app UI.
+- Deload allocation policy is unchanged. Volume retuning and retirement of legacy
+  repair logic remain pending. Loading-week role floors, delivered priority targets,
+  meaningful frequency and actual daily fatigue are now regression assertions.
+- The standalone Windows solver checks run with:
+  `swiftc Transform/Transform/WorkoutAppearancePlanner.swift tools/check_workout_appearance_planner.swift -o <temporary-executable>`.
+  Executing that binary does not test app metadata or the complete generator.
 - Windows checks are syntax/toolchain checks only; macOS CI executes Swift tests.

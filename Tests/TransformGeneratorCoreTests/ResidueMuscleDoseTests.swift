@@ -242,13 +242,8 @@ final class ResidueMuscleDoseTests: XCTestCase {
     /// distinguishes them. Any fourth attempt must diff that artifact against the previous run
     /// before claiming anything.
     ///
-    /// The remaining untried remedy is the other one: distributing exposures across days at
-    /// menu-construction time instead of checking a running total. That is a real change to how
-    /// days are built and is not attempted here.
-    ///
-    /// So this asserts what is TRUE today rather than what should be: at most one exposure below
-    /// its floor, and that one must be priority-funded. A second one, or a maintenance-side one,
-    /// is a new regression and fails. The full ceiling-by-ceiling diagnosis prints either way.
+    /// The earlier test allowed that known failure. Whole-week appearance reservation must
+    /// now clear the original case; this assertion deliberately has no one-set exception.
     func testNoMovementInTheWeekShipsAtOneSet() throws {
         let (blueprint, menus) = try fixtureBlueprintAndMenus()
         diagnosisMenus = menus
@@ -270,15 +265,10 @@ final class ResidueMuscleDoseTests: XCTestCase {
                 )
         }.joined(separator: "\n")
 
-        XCTAssertLessThanOrEqual(
-            subFloor.count, 1,
-            "More than the one known under-dosed exposure. Every additional one is a NEW defect:\n\(report)"
-        )
+        XCTAssertTrue(subFloor.isEmpty, "Every appearance must be funded, including repeated names:\n\(report)")
 
-        // The known one is priority-funded and blocked by the weekly over-volume line. A
-        // MAINTENANCE-side sub-floor movement would be a different failure — the maintenance
-        // ceiling is not spent by the funding loops the same way — so it is not covered by the
-        // allowance above and must fail.
+        // Retain the old diagnostic classification to distinguish the historical priority
+        // case from a maintenance regression, but neither is permitted by the assertion above.
         for entry in subFloor {
             XCTAssertTrue(
                 service.earnsDirectPriorityCredit(

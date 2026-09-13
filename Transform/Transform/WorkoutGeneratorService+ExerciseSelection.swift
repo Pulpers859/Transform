@@ -1778,7 +1778,8 @@ extension ClaudeService {
         trainingIntent: TrainingIntentPlan,
         weekNumber: Int,
         previousWeekDays: [WorkoutDayResponse]?,
-        exerciseHistory: ExerciseHistoryContext? = nil
+        exerciseHistory: ExerciseHistoryContext? = nil,
+        appearancePlanningReport: ((String) -> Void)? = nil
     ) -> [[PreSelectedExercise]] {
         let previousExercisesByStyle = proceduralPreviousExercisesByStyle(from: previousWeekDays)
         var previousUsageByStyle: [String: Int] = [:]
@@ -2138,7 +2139,9 @@ extension ClaudeService {
         return allocateWeeklySetPrescription(
             orderedMenus,
             blueprint: blueprint,
-            weekNumber: weekNumber
+            weekNumber: weekNumber,
+            lockedPrefixCounts: lockedPrefixCounts,
+            appearancePlanningReport: appearancePlanningReport
         )
     }
 
@@ -3458,12 +3461,34 @@ extension ClaudeService {
     func allocateWeeklySetPrescription(
         _ menus: [[PreSelectedExercise]],
         blueprint: ProgramBlueprint,
-        weekNumber: Int
+        weekNumber: Int,
+        lockedPrefixCounts: [Int] = [],
+        appearancePlanningReport: ((String) -> Void)? = nil
     ) -> [[PreSelectedExercise]] {
-        var allocated = menus.map { menu in
+        // Deload policy stays on its existing path. Loading weeks reserve all appearance
+        // floors before any optional set funding. An unresolved candidate-pool conflict is
+        // not a feasible solution: retain the legacy result and expose the search outcome.
+        let reservation = MesocyclePhase.isDeloadWeek(weekNumber) ? nil : reserveWeeklyAppearanceFloors(
+            menus, blueprint: blueprint, weekNumber: weekNumber, lockedPrefixCounts: lockedPrefixCounts
+        )
+        let floorReserved: Bool
+        if let reservation, case .admitted = reservation.outcome {
+            floorReserved = true
+            appearancePlanningReport?("reserved role floors; candidates=\(menus.joined().count); admitted=\(reservation.menus.joined().count)")
+        } else {
+            floorReserved = false
+            if let reservation {
+                let message = "APPEARANCE PLANNING CONFLICT (legacy allocation retained): \(reservation.outcome)"
+                print(message)
+                appearancePlanningReport?(message)
+            } else {
+                appearancePlanningReport?("deload: legacy policy unchanged")
+            }
+        }
+        var allocated = (reservation?.menus ?? menus).map { menu in
             menu.map { exercise in
                 var seeded = exercise
-                seeded.prescribedSets = 1
+                if !floorReserved { seeded.prescribedSets = 1 }
                 return seeded
             }
         }
