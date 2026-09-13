@@ -786,7 +786,7 @@ extension ClaudeService {
         // A rule that fired on every group merely sitting low would fire on almost every honest
         // week and teach the owner to skim past the list, which costs more than it catches.
         // Constrained recovery lowers the whole band, floor included, per SLEEP-002.
-        let maintenanceFloor = recoveryTight ? 3.0 : 4.0
+        let maintenanceFloor = recoveryTight ? 2.0 : 3.0
 
         // The FLOOR half of this rule does not apply on the deload week, and the reason is the
         // rule's own stated design principle two paragraphs up: a floor "that fired on every
