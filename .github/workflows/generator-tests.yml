@@ -26,6 +26,7 @@ jobs:
       # `swift test --parallel` runs the suites concurrently, so sharing the fixture-snapshot
       # file would have the two tests overwrite each other's output at random.
       TRANSFORM_JOURNEY_REPORT_OUTPUT: ${{ github.workspace }}/user-journey-report.txt
+      TRANSFORM_JOURNEY_JSON_OUTPUT: ${{ github.workspace }}/user-journey-evidence.json
 
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
@@ -114,6 +115,17 @@ jobs:
           python3 tools/test_check_evidence_profile.py
           python3 tools/check_evidence_profile.py
 
+      # Independent arithmetic over the delivered prescriptions, not the validator's verdict.
+      # This baseline step rejects missing/malformed evidence, but intentionally does not claim
+      # the known one-set prescriptions are fixed. The explicit acceptance command is documented
+      # in docs/GENERATOR_PLANNER_REFACTOR.md and must go red on the current baseline.
+      - name: Audit generated workout evidence
+        if: always()
+        run: |
+          set -euo pipefail
+          python3 tools/test_audit_workout_evidence.py
+          python3 tools/audit_workout_evidence.py user-journey-evidence.json --output user-journey-metrics.json
+
       # The simulation's assertions fail the job on their own; this is the readable half —
       # training days, exercise and set counts per week, and the deload drop for each persona.
       # Uploaded rather than printed because `swift test --parallel` swallows test stdout, so
@@ -124,6 +136,17 @@ jobs:
         with:
           name: user-journey-report
           path: ${{ github.workspace }}/user-journey-report.txt
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload complete synthetic workout evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: user-journey-evidence
+          path: |
+            user-journey-evidence.json
+            user-journey-metrics.json
           if-no-files-found: error
           retention-days: 14
 

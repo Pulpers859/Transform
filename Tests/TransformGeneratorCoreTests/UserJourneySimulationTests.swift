@@ -15,10 +15,9 @@ import XCTest
 /// menu, the same weekly set allocation and the same validator as the AI path, and it is what
 /// the athlete actually receives whenever generation falls back.
 ///
-/// Structural invariants below are hard assertions. Quality observations are PRINTED rather
-/// than asserted, because a quality verdict belongs to a human reading the report — turning a
-/// heuristic into a red test is how a suite starts lying. Read the printed report in the CI
-/// log when changing planning code.
+/// Structural invariants below are hard assertions. Other findings are saved as evidence,
+/// not an approval of workout quality. The text and JSON artifacts expose actual prescriptions;
+/// explicit product requirements can then become regression gates without weakening validation.
 @MainActor
 final class UserJourneySimulationTests: XCTestCase {
 
@@ -141,6 +140,36 @@ final class UserJourneySimulationTests: XCTestCase {
         /// Per-training-day "style x movement count", so a session-shape finding can be read
         /// against the day that produced it instead of inferred from week totals.
         let shape: String
+        let blueprint: ClaudeService.ProgramBlueprint
+    }
+
+    // Test-only export: no changes to production models or the generation contract.
+    private struct JourneyEvidence: Encodable {
+        let schemaVersion = 1
+        let scope = "Synthetic procedural generation; no paid AI, logged training, or device/UI execution."
+        let personas: [PersonaEvidence]
+    }
+
+    private struct PersonaEvidence: Encodable {
+        let name: String
+        let analysis: BodyAnalysisResult
+        let weeks: [WeekEvidence]
+    }
+
+    private struct WeekEvidence: Encodable {
+        let weekNumber: Int
+        let evidenceVersion: String
+        let plannedTrainingDays: Int
+        let priorities: [PriorityEvidence]
+        let days: [WorkoutDayResponse]
+        let validatorFindings: [String]
+    }
+
+    private struct PriorityEvidence: Encodable {
+        let area: String
+        let directSetTarget: Double
+        let targetFrequency: Int
+        let targetExerciseSlots: Int
     }
 
     private func fullMesocycle(for persona: Persona) throws -> [SimulatedWeek] {
@@ -211,7 +240,7 @@ final class UserJourneySimulationTests: XCTestCase {
                 return "d\(day.dayNumber):\(service.canonicalTrainingStyle(plan.style))x\(day.exercises.count)"
             }.joined(separator: " ")
 
-            weeks.append(SimulatedWeek(days: days, findings: findings, shape: shape))
+            weeks.append(SimulatedWeek(days: days, findings: findings, shape: shape, blueprint: blueprint))
             previous = days
         }
         return weeks
@@ -220,9 +249,31 @@ final class UserJourneySimulationTests: XCTestCase {
     /// The whole trial run. Structural failures are assertions; everything else is reported.
     func testEveryPersonaReceivesAUsableFourWeekProgram() throws {
         var report: [String] = ["", "=== USER JOURNEY SIMULATION ==="]
+        var evidence: [PersonaEvidence] = []
 
         for persona in personas {
             let weeks = try fullMesocycle(for: persona)
+            evidence.append(PersonaEvidence(
+                name: persona.name,
+                analysis: analysis(for: persona),
+                weeks: weeks.enumerated().map { index, week in
+                    WeekEvidence(
+                        weekNumber: index + 1,
+                        evidenceVersion: week.blueprint.evidenceVersion,
+                        plannedTrainingDays: week.blueprint.weeklyTrainingDays,
+                        priorities: week.blueprint.priorityAllocations.map {
+                            PriorityEvidence(
+                                area: $0.area,
+                                directSetTarget: $0.directSetTarget,
+                                targetFrequency: $0.targetFrequency,
+                                targetExerciseSlots: $0.targetExerciseSlots
+                            )
+                        },
+                        days: week.days,
+                        validatorFindings: week.findings
+                    )
+                }
+            ))
             report.append("")
             report.append("PERSONA: \(persona.name)")
 
@@ -297,6 +348,16 @@ final class UserJourneySimulationTests: XCTestCase {
                         + "\(exerciseCount) exercises, \(totalSets) total sets"
                 )
                 report.append("      shape: \(week.shape)")
+                for day in days {
+                    report.append("      day \(day.dayNumber): \(day.isRestDay ? "REST" : day.muscleGroups)")
+                    for exercise in day.exercises {
+                        report.append(
+                            "        \(exercise.exerciseName) | \(exercise.sets) sets x \(exercise.reps)"
+                                + " | \(exercise.muscleTarget) | rest \(exercise.restSeconds)s"
+                                + " | tempo \(exercise.tempo)"
+                        )
+                    }
+                }
                 // Validator findings, tiered the way the shipping path tiers them. Reported
                 // rather than asserted for now: a quality verdict belongs to a human reading
                 // this, and several of these rules are heuristic counts. A HARD FAILURE here
@@ -349,6 +410,38 @@ final class UserJourneySimulationTests: XCTestCase {
         try writeArtifactIfRequested(
             report.joined(separator: "\n"),
             environmentKey: "TRANSFORM_JOURNEY_REPORT_OUTPUT"
+        )
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        let encoded = try encoder.encode(JourneyEvidence(personas: evidence))
+        // Inspect the encoded raw JSON, not WorkoutDayResponse's forgiving decoder, which
+        // could silently discard exercises on a rest day and conceal a broken export.
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        let exportedPersonas = try XCTUnwrap(object["personas"] as? [[String: Any]])
+        XCTAssertEqual(exportedPersonas.count, personas.count)
+        for (exported, source) in zip(exportedPersonas, evidence) {
+            let exportedWeeks = try XCTUnwrap(exported["weeks"] as? [[String: Any]])
+            XCTAssertEqual(exportedWeeks.count, 4)
+            for (exportedWeek, sourceWeek) in zip(exportedWeeks, source.weeks) {
+                let exportedDays = try XCTUnwrap(exportedWeek["days"] as? [[String: Any]])
+                XCTAssertEqual(exportedDays.count, sourceWeek.days.count)
+                for (exportedDay, sourceDay) in zip(exportedDays, sourceWeek.days) {
+                    let exercises = try XCTUnwrap(exportedDay["exercises"] as? [[String: Any]])
+                    XCTAssertEqual(exercises.compactMap { $0["exerciseName"] as? String }, sourceDay.exercises.map(\.exerciseName))
+                    XCTAssertEqual(exercises.compactMap { $0["sets"] as? Int }, sourceDay.exercises.map(\.sets))
+                    XCTAssertEqual(exercises.compactMap { $0["reps"] as? String }, sourceDay.exercises.map(\.reps))
+                    XCTAssertEqual(exercises.compactMap { $0["muscleTarget"] as? String }, sourceDay.exercises.map(\.muscleTarget))
+                    XCTAssertEqual(exercises.compactMap { $0["restSeconds"] as? Int }, sourceDay.exercises.map(\.restSeconds))
+                    XCTAssertEqual(exercises.compactMap { $0["tempo"] as? String }, sourceDay.exercises.map(\.tempo))
+                    XCTAssertEqual(exercises.compactMap { $0["notes"] as? String }, sourceDay.exercises.map(\.notes))
+                    XCTAssertEqual(exportedDay["dayNumber"] as? Int, sourceDay.dayNumber)
+                    XCTAssertEqual(exportedDay["isRestDay"] as? Bool, sourceDay.isRestDay)
+                }
+            }
+        }
+        try writeArtifactIfRequested(
+            String(decoding: encoded, as: UTF8.self),
+            environmentKey: "TRANSFORM_JOURNEY_JSON_OUTPUT"
         )
     }
 
