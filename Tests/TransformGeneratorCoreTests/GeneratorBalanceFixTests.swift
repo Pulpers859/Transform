@@ -719,9 +719,17 @@ final class GeneratorBalanceFixTests: XCTestCase {
     }
 
     /// Constrained recovery lowers the whole band, floor included (SLEEP-002).
+    ///
+    /// Probed at TWO sets, not three. MAINT-001's floor moved from 4.0 to 3.0 (tight 3.0 -> 2.0)
+    /// because 3 is the only maintenance dose anyone has measured (Bickel 2011) and is also the
+    /// most a single covering movement can ever deliver, since `canAddSet` caps a non-prime
+    /// movement at its week-1 role default of 3. A three-set probe no longer sits below the
+    /// normal floor, so it tested nothing. Two sets straddles the new pair exactly as three
+    /// straddled the old one, which keeps this test measuring the GAP between the two tiers
+    /// rather than either absolute number.
     func testTheFloorDropsWhenRecoveryIsConstrained() throws {
         let (blueprint, _) = try plannedWeek()
-        let days = week([exercise("Rope Triceps Pressdown", "Triceps", sets: 3)])
+        let days = week([exercise("Rope Triceps Pressdown", "Triceps", sets: 2)])
 
         XCTAssertTrue(
             service.validateNonPriorityMuscleVolume(days: days, blueprint: blueprint, recoveryTight: false)
@@ -926,9 +934,18 @@ final class GeneratorBalanceFixTests: XCTestCase {
         ]
         let candidate = (name: "Standing Calf Raise", target: "Calves")
 
+        // Built at each movement's `minimumSetFloor`, because that is what
+        // `seededDayFitsItsBudgets` projects. This used to read `sets: 1` and passed only by
+        // accident: the old STEP fatigue model charged one set and three sets identically, so a
+        // one-set probe and a floor projection were the same number. FAT-001's linear model makes
+        // them differ (Back Squat projects fatigueCost 3 x floor 3 = 9, not 3), and the one-set
+        // version understated the projection by more than half. Derived from the service rather
+        // than hard-coded so it stays correct if a role default or a floor moves again.
         let seededFatigue = service.estimatedDayFatigue(for: [
-            exercise("Back Squat", "Quads", sets: 1),
-            exercise("Standing Calf Raise", "Calves", sets: 1)
+            exercise("Back Squat", "Quads",
+                     sets: service.minimumSetFloor(forExerciseName: "Back Squat", muscleTarget: "Quads")),
+            exercise("Standing Calf Raise", "Calves",
+                     sets: service.minimumSetFloor(forExerciseName: "Standing Calf Raise", muscleTarget: "Calves"))
         ])
 
         XCTAssertFalse(
