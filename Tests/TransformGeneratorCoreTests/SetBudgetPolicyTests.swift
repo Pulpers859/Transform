@@ -96,9 +96,18 @@ final class SetBudgetPolicyTests: XCTestCase {
         XCTAssertEqual(ordinary.menu[0].prescribedSets, 2)
         XCTAssertEqual(ordinary.observations[0].rejection?.kind, .sessionPriority)
         let focused = run([slot("Cable Crunch", "Abs")],
-            plan(target: 10, ordinary: 2, focused: 4, focus: "  CORE/ABS  "))
+            plan(target: 10, ordinary: 2, focused: 4, focus: "CÓRE/ABS"))
         XCTAssertEqual(focused.menu[0].prescribedSets, 4)
         XCTAssertEqual(focused.observations[0].rejection?.kind, .role, "Role cap is checked before other limits")
+        // Existing normalization folds case/accents, but does not trim whitespace.
+        // This deliberately mismatched blueprint is synthetic: buildBlueprintDayPlans
+        // copies focus.area from the same priority allocation, so incidental padding
+        // on that allocation is shared by both strings. This pins extraction parity,
+        // not a guarantee that arbitrary independently supplied labels are sanitized.
+        let padded = run([slot("Cable Crunch", "Abs")],
+            plan(target: 10, ordinary: 2, focused: 4, focus: "  CORE/ABS  "))
+        XCTAssertEqual(padded.menu[0].prescribedSets, 2)
+        XCTAssertEqual(padded.observations[0].rejection?.kind, .sessionPriority)
     }
 
     func testActualGateReportsSharedMaintenanceCeiling() throws {

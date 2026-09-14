@@ -43,6 +43,7 @@ SVC = ROOT / "Transform/Transform/WorkoutGeneratorService.swift"
 PRIORITY = ROOT / "Transform/Transform/WorkoutGeneratorService+PriorityIntent.swift"
 PARSING = ROOT / "Transform/Transform/WorkoutGeneratorService+ParsingValidation.swift"
 SELECTION = ROOT / "Transform/Transform/WorkoutGeneratorService+ExerciseSelection.swift"
+SET_POLICY = ROOT / "Transform/Transform/WorkoutSetBudgetPolicy.swift"
 
 SLOT_SET_DIVISOR = 4.0  # minimumExerciseSlots(forWeeklySetTarget:) -- asserted below, not assumed
 
@@ -117,8 +118,8 @@ def swift_phase_defaults(svc: str) -> dict[int, dict[str, int]]:
 def swift_maintenance_ceilings(text: str, label: str) -> list[tuple[float, float]]:
     """Every `maintenanceCeiling` declaration in a file, as (recoveryTight, normal).
 
-    There are three: +ExerciseSelection.swift declares it twice (once as Int, once as Double) and
-    +ParsingValidation.swift once. The allocator funds to it and the validator grades against it,
+    Candidate selection and validation retain local declarations; allocation now uses the
+    separately parsed WorkoutSetBudgetPolicy. The allocator funds to it and the validator grades against it,
     so a single site drifting means the app is marked down for obeying its own budget.
     """
     found = [(float(m.group(1)), float(m.group(2)))
@@ -126,6 +127,14 @@ def swift_maintenance_ceilings(text: str, label: str) -> list[tuple[float, float
     if not found:
         die(f"could not parse any maintenanceCeiling in {label} -- this checker is stale")
     return found
+
+
+def swift_policy_maintenance_ceiling(text: str) -> tuple[float, float]:
+    body = need(re.search(
+        r"static func maintenanceCeiling\(recoveryTight: Bool\) -> Double\s*\{\s*"
+        r"recoveryTight\s*\?\s*([\d.]+)\s*:\s*([\d.]+)\s*\}", text),
+        "maintenanceCeiling in WorkoutSetBudgetPolicy.swift")
+    return float(body.group(1)), float(body.group(2))
 
 
 def swift_maintenance_floor(text: str) -> float:
@@ -185,10 +194,11 @@ def main() -> int:
                 f"{ceilings[tier] * divisor:g} sets."
             )
 
-    # --- 4. the two Swift maintenance sites must agree, and match the doc --------------------
+    # --- 4. Swift maintenance sites must agree, and match the doc ----------------------------
     p_floor = swift_maintenance_floor(parsing)
     all_ceilings = (swift_maintenance_ceilings(parsing, "+ParsingValidation.swift")
-                    + swift_maintenance_ceilings(selection, "+ExerciseSelection.swift"))
+                    + swift_maintenance_ceilings(selection, "+ExerciseSelection.swift")
+                    + [swift_policy_maintenance_ceiling(read(SET_POLICY))])
     if len(set(all_ceilings)) != 1:
         failures.append(
             f"the {len(all_ceilings)} maintenanceCeiling declarations do not agree: {sorted(set(all_ceilings))}. "

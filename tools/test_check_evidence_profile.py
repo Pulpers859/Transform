@@ -17,6 +17,7 @@ FILES = [
     "Transform/Transform/WorkoutGeneratorService+PriorityIntent.swift",
     "Transform/Transform/WorkoutGeneratorService+ParsingValidation.swift",
     "Transform/Transform/WorkoutGeneratorService+ExerciseSelection.swift",
+    "Transform/Transform/WorkoutSetBudgetPolicy.swift",
 ]
 
 
@@ -49,6 +50,7 @@ SVC = FILES[1]
 PRI = FILES[2]
 PAR = FILES[3]
 SEL = FILES[4]
+POLICY = FILES[5]
 
 # (name, [(file, old, new), ...], substring the failure message must contain)
 ATTACKS = [
@@ -67,8 +69,14 @@ ATTACKS = [
       (DOC, "floored at `3`", "floored at `4`")],
      "unreachable"),
     ("allocator and validator ceilings disagree",
-     [(SEL, "let maintenanceCeiling = recoveryTight ? 8.0 : 10.0",
-           "let maintenanceCeiling = recoveryTight ? 5.0 : 6.0")],
+     [(POLICY, "recoveryTight ? 8 : 10", "recoveryTight ? 5 : 6")],
+     "do not agree"),
+    ("shared allocator ceiling can no longer be parsed",
+     [(POLICY, "static func maintenanceCeiling(", "static func renamedMaintenanceCeiling(")],
+     "could not parse"),
+    ("candidate selection and shared allocator ceilings disagree",
+     [(SEL, "let maintenanceCeiling = recoveryTight ? 8 : 10",
+            "let maintenanceCeiling = recoveryTight ? 5 : 6")],
      "do not agree"),
     ("a session fatigue cap too low to build a full-size day (the pre-linear values)",
      [(SVC, '"push": 48', '"push": 19')],
