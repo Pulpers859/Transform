@@ -142,6 +142,7 @@ final class UserJourneySimulationTests: XCTestCase {
         let shape: String
         let blueprint: ClaudeService.ProgramBlueprint
         let appearancePlanning: [String]
+        let nextSetFunding: [SetFundingObservation]
     }
 
     // Test-only export: no changes to production models or the generation contract.
@@ -165,6 +166,7 @@ final class UserJourneySimulationTests: XCTestCase {
         let days: [WorkoutDayResponse]
         let validatorFindings: [String]
         let appearancePlanning: [String]
+        let nextSetFunding: [SetFundingObservation]
     }
 
     private struct PriorityEvidence: Encodable {
@@ -184,6 +186,31 @@ final class UserJourneySimulationTests: XCTestCase {
         delivered + 0.01 >= floor(ceiling)
     }
 
+    // This pins the diagnosis of an OPEN shortfall, not acceptance of its dose.
+    // It must be revised with the actual quality fix, never used to keep the shortfall.
+    func testKnownGluteShortfallReportsTheActualQuadBudgetRefusal() throws {
+        let persona = try XCTUnwrap(personas.first { $0.name == "Four-day beginner with a shoulder that hurts overhead" })
+        let intent = service.trainingIntentPlan(from: analysis(for: persona))
+        let blueprint = service.programBlueprint(for: intent, weekNumber: 1)
+        var observations: [SetFundingObservation] = []
+        let menus = service.preSelectedExerciseMenu(for: blueprint, trainingIntent: intent,
+            weekNumber: 1, previousWeekDays: nil, setFundingReport: { observations = $0 })
+        let lunge = try XCTUnwrap(observations.first { $0.exerciseName == "Dumbbell Walking Lunge" })
+        XCTAssertEqual(lunge.dayIndex, 1)
+        XCTAssertEqual(lunge.prescribedSets, 2)
+        let refusal = try XCTUnwrap(lunge.rejection)
+        XCTAssertEqual(refusal.kind, .weeklyPriority)
+        XCTAssertEqual(refusal.subject, "Quads")
+        XCTAssertEqual(try XCTUnwrap(refusal.projected), 8, accuracy: 0.000001)
+        XCTAssertEqual(try XCTUnwrap(refusal.limit), 7.51, accuracy: 0.000001)
+        let gluteCredit = menus.joined().reduce(0.0) { total, exercise in
+            total + service.directSetCredit(for: WorkoutExerciseResponse(exerciseName: exercise.exerciseName,
+                sets: exercise.prescribedSets, reps: "", tempo: "", restSeconds: 0,
+                notes: "", muscleTarget: exercise.muscleTarget), area: "Glutes")
+        }
+        XCTAssertEqual(gluteCredit, 2, "Known baseline shortfall must remain visible until its planning fix")
+    }
+
     func testWholeSetTargetObserverRejectsMissingAttainableSets() {
         XCTAssertTrue(meetsWholeSetTarget(delivered: 7, ceiling: 7.51))
         XCTAssertFalse(meetsWholeSetTarget(delivered: 6, ceiling: 7.51))
@@ -200,13 +227,32 @@ final class UserJourneySimulationTests: XCTestCase {
         for weekNumber in 1...4 {
             let blueprint = service.programBlueprint(for: intent, weekNumber: weekNumber)
             var appearancePlanning: [String] = []
+            var nextSetFunding: [SetFundingObservation] = []
             let menus = service.preSelectedExerciseMenu(
                 for: blueprint,
                 trainingIntent: intent,
                 weekNumber: weekNumber,
                 previousWeekDays: previous,
-                appearancePlanningReport: { appearancePlanning.append($0) }
+                appearancePlanningReport: { appearancePlanning.append($0) },
+                setFundingReport: { nextSetFunding = $0 }
             )
+            XCTAssertEqual(nextSetFunding.count, menus.joined().count)
+            XCTAssertEqual(nextSetFunding.map { "\($0.dayIndex):\($0.exerciseIndex)" },
+                menus.indices.flatMap { day in menus[day].indices.map { "\(day):\($0)" } })
+            var observedLocations = Set<String>()
+            for observation in nextSetFunding {
+                guard menus.indices.contains(observation.dayIndex),
+                      menus[observation.dayIndex].indices.contains(observation.exerciseIndex) else {
+                    XCTFail("Funding observation contains an out-of-range menu location")
+                    continue
+                }
+                XCTAssertTrue(observedLocations.insert("\(observation.dayIndex):\(observation.exerciseIndex)").inserted,
+                    "Each appearance must be reported exactly once")
+                let exercise = menus[observation.dayIndex][observation.exerciseIndex]
+                XCTAssertEqual(observation.exerciseName, exercise.exerciseName)
+                XCTAssertEqual(observation.muscleTarget, exercise.muscleTarget)
+                XCTAssertEqual(observation.prescribedSets, exercise.prescribedSets)
+            }
             let days: [WorkoutDayResponse]
             if weekNumber == 1 {
                 days = try service.validatedProceduralWeekOneProgram(
@@ -262,7 +308,7 @@ final class UserJourneySimulationTests: XCTestCase {
             }.joined(separator: " ")
 
             weeks.append(SimulatedWeek(days: days, findings: findings, shape: shape, blueprint: blueprint,
-                appearancePlanning: appearancePlanning))
+                appearancePlanning: appearancePlanning, nextSetFunding: nextSetFunding))
             previous = days
         }
         return weeks
@@ -299,7 +345,8 @@ final class UserJourneySimulationTests: XCTestCase {
                         },
                         days: week.days,
                         validatorFindings: week.findings,
-                        appearancePlanning: week.appearancePlanning
+                        appearancePlanning: week.appearancePlanning,
+                        nextSetFunding: week.nextSetFunding
                     )
                 }
             ))

@@ -1779,7 +1779,8 @@ extension ClaudeService {
         weekNumber: Int,
         previousWeekDays: [WorkoutDayResponse]?,
         exerciseHistory: ExerciseHistoryContext? = nil,
-        appearancePlanningReport: ((String) -> Void)? = nil
+        appearancePlanningReport: ((String) -> Void)? = nil,
+        setFundingReport: (([SetFundingObservation]) -> Void)? = nil
     ) -> [[PreSelectedExercise]] {
         let previousExercisesByStyle = proceduralPreviousExercisesByStyle(from: previousWeekDays)
         var previousUsageByStyle: [String: Int] = [:]
@@ -2141,7 +2142,8 @@ extension ClaudeService {
             blueprint: blueprint,
             weekNumber: weekNumber,
             lockedPrefixCounts: lockedPrefixCounts,
-            appearancePlanningReport: appearancePlanningReport
+            appearancePlanningReport: appearancePlanningReport,
+            setFundingReport: setFundingReport
         )
     }
 
@@ -3463,7 +3465,8 @@ extension ClaudeService {
         blueprint: ProgramBlueprint,
         weekNumber: Int,
         lockedPrefixCounts: [Int] = [],
-        appearancePlanningReport: ((String) -> Void)? = nil
+        appearancePlanningReport: ((String) -> Void)? = nil,
+        setFundingReport: (([SetFundingObservation]) -> Void)? = nil
     ) -> [[PreSelectedExercise]] {
         // Deload policy stays on its existing path. Loading weeks reserve all appearance
         // floors before any optional set funding. An unresolved candidate-pool conflict is
@@ -3492,21 +3495,12 @@ extension ClaudeService {
                 return seeded
             }
         }
-        let recoveryTight = blueprint.calibration.recoveryConstrained
-            || blueprint.calibration.poorNutritionAdherence
-        let maintenanceCeiling = recoveryTight ? 8.0 : 10.0
+        let limits = setBudgetLimits(for: blueprint)
         let allocations = blueprint.priorityAllocations
         let budgetAccounting = weeklyExerciseAccounting(for: allocated, blueprint: blueprint)
         let maintenanceGroups = budgetAccounting.groups
         let accounting = budgetAccounting.exercises
-        // Whether each day's focus area matches each priority (stable; used for focus caps/bonuses).
-        let focusMatch: [[Bool]] = blueprint.dayPlans.indices.map { dayIndex in
-            allocations.map { allocation in
-                blueprint.dayPlans[dayIndex].focusArea.map {
-                    normalizedPriorityText($0) == normalizedPriorityText(allocation.area)
-                } ?? false
-            }
-        }
+        let focusMatch = limits.focusMatch
 
         func response(dayIndex: Int, exerciseIndex: Int, addingSet: Bool = false) -> WorkoutExerciseResponse {
             let exercise = allocated[dayIndex][exerciseIndex]
@@ -3565,75 +3559,57 @@ extension ClaudeService {
             return (direct, weighted)
         }
 
-        func canAddSet(dayIndex: Int, exerciseIndex: Int, allowFloorOvershoot: Bool = false) -> Bool {
+        func nextSetRejection(dayIndex: Int, exerciseIndex: Int, allowFloorOvershoot: Bool = false) -> SetFundingRejection? {
             let exercise = allocated[dayIndex][exerciseIndex]
-            let roleDefault = proceduralSets(
-                for: weekNumber,
-                exerciseName: exercise.exerciseName,
-                muscleTarget: exercise.muscleTarget
-            )
+            let roleDefault = proceduralSets(for: weekNumber, exerciseName: exercise.exerciseName,
+                muscleTarget: exercise.muscleTarget)
             let isPrimePriorityExercise = allocations.indices.contains { allocIndex in
                 accounting[dayIndex][exerciseIndex].unitDirect[allocIndex] > 0
                     && accounting[dayIndex][exerciseIndex].qualityScore[allocIndex] == 30
             }
-            // SLOT-001's feasibility floor assumes a prime priority slot can hold about four
-            // sets. Honor that same ceiling here instead of creating a plan that promises
-            // 12 sets across three slots and then caps every accessory at three.
+            // Preserve the existing any-priority allowance; reservation's capacity bound
+            // remains allocation-specific. They must not be conflated in this extraction.
             let setCeiling = isPrimePriorityExercise ? max(roleDefault, 4) : roleDefault
-            guard exercise.prescribedSets < setCeiling else { return false }
+            guard exercise.prescribedSets < setCeiling else {
+                return .init(kind: .role, subject: exercise.exerciseName,
+                    projected: Double(exercise.prescribedSets) + 1, limit: Double(setCeiling))
+            }
 
             for groupIndex in maintenanceGroups.indices
                 where accounting[dayIndex][exerciseIndex].groupTargets[groupIndex] {
-                guard maintenanceSets(
-                    groupIndex: groupIndex,
-                    addingAt: (dayIndex, exerciseIndex)
-                ) <= maintenanceCeiling + 0.01 else { return false }
+                let projected = maintenanceSets(groupIndex: groupIndex, addingAt: (dayIndex, exerciseIndex))
+                guard projected <= limits.maintenanceFundingCeiling else {
+                    return .init(kind: .maintenance, subject: maintenanceGroups[groupIndex].label,
+                        projected: projected, limit: limits.maintenanceFundingCeiling)
+                }
             }
 
-            // A set funded for one priority may also credit another. Check every weekly ledger
-            // jointly so shared Chest/Triceps or Quads/Glutes work cannot overfill a later
-            // priority before its own allocation pass begins.
+            // Check every credited priority, not only the one currently being funded.
+            // Existing overage in an unrelated priority still does not refuse this set.
             for allocIndex in allocations.indices {
                 let current = priorityCoverage(allocIndex: allocIndex)
-                let projected = priorityCoverage(
-                    allocIndex: allocIndex,
-                    addingAt: (dayIndex, exerciseIndex)
-                )
+                let projected = priorityCoverage(allocIndex: allocIndex, addingAt: (dayIndex, exerciseIndex))
                 let addsDirectCredit = projected.direct > current.direct + 0.01
-                // Normal funding stops at the soft weekly target. The floor pass may overshoot
-                // it to buy a movement a real minimum dose, but must stay under the menu-locked
-                // over-volume HARD-fail line (validator: directSets > target * moderateMultiplier
-                // + moderateBuffer), or it would trade fragmentation for a deterministic,
-                // unrepairable generation failure. The -0.02 margin absorbs the 0.01 allocator/
-                // validator ledger tolerance on each side.
-                let ceiling: Double
-                if allowFloorOvershoot {
-                    let moderateMultiplier = recoveryTight ? 1.15 : 1.3
-                    let moderateBuffer = recoveryTight ? 0.0 : 0.5
-                    ceiling = allocations[allocIndex].directSetTarget * moderateMultiplier
-                        + moderateBuffer - 0.02
-                } else {
-                    ceiling = normalWeeklyPrioritySetCeiling(for: allocations[allocIndex])
-                }
+                let ceiling = allowFloorOvershoot
+                    ? limits.floorWeeklyPriority[allocIndex] : limits.normalWeeklyPriority[allocIndex]
                 guard !addsDirectCredit || projected.direct <= ceiling else {
-                    return false
+                    return .init(kind: .weeklyPriority, subject: allocations[allocIndex].area,
+                        projected: projected.direct, limit: ceiling)
                 }
             }
 
-            guard dayIndex < blueprint.dayPlans.count else { return false }
-            let plan = blueprint.dayPlans[dayIndex]
-            let dayExercises = allocated[dayIndex].indices.map { index in
-                response(
-                    dayIndex: dayIndex,
-                    exerciseIndex: index,
-                    addingSet: index == exerciseIndex
-                )
+            guard dayIndex < blueprint.dayPlans.count else {
+                return .init(kind: .missingDayPlan, subject: "Day \(dayIndex + 1)", projected: nil, limit: nil)
             }
-            // Fatigue only. The session clock no longer refuses a set: the owner's report is that
-            // a session he does not finish is a scheduling problem of his own, not a program that
-            // is too long, and a clock that cuts sets is the app punishing him for arriving late.
-            // Recovery is still policed, by the one budget that is about his body.
-            guard estimatedDayFatigue(for: dayExercises) <= plan.targetFatigueCap else { return false }
+            let dayExercises = allocated[dayIndex].indices.map { index in
+                response(dayIndex: dayIndex, exerciseIndex: index, addingSet: index == exerciseIndex)
+            }
+            // Fatigue, not projected session minutes, governs this gate.
+            let projectedFatigue = estimatedDayFatigue(for: dayExercises)
+            guard projectedFatigue <= limits.fatigue[dayIndex] else {
+                return .init(kind: .fatigue, subject: "Day \(dayIndex + 1)",
+                    projected: Double(projectedFatigue), limit: Double(limits.fatigue[dayIndex]))
+            }
 
             for allocIndex in allocations.indices {
                 guard accounting[dayIndex][exerciseIndex].unitDirect[allocIndex] > 0 else { continue }
@@ -3643,13 +3619,18 @@ extension ClaudeService {
                     dayDirectSets += Double(allocated[dayIndex][index].prescribedSets + extra)
                         * accounting[dayIndex][index].unitDirect[allocIndex]
                 }
-                let cap = focusMatch[dayIndex][allocIndex]
-                    ? allocations[allocIndex].maxFocusSessionDirectSets
-                    : allocations[allocIndex].maxPerSessionDirectSets
-                guard dayDirectSets <= cap + 0.01 else { return false }
+                let cap = limits.sessionFundingCeiling(day: dayIndex, allocation: allocIndex)
+                guard dayDirectSets <= cap else {
+                    return .init(kind: .sessionPriority, subject: allocations[allocIndex].area,
+                        projected: dayDirectSets, limit: cap)
+                }
             }
+            return nil
+        }
 
-            return true
+        func canAddSet(dayIndex: Int, exerciseIndex: Int, allowFloorOvershoot: Bool = false) -> Bool {
+            nextSetRejection(dayIndex: dayIndex, exerciseIndex: exerciseIndex,
+                allowFloorOvershoot: allowFloorOvershoot) == nil
         }
 
         // Fund blueprint priorities before distributing maintenance volume.
@@ -3867,6 +3848,19 @@ extension ClaudeService {
             consistencyIssues.isEmpty,
             "Weekly allocation and validator stimulus ledgers diverged: \(consistencyIssues.joined(separator: " | "))"
         )
+        // Evaluate the SAME normal-funding gate against the final state, only on request.
+        // A first blocker is evidence about one next set, not proof no alternative plan fits.
+        if let setFundingReport {
+            setFundingReport(allocated.indices.flatMap { day in
+                allocated[day].indices.map { index in
+                    let exercise = allocated[day][index]
+                    return SetFundingObservation(dayIndex: day, exerciseIndex: index,
+                        exerciseName: exercise.exerciseName, muscleTarget: exercise.muscleTarget,
+                        prescribedSets: exercise.prescribedSets,
+                        rejection: nextSetRejection(dayIndex: day, exerciseIndex: index))
+                }
+            })
+        }
         return allocated
     }
 

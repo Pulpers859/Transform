@@ -49,12 +49,73 @@ was specifically checked by the `budget_contract_review` read-only agent, then
 checked against source by the main agent; this is distinct from the later
 packet-only Claude review. Neither review executed the Swift tests.
 
-This slice does NOT unify weekly/session tolerances, capacity assumptions, fatigue
-checks or candidate selection. It does not remove the legacy path or fix the backlog.
+That credit-extraction slice did not unify weekly/session tolerances, capacity
+assumptions, fatigue checks or candidate selection. It did not remove the legacy path or fix the backlog.
 Acceptance requires unchanged full exported days, priorities and findings across
 the current twenty-week matrix, plus the historical snapshot. Helper parity alone
 cannot prove unchanged generator output. Existing fractional-ceiling and late-focus
 integration tests remain unchanged.
+
+### Shared-limit and refusal-evidence slice (2026-09-14)
+
+Starting checkpoint: `6332487`; its full twenty-week JSON and historical snapshot
+matched `b187f51`. Its executed suite contained 644 tests and the app build passed.
+
+`WorkoutSetBudgetPolicy` now owns normal/floor weekly ceilings, maintenance ceilings
+and focus-cap selection. `setBudgetLimits(for:)` supplies those values, normalized
+focus matches and blueprint fatigue caps to reservation and funding. The prior
+comparison allowances remain intentionally different: reservation uses the solver's
+0.001 tolerance; funding adds 0.01 to maintenance/session caps, already includes
+0.01 in the normal weekly ceiling, and adds nothing to its floor-repair weekly ceiling.
+`SetBudgetPolicyTests` covers the policy matrix and distinct reservation/funding boundary.
+
+The allocator's Boolean funding gate now delegates to `nextSetRejection`, preserving
+its check order: role, maintenance, credited weekly priorities, day existence,
+fatigue, then credited session priorities. An optional `setFundingReport` requests
+one final-state observation per returned appearance. This is the SAME gate used to
+fund sets, not a separately reimplemented diagnostic rule. Receipts contain the first
+blocking budget, subject, projected amount and applied limit. A nil rejection means
+the next set passes budgets, not that the funding objectives require buying it.
+
+The observations describe a hypothetical next set at the FINAL allocation state;
+they are not a chronological record of earlier refusals, an exhaustive list of
+blockers, or proof that replacement/reallocation cannot solve the week. Their
+zero-based indices refer to the RETURNED menu, after admission removals. There is
+no new public arbitrary-index evaluator or new malformed-input guarantee.
+
+The standalone check is intentionally not a SwiftPM executable product; it compiles
+the production policy file directly for Windows validation:
+
+```powershell
+swiftc Transform/Transform/WorkoutSetBudgetPolicy.swift tools/check_set_budget_policy.swift -o .agents/set-budget-policy-check.exe
+& .agents/set-budget-policy-check.exe
+```
+
+`UserJourneySimulationTests` adds `nextSetFunding` to the raw JSON and checks ordered
+receipt locations, identity and dose against returned menus. The late-focus admission
+regression also compares reporting enabled/disabled after a candidate is removed.
+The known glute-shortfall diagnostic test is explicitly a reproduction of an OPEN
+problem: it expects the actual gate to refuse the next lunge set at Quads 8 vs 7.51.
+It must be revised when that shortfall is genuinely fixed; it is not a dose-acceptance rule.
+
+Validation for this slice requires the complete old evidence to remain identical
+after removing ONLY the newly added `nextSetFunding` field, plus an identical
+historical snapshot. Full app/Swift CI execution and downloaded artifact comparison
+are required before claiming this acceptance gate passed. Local syntax checks and
+the standalone `tools/check_set_budget_policy.swift` numerical/Codable checks do not
+establish app behavior. The optional report is not wired into app UI or paid requests.
+
+Alternatives considered: collecting every blocker would require evaluating later
+checks even after the decision is known; a separate diagnostic evaluator could drift
+from funding. The first-blocker receipt keeps the existing short-circuit order.
+It still constructs small rejection values on failed funding checks, so unchanged
+runtime performance is not claimed from source inspection. Compare output first;
+measure performance separately before changing the search or retry strategy.
+
+Still open: candidate-builder gates, allocation-specific capacity assumptions,
+replacement/relocation planning, legacy conflict handling, all quality findings,
+volume policy and device validation. No rule band, deload behavior, warning severity,
+exercise naming key or saved-data format is intentionally changed here.
 
 ### Audit cadence
 

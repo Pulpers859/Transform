@@ -1,6 +1,47 @@
 import Foundation
 
 extension ClaudeService {
+    struct SetBudgetLimits {
+        // maintenance/sessionPriority are raw; use their funding wrappers for +0.01.
+        // normalWeeklyPriority already includes +0.01. floorWeeklyPriority includes
+        // its historical buffer/margin, but NO added funding tolerance.
+        let maintenance: Double
+        let normalWeeklyPriority: [Double]
+        let floorWeeklyPriority: [Double]
+        let sessionPriority: [[Double]]
+        let focusMatch: [[Bool]]
+        let fatigue: [Int]
+
+        var maintenanceFundingCeiling: Double { maintenance + WorkoutSetBudgetPolicy.fundingTolerance }
+        func sessionFundingCeiling(day: Int, allocation: Int) -> Double {
+            sessionPriority[day][allocation] + WorkoutSetBudgetPolicy.fundingTolerance
+        }
+    }
+
+    func setBudgetLimits(for blueprint: ProgramBlueprint) -> SetBudgetLimits {
+        let tight = blueprint.calibration.recoveryConstrained || blueprint.calibration.poorNutritionAdherence
+        let allocations = blueprint.priorityAllocations
+        let focusMatch = blueprint.dayPlans.map { day in
+            allocations.map { allocation in
+                day.focusArea.map { normalizedPriorityText($0) == normalizedPriorityText(allocation.area) } ?? false
+            }
+        }
+        return SetBudgetLimits(
+            maintenance: WorkoutSetBudgetPolicy.maintenanceCeiling(recoveryTight: tight),
+            normalWeeklyPriority: allocations.map {
+                WorkoutSetBudgetPolicy.normalWeeklyPriorityCeiling(target: $0.directSetTarget)
+            },
+            floorWeeklyPriority: allocations.map {
+                WorkoutSetBudgetPolicy.floorWeeklyPriorityCeiling(target: $0.directSetTarget, recoveryTight: tight)
+            },
+            sessionPriority: blueprint.dayPlans.indices.map { day in
+                allocations.indices.map { index in
+                    WorkoutSetBudgetPolicy.sessionPriorityCeiling(ordinary: allocations[index].maxPerSessionDirectSets,
+                        focused: allocations[index].maxFocusSessionDirectSets, isFocus: focusMatch[day][index])
+                }
+            }, focusMatch: focusMatch, fatigue: blueprint.dayPlans.map(\.targetFatigueCap))
+    }
+
     struct MaintenanceAccountingGroup {
         let label: String
         let aliases: Set<String>

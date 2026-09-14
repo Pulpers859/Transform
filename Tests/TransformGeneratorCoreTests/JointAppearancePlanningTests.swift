@@ -79,6 +79,19 @@ final class JointAppearancePlanningTests: XCTestCase {
         XCTAssertTrue(reports[0].contains("APPEARANCE PLANNING CONFLICT"))
         XCTAssertEqual(legacy.map { $0.map(\.exerciseName) }, menus.map { $0.map(\.exerciseName) })
         let funded = service.allocateWeeklySetPrescription(menus, blueprint: blueprint, weekNumber: 1)
+        var receipts: [SetFundingObservation] = []
+        var receiptCalls = 0
+        let observed = service.allocateWeeklySetPrescription(menus, blueprint: blueprint, weekNumber: 1,
+            setFundingReport: { receipts = $0; receiptCalls += 1 })
+        XCTAssertEqual(receiptCalls, 1)
+        XCTAssertEqual(observed.map { $0.map(\.exerciseName) }, funded.map { $0.map(\.exerciseName) })
+        XCTAssertEqual(observed.map { $0.map(\.muscleTarget) }, funded.map { $0.map(\.muscleTarget) })
+        XCTAssertEqual(observed.map { $0.map(\.prescribedSets) }, funded.map { $0.map(\.prescribedSets) })
+        XCTAssertEqual(receipts.map { "\($0.dayIndex):\($0.exerciseIndex)" },
+            observed.indices.flatMap { day in observed[day].indices.map { "\(day):\($0)" } })
+        XCTAssertLessThan(receipts.count, menus.joined().count, "Receipts index admitted appearances, not removed candidates")
+        XCTAssertEqual(receipts.map(\.exerciseName), observed.flatMap { $0.map(\.exerciseName) })
+        XCTAssertEqual(receipts.map(\.prescribedSets), observed.flatMap { $0.map(\.prescribedSets) })
         for day in funded {
             for exercise in day {
                 XCTAssertGreaterThanOrEqual(exercise.prescribedSets,

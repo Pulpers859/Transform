@@ -5,7 +5,7 @@ extension ClaudeService {
     // soft-ceiling policy, including its numerical tolerance; it does not round budgets up.
     // JointAppearancePlanningTests.testFractionalTargetIsAnExecutedAllocationCeiling pins it.
     func normalWeeklyPrioritySetCeiling(for allocation: BlueprintPriorityAllocation) -> Double {
-        allocation.directSetTarget + 0.01
+        WorkoutSetBudgetPolicy.normalWeeklyPriorityCeiling(target: allocation.directSetTarget)
     }
 
     struct AppearanceReservation {
@@ -34,7 +34,7 @@ extension ClaudeService {
             WorkoutExerciseResponse(exerciseName: exercises[index].exerciseName, sets: floors[index],
                 reps: "", tempo: "", restSeconds: 0, notes: "", muscleTarget: exercises[index].muscleTarget)
         }
-        let tight = blueprint.calibration.recoveryConstrained || blueprint.calibration.poorNutritionAdherence
+        let limits = setBudgetLimits(for: blueprint)
         var upper: [WorkoutAppearancePlanner.Constraint] = []
         var lower: [WorkoutAppearancePlanner.Constraint] = []
         var coverage: [WorkoutAppearancePlanner.Coverage] = []
@@ -46,7 +46,7 @@ extension ClaudeService {
             keep("Day \(day + 1) exercise floor", members, atLeast: 5)
             upper.append(.init(name: "Day \(day + 1) fatigue", coefficients: responses.indices.map {
                 locations[$0].0 == day ? Double(estimatedDayFatigue(for: [responses[$0]])) : 0
-            }, limit: Double(blueprint.dayPlans[day].targetFatigueCap)))
+            }, limit: Double(limits.fatigue[day])))
         }
         for pattern in Set(exercises.map(\.movementPattern)).sorted() {
             keep("Weekly pattern \(pattern)", exercises.map { $0.movementPattern == pattern ? 1 : 0 }, atLeast: 1)
@@ -61,7 +61,7 @@ extension ClaudeService {
             let targets = accounting.map { $0.directlyTargetsGroup[groupIndex] }
             upper.append(.init(name: "\(group.label) maintenance/residue", coefficients: exercises.indices.map { index in
                 accounting[index].groupTargets[groupIndex] ? Double(floors[index]) : 0
-            }, limit: tight ? 8 : 10))
+            }, limit: limits.maintenance))
             let coveredDays = menus.indices.map { day in
                 exercises.indices.filter { locations[$0].0 == day && targets[$0] }
             }.filter { !$0.isEmpty }
@@ -73,7 +73,7 @@ extension ClaudeService {
             let direct = accounting.indices.map { accounting[$0].unitDirect[allocationIndex] * Double(floors[$0]) }
             let prime = accounting.map { $0.qualityScore[allocationIndex] == 30 }
             upper.append(.init(name: "\(allocation.area) weekly direct sets", coefficients: direct,
-                limit: allocation.directSetTarget * (tight ? 1.15 : 1.3) + (tight ? 0 : 0.5) - 0.02))
+                limit: limits.floorWeeklyPriority[allocationIndex]))
             keep("\(allocation.area) prime slots", prime.map { $0 ? 1 : 0 }, atLeast: Double(allocation.targetExerciseSlots))
             // A capacity bound is necessary, not proof that shared budgets can fund every
             // target simultaneously; final delivered coverage is checked separately.
@@ -83,12 +83,10 @@ extension ClaudeService {
                 return direct[index] / Double(floors[index]) * Double(ceiling)
             }, atLeast: allocation.directSetTarget)
             for day in menus.indices {
-                let focus = blueprint.dayPlans[day].focusArea.map {
-                    normalizedPriorityText($0) == normalizedPriorityText(allocation.area)
-                } ?? false
+                let focus = limits.focusMatch[day][allocationIndex]
                 upper.append(.init(name: "Day \(day + 1) \(allocation.area) direct sets",
                     coefficients: direct.indices.map { locations[$0].0 == day ? direct[$0] : 0 },
-                    limit: focus ? allocation.maxFocusSessionDirectSets : allocation.maxPerSessionDirectSets))
+                    limit: limits.sessionPriority[day][allocationIndex]))
                 if focus {
                     keep("Day \(day + 1) \(allocation.area) focus exposure", prime.indices.map {
                         locations[$0].0 == day && prime[$0] ? 1 : 0
