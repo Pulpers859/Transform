@@ -1,5 +1,77 @@
 # Generator planner refactor: evidence and acceptance
 
+## Active roadmap and audit checkpoints (2026-09-13)
+
+Starting checkpoint: `b187f51`. This is a staged plan, not a claim that every
+finding below is a code defect or that the architectural work is complete.
+
+1. Pin each unresolved finding to an input and actual output; add a failing
+   behavioral test before changing its owner. Keep heuristic policy questions separate.
+2. Share per-appearance credit, coverage, maintenance membership and dose-floor
+   accounting between floor reservation and optional funding. Preserve policy first.
+3. Reconcile remaining limit ownership and explicit infeasible/search-limit results.
+   Compare bounded replacement/relocation with rebuilding the candidate menu. Do not
+   mistake an exhausted search for proof that the user's requirements are impossible.
+4. Resolve the remaining workout-quality findings individually at their earliest cause.
+5. Review volume bands and whole-set rounding separately, with before/after evidence
+   and an explicit owner decision for changed product tradeoffs.
+6. Retire superseded repair paths only after tracing callers and replaying original cases.
+7. Verify the integrated app on the owner's physical iPhone, including saved workouts
+   and exercise-history continuity. No headless result proves these runtime behaviors.
+
+### Acceptance backlog
+
+Inputs are the five personas in `UserJourneySimulationTests` and the historical
+`five-maintenance-errors.json` fixture. The downloaded `b187f51` JSON and fixture
+snapshot were inspected locally; they live in ignored evidence storage, not in this doc.
+The rows are reproducible observations to investigate, not endorsements of warning wording.
+
+| Finding | Pinned observation at starting checkpoint | Acceptance work still required |
+| --- | --- | --- |
+| Glute shortfall | Shoulder-beginner loading weeks report 2 sets vs floor 3, one movement | Trace the refusing budget before adding a movement; test actual credited sets |
+| Crowded lower session | Same persona reports crowded days 2, 9 and 16 | Review actual selection and warning premise; preserve useful dose and coverage |
+| Redundant priority work | Lumbar persona week 1 reports four prime hamstring movements against two planned slots on day 4 | Trace selection/metadata and test the agreed redundancy rule |
+| Rowing imbalance | Lumbar persona deload reports 7 vertical vs 3 rowing sets; historical snapshot has 6 vs 2 | Independently count movement-pattern doses and resolve without losing back coverage |
+| Fractional targets | Export retains raw 7.5 targets with 7 delivered in affected cases | Decide rounding and reconcile all limits during policy work, not this extraction |
+| Unresolved candidate pool | `JointAppearancePlanningTests.testOverfullEarlyArmsDayCannotSpendLateFocusReservation` pins conflict with every slot locked | Replace legacy allocation only with an explicit, tested outcome contract |
+
+### Shared-cost extraction slice
+
+`WorkoutGeneratorService+SetAccounting.swift` centralizes per-appearance direct
+and weighted credit, quality ranking, canonical role floor, raw muscle coverage,
+and filtered maintenance/residue membership. Both reservation and allocation call it.
+`WeeklySetAccountingTests` compares those values with canonical APIs, including
+priority combinations, weighted-only work, repeated appearances and mismatched stored roles.
+
+Raw coverage must remain separate from maintenance debit: priority-paid work can
+still cover a muscle even when excluded from that group's residue. This distinction
+was specifically checked by the `budget_contract_review` read-only agent, then
+checked against source by the main agent; this is distinct from the later
+packet-only Claude review. Neither review executed the Swift tests.
+
+This slice does NOT unify weekly/session tolerances, capacity assumptions, fatigue
+checks or candidate selection. It does not remove the legacy path or fix the backlog.
+Acceptance requires unchanged full exported days, priorities and findings across
+the current twenty-week matrix, plus the historical snapshot. Helper parity alone
+cannot prove unchanged generator output. Existing fractional-ceiling and late-focus
+integration tests remain unchanged.
+
+### Audit cadence
+
+- Before each fix: reproduce the failure and challenge its proposed cause.
+- After the first implementation: separate adversarial review; turn credible findings
+  into tests or exact reproducible examples and revise the implementation.
+- Before committing substantial generator changes: independent staged-diff review
+  using `tools/Invoke-GeneratorSecondAudit.ps1`; disclose unavailable reviewers.
+- After pushing: verify tests actually ran, inspect build logs and compare raw workouts.
+- At each stage boundary: revisit every open finding, record proven/failing/untested
+  status, and compare a credible alternative before expanding the design.
+
+Use the existing Swift harness, Python evidence checker, Git history and targeted
+read-only reviewers. No paid AI generation is needed for the accounting slice.
+Research and `EvidenceProfile.md` govern the later policy review; no research claim
+is established by these software tests.
+
 Baseline source commit: `d9e73d7`. This is a staged refactor, not a claim that
 the generator is fixed. Policy retuning and deload changes are not part of the
 evidence-export step.

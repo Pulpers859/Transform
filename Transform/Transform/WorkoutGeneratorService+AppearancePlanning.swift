@@ -27,7 +27,9 @@ extension ClaudeService {
         }
         let locations = menus.indices.flatMap { day in menus[day].indices.map { (day, $0) } }
         let exercises = locations.map { menus[$0.0][$0.1] }
-        let floors = exercises.map { minimumSetFloor(forExerciseName: $0.exerciseName, muscleTarget: $0.muscleTarget) }
+        let budgetAccounting = weeklyExerciseAccounting(for: menus, blueprint: blueprint)
+        let accounting = locations.map { budgetAccounting.exercises[$0.0][$0.1] }
+        let floors = accounting.map(\.setFloor)
         let responses = exercises.indices.map { index in
             WorkoutExerciseResponse(exerciseName: exercises[index].exerciseName, sets: floors[index],
                 reps: "", tempo: "", restSeconds: 0, notes: "", muscleTarget: exercises[index].muscleTarget)
@@ -54,16 +56,11 @@ extension ClaudeService {
         for target in Set(exercises.map(\.muscleTarget)).sorted() {
             keep("Weekly target \(target)", exercises.map { $0.muscleTarget == target ? 1 : 0 }, atLeast: 1)
         }
-        for group in majorMuscleGroups {
-            let aliases = normalizedGroupAliases(forSeed: group.seed)
-            let targets = exercises.map {
-                exerciseDirectlyTargets(groupAliases: aliases, exerciseName: $0.exerciseName, muscleTarget: $0.muscleTarget)
-            }
-            let residue = isMajorMuscleGroupPrioritized(seed: group.seed, blueprint: blueprint)
+        for groupIndex in budgetAccounting.groups.indices {
+            let group = budgetAccounting.groups[groupIndex]
+            let targets = accounting.map { $0.directlyTargetsGroup[groupIndex] }
             upper.append(.init(name: "\(group.label) maintenance/residue", coefficients: exercises.indices.map { index in
-                let priorityPaid = earnsDirectPriorityCredit(exerciseName: exercises[index].exerciseName,
-                    muscleTarget: exercises[index].muscleTarget, blueprint: blueprint)
-                return targets[index] && (!residue || !priorityPaid) ? Double(floors[index]) : 0
+                accounting[index].groupTargets[groupIndex] ? Double(floors[index]) : 0
             }, limit: tight ? 8 : 10))
             let coveredDays = menus.indices.map { day in
                 exercises.indices.filter { locations[$0].0 == day && targets[$0] }
@@ -71,10 +68,10 @@ extension ClaudeService {
             coverage.append(.init(name: "\(group.label) baseline days", groups: coveredDays,
                 minimumGroups: min(2, coveredDays.count)))
         }
-        for allocation in blueprint.priorityAllocations {
-            let direct = responses.map { stimulusCredit(for: $0, area: allocation.area).directSets }
-            let prime = exercises.map { focusStimulusKind(exerciseName: $0.exerciseName,
-                muscleTarget: $0.muscleTarget, focusArea: allocation.area) == .prime }
+        for allocationIndex in blueprint.priorityAllocations.indices {
+            let allocation = blueprint.priorityAllocations[allocationIndex]
+            let direct = accounting.indices.map { accounting[$0].unitDirect[allocationIndex] * Double(floors[$0]) }
+            let prime = accounting.map { $0.qualityScore[allocationIndex] == 30 }
             upper.append(.init(name: "\(allocation.area) weekly direct sets", coefficients: direct,
                 limit: allocation.directSetTarget * (tight ? 1.15 : 1.3) + (tight ? 0 : 0.5) - 0.02))
             keep("\(allocation.area) prime slots", prime.map { $0 ? 1 : 0 }, atLeast: Double(allocation.targetExerciseSlots))
