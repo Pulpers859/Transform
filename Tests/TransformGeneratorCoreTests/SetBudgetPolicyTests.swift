@@ -55,6 +55,7 @@ final class SetBudgetPolicyTests: XCTestCase {
         for (recovery, nutrition) in [(false, false), (true, false), (false, true), (true, true)] {
             let limits = service.setBudgetLimits(for: plan(target: 8, recovery: recovery, poorNutrition: nutrition))
             XCTAssertEqual(limits.maintenance, recovery || nutrition ? 8 : 10)
+            XCTAssertEqual(WorkoutSetBudgetPolicy.maintenanceFloor(recoveryTight: recovery || nutrition), recovery || nutrition ? 2 : 3)
             XCTAssertEqual(limits.maintenanceFundingCeiling, recovery || nutrition ? 8.01 : 10.01, accuracy: 0.000001)
             XCTAssertEqual(limits.normalWeeklyPriority[0], 8.01, accuracy: 0.000001)
             XCTAssertEqual(limits.floorWeeklyPriority[0], recovery || nutrition ? 9.18 : 10.88, accuracy: 0.000001)
@@ -158,6 +159,25 @@ final class SetBudgetPolicyTests: XCTestCase {
         XCTAssertTrue(result.observations.isEmpty)
     }
 
+    func testMinimumDoseCannotBypassFatigueAndReportsUnresolvedGroups() {
+        let exercises = [slot("Cable Crunch", "Abs"), slot("Standing Calf Raise", "Calves"),
+            slot("EZ-Bar Curl", "Biceps"), slot("Rope Triceps Pressdown", "Triceps"),
+            slot("Cable Lateral Raise", "Lateral Deltoids")]
+        for poorNutrition in [false, true] {
+            let blueprint = plan(fatigue: 10, poorNutrition: poorNutrition)
+            let reservation = service.reserveWeeklyAppearanceFloors([exercises], blueprint: blueprint, weekNumber: 1)
+            guard case .admitted = reservation.outcome else { return XCTFail("Test requires admitted floors") }
+            var reports: [String] = []
+            let result = service.allocateWeeklySetPrescription([exercises], blueprint: blueprint, weekNumber: 1,
+                appearancePlanningReport: { reports.append($0) })
+            XCTAssertEqual(result[0].map(\.exerciseName), exercises.map(\.exerciseName))
+            XCTAssertEqual(result[0].map(\.prescribedSets), [2, 2, 2, 2, 2])
+            XCTAssertEqual(reports.contains { $0.hasPrefix("minimum dose unresolved: Calves;") }, !poorNutrition)
+            XCTAssertTrue(reports.contains { $0.hasPrefix("minimum dose unresolved: Glutes;") },
+                "No candidate cannot be silently represented as a funded minimum")
+        }
+    }
+
     func testCollectingReceiptsDoesNotChangeAllocation() {
         let exercises = [slot("Cable Crunch", "Abs"), slot("Standing Calf Raise", "Calves")]
         let blueprint = plan(target: 2.5)
@@ -167,5 +187,33 @@ final class SetBudgetPolicyTests: XCTestCase {
         XCTAssertEqual(observed.menu.map(\.muscleTarget), unobserved.map(\.muscleTarget))
         XCTAssertEqual(observed.menu.map(\.prescribedSets), unobserved.map(\.prescribedSets))
         XCTAssertEqual(observed.menu.map(\.movementPattern), unobserved.map(\.movementPattern))
+    }
+
+    func testMinimumFirstCandidateCannotStealRequiredPrioritySets() {
+        let exercises = [slot("Cable Crunch", "Abs"), slot("Standing Calf Raise", "Calves"),
+            slot("EZ-Bar Curl", "Biceps"), slot("Rope Triceps Pressdown", "Triceps"),
+            slot("Cable Lateral Raise", "Lateral Deltoids")]
+        let blueprint = plan(target: 4, fatigue: 12)
+        let baseline = service.allocateSetPrescriptionCandidate([exercises], blueprint: blueprint,
+            weekNumber: 1, reserveMaintenanceMinimum: false)
+        let provisional = service.allocateSetPrescriptionCandidate([exercises], blueprint: blueprint,
+            weekNumber: 1, reserveMaintenanceMinimum: true)
+        XCTAssertTrue(baseline.floorReserved)
+        XCTAssertTrue(provisional.floorReserved)
+        XCTAssertEqual(baseline.menus[0][0].prescribedSets, 4)
+        XCTAssertEqual(provisional.menus[0][0].prescribedSets, 2,
+            "Counterexample: unconditional minimum-first funding steals the priority dose")
+        XCTAssertFalse(service.minimumDoseCandidatePreservesPlan(provisional.menus,
+            baseline: baseline.menus, blueprint: blueprint, weekNumber: 1))
+        var reports: [String] = []
+        var receipts: [SetFundingObservation] = []
+        var receiptCount = 0
+        let result = service.allocateWeeklySetPrescription([exercises], blueprint: blueprint, weekNumber: 1,
+            appearancePlanningReport: { reports.append($0) },
+            setFundingReport: { receipts = $0; receiptCount += 1 })
+        XCTAssertEqual(result[0].map(\.prescribedSets), baseline.menus[0].map(\.prescribedSets))
+        XCTAssertEqual(receiptCount, 1)
+        XCTAssertEqual(receipts.map(\.prescribedSets), result[0].map(\.prescribedSets))
+        XCTAssertTrue(reports.contains { $0.hasPrefix("minimum dose plan rejected:") })
     }
 }

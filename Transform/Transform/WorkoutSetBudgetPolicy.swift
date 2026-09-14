@@ -6,6 +6,10 @@ import Foundation
 enum WorkoutSetBudgetPolicy {
     static let fundingTolerance = 0.01
 
+    static func maintenanceFloor(recoveryTight: Bool) -> Double {
+        recoveryTight ? 2 : 3
+    }
+
     static func maintenanceCeiling(recoveryTight: Bool) -> Double {
         recoveryTight ? 8 : 10
     }

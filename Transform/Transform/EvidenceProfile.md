@@ -54,7 +54,12 @@ This file is the programming contract for the workout generator. The goal is not
 ### Deterministic dosage ownership
 - The pre-selected exercise menu owns both exercise identity and working-set dosage before any
   AI request. Loading weeks first attempt a whole-week reservation of existing role floors;
-  admitted appearances then receive optional priority funding followed by maintenance funding.
+  priority-first funding remains the baseline. If a covered maintenance group misses its
+  minimum, a second plan attempts minimum-first funding. It is accepted only if maintenance
+  deficits improve without losing any non-priority direct work, priority direct/weighted work or meaningful frequency,
+  crossing budget limits, or changing the menu. This does not change the MAINT-001 numbers.
+  Unfunded minima are reported to diagnostic callers; comparing two greedy plans is not a
+  simultaneous-feasibility solver for every objective.
   Every non-priority movement spends from the applicable major-muscle maintenance budget,
   including every group credited by shared-primary metadata. Unresolved admission searches
   retain the legacy allocator with an explicit console conflict; deload remains on that path.

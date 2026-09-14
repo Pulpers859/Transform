@@ -186,9 +186,9 @@ final class UserJourneySimulationTests: XCTestCase {
         delivered + 0.01 >= floor(ceiling)
     }
 
-    // This pins the diagnosis of an OPEN shortfall, not acceptance of its dose.
-    // It must be revised with the actual quality fix, never used to keep the shortfall.
-    func testKnownGluteShortfallReportsTheActualQuadBudgetRefusal() throws {
+    // Baseline f0e3f97 artifact delivered Glutes2/Quads7: a third lunge set was
+    // refused at Quads8 > 7.51 after optional leg-press funding spent the budget.
+    func testGluteMinimumIsReservedWithoutAnExtraAppearanceOrQuadOvershoot() throws {
         let persona = try XCTUnwrap(personas.first { $0.name == "Four-day beginner with a shoulder that hurts overhead" })
         let intent = service.trainingIntentPlan(from: analysis(for: persona))
         let blueprint = service.programBlueprint(for: intent, weekNumber: 1)
@@ -197,7 +197,9 @@ final class UserJourneySimulationTests: XCTestCase {
             weekNumber: 1, previousWeekDays: nil, setFundingReport: { observations = $0 })
         let lunge = try XCTUnwrap(observations.first { $0.exerciseName == "Dumbbell Walking Lunge" })
         XCTAssertEqual(lunge.dayIndex, 1)
-        XCTAssertEqual(lunge.prescribedSets, 2)
+        XCTAssertEqual(lunge.prescribedSets, 3)
+        XCTAssertEqual(menus[1].count, 7, "No new appearance buys the missing dose")
+        XCTAssertEqual(menus[1].first { $0.exerciseName == "Leg Press" }?.prescribedSets, 2)
         let refusal = try XCTUnwrap(lunge.rejection)
         XCTAssertEqual(refusal.kind, .weeklyPriority)
         XCTAssertEqual(refusal.subject, "Quads")
@@ -208,7 +210,22 @@ final class UserJourneySimulationTests: XCTestCase {
                 sets: exercise.prescribedSets, reps: "", tempo: "", restSeconds: 0,
                 notes: "", muscleTarget: exercise.muscleTarget), area: "Glutes")
         }
-        XCTAssertEqual(gluteCredit, 2, "Known baseline shortfall must remain visible until its planning fix")
+        XCTAssertEqual(gluteCredit, 3)
+        let baseline = service.allocateSetPrescriptionCandidate(menus, blueprint: blueprint,
+            weekNumber: 1, reserveMaintenanceMinimum: false)
+        XCTAssertEqual(baseline.menus[1].first { $0.exerciseName == "Dumbbell Walking Lunge" }?.prescribedSets, 2)
+        XCTAssertTrue(service.minimumDoseCandidatePreservesPlan(menus, baseline: baseline.menus,
+            blueprint: blueprint, weekNumber: 1))
+        XCTAssertFalse(service.minimumDoseCandidatePreservesPlan(baseline.menus, baseline: baseline.menus,
+            blueprint: blueprint, weekNumber: 1), "No improvement must not qualify")
+        var changedIdentity = menus
+        changedIdentity[1].removeLast()
+        XCTAssertFalse(service.minimumDoseCandidatePreservesPlan(changedIdentity, baseline: baseline.menus,
+            blueprint: blueprint, weekNumber: 1))
+        var illegalDose = menus
+        illegalDose[1][lunge.exerciseIndex].prescribedSets = 100
+        XCTAssertFalse(service.minimumDoseCandidatePreservesPlan(illegalDose, baseline: baseline.menus,
+            blueprint: blueprint, weekNumber: 1))
     }
 
     func testWholeSetTargetObserverRejectsMissingAttainableSets() {
@@ -362,6 +379,15 @@ final class UserJourneySimulationTests: XCTestCase {
                 let exerciseCount = trainingDays.reduce(0) { $0 + $1.exercises.count }
                 if !MesocyclePhase.isDeloadWeek(weekNumber) {
                     let stimulus = service.buildWeekStimulusReport(from: days)
+                    let tight = week.blueprint.calibration.recoveryConstrained || week.blueprint.calibration.poorNutritionAdherence
+                    for group in service.majorMuscleGroups {
+                        guard !service.isMajorMuscleGroupPrioritized(seed: group.seed, blueprint: week.blueprint) else { continue }
+                        let delivered = service.weeklyDirectSets(
+                            forGroupAliases: service.normalizedGroupAliases(forSeed: group.seed), days: days)
+                        XCTAssertGreaterThanOrEqual(delivered + 0.01,
+                            WorkoutSetBudgetPolicy.maintenanceFloor(recoveryTight: tight),
+                            "\(persona.name) week \(weekNumber): \(group.label) maintenance minimum missed")
+                    }
                     for allocation in week.blueprint.priorityAllocations {
                         let coverage = service.priorityCoverage(for: allocation, stimulusReport: stimulus)
                         for exercise in days.flatMap(\.exercises) {

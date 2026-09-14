@@ -65,7 +65,7 @@ ATTACKS = [
       (DOC, "High priority areas target `8-12`", "High priority areas target `8-20`")],
      "maximumUsefulVariationCount"),
     ("maintenance floor raised above what one covering movement can deliver",
-     [(PAR, "maintenanceFloor = recoveryTight ? 2.0 : 3.0", "maintenanceFloor = recoveryTight ? 3.0 : 4.0"),
+     [(POLICY, "recoveryTight ? 2 : 3", "recoveryTight ? 3 : 4"),
       (DOC, "floored at `3`", "floored at `4`")],
      "unreachable"),
     ("allocator and validator ceilings disagree",

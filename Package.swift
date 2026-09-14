@@ -138,6 +138,7 @@ let package = Package(
                 "WorkoutAppearancePlanner.swift",
                 "WorkoutGeneratorService+AppearancePlanning.swift",
                 "WorkoutGeneratorService+SetAccounting.swift",
+                "WorkoutGeneratorService+MinimumDosePlanning.swift",
                 "WorkoutSetBudgetPolicy.swift",
                 "WorkoutGeneratorService+FocusCoachingContext.swift",
                 "WorkoutGeneratorService+ParsingValidation.swift",

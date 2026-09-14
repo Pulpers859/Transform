@@ -192,6 +192,39 @@ authorized by this refactor. Final integration proof remains the owner's iPhone.
 
 ## Current state
 
+### Muscle-dose minimum reservation
+
+After successful loading-week appearance admission, retain the existing priority-first
+plan as a baseline. If a covered non-priority group is below MAINT-001's minimum,
+construct a second plan that attempts those deficient groups' minimum (3 normally, 2 when constrained)
+before priority funding. Accept only when at least one maintenance deficit improves,
+no non-priority group's direct work falls, priority direct/weighted delivery and meaningful frequency do not fall,
+including each day's priority direct/weighted work (not only weekly totals),
+and role floors/ceilings, session/fatigue/weekly budgets and exact menu identity hold.
+Prioritized groups/residue and deloads are exempt from the minimum. Every minimum
+addition uses the existing normal funding gate, with no floor-overshoot mode.
+Missing or blocked minima produce `minimum dose unresolved` diagnostics; they do not
+add an exercise, change validator severity, or trigger a paid retry.
+
+The baseline `f0e3f97` shoulder-beginner week delivered Glutes2 and Quads7, with the
+next lunge set refused at Quads8 > 7.51. The regression now requires Glutes3 with the
+same seven lower-day appearances and Leg Press 2 instead of 3. The full matrix also
+checks all non-priority minimums alongside its existing priority volume/frequency
+and fatigue assertions. CI and before/after raw evidence remain required acceptance
+checks; passing a local syntax check does not prove this allocation.
+
+The initial unconditional minimum-first approach was rejected: the five-exercise
+Core target4/fatigue12 regression shows it displaces Core4 with Core2. Plan comparison
+keeps the existing result in that conflict; the test executes both candidates.
+Only the chosen plan's diagnostics/receipts are published. Second allocation is
+conditional on a covered minimum deficit; performance must be measured, not assumed.
+
+This is plan comparison, not a universal feasibility guarantee. It does not
+solve competing minima by search, candidate replacement, crowded days, fractional
+targets or pulling imbalance. Adding a new exercise was rejected for this slice:
+the reproduced failure is a set-budget conflict on an already crowded day. A general
+simultaneous-dose solver remains an alternative if conflicts survive this stage.
+
 - Evidence export/checker implemented.
 - Provisional loading-week admission now reserves role floors across the whole
   candidate week before optional set funding. It uses actual per-appearance costs,

@@ -3457,17 +3457,22 @@ extension ClaudeService {
 
     // MARK: - Weekly Set Allocation
 
-    /// Owns weekly dosage before the locked menu reaches either Claude or procedural fallback.
-    /// Priority targets are funded first; remaining movements can grow only while every
-    /// non-priority major muscle they directly train remains inside its maintenance budget.
-    func allocateWeeklySetPrescription(
+    struct SetAllocationCandidate {
+        let menus: [[PreSelectedExercise]]
+        let floorReserved: Bool
+    }
+
+    // Internal plan construction. The public boundary compares candidates before publishing.
+    func allocateSetPrescriptionCandidate(
         _ menus: [[PreSelectedExercise]],
         blueprint: ProgramBlueprint,
         weekNumber: Int,
+        reserveMaintenanceMinimum: Bool,
+        minimumReservationGroups: Set<String>? = nil,
         lockedPrefixCounts: [Int] = [],
         appearancePlanningReport: ((String) -> Void)? = nil,
         setFundingReport: (([SetFundingObservation]) -> Void)? = nil
-    ) -> [[PreSelectedExercise]] {
+    ) -> SetAllocationCandidate {
         // Deload policy stays on its existing path. Loading weeks reserve all appearance
         // floors before any optional set funding. An unresolved candidate-pool conflict is
         // not a feasible solution: retain the legacy result and expose the search outcome.
@@ -3633,7 +3638,30 @@ extension ClaudeService {
                 allowFloorOvershoot: allowFloorOvershoot) == nil
         }
 
-        // Fund blueprint priorities before distributing maintenance volume.
+        // Reserve MAINT-001's minimum dose before optional funding can spend its budget.
+        // Applies only to admitted loading menus, not prioritized residue or deloads.
+        // This is bounded greedy funding, NOT proof that all objectives are jointly feasible.
+        // UserJourneySimulationTests exercises the original shared quad/glute conflict.
+        if floorReserved && reserveMaintenanceMinimum {
+            let tight = blueprint.calibration.recoveryConstrained || blueprint.calibration.poorNutritionAdherence
+            let minimum = WorkoutSetBudgetPolicy.maintenanceFloor(recoveryTight: tight)
+            for groupIndex in maintenanceGroups.indices where !maintenanceGroups[groupIndex].residueOnly {
+                guard minimumReservationGroups?.contains(maintenanceGroups[groupIndex].label) ?? true else { continue }
+                while maintenanceSets(groupIndex: groupIndex) + 0.01 < minimum {
+                    let candidates = allocated.indices.flatMap { day in
+                        allocated[day].indices.compactMap { index -> (Int, Int)? in
+                            guard accounting[day][index].groupTargets[groupIndex],
+                                  canAddSet(dayIndex: day, exerciseIndex: index) else { return nil }
+                            return (day, index)
+                        }
+                    }
+                    guard let target = candidates.first else { break }
+                    allocated[target.0][target.1].prescribedSets += 1
+                }
+            }
+        }
+
+        // Fund blueprint priorities before distributing optional maintenance volume.
         for allocIndex in allocations.indices {
             let allocation = allocations[allocIndex]
             let meaningfulThreshold = minimumMeaningfulPriorityExposureSets(for: allocation.area)
@@ -3861,7 +3889,7 @@ extension ClaudeService {
                 }
             })
         }
-        return allocated
+        return SetAllocationCandidate(menus: allocated, floorReserved: floorReserved)
     }
 
     /// The allocator and validator must derive identical priority totals from the locked menu.

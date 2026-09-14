@@ -138,9 +138,10 @@ def swift_policy_maintenance_ceiling(text: str) -> tuple[float, float]:
 
 
 def swift_maintenance_floor(text: str) -> float:
-    """The floor exists only in the validator: nothing in the allocator funds toward it."""
-    m = need(re.search(r"maintenanceFloor = recoveryTight \? ([\d.]+) : ([\d.]+)", text),
-             "maintenanceFloor in +ParsingValidation.swift")
+    """Shared loading-week minimum used by planning and validation."""
+    m = need(re.search(r"static func maintenanceFloor\(recoveryTight: Bool\) -> Double\s*\{\s*"
+                       r"recoveryTight\s*\?\s*([\d.]+)\s*:\s*([\d.]+)\s*\}", text),
+             "maintenanceFloor in WorkoutSetBudgetPolicy.swift")
     return float(m.group(2))
 
 
@@ -195,7 +196,7 @@ def main() -> int:
             )
 
     # --- 4. Swift maintenance sites must agree, and match the doc ----------------------------
-    p_floor = swift_maintenance_floor(parsing)
+    p_floor = swift_maintenance_floor(read(SET_POLICY))
     all_ceilings = (swift_maintenance_ceilings(parsing, "+ParsingValidation.swift")
                     + swift_maintenance_ceilings(selection, "+ExerciseSelection.swift")
                     + [swift_policy_maintenance_ceiling(read(SET_POLICY))])
