@@ -228,6 +228,83 @@ final class UserJourneySimulationTests: XCTestCase {
             blueprint: blueprint, weekNumber: 1))
     }
 
+    // Test-only, single-slot trials. These deliberately do NOT authorize substitutions:
+    // pain/history eligibility, retained slots and movement quality need a separate gate.
+    func testBoundedPressdownSubstitutionsAgainstCompleteBaselineWeeks() throws {
+        let family: Set<String> = ["Rope Triceps Pressdown", "Cable Triceps Pressdown", "V-Bar Pressdown"]
+        let replacementNames = ["Overhead Cable Triceps Extension", "Cable Kickback"]
+        var attempted = 0
+        var dosePreserved = 0
+        var lumbarTrials = 0
+        var trialReport: [String] = []
+        func signature(_ menus: [[ClaudeService.PreSelectedExercise]]) -> [[String]] {
+            menus.map { $0.map { "\($0.exerciseName)|\($0.muscleTarget)|\($0.movementPattern)|\($0.role)|\($0.prescribedSets)" } }
+        }
+        for persona in personas {
+            let weeks = try fullMesocycle(for: persona)
+            XCTAssertEqual(weeks.count, 4)
+            guard weeks.count == 4 else { continue }
+            let intent = service.trainingIntentPlan(from: analysis(for: persona))
+            // Deload policy is outside this experiment.
+            for weekIndex in 0..<3 {
+                let blueprint = weeks[weekIndex].blueprint
+                let baseline = service.preSelectedExerciseMenu(for: blueprint, trainingIntent: intent,
+                    weekNumber: weekIndex + 1, previousWeekDays: weekIndex == 0 ? nil : weeks[weekIndex - 1].days)
+                let before = signature(baseline)
+                XCTAssertEqual(baseline.map { $0.map { "\($0.exerciseName)|\($0.muscleTarget)|\($0.prescribedSets)" } },
+                    weeks[weekIndex].days.map { $0.exercises.map { "\($0.exerciseName)|\($0.muscleTarget)|\($0.sets)" } },
+                    "Trial baseline must match the exercises and doses actually delivered by procedural generation")
+                for day in baseline.indices {
+                    let duplicates = baseline[day].indices.filter { family.contains(baseline[day][$0].exerciseName) }
+                    guard duplicates.count > 1, let index = duplicates.last else { continue }
+                    for replacementName in replacementNames where !baseline[day].contains(where: { $0.exerciseName == replacementName }) {
+                        attempted += 1
+                        if persona.name == "Five-day lifter reporting lumbar-extension pain" { lumbarTrials += 1 }
+                        var candidate = baseline
+                        let old = baseline[day][index]
+                        XCTAssertEqual(old.muscleTarget, "Triceps", "This trial is scoped to the catalog's Triceps entries")
+                        candidate[day][index] = .init(exerciseName: replacementName, muscleTarget: "Triceps",
+                            movementPattern: service.exerciseMetadata(forExerciseName: replacementName,
+                                muscleTarget: "Triceps").movementPattern,
+                            role: service.proceduralExerciseRole(for: replacementName, muscleTarget: "Triceps"),
+                            prescribedSets: old.prescribedSets)
+                        XCTAssertEqual(candidate.map(\.count), baseline.map(\.count))
+                        XCTAssertEqual(candidate[day].filter { family.contains($0.exerciseName) }.count, duplicates.count - 1)
+                        let candidateSignature = signature(candidate)
+                        for otherDay in baseline.indices {
+                            for otherIndex in baseline[otherDay].indices where otherDay != day || otherIndex != index {
+                                XCTAssertEqual(candidateSignature[otherDay][otherIndex], before[otherDay][otherIndex])
+                            }
+                        }
+                        let comparison = service.compareAllocatedDoseOnly(candidate, baseline: baseline,
+                            blueprint: blueprint, weekNumber: weekIndex + 1)
+                        if case .dosePreserved = comparison { dosePreserved += 1 }
+                        trialReport.append("SUBSTITUTION_TRIAL persona=\(persona.name) week=\(weekIndex + 1) day=\(day + 1) slot=\(index + 1) old=\(old.exerciseName) new=\(replacementName) sets=\(old.prescribedSets) dose=\(comparison)")
+                        trialReport.append("BASELINE \(before)")
+                        trialReport.append("BASELINE_DOSE \(service.compareAllocatedDoseOnly(baseline, baseline: baseline, blueprint: blueprint, weekNumber: weekIndex + 1))")
+                        trialReport.append("CANDIDATE \(candidateSignature)")
+                        XCTAssertFalse(service.minimumDoseCandidatePreservesPlan(candidate, baseline: baseline,
+                            blueprint: blueprint, weekNumber: weekIndex + 1), "The existing minimum-dose gate must not adopt these trial replacements")
+                        var underfunded = candidate
+                        underfunded[day][index].prescribedSets = 0
+                        guard case .rejected = service.compareAllocatedDoseOnly(underfunded, baseline: baseline,
+                            blueprint: blueprint, weekNumber: weekIndex + 1) else {
+                            XCTFail("A replacement with no working sets must not pass dose comparison")
+                            continue
+                        }
+                        XCTAssertEqual(signature(baseline), before, "Trials must not mutate the baseline")
+                    }
+                }
+            }
+        }
+        XCTAssertGreaterThan(attempted, 0, "The experiment must exercise real duplicate sessions")
+        XCTAssertGreaterThan(lumbarTrials, 0, "Do not silently skip the prior lumbar-persona regression")
+        XCTAssertGreaterThan(dosePreserved, 0, "At least one full-week alternative must preserve dose")
+        trialReport.append("SUBSTITUTION_TRIAL_SUMMARY attempted=\(attempted) dosePreserved=\(dosePreserved); eligibility and adoption NOT tested")
+        try writeArtifactIfRequested(trialReport.joined(separator: "\n"),
+            environmentKey: "TRANSFORM_SUBSTITUTION_REPORT_OUTPUT")
+    }
+
     func testWholeSetTargetObserverRejectsMissingAttainableSets() {
         XCTAssertTrue(meetsWholeSetTarget(delivered: 7, ceiling: 7.51))
         XCTAssertFalse(meetsWholeSetTarget(delivered: 6, ceiling: 7.51))

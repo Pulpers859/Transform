@@ -118,6 +118,27 @@ Windows smoke and per-file syntax checks passed. External review approved with
 follow-ups: dose-only naming was strengthened, both calendar-shape branches are
 tested, and report consumption remains explicitly deferred as described above.
 
+### Bounded substitution trial (test-only)
+
+`testBoundedPressdownSubstitutionsAgainstCompleteBaselineWeeks` explores one
+pressdown replacement at a time in complete generated loading weeks. Its bounded
+alternatives are Overhead Cable Triceps Extension and Cable Kickback, each tried
+independently only if absent from the session. It only attempts sessions containing
+multiple exact catalog pressdown names. Other slots, sets and days stay fixed.
+Each trial starts again from the original baseline, never from a previous trial.
+The test exports complete baseline/candidate prescriptions and the dose result,
+requires actual trials (including the prior lumbar-persona case) and at least one dose-preserving
+alternative, checks zero-set rejection, and checks that the existing minimum-dose
+gate does not adopt these alternatives. This proves existence, not universal success;
+the independent identity-mutation unit tests remain necessary to isolate that lock.
+The existing `fullMesocycle` helper uses network-free procedural generation, not paid AI.
+
+This is an arithmetic experiment, not an eligibility or adoption policy. It does not
+establish that overhead work is suitable for a particular pain report, preserve retained
+history slots through a new selection path, or prove that the replacement improves
+movement quality. No production generator code changes. The historical snapshot and
+complete exported weeks must remain unchanged. Execution results are pending CI.
+
 ### Shared-cost extraction slice
 
 `WorkoutGeneratorService+SetAccounting.swift` centralizes per-appearance direct
