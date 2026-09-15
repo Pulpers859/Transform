@@ -194,20 +194,22 @@ extension ClaudeService {
         WorkoutGenerationDiagnostics.markStage("building week 1 analysis context")
         let analysisSummary = analysisContext(from: analysisResult)
         let trainingIntent = trainingIntentPlan(from: analysisResult)
-        let blueprint = programBlueprint(for: trainingIntent, weekNumber: 1)
+        let planningBlueprint = programBlueprint(for: trainingIntent, weekNumber: 1)
+        let exercisePlan = preSelectedExercisePlan(
+            for: planningBlueprint,
+            trainingIntent: trainingIntent,
+            weekNumber: 1,
+            previousWeekDays: nil,
+            exerciseHistory: exerciseHistory
+        )
+        let blueprint = exercisePlan.blueprint
+        let exerciseMenus = exercisePlan.menus
         let intentSummary = trainingIntentContext(from: trainingIntent, blueprint: blueprint)
         let blueprintSummary = blueprintContext(from: blueprint)
         let context = generationContext(
             analysisSummary: analysisSummary,
             trainingIntentSummary: intentSummary,
             blueprintSummary: blueprintSummary
-        )
-        let exerciseMenus = preSelectedExerciseMenu(
-            for: blueprint,
-            trainingIntent: trainingIntent,
-            weekNumber: 1,
-            previousWeekDays: nil,
-            exerciseHistory: exerciseHistory
         )
         let menuContext = exerciseMenuContext(from: exerciseMenus, blueprint: blueprint)
 
@@ -511,16 +513,9 @@ extension ClaudeService {
         } ?? baseAnalysisSummary
         let trainingIntent = decodedAnalysis.map(trainingIntentPlan(from:))
             ?? fallbackTrainingIntentPlan(from: priorityMuscles(from: analysisJSON))
-        let blueprint = programBlueprint(for: trainingIntent, weekNumber: weekNumber)
-        let intentSummary = trainingIntentContext(from: trainingIntent, blueprint: blueprint)
-        let blueprintSummary = blueprintContext(from: blueprint)
-        let context = generationContext(
-            analysisSummary: analysisSummary,
-            trainingIntentSummary: intentSummary,
-            blueprintSummary: blueprintSummary
-        )
-        let exerciseMenus = preSelectedExerciseMenu(
-            for: blueprint,
+        let planningBlueprint = programBlueprint(for: trainingIntent, weekNumber: weekNumber)
+        let exercisePlan = preSelectedExercisePlan(
+            for: planningBlueprint,
             trainingIntent: trainingIntent,
             weekNumber: weekNumber,
             // Same gate as the prompt and the continuity validator. Using `.isEmpty` here
@@ -528,6 +523,15 @@ extension ClaudeService {
             // of those layers were told there was no previous week at all.
             previousWeekDays: hasValidPreviousWeek ? previousWeekDays : nil,
             exerciseHistory: exerciseHistory
+        )
+        let blueprint = exercisePlan.blueprint
+        let exerciseMenus = exercisePlan.menus
+        let intentSummary = trainingIntentContext(from: trainingIntent, blueprint: blueprint)
+        let blueprintSummary = blueprintContext(from: blueprint)
+        let context = generationContext(
+            analysisSummary: analysisSummary,
+            trainingIntentSummary: intentSummary,
+            blueprintSummary: blueprintSummary
         )
         let menuContext = exerciseMenuContext(from: exerciseMenus, blueprint: blueprint, dayStart: dayStart)
 
@@ -841,19 +845,22 @@ extension ClaudeService {
         try Task.checkCancellation()
         let analysisSummary = analysisContext(from: analysisResult)
         let trainingIntent = trainingIntentPlan(from: analysisResult)
-        let blueprint = programBlueprint(for: trainingIntent, weekNumber: 1)
+        let planningBlueprint = programBlueprint(for: trainingIntent, weekNumber: 1)
+        let exercisePlan = preSelectedExercisePlan(
+            for: planningBlueprint,
+            trainingIntent: trainingIntent,
+            weekNumber: 1,
+            previousWeekDays: nil,
+            exerciseHistory: nil
+        )
+        let blueprint = exercisePlan.blueprint
+        let exerciseMenus = exercisePlan.menus
         let intentSummary = trainingIntentContext(from: trainingIntent, blueprint: blueprint)
         let blueprintSummary = blueprintContext(from: blueprint)
         let context = generationContext(
             analysisSummary: analysisSummary,
             trainingIntentSummary: intentSummary,
             blueprintSummary: blueprintSummary
-        )
-        let exerciseMenus = preSelectedExerciseMenu(
-            for: blueprint,
-            trainingIntent: trainingIntent,
-            weekNumber: 1,
-            previousWeekDays: nil
         )
         let menuContext = exerciseMenuContext(from: exerciseMenus, blueprint: blueprint)
         let config = weekOneConfig
@@ -1226,20 +1233,23 @@ extension ClaudeService {
         } ?? baseAnalysisSummary
         let trainingIntent = decodedAnalysis.map(trainingIntentPlan(from:))
             ?? fallbackTrainingIntentPlan(from: priorityMuscles(from: analysisJSON))
-        let blueprint = programBlueprint(for: trainingIntent, weekNumber: weekNumber)
+        let planningBlueprint = programBlueprint(for: trainingIntent, weekNumber: weekNumber)
+        let exercisePlan = preSelectedExercisePlan(
+            for: planningBlueprint,
+            trainingIntent: trainingIntent,
+            weekNumber: weekNumber,
+            // Same gate as the prompt and the continuity validator — see generateNextWeek.
+            previousWeekDays: hasValidPreviousWeek ? previousWeekDays : nil,
+            exerciseHistory: nil
+        )
+        let blueprint = exercisePlan.blueprint
+        let exerciseMenus = exercisePlan.menus
         let intentSummary = trainingIntentContext(from: trainingIntent, blueprint: blueprint)
         let blueprintSummary = blueprintContext(from: blueprint)
         let context = generationContext(
             analysisSummary: analysisSummary,
             trainingIntentSummary: intentSummary,
             blueprintSummary: blueprintSummary
-        )
-        let exerciseMenus = preSelectedExerciseMenu(
-            for: blueprint,
-            trainingIntent: trainingIntent,
-            weekNumber: weekNumber,
-            // Same gate as the prompt and the continuity validator — see generateNextWeek.
-            previousWeekDays: hasValidPreviousWeek ? previousWeekDays : nil
         )
         let menuContext = exerciseMenuContext(from: exerciseMenus, blueprint: blueprint, dayStart: dayStart)
         let config = nextWeekConfig

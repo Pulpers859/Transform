@@ -397,7 +397,7 @@ final class UserJourneySimulationTests: XCTestCase {
             let dayStart = (week - 1) * 7 + 1, dayEnd = week * 7
             let delivered = try service.validatedProceduralWeek(weekNumber: week, dayStart: dayStart,
                 dayEnd: dayEnd, splitType: intent.splitRecommendation, programName: "Core relocation chain experiment",
-                trainingIntent: intent, blueprint: nextBlueprint, previousWeekDays: previousExperimentalDays,
+                trainingIntent: intent, blueprint: next.blueprint, previousWeekDays: previousExperimentalDays,
                 exerciseMenus: next.menus)
             XCTAssertEqual(delivered.days.count, 7)
             XCTAssertEqual(delivered.days.map(\.dayNumber), Array(dayStart...dayEnd))
@@ -425,7 +425,7 @@ final class UserJourneySimulationTests: XCTestCase {
                 chain.append("WEEK \(week) DELIVERED_DAY \(day.dayNumber) name=\(day.dayName) count=\(day.exercises.count) core=\(core)")
             }
             let findings = service.validateWeekResponse(delivered, dayStart: dayStart, dayEnd: dayEnd,
-                previousWeekDays: previousExperimentalDays, blueprint: nextBlueprint, expectedExerciseMenus: next.menus)
+                previousWeekDays: previousExperimentalDays, blueprint: next.blueprint, expectedExerciseMenus: next.menus)
             // Original exported weeks 2/3 at 56632b1 have only this unresolved finding.
             // This is a nonregression screen, not acceptance of later-week crowding.
             let knownBaselineFinding = "Day \(dayStart + lower) is too crowded for a fatigue-managed Lower session. In a shift-work recomposition block, prefer fewer high-value lower-body movements over extra filler."
@@ -836,7 +836,7 @@ final class UserJourneySimulationTests: XCTestCase {
         var previous: [WorkoutDayResponse]?
 
         for weekNumber in 1...4 {
-            let blueprint = service.programBlueprint(for: intent, weekNumber: weekNumber)
+            let planningBlueprint = service.programBlueprint(for: intent, weekNumber: weekNumber)
             var appearancePlanning: [String] = []
             var nextSetFunding: [SetFundingObservation] = []
             var capturedBaseline: ClaudeService.SubstitutionPlanningBaseline?
@@ -844,7 +844,7 @@ final class UserJourneySimulationTests: XCTestCase {
             var receiptCalls = 0
             var finalizationCalls = 0
             let delivered = service.preSelectedExercisePlan(
-                for: blueprint,
+                for: planningBlueprint,
                 trainingIntent: intent,
                 weekNumber: weekNumber,
                 previousWeekDays: previous,
@@ -855,6 +855,11 @@ final class UserJourneySimulationTests: XCTestCase {
                     capturedBaseline = $0; capturedFinalization = $1; finalizationCalls += 1
                 }
             )
+            // Today's planner changes menu identities, not blueprint intent or budgets.
+            // Pin every field before adopting future placement/context changes deliberately.
+            XCTAssertEqual(delivered.blueprint, planningBlueprint,
+                "Current planner must preserve the complete input blueprint")
+            let blueprint = delivered.blueprint
             let menus = delivered.menus
             XCTAssertEqual(receiptCalls, 1)
             XCTAssertEqual(finalizationCalls, 1)

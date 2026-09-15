@@ -2,7 +2,48 @@
 
 ## Active roadmap and audit checkpoints (2026-09-13)
 
-### Owner-authorized core placement experiment (2026-09-15; pending execution)
+### Complete-plan consumer wiring (2026-09-15; validation pending)
+
+All four live/debug week-one/next-week entry points now consume the planner's
+returned blueprint and menus together, before constructing prompt summaries.
+Previously the menu-only wrapper discarded the returned blueprint, leaving
+downstream validation and fallback tied to the original input blueprint.
+The planner currently preserves that blueprint; this is integration preparation,
+not core relocation or a new eligibility policy. The compatibility wrapper remains.
+Independent agent `adoption_boundary_audit` inspected the four call sites and their
+downstream references (source reasoning, not runtime reproduction). History inputs
+and the seven-day gate are unchanged in the diff; network/retry policy is untouched.
+Claude requested evidence for blueprint identity and flagged possible fixture drift.
+`fullMesocycle(for:)` now uses the returned blueprint and asserts whole-value equality
+with the input across the existing five-persona/four-week workload. Synthesized
+Equatable covers every field, including nested allocations, days and calibration;
+there are no extra planner calls. The menu wrapper delegates to the same complete-plan
+method with the same inputs (`+ExerciseSelection.swift`, `preSelectedExerciseMenu`).
+Today's baseline construction retains the input blueprint, and both retained and
+adopted paths in `finalizePressdownReduction` preserve it; these are source facts,
+not evidence that future blueprint modifications would be safe. The experimental
+chain also now delivers and validates against its returned blueprint.
+Syntax/source review cannot establish runtime or device correctness. The added
+equality assertions, CI build and complete snapshots remain pending verification;
+they do not execute live paid API calls or prove physical-device behavior.
+The revised Claude invocation returned an incomplete response and the audit script
+rejected it; there is no revised Claude approval. A separate adversarial source
+review by `adoption_boundary_audit` checked synthesized equality, unchanged planner
+call count, and all returned-blueprint consumers. Its verdict is source-only.
+
+### Owner-authorized core placement experiment (2026-09-15; executed `08343b9`)
+
+Second iteration run `35036654718` succeeded with 698 executed tests. Its saved
+declared-support report has no validator findings, admitted fresh allocation and
+exact candidate preservation. Actual week-two and week-three outputs put Cable
+Crunch back on Lower (days 9/16), which returns to seven exercises and the original
+crowding finding; Pull returns to five exercises. The previous Pull crunch fails
+the existing style-based retention filter. This proves the one-week proposal is
+not a durable production fix; it does not justify broadly weakening that filter.
+Both later complete delivered day arrays are identical to their normal baseline
+weeks, not just equal in exercise counts or warning text.
+All 20 complete normal exported week objects are identical to `56632b1`.
+App run `35036654724` logged BUILD SUCCEEDED. No live relocation is enabled.
 
 First executed trial, code `56632b1`, run `35035225961`: all 698 test cases ran;
 the new trial failed exactly its no-new-findings assertion. Its saved report shows

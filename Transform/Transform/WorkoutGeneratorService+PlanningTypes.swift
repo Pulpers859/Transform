@@ -52,7 +52,7 @@ extension ClaudeService {
         let cap: Int
     }
 
-    struct ProgramCalibrationProfile {
+    struct ProgramCalibrationProfile: Equatable {
         let lowPerformanceDataQuality: Bool
         let poorNutritionAdherence: Bool
         let recoveryConstrained: Bool
@@ -188,7 +188,7 @@ extension ClaudeService {
         let coreRepRange: String
     }
 
-    struct BlueprintPriorityAllocation {
+    struct BlueprintPriorityAllocation: Equatable {
         let area: String
         let priorityLevel: String
         let rationale: String
@@ -204,7 +204,7 @@ extension ClaudeService {
         let directWorkBias: String
     }
 
-    struct BlueprintDayPlan {
+    struct BlueprintDayPlan: Equatable {
         let dayIndex: Int
         let style: String
         let focusArea: String?
@@ -216,7 +216,7 @@ extension ClaudeService {
         let isRestDay: Bool
     }
 
-    struct ProgramBlueprint {
+    struct ProgramBlueprint: Equatable {
         let evidenceVersion: String
         let splitRecommendation: String
         let weeklyTrainingDays: Int
