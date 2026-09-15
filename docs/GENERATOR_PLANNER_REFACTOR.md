@@ -2,7 +2,7 @@
 
 ## Active roadmap and audit checkpoints (2026-09-13)
 
-### Complete-candidate selection checks (2026-09-15; verification pending)
+### Complete-candidate selection checks (2026-09-15; code `4a84efc`)
 
 The non-adopting planner-context preflight now checks complete-day prime counts and
 whole-week anatomical variation budgets using existing policy helpers. It refuses
@@ -20,7 +20,7 @@ of the existing catalog filter or its accessory rotation.
 Regression cases cover repeated old identities elsewhere in the week, replacement at
 the prime cap, inherited excess after a non-prime swap, relative equipment history,
 and recovery/focus-dependent scoring. Full-week trials also verify captured focus
-intent. Windows smoke/syntax checks passed; CI and raw-output comparison remain pending.
+intent. Windows smoke/syntax checks passed; code-checkpoint evidence is recorded below.
 No production caller adopts substitutions. An explicit improvement objective, actual
 history provenance at live adoption, broader selection review and end-to-end adoption
 proof remain open. Stage 3 and the product-quality backlog are not complete.
@@ -33,6 +33,24 @@ planned-context focus-downgrade coverage; removed a redundant rank rejection alr
 owned by structural preflight and renamed the complete-day test. Future safety-driven
 replacement orchestration must handle a rejected candidate without retaining painful
 work. The review was a request for changes, not an unconditional approval.
+An independent agent reviewed the final revisions and found no remaining blocking
+issue by inspection; its review did not execute tests.
+
+Verified code-checkpoint evidence:
+
+- Generator run `35020198425` passed all 679 tests; the log confirms execution of all
+  five new selection/whole-candidate cases.
+- iOS run `35020198428` passed with `BUILD SUCCEEDED` in its log.
+- All 20 complete exported week objects and the historical snapshot exactly match
+  `0f66781`. Artifacts: `.agents/substitution-selection-4a84efc/` (ignored).
+- Nine trials preserve dose: six pass the expanded preflight, three fail the style
+  catalog check. These results still do not authorize automatic adoption.
+- No live AI or physical-iPhone test was run.
+
+Next: define and test a concrete improvement objective, then combine it with the dose
+and eligibility gates in a bounded decision path. Keep safety-driven replacement
+failure handling explicit and separate from optional quality improvements. Do not
+claim crowding, rowing balance or fractional targets resolved by these checks.
 
 ### Planner-bound substitution context (2026-09-15; code `0f66781`)
 
