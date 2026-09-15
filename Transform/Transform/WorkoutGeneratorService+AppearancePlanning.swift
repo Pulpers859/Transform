@@ -28,7 +28,8 @@ extension ClaudeService {
         _ menus: [[PreSelectedExercise]],
         blueprint: ProgramBlueprint,
         weekNumber: Int,
-        lockedPrefixCounts: [Int] = []
+        lockedPrefixCounts: [Int] = [],
+        maximumStates: Int = 512
     ) -> AppearanceReservation {
         guard menus.count == blueprint.dayPlans.count else {
             return AppearanceReservation(menus: menus, outcome: .infeasible(["Menu/day-plan count mismatch"]))
@@ -126,7 +127,7 @@ extension ClaudeService {
             return $0 < $1
         }
         let outcome = WorkoutAppearancePlanner.solve(.init(protected: protected,
-            upperBounds: upper, lowerBounds: lower, removalOrder: order, coverage: coverage))
+            upperBounds: upper, lowerBounds: lower, removalOrder: order, coverage: coverage), maximumStates: maximumStates)
         guard case .admitted(let indices) = outcome else {
             return AppearanceReservation(menus: menus, outcome: outcome)
         }

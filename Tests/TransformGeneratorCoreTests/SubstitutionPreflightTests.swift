@@ -353,4 +353,89 @@ final class SubstitutionPreflightTests: XCTestCase {
                 .rejected(.unsupportedWeek))
         }
     }
+
+    func testBoundedSearchIsDeterministicAndUsesHistoryFilteredCatalog() {
+        let base = [[slot("EZ-Bar Curl", "Biceps"), slot("Rope Triceps Pressdown", "Triceps"),
+            slot("V-Bar Pressdown", "Triceps")]]
+        let context = planned(base, blueprint: plan())
+        let first = service.searchPressdownReduction(in: context)
+        let second = service.searchPressdownReduction(in: context)
+        XCTAssertEqual(first.outcome, .proposed(day: 0, slot: 2, replacement: "Overhead Cable Triceps Extension"))
+        XCTAssertEqual(first.outcome, second.outcome)
+        XCTAssertEqual(first.attempts, second.attempts)
+        XCTAssertEqual(service.searchPressdownReduction(in: context,
+            maximumTrials: first.attempts.count).outcome, first.outcome)
+        XCTAssertEqual(service.searchPressdownReduction(in: context,
+            maximumTrials: first.attempts.count - 1).outcome, .searchLimit)
+        XCTAssertEqual(first.proposedMenus.map { $0.map(\.exerciseName) }, second.proposedMenus.map { $0.map(\.exerciseName) })
+        XCTAssertEqual(service.evaluatePressdownSubstitutionTrial(first.proposedMenus, plannedBaseline: context),
+            .qualified(day: 0, excessBefore: 1, excessAfter: 0))
+        let history = ClaudeService.ExerciseHistoryContext(
+            painExercises: [ExerciseWeightEntry.canonicalLookupKey("Overhead Cable Triceps Extension")],
+            equipmentSkipExercises: [], priorMesocycleExercises: [], mesocycleIndex: 0)
+        let filtered = service.searchPressdownReduction(in: planned(base, blueprint: plan(), history: history))
+        XCTAssertEqual(filtered.outcome, .proposed(day: 0, slot: 2, replacement: "EZ-Bar Skull Crusher"))
+        XCTAssertFalse(filtered.attempts.contains { $0.replacement == "Overhead Cable Triceps Extension" })
+        XCTAssertEqual(context.menus[0][2].exerciseName, "V-Bar Pressdown")
+    }
+
+    func testBoundedSearchReturnsUnchangedPlanAndDistinguishesLimits() {
+        let base = [[slot("EZ-Bar Curl", "Biceps"), slot("Rope Triceps Pressdown", "Triceps"),
+            slot("V-Bar Pressdown", "Triceps")]]
+        let locked = ClaudeService.SubstitutionPlanningBaseline(menus: base, blueprint: plan(), weekNumber: 1,
+            lockedPrefixCounts: [3], retainedKeysByDay: [[]], exerciseHistory: nil, selectionFocusIntents: [nil])
+        XCTAssertEqual(service.searchPressdownReduction(in: locked).outcome, .noQualifiedCandidate)
+        XCTAssertTrue(service.searchPressdownReduction(in: locked).attempts.isEmpty)
+        var underfunded = base
+        underfunded[0][2].prescribedSets = 1
+        let failing = planned(underfunded, blueprint: plan())
+        for budget in [-1, 0, 1] {
+            let result = service.searchPressdownReduction(in: failing, maximumTrials: budget)
+            XCTAssertEqual(result.outcome, .searchLimit)
+            XCTAssertLessThanOrEqual(result.attempts.count, max(0, budget))
+            XCTAssertEqual(result.proposedMenus.map { $0.map(\.exerciseName) }, base.map { $0.map(\.exerciseName) })
+            XCTAssertEqual(result.proposedMenus.map { $0.map(\.prescribedSets) }, underfunded.map { $0.map(\.prescribedSets) })
+        }
+        let exhausted = service.searchPressdownReduction(in: failing)
+        XCTAssertEqual(exhausted.outcome, .noQualifiedCandidate)
+        XCTAssertEqual(service.searchPressdownReduction(in: failing,
+            maximumTrials: exhausted.attempts.count).outcome, .noQualifiedCandidate)
+        XCTAssertEqual(service.searchPressdownReduction(in: failing,
+            maximumTrials: exhausted.attempts.count - 1).outcome, .searchLimit)
+        XCTAssertFalse(exhausted.attempts.isEmpty)
+        let noDuplicate = [[slot("EZ-Bar Curl", "Biceps"), slot("Rope Triceps Pressdown", "Triceps")]]
+        XCTAssertEqual(service.searchPressdownReduction(in: planned(noDuplicate, blueprint: plan())).outcome, .noRedundancy)
+        let malformed = ClaudeService.SubstitutionPlanningBaseline(menus: base, blueprint: plan(), weekNumber: 1,
+            lockedPrefixCounts: [], retainedKeysByDay: [[]], exerciseHistory: nil, selectionFocusIntents: [nil])
+        XCTAssertEqual(service.searchPressdownReduction(in: malformed).outcome, .invalidContext)
+        for week in [0, MesocyclePhase.deloadWeek, MesocyclePhase.deloadWeek + 1] {
+            let unsupported = ClaudeService.SubstitutionPlanningBaseline(menus: base, blueprint: plan(),
+                weekNumber: week, lockedPrefixCounts: [0], retainedKeysByDay: [[]],
+                exerciseHistory: nil, selectionFocusIntents: [nil])
+            XCTAssertEqual(service.searchPressdownReduction(in: unsupported).outcome, .unsupportedWeek)
+        }
+        for locks in [[-1], [4]] {
+            let invalid = ClaudeService.SubstitutionPlanningBaseline(menus: base, blueprint: plan(),
+                weekNumber: 1, lockedPrefixCounts: locks, retainedKeysByDay: [[]],
+                exerciseHistory: nil, selectionFocusIntents: [nil])
+            XCTAssertEqual(service.searchPressdownReduction(in: invalid).outcome, .invalidContext)
+        }
+    }
+
+    func testProtectedEarlyDayDoesNotConsumeLaterDayTrialBudget() {
+        let day = [slot("EZ-Bar Curl", "Biceps"), slot("Rope Triceps Pressdown", "Triceps"),
+            slot("V-Bar Pressdown", "Triceps")]
+        for retainInsteadOfLock in [false, true] {
+            let context = ClaudeService.SubstitutionPlanningBaseline(menus: [day, day],
+                blueprint: plan(dayCount: 2), weekNumber: 1,
+                lockedPrefixCounts: retainInsteadOfLock ? [0, 0] : [3, 0],
+                retainedKeysByDay: [retainInsteadOfLock ? Set(day.map {
+                    ExerciseWeightEntry.canonicalLookupKey($0.exerciseName) }) : [], []],
+                exerciseHistory: nil, selectionFocusIntents: [nil, nil])
+            let result = service.searchPressdownReduction(in: context, maximumTrials: 1)
+            XCTAssertEqual(result.attempts.count, 1)
+            XCTAssertEqual(result.attempts.first?.day, 1,
+                "Invariant slot refusals on the early day must not waste later-day search budget")
+        }
+    }
 }

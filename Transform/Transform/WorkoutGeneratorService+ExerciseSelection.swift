@@ -2160,13 +2160,15 @@ extension ClaudeService {
             trainingIntent: trainingIntent,
             lockedPrefixCounts: lockedPrefixCounts
         )
+        var roleFloorAdmission: RoleFloorAdmission = .unassessed
         let allocatedMenus = allocateWeeklySetPrescription(
             orderedMenus,
             blueprint: blueprint,
             weekNumber: weekNumber,
             lockedPrefixCounts: lockedPrefixCounts,
             appearancePlanningReport: appearancePlanningReport,
-            setFundingReport: setFundingReport
+            setFundingReport: setFundingReport,
+            roleFloorAdmissionReport: { roleFloorAdmission = $0 }
         )
         return SubstitutionPlanningBaseline(menus: allocatedMenus, blueprint: blueprint,
             weekNumber: weekNumber, lockedPrefixCounts: lockedPrefixCounts,
@@ -2174,7 +2176,8 @@ extension ClaudeService {
                 retainedKeysByDay[day].intersection(Set(allocatedMenus[day].map {
                     ExerciseWeightEntry.canonicalLookupKey($0.exerciseName)
                 }))
-            }, exerciseHistory: exerciseHistory, selectionFocusIntents: selectionFocusIntents)
+            }, exerciseHistory: exerciseHistory, selectionFocusIntents: selectionFocusIntents,
+            roleFloorAdmission: roleFloorAdmission)
     }
 
     // MARK: - Lower-Session Knee-Dominant Anchor (menu-level)
@@ -3490,6 +3493,7 @@ extension ClaudeService {
     struct SetAllocationCandidate {
         let menus: [[PreSelectedExercise]]
         let floorReserved: Bool
+        let roleFloorAdmission: RoleFloorAdmission
     }
 
     // Internal plan construction. The public boundary compares candidates before publishing.
@@ -3501,13 +3505,15 @@ extension ClaudeService {
         minimumReservationGroups: Set<String>? = nil,
         lockedPrefixCounts: [Int] = [],
         appearancePlanningReport: ((String) -> Void)? = nil,
-        setFundingReport: (([SetFundingObservation]) -> Void)? = nil
+        setFundingReport: (([SetFundingObservation]) -> Void)? = nil,
+        maximumAppearanceStates: Int = 512
     ) -> SetAllocationCandidate {
         // Deload policy stays on its existing path. Loading weeks reserve all appearance
         // floors before any optional set funding. An unresolved candidate-pool conflict is
         // not a feasible solution: retain the legacy result and expose the search outcome.
         let reservation = MesocyclePhase.isDeloadWeek(weekNumber) ? nil : reserveWeeklyAppearanceFloors(
-            menus, blueprint: blueprint, weekNumber: weekNumber, lockedPrefixCounts: lockedPrefixCounts
+            menus, blueprint: blueprint, weekNumber: weekNumber, lockedPrefixCounts: lockedPrefixCounts,
+            maximumStates: maximumAppearanceStates
         )
         let floorReserved: Bool
         if let reservation, case .admitted = reservation.outcome {
@@ -3919,7 +3925,14 @@ extension ClaudeService {
                 }
             })
         }
-        return SetAllocationCandidate(menus: allocated, floorReserved: floorReserved)
+        let admission: RoleFloorAdmission
+        switch reservation?.outcome {
+        case .none: admission = .deloadPolicy
+        case .admitted?: admission = .admitted
+        case .infeasible(let reasons)?: admission = .infeasible(reasons)
+        case .searchLimit(let reasons)?: admission = .searchLimit(reasons)
+        }
+        return SetAllocationCandidate(menus: allocated, floorReserved: floorReserved, roleFloorAdmission: admission)
     }
 
     /// The allocator and validator must derive identical priority totals from the locked menu.

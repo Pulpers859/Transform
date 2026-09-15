@@ -34,13 +34,16 @@ enum WorkoutAppearancePlanner {
     static func solve(_ problem: Problem, maximumStates: Int = 512) -> Outcome {
         let count = problem.protected.count
         let constraints = problem.upperBounds + problem.lowerBounds
-        guard maximumStates > 0,
-              Set(problem.removalOrder) == Set(0..<count),
+        guard Set(problem.removalOrder) == Set(0..<count),
               problem.removalOrder.count == count,
               problem.coverage.allSatisfy({ $0.minimumGroups >= 0 && $0.groups.joined().allSatisfy { (0..<count).contains($0) } }),
               constraints.allSatisfy({ $0.coefficients.count == count && $0.limit.isFinite
                   && $0.coefficients.allSatisfy { $0.isFinite && $0 >= 0 } }) else {
             return .infeasible(["Invalid appearance-planning problem"])
+        }
+        // No search was permitted: this says nothing about whether the pool can fit.
+        guard maximumStates > 0 else {
+            return .searchLimit(["Appearance search state budget is exhausted"])
         }
         func total(_ constraint: Constraint, _ selected: Set<Int>) -> Double {
             // Fixed coefficient order keeps fractional sums reproducible without sorting

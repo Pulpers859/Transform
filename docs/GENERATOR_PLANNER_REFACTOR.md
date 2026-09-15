@@ -2,6 +2,37 @@
 
 ## Active roadmap and audit checkpoints (2026-09-13)
 
+### Bounded candidate search and reservation outcomes (2026-09-15)
+
+The optional pressdown trial now has a deterministic, bounded catalog search. It
+uses captured history, style and focus, tries later redundant slots first, and returns
+the first qualified fixed-dose proposal. No live caller adopts proposals in this
+checkpoint. Exhausting the finite candidate list, reaching the trial budget, and
+invalid context are distinct outcomes; none proves universal plan infeasibility.
+
+The allocator also returns the chosen role-floor reservation outcome through an
+optional observer and the planner baseline: admitted, infeasible, search-limited,
+or deload policy. Admission is not evidence that every final dose target was met.
+Default appearance search remains 512 states. Nonpositive state budgets now report
+search exhaustion rather than falsely claiming candidate-pool infeasibility.
+
+Regression coverage includes observer parity, chosen-outcome publication, protected
+conflicts, deload, deterministic/history-filtered candidate order, exact search-budget
+boundaries, and full-week search reporting. Windows smoke and syntax checks passed;
+a standalone execution also checked the framework-free solver's budget boundaries.
+Full generator and app CI evidence is pending. Stage 3 remains open.
+
+Independent review identified and prompted the zero-budget correction and additional
+non-vacuous/boundary assertions. Before live adoption, final ordering, fresh allocation
+receipts, chosen-plan diagnostics and strict requalification against the original
+baseline must be proved. A rejected first proposal does not exhaust later alternatives.
+The revised Claude review approved with follow-ups. The proposal-only search deliberately
+does not require admission, so synthetic/diagnostic trials remain possible; live optional
+adoption must require an admitted original and final allocation. The outcome enum has
+the three cases used by the exhaustive switch; CI must still type-check the integration.
+Windows commands were `swift-sanity-check` and `swiftc -parse` per changed Swift file;
+the executed standalone driver is `.agents/appearance-boundary-main.swift` (ignored).
+
 ### Combined pressdown-improvement trial (2026-09-15; code `a257920`)
 
 `evaluatePressdownSubstitutionTrial` combines the planner-context eligibility checks,

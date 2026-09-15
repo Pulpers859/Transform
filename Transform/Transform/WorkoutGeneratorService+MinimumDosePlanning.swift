@@ -1,22 +1,33 @@
 import Foundation
 
 extension ClaudeService {
+    /// Appearance reservation status, NOT a claim that all final volume targets were met.
+    enum RoleFloorAdmission: Equatable {
+        case unassessed, deloadPolicy, admitted
+        case infeasible([String])
+        case searchLimit([String])
+    }
+
     // Compare plans before the locked menu reaches AI/fallback. A maintenance improvement
     // must not silently choose which priority target loses when budgets cannot fit both.
     func allocateWeeklySetPrescription(
         _ menus: [[PreSelectedExercise]], blueprint: ProgramBlueprint, weekNumber: Int,
         lockedPrefixCounts: [Int] = [], appearancePlanningReport: ((String) -> Void)? = nil,
-        setFundingReport: (([SetFundingObservation]) -> Void)? = nil
+        setFundingReport: (([SetFundingObservation]) -> Void)? = nil,
+        maximumAppearanceStates: Int = 512,
+        roleFloorAdmissionReport: ((RoleFloorAdmission) -> Void)? = nil
     ) -> [[PreSelectedExercise]] {
         var baselineMessages: [String] = []
         var baselineReceipts: [SetFundingObservation] = []
         let baselineObserver: (([SetFundingObservation]) -> Void)? = setFundingReport == nil ? nil : { baselineReceipts = $0 }
         let baseline = allocateSetPrescriptionCandidate(menus, blueprint: blueprint, weekNumber: weekNumber,
             reserveMaintenanceMinimum: false, lockedPrefixCounts: lockedPrefixCounts,
-            appearancePlanningReport: { baselineMessages.append($0) }, setFundingReport: baselineObserver)
+            appearancePlanningReport: { baselineMessages.append($0) }, setFundingReport: baselineObserver,
+            maximumAppearanceStates: maximumAppearanceStates)
         guard baseline.floorReserved else {
             baselineMessages.forEach { appearancePlanningReport?($0) }
             setFundingReport?(baselineReceipts)
+            roleFloorAdmissionReport?(baseline.roleFloorAdmission)
             return baseline.menus
         }
 
@@ -35,6 +46,7 @@ extension ClaudeService {
         var chosen = baseline.menus
         var messages = baselineMessages
         var receipts = baselineReceipts
+        var admission = baseline.roleFloorAdmission
         // Do not pay for a second allocation when only absent candidates are missing.
         let deficient = groups.filter { groupSets(chosen, $0) > 0 && groupSets(chosen, $0) + 0.01 < minimum }
         if !deficient.isEmpty {
@@ -45,12 +57,14 @@ extension ClaudeService {
                 reserveMaintenanceMinimum: true,
                 minimumReservationGroups: Set(deficient.map { accounting.groups[$0].label }),
                 lockedPrefixCounts: lockedPrefixCounts,
-                appearancePlanningReport: { candidateMessages.append($0) }, setFundingReport: observer)
+                appearancePlanningReport: { candidateMessages.append($0) }, setFundingReport: observer,
+                maximumAppearanceStates: maximumAppearanceStates)
             if candidate.floorReserved && minimumDoseCandidatePreservesPlan(candidate.menus,
                 baseline: baseline.menus, blueprint: blueprint, weekNumber: weekNumber) {
                 chosen = candidate.menus
                 messages = candidateMessages + ["minimum dose plan accepted: priority delivery preserved"]
                 receipts = candidateReceipts
+                admission = candidate.roleFloorAdmission
             } else {
                 messages.append("minimum dose plan rejected: no safe improvement over priority-first plan")
             }
@@ -60,6 +74,7 @@ extension ClaudeService {
         }
         messages.forEach { appearancePlanningReport?($0) }
         setFundingReport?(receipts)
+        roleFloorAdmissionReport?(admission)
         return chosen
     }
 

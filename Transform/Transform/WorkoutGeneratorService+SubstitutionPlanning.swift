@@ -1,6 +1,91 @@
 import Foundation
 
 extension ClaudeService {
+    private var pressdownRedundancyFamily: Set<String> {
+        ["Rope Triceps Pressdown", "Cable Triceps Pressdown", "V-Bar Pressdown"]
+    }
+
+    enum PressdownSearchOutcome: Equatable {
+        case invalidContext, unsupportedWeek, noRedundancy, noQualifiedCandidate, searchLimit
+        case proposed(day: Int, slot: Int, replacement: String)
+    }
+
+    struct PressdownSearchAttempt: Equatable {
+        let day: Int
+        let slot: Int
+        let replacement: String
+        let decision: PressdownTrialDecision
+    }
+
+    struct PressdownSearchResult {
+        let proposedMenus: [[PreSelectedExercise]]
+        let outcome: PressdownSearchOutcome
+        let attempts: [PressdownSearchAttempt]
+    }
+
+    /// Bounded, deterministic, single-replacement proposal. First qualified alternative
+    /// wins in day order, reverse redundant-slot order, then the existing ordered/history
+    /// filtered style catalog. Exhaustion is NOT proof that no possible plan can fit.
+    func searchPressdownReduction(in baseline: SubstitutionPlanningBaseline,
+                                 maximumTrials: Int = 64) -> PressdownSearchResult {
+        var attempts: [PressdownSearchAttempt] = []
+        func unchanged(_ outcome: PressdownSearchOutcome) -> PressdownSearchResult {
+            .init(proposedMenus: baseline.menus, outcome: outcome, attempts: attempts)
+        }
+        guard baseline.menus.count == baseline.blueprint.dayPlans.count,
+              baseline.lockedPrefixCounts.count == baseline.menus.count,
+              baseline.retainedKeysByDay.count == baseline.menus.count,
+              baseline.selectionFocusIntents.count == baseline.menus.count,
+              baseline.menus.indices.allSatisfy({ baseline.lockedPrefixCounts[$0] >= 0
+                  && baseline.lockedPrefixCounts[$0] <= baseline.menus[$0].count }) else {
+            return unchanged(.invalidContext)
+        }
+        guard (1..<MesocyclePhase.deloadWeek).contains(baseline.weekNumber) else { return unchanged(.unsupportedWeek) }
+        let excess = excessPressdownsByDay(in: baseline.menus)
+        guard excess.contains(where: { $0 > 0 }) else { return unchanged(.noRedundancy) }
+        let history = baseline.exerciseHistory
+        let family = pressdownRedundancyFamily
+        for day in baseline.menus.indices where excess[day] > 0 {
+            let plan = baseline.blueprint.dayPlans[day]
+            let selectionContext = ExerciseSelectionContext(calibration: baseline.blueprint.calibration,
+                injuryRiskFocus: baseline.blueprint.injuryRiskFocus, style: plan.style)
+            let catalog = applyHistoryFilters(orderedExerciseCatalog(for: plan.style,
+                focusIntent: baseline.selectionFocusIntents[day], selectionContext: selectionContext),
+                avoidedExercises: history?.painExercises ?? [],
+                deprioritizedExercises: history?.equipmentSkipExercises ?? [],
+                catalogOffset: history.map { variationCatalogOffset(for: $0) } ?? 0,
+                weekNumber: baseline.weekNumber, priorMesocycleExercises: history?.priorMesocycleExercises ?? [])
+            for slot in baseline.menus[day].indices.reversed() where family.contains(baseline.menus[day][slot].exerciseName) {
+                let old = baseline.menus[day][slot]
+                let oldRole = proceduralExerciseRole(for: old.exerciseName, muscleTarget: old.muscleTarget)
+                // These exclusions cannot be changed by choosing a different replacement.
+                // Do not consume a candidate trial on a protected or retained appearance.
+                guard !isProtectedAppearance(role: old.role, slot: slot, style: plan.style,
+                    lockedPrefixCount: baseline.lockedPrefixCounts[day]),
+                    !isProtectedAppearance(role: oldRole, slot: slot, style: plan.style,
+                    lockedPrefixCount: baseline.lockedPrefixCounts[day]),
+                    !baseline.retainedKeysByDay[day].contains(ExerciseWeightEntry.canonicalLookupKey(old.exerciseName))
+                else { continue }
+                for replacement in catalog where replacement.target == old.muscleTarget && !family.contains(replacement.name) {
+                    guard attempts.count < maximumTrials else { return unchanged(.searchLimit) }
+                    var candidate = baseline.menus
+                    candidate[day][slot] = .init(exerciseName: replacement.name, muscleTarget: replacement.target,
+                        movementPattern: exerciseMetadata(forExerciseName: replacement.name,
+                            muscleTarget: replacement.target).movementPattern,
+                        role: proceduralExerciseRole(for: replacement.name, muscleTarget: replacement.target),
+                        prescribedSets: old.prescribedSets)
+                    let decision = evaluatePressdownSubstitutionTrial(candidate, plannedBaseline: baseline)
+                    attempts.append(.init(day: day, slot: slot, replacement: replacement.name, decision: decision))
+                    if case .qualified = decision {
+                        return .init(proposedMenus: candidate,
+                            outcome: .proposed(day: day, slot: slot, replacement: replacement.name), attempts: attempts)
+                    }
+                }
+            }
+        }
+        return unchanged(.noQualifiedCandidate)
+    }
+
     enum PressdownTrialDecision: Equatable {
         case rejected(PressdownTrialFailure)
         // A measured trial result, not authorization to replace the delivered menu.
@@ -18,7 +103,7 @@ extension ClaudeService {
     /// Keep naming/history normalization unchanged (INC-2); do not use this to reject
     /// early catalog candidates (INC-9). Tests pin exact members and unknown variants.
     func excessPressdownsByDay(in menus: [[PreSelectedExercise]]) -> [Int] {
-        let family: Set<String> = ["Rope Triceps Pressdown", "Cable Triceps Pressdown", "V-Bar Pressdown"]
+        let family = pressdownRedundancyFamily
         return menus.map { day in max(0, day.filter { family.contains($0.exerciseName) }.count - 1) }
     }
 
@@ -57,6 +142,7 @@ extension ClaudeService {
         let retainedKeysByDay: [Set<String>]
         let exerciseHistory: ExerciseHistoryContext?
         let selectionFocusIntents: [MusclePriorityIntent?]
+        var roleFloorAdmission: RoleFloorAdmission = .unassessed
     }
 
     func preflightFixedDoseSubstitution(

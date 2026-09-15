@@ -236,6 +236,7 @@ final class UserJourneySimulationTests: XCTestCase {
         var attempted = 0
         var dosePreserved = 0
         var qualified = 0
+        var searchProposals = 0
         var lumbarTrials = 0
         var observedLockedDays = 0
         var observedRetainedDays = 0
@@ -275,6 +276,27 @@ final class UserJourneySimulationTests: XCTestCase {
                     }
                 }
                 let before = signature(baseline)
+                XCTAssertNotEqual(planned.roleFloorAdmission, .unassessed)
+                let search = service.searchPressdownReduction(in: planned)
+                if persona.name == "Six-day push/pull/legs, back focus, no injuries", weekIndex == 0 {
+                    guard case .proposed = search.outcome else {
+                        XCTFail("Known complete Arms baseline must yield a qualified replacement, not vacuous search coverage")
+                        continue
+                    }
+                }
+                trialReport.append("BOUNDED_SEARCH persona=\(persona.name) week=\(weekIndex + 1) outcome=\(search.outcome) trials=\(search.attempts.count) admission=\(planned.roleFloorAdmission)")
+                switch search.outcome {
+                case .proposed:
+                    searchProposals += 1
+                    guard case .qualified = service.evaluatePressdownSubstitutionTrial(search.proposedMenus, plannedBaseline: planned) else {
+                        XCTFail("Search must not return an unqualified proposal")
+                        continue
+                    }
+                default:
+                    XCTAssertEqual(signature(search.proposedMenus), before)
+                }
+                XCTAssertLessThanOrEqual(search.attempts.count, 64)
+                XCTAssertEqual(signature(planned.menus), before)
                 XCTAssertEqual(baseline.map { $0.map { "\($0.exerciseName)|\($0.muscleTarget)|\($0.prescribedSets)" } },
                     weeks[weekIndex].days.map { $0.exercises.map { "\($0.exerciseName)|\($0.muscleTarget)|\($0.sets)" } },
                     "Trial baseline must match the exercises and doses actually delivered by procedural generation")
@@ -338,6 +360,7 @@ final class UserJourneySimulationTests: XCTestCase {
         XCTAssertGreaterThan(lumbarTrials, 0, "Do not silently skip the prior lumbar-persona regression")
         XCTAssertGreaterThan(dosePreserved, 0, "At least one full-week alternative must preserve dose")
         XCTAssertGreaterThan(qualified, 0, "Exercise the complete trial decision, not just separate checks")
+        XCTAssertGreaterThan(searchProposals, 0, "Bounded search must propose a real full-week alternative")
         XCTAssertGreaterThan(observedLockedDays, 0, "Exercise real previous-week ordering locks")
         XCTAssertGreaterThan(observedRetainedDays, 0, "Exercise real retained identities")
         XCTAssertGreaterThan(observedUnlockedFocusRetention, 0,
