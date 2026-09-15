@@ -320,8 +320,10 @@ final class UserJourneySimulationTests: XCTestCase {
         report.append("STYLE currentPullMatcher=\(service.exerciseMatchesDayStyle(deliveredCore, style: blueprint.dayPlans[pull].style)); test permission does not alter production eligibility")
         let oldIssues = service.validateProgramResponse(before, blueprint: blueprint, expectedExerciseMenus: baseline)
         let newIssues = service.validateProgramResponse(after, blueprint: blueprint, expectedExerciseMenus: candidate)
-        XCTAssertTrue(Set(newIssues).subtracting(Set(oldIssues)).isEmpty,
-            "Trial introduces findings: \(Set(newIssues).subtracting(Set(oldIssues)).sorted())")
+        // The first executed experiment (35035225961) failed only because the original
+        // blueprint did not declare the added support work. Keep that rejected control.
+        let offTheme = "Day \(pull + 1) includes low-value filler that does not clearly support the Pull theme or the planned priorities (\(moved.exerciseName)). Trim the noise and keep the session more disciplined."
+        XCTAssertEqual(Set(newIssues).subtracting(Set(oldIssues)), Set([offTheme]))
         report.append("FINDINGS_BEFORE \(oldIssues)")
         report.append("FINDINGS_AFTER \(newIssues)")
         var admission: ClaudeService.RoleFloorAdmission = .unassessed
@@ -331,7 +333,111 @@ final class UserJourneySimulationTests: XCTestCase {
         XCTAssertEqual(admission, .admitted)
         XCTAssertEqual(signature(reallocated), signature(candidate), "Normal allocation must preserve the entire proposed plan")
         XCTAssertEqual(signature(planned.menus), original, "The live baseline is untouched by every trial")
+
+        // Second experiment: declare Core as support on this complete candidate day.
+        // No global style filter, catalog, priority target, budget or live plan changes.
+        // This is a hand-built candidate, NOT proof that production selects or propagates it.
+        var declaredDays = blueprint.dayPlans
+        let receiver = declaredDays[pull]
+        declaredDays[pull] = .init(dayIndex: receiver.dayIndex, style: receiver.style,
+            focusArea: receiver.focusArea, supportAreas: receiver.supportAreas + ["Core/Abs"],
+            targetFatigueCap: receiver.targetFatigueCap, targetSessionMinutes: receiver.targetSessionMinutes,
+            targetPrioritySlots: receiver.targetPrioritySlots, emphasisPatterns: receiver.emphasisPatterns,
+            isRestDay: receiver.isRestDay)
+        let declaredBlueprint = ClaudeService.ProgramBlueprint(evidenceVersion: blueprint.evidenceVersion,
+            splitRecommendation: blueprint.splitRecommendation, weeklyTrainingDays: blueprint.weeklyTrainingDays,
+            priorityAllocations: blueprint.priorityAllocations, dayPlans: declaredDays,
+            topLeverageChange: blueprint.topLeverageChange, posturalFocus: blueprint.posturalFocus,
+            injuryRiskFocus: blueprint.injuryRiskFocus, programmingNotes: blueprint.programmingNotes,
+            calibration: blueprint.calibration)
+        let declaredAfter = try service.validatedProceduralWeekOneProgram(from: result, trainingIntent: intent,
+            blueprint: declaredBlueprint, exerciseMenus: candidate)
+        XCTAssertEqual(declaredAfter.days.map { $0.exercises.map(\.exerciseName) }, after.days.map { $0.exercises.map(\.exerciseName) })
+        XCTAssertEqual(declaredAfter.days.map { $0.exercises.map(\.muscleTarget) }, after.days.map { $0.exercises.map(\.muscleTarget) })
+        XCTAssertEqual(declaredAfter.days.map { $0.exercises.map(\.sets) }, after.days.map { $0.exercises.map(\.sets) })
+        let declaredIssues = service.validateProgramResponse(declaredAfter, blueprint: declaredBlueprint, expectedExerciseMenus: candidate)
+        XCTAssertTrue(Set(declaredIssues).subtracting(Set(oldIssues)).isEmpty,
+            "Declared-support experiment introduces findings: \(declaredIssues)")
+        XCTAssertEqual(service.compareAllocatedDoseOnly(candidate, baseline: baseline, blueprint: declaredBlueprint,
+            weekNumber: 1), .dosePreserved(improvesMaintenanceMinimum: false))
+        var declaredAdmission: ClaudeService.RoleFloorAdmission = .unassessed
+        let declaredAllocation = service.allocateWeeklySetPrescription(candidate, blueprint: declaredBlueprint,
+            weekNumber: 1, lockedPrefixCounts: planned.lockedPrefixCounts,
+            roleFloorAdmissionReport: { declaredAdmission = $0 }, publishConflictLogs: false)
+        XCTAssertEqual(declaredAdmission, .admitted)
+        XCTAssertEqual(signature(declaredAllocation), signature(candidate))
+        for day in [lower, pull] {
+            XCTAssertLessThanOrEqual(service.estimatedSessionMinutes(for: declaredAfter.days[day]), declaredDays[day].targetSessionMinutes)
+            XCTAssertLessThanOrEqual(service.estimatedDayFatigue(for: declaredAfter.days[day].exercises), limits.fatigue[day])
+        }
+        report.append("DECLARED_SUPPORT_EXPERIMENT day=\(pull + 1) support=\(receiver.supportAreas)->\(declaredDays[pull].supportAreas) findings=\(declaredIssues) admission=\(declaredAdmission) exactCandidatePreserved=\(signature(declaredAllocation) == signature(candidate)) NOT_ADOPTED")
         try writeArtifactIfRequested(report.joined(separator: "\n"), environmentKey: "TRANSFORM_CORE_RELOCATION_OUTPUT")
+
+        // Diagnostic continuation only: feed the delivered experiment forward without moving
+        // core again. This does not authorize production relocation or assert it persists.
+        var previousExperimentalDays = declaredAfter.days
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        func encodedDays(_ days: [WorkoutDayResponse]) throws -> String {
+            String(decoding: try encoder.encode(days), as: UTF8.self)
+        }
+        let originalDeliveredExperiment = try encodedDays(declaredAfter.days)
+        var chain = ["CORE_CHAIN_EXPERIMENT NOT_ADOPTED; week1 core moved once; no manual relocation in weeks2/3; exerciseHistory=nil; no pain-history variant",
+            "ORIGINAL_WEEK1_BASELINE \(original)",
+            "DELIVERED_EXPERIMENT_WEEK1 \(originalDeliveredExperiment)"]
+        for week in 2...3 {
+            XCTAssertEqual(previousExperimentalDays.count, 7, "Use the actual complete delivered previous week")
+            XCTAssertEqual(previousExperimentalDays.map(\.dayNumber), Array(((week - 2) * 7 + 1)...((week - 1) * 7)))
+            let previousSnapshot = try encodedDays(previousExperimentalDays)
+            let nextBlueprint = service.programBlueprint(for: intent, weekNumber: week)
+            var traces: [(String, [[ClaudeService.PreSelectedExercise]])] = []
+            let next = service.preSelectedExercisePlan(for: nextBlueprint, trainingIntent: intent,
+                weekNumber: week, previousWeekDays: previousExperimentalDays, exerciseHistory: nil,
+                menuPlanningTrace: { traces.append(($0, $1)) })
+            let dayStart = (week - 1) * 7 + 1, dayEnd = week * 7
+            let delivered = try service.validatedProceduralWeek(weekNumber: week, dayStart: dayStart,
+                dayEnd: dayEnd, splitType: intent.splitRecommendation, programName: "Core relocation chain experiment",
+                trainingIntent: intent, blueprint: nextBlueprint, previousWeekDays: previousExperimentalDays,
+                exerciseMenus: next.menus)
+            XCTAssertEqual(delivered.days.count, 7)
+            XCTAssertEqual(delivered.days.map(\.dayNumber), Array(dayStart...dayEnd))
+            XCTAssertEqual(delivered.days.map { $0.exercises.map(\.exerciseName) }, next.menus.map { $0.map(\.exerciseName) })
+            XCTAssertEqual(delivered.days.map { $0.exercises.map(\.muscleTarget) }, next.menus.map { $0.map(\.muscleTarget) })
+            XCTAssertEqual(delivered.days.map { $0.exercises.map(\.sets) }, next.menus.map { $0.map(\.prescribedSets) })
+            XCTAssertEqual(try encodedDays(previousExperimentalDays), previousSnapshot, "Planning cannot mutate its previous-week input")
+            chain.append("WEEK \(week) INPUT_PREVIOUS_DELIVERED \(previousSnapshot)")
+            chain.append("WEEK \(week) PLAN admission=\(next.roleFloorAdmission) locks=\(next.lockedPrefixCounts) retainedKeys=\(next.retainedKeysByDay.map { $0.sorted() }) menus=\(signature(next.menus))")
+            for phase in traces {
+                chain.append("WEEK \(week) PHASE \(phase.0) counts=\(phase.1.map(\.count)) menus=\(signature(phase.1))")
+            }
+            for previousDay in previousExperimentalDays where !previousDay.isRestDay {
+                let style = service.canonicalTrainingStyle(service.inferredDayStyle(dayName: previousDay.dayName,
+                    muscleGroups: previousDay.muscleGroups) ?? "Unknown")
+                let styleEligible = service.retainedAnchorExercises(from: previousDay.exercises, style: style)
+                for core in previousDay.exercises where service.proceduralExerciseRole(for: core.exerciseName, muscleTarget: core.muscleTarget) == .core {
+                    chain.append("WEEK \(week) PRIOR_CORE day=\(previousDay.dayNumber) style=\(style) name=\(core.exerciseName) sets=\(core.sets) styleMatches=\(service.exerciseMatchesDayStyle(core, style: style)) inStyleFilteredRetentionPool=\(styleEligible.contains { $0.exerciseName == core.exerciseName && $0.muscleTarget == core.muscleTarget }); pool membership is not final retention")
+                }
+            }
+            for day in delivered.days {
+                let core = day.exercises.enumerated().filter {
+                    service.proceduralExerciseRole(for: $0.element.exerciseName, muscleTarget: $0.element.muscleTarget) == .core
+                }.map { "slot=\($0.offset + 1) name=\($0.element.exerciseName) target=\($0.element.muscleTarget) sets=\($0.element.sets)" }
+                chain.append("WEEK \(week) DELIVERED_DAY \(day.dayNumber) name=\(day.dayName) count=\(day.exercises.count) core=\(core)")
+            }
+            let findings = service.validateWeekResponse(delivered, dayStart: dayStart, dayEnd: dayEnd,
+                previousWeekDays: previousExperimentalDays, blueprint: nextBlueprint, expectedExerciseMenus: next.menus)
+            // Original exported weeks 2/3 at 56632b1 have only this unresolved finding.
+            // This is a nonregression screen, not acceptance of later-week crowding.
+            let knownBaselineFinding = "Day \(dayStart + lower) is too crowded for a fatigue-managed Lower session. In a shift-work recomposition block, prefer fewer high-value lower-body movements over extra filler."
+            XCTAssertTrue(Set(findings).isSubset(of: Set([knownBaselineFinding])),
+                "Experimental prior week introduced findings beyond the measured baseline: \(findings)")
+            chain.append("WEEK \(week) FINDINGS \(findings)")
+            chain.append("WEEK \(week) DELIVERED \(try encodedDays(delivered.days))")
+            previousExperimentalDays = delivered.days
+        }
+        XCTAssertEqual(signature(planned.menus), original)
+        XCTAssertEqual(try encodedDays(declaredAfter.days), originalDeliveredExperiment)
+        try writeArtifactIfRequested(chain.joined(separator: "\n"), environmentKey: "TRANSFORM_CORE_CHAIN_OUTPUT")
     }
 
     func testRecordRowAlternativeExplorationAndRejectInvalidDoses() throws {

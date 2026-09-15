@@ -4,6 +4,34 @@
 
 ### Owner-authorized core placement experiment (2026-09-15; pending execution)
 
+First executed trial, code `56632b1`, run `35035225961`: all 698 test cases ran;
+the new trial failed exactly its no-new-findings assertion. Its saved report shows
+dose preserved, Lower seven to six appearances (20 to 17 sets), Pull five to six
+(13 to 16 sets), modeled fatigue 33 to 30 / 23 to 26 against caps of 48, and estimated
+minutes 73 to 66 / 55 to 61 against reference targets of 75. Core days move [2,4]
+to [4,6], retaining repeated-week cyclic gaps [2,5]. Fresh allocation admits and
+preserves the proposed candidate exactly. The original Lower crowding finding is
+replaced by a Pull-theme filler finding for Cable Crunch. This is a **failed
+experiment**, not a shipped placement fix; the app build succeeded (`35035225901`).
+
+The second test-only iteration keeps that original blueprint as a rejected control,
+then explicitly declares Core/Abs as supporting work on the experimental Pull day.
+It changes no global style predicate, catalog, priority target, budget or live caller.
+The declared-support variant must pass no-new-findings, dose, budget, delivery and
+fresh-allocation checks; simply suppressing or allowing arbitrary findings is not used.
+This tests a complete candidate's declared purpose, not production propagation of a
+changed blueprint. Its actual delivered week feeds two further planner calls for
+weeks two and three, without manually moving core again. Those later weeks are
+diagnostic only: reports expose retained keys, phases, counts, core positions, full
+prescriptions and findings. They reject findings beyond the original exported baseline's
+single Lower-crowding warning (days 9/16), without treating that warning as resolved.
+No pain-history variant is claimed; history is nil.
+Claude approved this iteration with follow-ups. Its diagnostic-check concern prompted
+that baseline-backed nonregression screen and an inline hand-built-candidate caveat.
+Modeled budgets and validator agreement do not prove training comfort or clinical safety.
+Its claim that nonfatal XCTest assertions prevent artifact writes was contradicted by
+the failed first run, whose complete report was uploaded and inspected.
+
 The owner permits testing core at the end of Pull, provided it does not overcrowd
 the session. This is permission to investigate, not automatic live adoption or a
 blanket widening of the Pull catalog. The test-only trial reuses the shoulder-beginner
@@ -19,8 +47,8 @@ The trial asserts dose preservation, modeled fatigue limits, no new validator fi
 admitted reallocation with exact menu/dose preservation, and reference-time estimates
 for the two affected days. The time check is a conservative experiment screen, not
 measured gym time or authorization to restore a global time-based trimming rule.
-Later-week retention, actual cross-week spacing/history,
-arbitrary profiles and physical-device behavior are outside this initial experiment.
+Later-week placement is now explored separately, not accepted. Actual dated recovery,
+pain-history cases, arbitrary profiles and physical-device behavior remain unproved.
 No production eligibility, allocation or returned workout is changed by this checkpoint.
 
 Independent review added actual core-day positions and delivered muscle-target parity.
