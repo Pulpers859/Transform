@@ -2,7 +2,7 @@
 
 ## Active roadmap and audit checkpoints (2026-09-13)
 
-### Planner-bound substitution context (2026-09-15; verification pending)
+### Planner-bound substitution context (2026-09-15; code `0f66781`)
 
 The menu builder now returns an internal baseline containing its allocated menus,
 blueprint/week, actual ordering locks, surviving retained identities and supplied
@@ -21,14 +21,29 @@ Tests cover moved retained identities and real-builder unlocked focus retention.
 This connects continuity/pain context, not full selection-policy acceptance. Equipment
 preferences, broader injury/selection review, prime-slot/variation checks, improvement
 objective and adoption remain open. Stage 3 and the outstanding quality findings are
-not complete. Windows smoke and per-file syntax checks passed; CI and raw-output
-comparison are pending for this checkpoint. No device or live-AI result is claimed.
+not complete. Windows smoke and per-file syntax checks passed. No device or live-AI
+result is claimed.
 The Claude packet audit approved with follow-ups. Its missing-initializer question
 was resolved by inspecting the existing `SubstitutionPainExclusions(history:)`;
-CI must still type-check it. The new context-returning builder requires an explicit
+CI subsequently compiled and executed it. The new context-returning builder requires an explicit
 history argument (including explicit nil for no-history fixtures). The legacy menu
 API retains its existing optional default. Any future live adoption path must verify
 that actual history was supplied; this snapshot alone does not prove that provenance.
+
+Verified code-checkpoint evidence:
+- Generator run `35017061354` passed all 674 tests, including the new retained-identity
+  and real-builder pain-history tests and the complete-week trials.
+- iOS run `35017061363` passed with `BUILD SUCCEEDED` in the log.
+- All 20 complete exported week objects and the historical fixture snapshot are
+  identical to `e328643`. No observed workout change is being claimed as an improvement.
+- Nine trials still preserve dose; six pass structural preflight and three fail the
+  exact style-catalog check. Weeks 2/3 now carry actual nonzero ordering locks.
+- Local artifacts: `.agents/substitution-context-0f66781/` (ignored). Full selection
+  eligibility and adoption remain untested; the report summary uses that broader sense.
+
+Next bounded step: evaluate remaining selection preferences and whole-week variation/
+prime-slot constraints against this captured baseline, then define an explicit
+improvement criterion. Do not enable automatic replacements from preflight alone.
 
 Starting checkpoint: `b187f51`. This is a staged plan, not a claim that every
 finding below is a code defect or that the architectural work is complete.
