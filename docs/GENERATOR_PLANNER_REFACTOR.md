@@ -81,6 +81,12 @@ classifier defect, but CI correctly rejected the integrated behavior. The detach
 `pressdown-family` sandbox and ignored `.agents/pressdown-b97254f` artifacts retain
 the experiment locally; commit `b97254f` preserves its exact code in history.
 
+Withdrawal verification at `e624745`: generator run `34961588332` passed with
+656 executed tests; app run `34961588274` passed. All 20 complete exported week
+objects and the historical snapshot match the `97b7589` baseline exactly. Source,
+tests and package configuration match `b830807`; only the audit documentation
+differs. This proves restoration, not resolution of the original duplicate.
+
 ### Shared-cost extraction slice
 
 `WorkoutGeneratorService+SetAccounting.swift` centralizes per-appearance direct
