@@ -137,7 +137,25 @@ This is an arithmetic experiment, not an eligibility or adoption policy. It does
 establish that overhead work is suitable for a particular pain report, preserve retained
 history slots through a new selection path, or prove that the replacement improves
 movement quality. No production generator code changes. The historical snapshot and
-complete exported weeks must remain unchanged. Execution results are pending CI.
+complete exported weeks must remain unchanged.
+
+Verified at `3440f08`: generator run `34999523904` executed 664 tests and passed;
+app run `34999523916` logged BUILD SUCCEEDED. The `bounded-substitution-trials`
+artifact records nine trials, all dose-preserving: six alternatives across the
+back-focus persona's loading weeks and three Cable Kickback alternatives across
+the lumbar-persona loading weeks. Each baseline also passed dose comparison with
+itself. This is not a recommendation of those exercises for pain. All 20 complete
+exported week objects and the historical snapshot match `f4104d8` exactly.
+
+Separate Claude packet reviews approved with follow-ups. The trial was hardened
+to assert equality with the delivered procedural exercises/targets/sets, retain
+lumbar-case coverage, and export evidence instead of relying on captured stdout.
+The next bounded step is an eligibility and retained-slot gate using the existing
+catalog/history/pain rules, plus movement/focus-quality checks. Only after those
+checks and an explicit duplicate-reduction objective pass should any trial be
+eligible for adoption. Do not turn the dose-only result into production approval,
+or reintroduce the rejected early catalog-selection gate. Crowding, pulling balance,
+fractional targets and the original duplicate in delivered workouts remain open.
 
 ### Shared-cost extraction slice
 
