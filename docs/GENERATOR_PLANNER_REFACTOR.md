@@ -111,6 +111,13 @@ when integrating candidate alternatives without publishing rejected candidates' 
 Acceptance for this extraction
 requires unchanged complete exported week objects and historical snapshot in CI.
 
+Verified code checkpoint `f4104d8`: generator run `34991998580` passed with 663
+executed tests; app run `34991998575` logged BUILD SUCCEEDED. All 20 complete week
+objects and the historical snapshot match restored checkpoint `e624745` exactly.
+Windows smoke and per-file syntax checks passed. External review approved with
+follow-ups: dose-only naming was strengthened, both calendar-shape branches are
+tested, and report consumption remains explicitly deferred as described above.
+
 ### Shared-cost extraction slice
 
 `WorkoutGeneratorService+SetAccounting.swift` centralizes per-appearance direct
