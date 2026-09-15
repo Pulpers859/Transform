@@ -31,6 +31,7 @@ jobs:
       TRANSFORM_SUBSTITUTION_REPORT_OUTPUT: ${{ github.workspace }}/bounded-substitution-report.txt
       TRANSFORM_CROWDING_TRACE_OUTPUT: ${{ github.workspace }}/crowding-planning-trace.txt
       TRANSFORM_ROW_TRIALS_OUTPUT: ${{ github.workspace }}/rowing-plan-trials.txt
+      TRANSFORM_CORE_RELOCATION_OUTPUT: ${{ github.workspace }}/core-relocation-trial.txt
 
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
@@ -184,6 +185,7 @@ jobs:
           path: |
             crowding-planning-trace.txt
             rowing-plan-trials.txt
+            core-relocation-trial.txt
           if-no-files-found: error
           retention-days: 14
 

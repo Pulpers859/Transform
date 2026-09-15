@@ -189,7 +189,7 @@ final class UserJourneySimulationTests: XCTestCase {
         delivered + 0.01 >= floor(ceiling)
     }
 
-    func testCrowdedLowerSessionTraceAgainstCompletePlannerBaseline() throws {
+    func testCrowdedLowerTraceAndNonAdoptingCoreRelocation() throws {
         let persona = personas[1]
         let intent = service.trainingIntentPlan(from: analysis(for: persona))
         let blueprint = service.programBlueprint(for: intent, weekNumber: 1)
@@ -224,6 +224,114 @@ final class UserJourneySimulationTests: XCTestCase {
             report.append("CROWDING_TRACE phase=\(phase.0) lower=\(signature(phase.1)[lower])")
         }
         try writeArtifactIfRequested(report.joined(separator: "\n"), environmentKey: "TRANSFORM_CROWDING_TRACE_OUTPUT")
+        try recordCoreRelocationTrial(planned: observed, intent: intent, result: analysis(for: persona), lower: lower)
+    }
+
+    /// Non-adopting week-one experiment authorized by the owner. Six is a conservative
+    /// trial ceiling, not a new production rule or proof of real-world session comfort.
+    private func recordCoreRelocationTrial(planned: ClaudeService.SubstitutionPlanningBaseline,
+        intent: ClaudeService.TrainingIntentPlan, result: BodyAnalysisResult, lower: Int) throws {
+        let baseline = planned.menus
+        let blueprint = planned.blueprint
+        func signature(_ menus: [[ClaudeService.PreSelectedExercise]]) -> [[String]] {
+            menus.map { $0.map { "\($0.exerciseName)|\($0.muscleTarget)|\($0.movementPattern)|\($0.role)|\($0.prescribedSets)" } }
+        }
+        let original = signature(baseline)
+        let pull = try XCTUnwrap(blueprint.dayPlans.indices.first {
+            !blueprint.dayPlans[$0].isRestDay && service.canonicalTrainingStyle(blueprint.dayPlans[$0].style) == "Pull"
+        })
+        let slot = try XCTUnwrap(baseline[lower].indices.first { baseline[lower][$0].role == .core })
+        let moved = baseline[lower][slot]
+        XCTAssertTrue(service.isDirectCoreHypertrophyMovement(exerciseName: moved.exerciseName,
+            muscleTarget: moved.muscleTarget, reps: "10-15"))
+        XCTAssertFalse(service.isProtectedAppearance(role: moved.role, slot: slot,
+            style: blueprint.dayPlans[lower].style, lockedPrefixCount: planned.lockedPrefixCounts[lower]))
+        XCTAssertFalse(planned.retainedKeysByDay[lower].contains(ExerciseWeightEntry.canonicalLookupKey(moved.exerciseName)))
+        var candidate = baseline
+        candidate[lower].remove(at: slot)
+        candidate[pull].append(moved)
+        XCTAssertEqual(signature(candidate).flatMap { $0 }.sorted(), original.flatMap { $0 }.sorted(),
+            "Relocation must preserve every exercise field and dose, not add or delete work")
+        XCTAssertEqual(signature(candidate)[lower], original[lower].enumerated().filter { $0.offset != slot }.map(\.element))
+        XCTAssertEqual(Array(signature(candidate)[pull].dropLast()), original[pull])
+        XCTAssertEqual(signature(candidate)[pull].last, original[lower][slot])
+        for day in baseline.indices where day != lower && day != pull {
+            XCTAssertEqual(signature(candidate)[day], original[day])
+        }
+        XCTAssertEqual(candidate[lower].count, 6)
+        XCTAssertEqual(candidate[pull].count, 6)
+        XCTAssertEqual(signature(service.reorderedMenusForSessionFlow(candidate, blueprint: blueprint,
+            trainingIntent: intent, lockedPrefixCounts: planned.lockedPrefixCounts)), signature(candidate))
+        let before = try service.validatedProceduralWeekOneProgram(from: result, trainingIntent: intent,
+            blueprint: blueprint, exerciseMenus: baseline)
+        let after = try service.validatedProceduralWeekOneProgram(from: result, trainingIntent: intent,
+            blueprint: blueprint, exerciseMenus: candidate)
+        XCTAssertEqual(after.days.map { $0.exercises.map(\.exerciseName) }, candidate.map { $0.map(\.exerciseName) })
+        XCTAssertEqual(after.days.map { $0.exercises.map(\.muscleTarget) }, candidate.map { $0.map(\.muscleTarget) })
+        XCTAssertEqual(after.days.map { $0.exercises.map(\.sets) }, candidate.map { $0.map(\.prescribedSets) })
+        let limits = service.setBudgetLimits(for: blueprint)
+        var report = ["CORE_RELOCATION_TRIAL week=1 sourceDay=\(lower + 1) destinationDay=\(pull + 1) moved=\(moved.exerciseName) sets=\(moved.prescribedSets) NOT_ADOPTED",
+            "BASELINE \(original)", "CANDIDATE \(signature(candidate))"]
+        let dose = service.compareAllocatedDoseOnly(candidate, baseline: baseline, blueprint: blueprint, weekNumber: 1)
+        XCTAssertEqual(dose, .dosePreserved(improvesMaintenanceMinimum: false), "Relocation must not buy comfort by losing useful dose")
+        report.append("DOSE \(dose)")
+        for day in candidate.indices {
+            if blueprint.dayPlans[day].isRestDay { XCTAssertTrue(candidate[day].isEmpty) }
+            let keys = candidate[day].map { ExerciseWeightEntry.canonicalLookupKey($0.exerciseName) }
+            XCTAssertEqual(Set(keys).count, keys.count)
+            let fatigue = service.estimatedDayFatigue(for: after.days[day].exercises)
+            let minutes = service.estimatedSessionMinutes(for: after.days[day])
+            XCTAssertLessThanOrEqual(fatigue, limits.fatigue[day], "Trial exceeds modeled fatigue on day \(day + 1)")
+            if day == lower || day == pull {
+                // Conservative experiment screen only. Estimates are not measured gym times,
+                // and this does not restore the removed production time-trimming rule.
+                XCTAssertLessThanOrEqual(minutes, blueprint.dayPlans[day].targetSessionMinutes,
+                    "Trial exceeds the affected day's reference time estimate")
+            }
+            report.append("DAY \(day + 1) counts=\(baseline[day].count)->\(candidate[day].count) fatigue=\(service.estimatedDayFatigue(for: before.days[day].exercises))->\(fatigue) fatigueCap=\(limits.fatigue[day]) estimatedMinutes=\(service.estimatedSessionMinutes(for: before.days[day]))->\(minutes) referenceMinutes=\(blueprint.dayPlans[day].targetSessionMinutes)")
+        }
+        // Preserve every major group's exposure-day count as well as weekly work.
+        for group in service.majorMuscleGroups {
+            let aliases = service.normalizedGroupAliases(forSeed: group.seed)
+            func positions(_ days: [WorkoutDayResponse]) -> [Int] {
+                days.indices.filter { day in days[day].exercises.contains {
+                    service.exerciseDirectlyTargets(groupAliases: aliases, exerciseName: $0.exerciseName, muscleTarget: $0.muscleTarget)
+                } }
+            }
+            let oldPositions = positions(before.days), newPositions = positions(after.days)
+            XCTAssertGreaterThanOrEqual(newPositions.count, oldPositions.count)
+            report.append("COVERAGE \(group.label) days=\(oldPositions.map { $0 + 1 })->\(newPositions.map { $0 + 1 })")
+        }
+        func corePositions(_ days: [WorkoutDayResponse]) -> [Int] {
+            days.indices.filter { day in days[day].exercises.contains {
+                service.proceduralExerciseRole(for: $0.exerciseName, muscleTarget: $0.muscleTarget) == .core
+            } }
+        }
+        func cyclicGaps(_ positions: [Int]) -> [Int] {
+            guard !positions.isEmpty else { return [] }
+            return positions.indices.map { index in
+                index + 1 < positions.count ? positions[index + 1] - positions[index] : 7 + positions[0] - positions[index]
+            }.sorted()
+        }
+        let oldGaps = cyclicGaps(corePositions(before.days)), newGaps = cyclicGaps(corePositions(after.days))
+        XCTAssertEqual(newGaps, oldGaps, "This fixture must preserve spacing, including repeated-week boundary")
+        report.append("CORE_SPACING days=\(corePositions(before.days).map { $0 + 1 })->\(corePositions(after.days).map { $0 + 1 }) cyclicDayGaps=\(oldGaps)->\(newGaps); not a next-week history simulation")
+        let deliveredCore = try XCTUnwrap(after.days[pull].exercises.last)
+        report.append("STYLE currentPullMatcher=\(service.exerciseMatchesDayStyle(deliveredCore, style: blueprint.dayPlans[pull].style)); test permission does not alter production eligibility")
+        let oldIssues = service.validateProgramResponse(before, blueprint: blueprint, expectedExerciseMenus: baseline)
+        let newIssues = service.validateProgramResponse(after, blueprint: blueprint, expectedExerciseMenus: candidate)
+        XCTAssertTrue(Set(newIssues).subtracting(Set(oldIssues)).isEmpty,
+            "Trial introduces findings: \(Set(newIssues).subtracting(Set(oldIssues)).sorted())")
+        report.append("FINDINGS_BEFORE \(oldIssues)")
+        report.append("FINDINGS_AFTER \(newIssues)")
+        var admission: ClaudeService.RoleFloorAdmission = .unassessed
+        let reallocated = service.allocateWeeklySetPrescription(candidate, blueprint: blueprint, weekNumber: 1,
+            lockedPrefixCounts: planned.lockedPrefixCounts, roleFloorAdmissionReport: { admission = $0 }, publishConflictLogs: false)
+        report.append("REALLOCATION admission=\(admission) exactCandidatePreserved=\(signature(reallocated) == signature(candidate)) menus=\(signature(reallocated))")
+        XCTAssertEqual(admission, .admitted)
+        XCTAssertEqual(signature(reallocated), signature(candidate), "Normal allocation must preserve the entire proposed plan")
+        XCTAssertEqual(signature(planned.menus), original, "The live baseline is untouched by every trial")
+        try writeArtifactIfRequested(report.joined(separator: "\n"), environmentKey: "TRANSFORM_CORE_RELOCATION_OUTPUT")
     }
 
     func testRecordRowAlternativeExplorationAndRejectInvalidDoses() throws {

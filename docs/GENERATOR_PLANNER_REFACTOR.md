@@ -2,6 +2,40 @@
 
 ## Active roadmap and audit checkpoints (2026-09-13)
 
+### Owner-authorized core placement experiment (2026-09-15; pending execution)
+
+The owner permits testing core at the end of Pull, provided it does not overcrowd
+the session. This is permission to investigate, not automatic live adoption or a
+blanket widening of the Pull catalog. The test-only trial reuses the shoulder-beginner
+week-one baseline, moving the existing core appearance intact from Lower to Pull.
+Both affected days must have six exercises, all other appearances and ordered doses
+must remain untouched, and protected/retained work must not move. Six is a conservative
+trial ceiling; it is not a new universal programming rule.
+
+The saved report compares complete menus, actual procedural delivery, dose checks,
+major-muscle exposure counts, repeated-week core spacing, estimated minutes with real
+rest prescriptions, fatigue budgets, all validator findings, and fresh allocation.
+The trial asserts dose preservation, modeled fatigue limits, no new validator findings,
+admitted reallocation with exact menu/dose preservation, and reference-time estimates
+for the two affected days. The time check is a conservative experiment screen, not
+measured gym time or authorization to restore a global time-based trimming rule.
+Later-week retention, actual cross-week spacing/history,
+arbitrary profiles and physical-device behavior are outside this initial experiment.
+No production eligibility, allocation or returned workout is changed by this checkpoint.
+
+Independent review added actual core-day positions and delivered muscle-target parity.
+Claude requested enforceable experiment criteria rather than favorable-looking logs;
+the comparisons above now fail the trial when violated, while still saving their reports.
+The combined trace/trial test is named `testCrowdedLowerTraceAndNonAdoptingCoreRelocation`
+and reuses its real baseline to avoid another redundant generation.
+The revised Claude response ended after its scope introduction with no verdict;
+it is incomplete, not approval. A separate adversarial source review checks the
+revised assertions; only executable CI can establish whether the trial passes.
+
+Previous checkpoint `f9ab7e8`: generator run `35030178965` completed successfully with
+698 executed tests, including the pinned row trial; app run `35030178937` logged BUILD
+SUCCEEDED. The cancelled `2a3a65a` run remains recorded accurately below.
+
 ### Crowding provenance and rowing alternatives (2026-09-15; code `2a3a65a`)
 
 Run `35028562024` executed 698 tests and all subsequent audits successfully, but
