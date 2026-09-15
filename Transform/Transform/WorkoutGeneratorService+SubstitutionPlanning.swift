@@ -1,6 +1,80 @@
 import Foundation
 
 extension ClaudeService {
+    enum PressdownAdoptionDecision: Equatable {
+        case baselineNotAdmitted(RoleFloorAdmission)
+        case search(PressdownSearchOutcome)
+        case orderChange
+        case finalNotAdmitted(RoleFloorAdmission)
+        case finalVerification(PressdownTrialDecision)
+        case adopted(day: Int, excessBefore: Int, excessAfter: Int)
+    }
+
+    struct PressdownFinalization {
+        let plan: SubstitutionPlanningBaseline
+        let messages: [String]
+        let receipts: [SetFundingObservation]
+        let decision: PressdownAdoptionDecision
+    }
+
+    /// The candidate must survive normal ordering and a fresh allocation without changing
+    /// any original dose or another identity. Admission only proves role-floor reservation.
+    func verifyFinalPressdownReplacement(_ candidate: [[PreSelectedExercise]],
+        admission: RoleFloorAdmission, baseline: SubstitutionPlanningBaseline,
+        trainingIntent: TrainingIntentPlan) -> PressdownAdoptionDecision {
+        guard baseline.roleFloorAdmission == .admitted else {
+            return .baselineNotAdmitted(baseline.roleFloorAdmission)
+        }
+        guard admission == .admitted else { return .finalNotAdmitted(admission) }
+        let verification = evaluatePressdownSubstitutionTrial(candidate, plannedBaseline: baseline)
+        guard case .qualified(let day, let before, let after) = verification else {
+            return .finalVerification(verification)
+        }
+        let ordered = reorderedMenusForSessionFlow(candidate, blueprint: baseline.blueprint,
+            trainingIntent: trainingIntent, lockedPrefixCounts: baseline.lockedPrefixCounts)
+        guard zip(candidate, ordered).allSatisfy({ original, arranged in
+            original.map { "\($0.exerciseName)#\($0.muscleTarget)" }
+                == arranged.map { "\($0.exerciseName)#\($0.muscleTarget)" }
+        }) else { return .orderChange }
+        return .adopted(day: day, excessBefore: before, excessAfter: after)
+    }
+
+    /// Optional quality improvement only, never a pain-driven replacement fallback.
+    /// At most one proposal is reallocated. A failed final check leaves alternatives
+    /// unassessed; it must not be described as exhausting the candidate search.
+    func finalizePressdownReduction(_ baseline: SubstitutionPlanningBaseline,
+        trainingIntent: TrainingIntentPlan, baselineMessages: [String],
+        baselineReceipts: [SetFundingObservation], collectFunding: Bool) -> PressdownFinalization {
+        func retained(_ decision: PressdownAdoptionDecision) -> PressdownFinalization {
+            .init(plan: baseline, messages: baselineMessages, receipts: baselineReceipts, decision: decision)
+        }
+        guard baseline.roleFloorAdmission == .admitted else {
+            return retained(.baselineNotAdmitted(baseline.roleFloorAdmission))
+        }
+        let search = searchPressdownReduction(in: baseline)
+        guard case .proposed = search.outcome else { return retained(.search(search.outcome)) }
+        let preliminary = verifyFinalPressdownReplacement(search.proposedMenus, admission: .admitted,
+            baseline: baseline, trainingIntent: trainingIntent)
+        guard case .adopted = preliminary else { return retained(preliminary) }
+
+        var messages: [String] = []
+        var receipts: [SetFundingObservation] = []
+        var admission: RoleFloorAdmission = .unassessed
+        let observer: (([SetFundingObservation]) -> Void)? = collectFunding ? { receipts = $0 } : nil
+        let allocated = allocateWeeklySetPrescription(search.proposedMenus, blueprint: baseline.blueprint,
+            weekNumber: baseline.weekNumber, lockedPrefixCounts: baseline.lockedPrefixCounts,
+            appearancePlanningReport: { messages.append($0) }, setFundingReport: observer,
+            roleFloorAdmissionReport: { admission = $0 }, publishConflictLogs: false)
+        let decision = verifyFinalPressdownReplacement(allocated, admission: admission,
+            baseline: baseline, trainingIntent: trainingIntent)
+        guard case .adopted = decision else { return retained(decision) }
+        let plan = SubstitutionPlanningBaseline(menus: allocated, blueprint: baseline.blueprint,
+            weekNumber: baseline.weekNumber, lockedPrefixCounts: baseline.lockedPrefixCounts,
+            retainedKeysByDay: baseline.retainedKeysByDay, exerciseHistory: baseline.exerciseHistory,
+            selectionFocusIntents: baseline.selectionFocusIntents, roleFloorAdmission: admission)
+        return .init(plan: plan, messages: messages, receipts: receipts, decision: decision)
+    }
+
     private var pressdownRedundancyFamily: Set<String> {
         ["Rope Triceps Pressdown", "Cable Triceps Pressdown", "V-Bar Pressdown"]
     }
@@ -198,7 +272,7 @@ extension ClaudeService {
         }
         // Full-candidate checks deliberately reject inherited violations too. A local
         // insertion check or unchanged warning count cannot establish complete-plan fit.
-        // This experimental gate has no live adoption caller. It must not be used to keep
+        // This eligibility gate supports optional quality adoption. It must not be used to keep
         // painful/unavailable work when a future safety-replacement request cannot pass it.
         for day in candidate.indices {
             let plan = baseline.blueprint.dayPlans[day]

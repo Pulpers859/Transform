@@ -15,7 +15,8 @@ extension ClaudeService {
         lockedPrefixCounts: [Int] = [], appearancePlanningReport: ((String) -> Void)? = nil,
         setFundingReport: (([SetFundingObservation]) -> Void)? = nil,
         maximumAppearanceStates: Int = 512,
-        roleFloorAdmissionReport: ((RoleFloorAdmission) -> Void)? = nil
+        roleFloorAdmissionReport: ((RoleFloorAdmission) -> Void)? = nil,
+        publishConflictLogs: Bool = true
     ) -> [[PreSelectedExercise]] {
         var baselineMessages: [String] = []
         var baselineReceipts: [SetFundingObservation] = []
@@ -23,7 +24,7 @@ extension ClaudeService {
         let baseline = allocateSetPrescriptionCandidate(menus, blueprint: blueprint, weekNumber: weekNumber,
             reserveMaintenanceMinimum: false, lockedPrefixCounts: lockedPrefixCounts,
             appearancePlanningReport: { baselineMessages.append($0) }, setFundingReport: baselineObserver,
-            maximumAppearanceStates: maximumAppearanceStates)
+            maximumAppearanceStates: maximumAppearanceStates, publishConflictLogs: publishConflictLogs)
         guard baseline.floorReserved else {
             baselineMessages.forEach { appearancePlanningReport?($0) }
             setFundingReport?(baselineReceipts)
@@ -58,7 +59,7 @@ extension ClaudeService {
                 minimumReservationGroups: Set(deficient.map { accounting.groups[$0].label }),
                 lockedPrefixCounts: lockedPrefixCounts,
                 appearancePlanningReport: { candidateMessages.append($0) }, setFundingReport: observer,
-                maximumAppearanceStates: maximumAppearanceStates)
+                maximumAppearanceStates: maximumAppearanceStates, publishConflictLogs: publishConflictLogs)
             if candidate.floorReserved && minimumDoseCandidatePreservesPlan(candidate.menus,
                 baseline: baseline.menus, blueprint: blueprint, weekNumber: weekNumber) {
                 chosen = candidate.menus

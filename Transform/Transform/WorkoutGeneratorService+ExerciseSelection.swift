@@ -1797,7 +1797,8 @@ extension ClaudeService {
         previousWeekDays: [WorkoutDayResponse]?,
         exerciseHistory: ExerciseHistoryContext?,
         appearancePlanningReport: ((String) -> Void)? = nil,
-        setFundingReport: (([SetFundingObservation]) -> Void)? = nil
+        setFundingReport: (([SetFundingObservation]) -> Void)? = nil,
+        pressdownPlanningReport: ((SubstitutionPlanningBaseline, PressdownFinalization) -> Void)? = nil
     ) -> SubstitutionPlanningBaseline {
         let previousExercisesByStyle = proceduralPreviousExercisesByStyle(from: previousWeekDays)
         var previousUsageByStyle: [String: Int] = [:]
@@ -2161,16 +2162,21 @@ extension ClaudeService {
             lockedPrefixCounts: lockedPrefixCounts
         )
         var roleFloorAdmission: RoleFloorAdmission = .unassessed
+        var allocationMessages: [String] = []
+        var allocationReceipts: [SetFundingObservation] = []
+        let allocationObserver: (([SetFundingObservation]) -> Void)? = setFundingReport == nil
+            ? nil : { allocationReceipts = $0 }
         let allocatedMenus = allocateWeeklySetPrescription(
             orderedMenus,
             blueprint: blueprint,
             weekNumber: weekNumber,
             lockedPrefixCounts: lockedPrefixCounts,
-            appearancePlanningReport: appearancePlanningReport,
-            setFundingReport: setFundingReport,
-            roleFloorAdmissionReport: { roleFloorAdmission = $0 }
+            appearancePlanningReport: { allocationMessages.append($0) },
+            setFundingReport: allocationObserver,
+            roleFloorAdmissionReport: { roleFloorAdmission = $0 },
+            publishConflictLogs: false
         )
-        return SubstitutionPlanningBaseline(menus: allocatedMenus, blueprint: blueprint,
+        let baseline = SubstitutionPlanningBaseline(menus: allocatedMenus, blueprint: blueprint,
             weekNumber: weekNumber, lockedPrefixCounts: lockedPrefixCounts,
             retainedKeysByDay: allocatedMenus.indices.map { day in
                 retainedKeysByDay[day].intersection(Set(allocatedMenus[day].map {
@@ -2178,6 +2184,17 @@ extension ClaudeService {
                 }))
             }, exerciseHistory: exerciseHistory, selectionFocusIntents: selectionFocusIntents,
             roleFloorAdmission: roleFloorAdmission)
+        let finalized = finalizePressdownReduction(baseline, trainingIntent: trainingIntent,
+            baselineMessages: allocationMessages, baselineReceipts: allocationReceipts,
+            collectFunding: setFundingReport != nil)
+        for message in finalized.messages {
+            if message.hasPrefix("APPEARANCE PLANNING CONFLICT") { print(message) }
+            appearancePlanningReport?(message)
+        }
+        appearancePlanningReport?("optional pressdown quality: \(finalized.decision)")
+        setFundingReport?(finalized.receipts)
+        pressdownPlanningReport?(baseline, finalized)
+        return finalized.plan
     }
 
     // MARK: - Lower-Session Knee-Dominant Anchor (menu-level)
@@ -3506,7 +3523,8 @@ extension ClaudeService {
         lockedPrefixCounts: [Int] = [],
         appearancePlanningReport: ((String) -> Void)? = nil,
         setFundingReport: (([SetFundingObservation]) -> Void)? = nil,
-        maximumAppearanceStates: Int = 512
+        maximumAppearanceStates: Int = 512,
+        publishConflictLogs: Bool = true
     ) -> SetAllocationCandidate {
         // Deload policy stays on its existing path. Loading weeks reserve all appearance
         // floors before any optional set funding. An unresolved candidate-pool conflict is
@@ -3523,7 +3541,7 @@ extension ClaudeService {
             floorReserved = false
             if let reservation {
                 let message = "APPEARANCE PLANNING CONFLICT (legacy allocation retained): \(reservation.outcome)"
-                print(message)
+                if publishConflictLogs { print(message) }
                 appearancePlanningReport?(message)
             } else {
                 appearancePlanningReport?("deload: legacy policy unchanged")

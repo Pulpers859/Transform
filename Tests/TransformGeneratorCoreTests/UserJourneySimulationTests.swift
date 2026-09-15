@@ -237,6 +237,7 @@ final class UserJourneySimulationTests: XCTestCase {
         var dosePreserved = 0
         var qualified = 0
         var searchProposals = 0
+        var adopted = 0
         var lumbarTrials = 0
         var observedLockedDays = 0
         var observedRetainedDays = 0
@@ -253,9 +254,42 @@ final class UserJourneySimulationTests: XCTestCase {
             // Deload policy is outside this experiment.
             for weekIndex in 0..<3 {
                 let blueprint = weeks[weekIndex].blueprint
-                let planned = service.preSelectedExercisePlan(for: blueprint, trainingIntent: intent,
+                var capturedBaseline: ClaudeService.SubstitutionPlanningBaseline?
+                var finalization: ClaudeService.PressdownFinalization?
+                var publishedReceipts: [SetFundingObservation] = []
+                var receiptCalls = 0
+                let delivered = service.preSelectedExercisePlan(for: blueprint, trainingIntent: intent,
                     weekNumber: weekIndex + 1, previousWeekDays: weekIndex == 0 ? nil : weeks[weekIndex - 1].days,
-                    exerciseHistory: nil)
+                    exerciseHistory: nil, setFundingReport: { publishedReceipts = $0; receiptCalls += 1 },
+                    pressdownPlanningReport: { capturedBaseline = $0; finalization = $1 })
+                let planned = try XCTUnwrap(capturedBaseline)
+                let finalized = try XCTUnwrap(finalization)
+                let unobserved = service.preSelectedExerciseMenu(for: blueprint, trainingIntent: intent,
+                    weekNumber: weekIndex + 1, previousWeekDays: weekIndex == 0 ? nil : weeks[weekIndex - 1].days)
+                XCTAssertEqual(signature(unobserved), signature(delivered.menus),
+                    "Diagnostic observers must not affect the selected plan")
+                XCTAssertEqual(receiptCalls, 1)
+                XCTAssertEqual(publishedReceipts.map(\.exerciseName), delivered.menus.flatMap { $0.map(\.exerciseName) })
+                XCTAssertEqual(publishedReceipts.map(\.prescribedSets), delivered.menus.flatMap { $0.map(\.prescribedSets) })
+                for receipt in publishedReceipts {
+                    XCTAssertEqual(receipt.exerciseName, delivered.menus[receipt.dayIndex][receipt.exerciseIndex].exerciseName)
+                    XCTAssertEqual(receipt.muscleTarget, delivered.menus[receipt.dayIndex][receipt.exerciseIndex].muscleTarget)
+                }
+                trialReport.append("LIVE_FINALIZATION persona=\(persona.name) week=\(weekIndex + 1) decision=\(finalized.decision)")
+                if case .adopted = finalized.decision {
+                    adopted += 1
+                    var checkedReceipts: [SetFundingObservation] = []
+                    let checked = service.allocateWeeklySetPrescription(delivered.menus, blueprint: blueprint,
+                        weekNumber: weekIndex + 1, lockedPrefixCounts: delivered.lockedPrefixCounts,
+                        setFundingReport: { checkedReceipts = $0 })
+                    XCTAssertEqual(signature(checked), signature(delivered.menus))
+                    XCTAssertEqual(checkedReceipts, publishedReceipts,
+                        "Final next-set blockers must agree, including kind, subject, projected value and limit")
+                    guard case .qualified = service.evaluatePressdownSubstitutionTrial(delivered.menus,
+                        plannedBaseline: planned) else { XCTFail("Live output must requalify against its original baseline"); continue }
+                } else {
+                    XCTAssertEqual(signature(delivered.menus), signature(planned.menus))
+                }
                 let baseline = planned.menus
                 XCTAssertEqual(planned.weekNumber, weekIndex + 1)
                 XCTAssertEqual(planned.lockedPrefixCounts.count, baseline.count)
@@ -297,9 +331,9 @@ final class UserJourneySimulationTests: XCTestCase {
                 }
                 XCTAssertLessThanOrEqual(search.attempts.count, 64)
                 XCTAssertEqual(signature(planned.menus), before)
-                XCTAssertEqual(baseline.map { $0.map { "\($0.exerciseName)|\($0.muscleTarget)|\($0.prescribedSets)" } },
+                XCTAssertEqual(delivered.menus.map { $0.map { "\($0.exerciseName)|\($0.muscleTarget)|\($0.prescribedSets)" } },
                     weeks[weekIndex].days.map { $0.exercises.map { "\($0.exerciseName)|\($0.muscleTarget)|\($0.sets)" } },
-                    "Trial baseline must match the exercises and doses actually delivered by procedural generation")
+                    "Final chosen menu must match procedural generation without diagnostic observers")
                 for day in baseline.indices {
                     let duplicates = baseline[day].indices.filter { family.contains(baseline[day][$0].exerciseName) }
                     guard duplicates.count > 1, let index = duplicates.last else { continue }
@@ -361,11 +395,12 @@ final class UserJourneySimulationTests: XCTestCase {
         XCTAssertGreaterThan(dosePreserved, 0, "At least one full-week alternative must preserve dose")
         XCTAssertGreaterThan(qualified, 0, "Exercise the complete trial decision, not just separate checks")
         XCTAssertGreaterThan(searchProposals, 0, "Bounded search must propose a real full-week alternative")
+        XCTAssertGreaterThan(adopted, 0, "Do not ship an adoption path that never adopts a complete-week improvement")
         XCTAssertGreaterThan(observedLockedDays, 0, "Exercise real previous-week ordering locks")
         XCTAssertGreaterThan(observedRetainedDays, 0, "Exercise real retained identities")
         XCTAssertGreaterThan(observedUnlockedFocusRetention, 0,
             "The real builder must capture retained identities even on focus days without an ordering lock")
-        trialReport.append("SUBSTITUTION_TRIAL_SUMMARY attempted=\(attempted) dosePreserved=\(dosePreserved) qualified=\(qualified); live adoption NOT tested")
+        trialReport.append("SUBSTITUTION_TRIAL_SUMMARY attempted=\(attempted) dosePreserved=\(dosePreserved) qualified=\(qualified) adopted=\(adopted); physical iPhone NOT tested")
         try writeArtifactIfRequested(trialReport.joined(separator: "\n"),
             environmentKey: "TRANSFORM_SUBSTITUTION_REPORT_OUTPUT")
     }
@@ -377,8 +412,14 @@ final class UserJourneySimulationTests: XCTestCase {
         let key = ExerciseWeightEntry.canonicalLookupKey("Cable Kickbacks")
         let history = ClaudeService.ExerciseHistoryContext(painExercises: [key], equipmentSkipExercises: [],
             priorMesocycleExercises: [], mesocycleIndex: 0)
-        let planned = service.preSelectedExercisePlan(for: blueprint, trainingIntent: intent,
-            weekNumber: 1, previousWeekDays: nil, exerciseHistory: history)
+        var captured: ClaudeService.SubstitutionPlanningBaseline?
+        let delivered = service.preSelectedExercisePlan(for: blueprint, trainingIntent: intent,
+            weekNumber: 1, previousWeekDays: nil, exerciseHistory: history,
+            pressdownPlanningReport: { captured = $0; _ = $1 })
+        let planned = try XCTUnwrap(captured)
+        XCTAssertFalse(delivered.menus.joined().contains {
+            ExerciseWeightEntry.canonicalLookupKey($0.exerciseName) == key
+        })
         XCTAssertEqual(planned.exerciseHistory?.painExercises, [key])
         let day = try XCTUnwrap(planned.menus.indices.first { day in
             blueprint.dayPlans[day].style == "Arms" && planned.menus[day].contains { $0.exerciseName == "V-Bar Pressdown" }
@@ -394,6 +435,35 @@ final class UserJourneySimulationTests: XCTestCase {
             blueprint: blueprint, lockedPrefixCounts: planned.lockedPrefixCounts,
             painExclusions: .init(exerciseNames: [])), .structurallyEligible,
             "The captured pain history, not another guard, must explain the rejection")
+    }
+
+    func testLiveFinalizationRespectsPainHistoryForItsPreviouslyChosenReplacement() throws {
+        let persona = personas[0]
+        let intent = service.trainingIntentPlan(from: analysis(for: persona))
+        let blueprint = service.programBlueprint(for: intent, weekNumber: 1)
+        var original: ClaudeService.SubstitutionPlanningBaseline?
+        var decision: ClaudeService.PressdownAdoptionDecision?
+        let control = service.preSelectedExercisePlan(for: blueprint, trainingIntent: intent,
+            weekNumber: 1, previousWeekDays: nil, exerciseHistory: nil,
+            pressdownPlanningReport: { original = $0; decision = $1.decision })
+        guard case .adopted? = decision else { return XCTFail("Control must adopt before history can challenge it") }
+        let before = try XCTUnwrap(original)
+        let replacements = control.menus.indices.flatMap { day in
+            control.menus[day].indices.compactMap { slot -> String? in
+                control.menus[day][slot].exerciseName == before.menus[day][slot].exerciseName
+                    ? nil : control.menus[day][slot].exerciseName
+            }
+        }
+        XCTAssertEqual(replacements.count, 1)
+        let key = ExerciseWeightEntry.canonicalLookupKey(try XCTUnwrap(replacements.first))
+        let history = ClaudeService.ExerciseHistoryContext(painExercises: [key], equipmentSkipExercises: [],
+            priorMesocycleExercises: [], mesocycleIndex: 0)
+        let guarded = service.preSelectedExercisePlan(for: blueprint, trainingIntent: intent,
+            weekNumber: 1, previousWeekDays: nil, exerciseHistory: history)
+        XCTAssertEqual(guarded.exerciseHistory?.painExercises, [key])
+        XCTAssertFalse(guarded.menus.joined().contains {
+            ExerciseWeightEntry.canonicalLookupKey($0.exerciseName) == key
+        }, "The complete live builder must not adopt the exercise newly excluded by real history context")
     }
 
     func testWholeSetTargetObserverRejectsMissingAttainableSets() {

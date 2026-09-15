@@ -2,6 +2,34 @@
 
 ## Active roadmap and audit checkpoints (2026-09-13)
 
+### Live optional substitution boundary (2026-09-15; validation pending)
+
+The planner now attempts one optional pressdown replacement after baseline allocation,
+before the locked menu reaches AI or fallback. Both original and replacement allocations
+must have admitted role floors. The proposal must survive existing session ordering,
+fresh allocation, and the combined fixed-dose/single-slot comparison against the original
+baseline. Any failed check returns that original plan. A failed first proposal does not
+claim that later alternatives were searched or that redundancy is resolved.
+
+Allocation reports and next-set receipts are buffered until selection is final. Speculative
+conflict printing is disabled; only chosen-plan conflict messages are published. The final
+receipts are produced by normal allocation using replacement metadata, not renamed baseline
+receipts. Pain/equipment context and protected/retained identities remain part of the gate;
+this is not a safety-replacement fallback. Names and persisted history keys are unchanged.
+
+Independent source audit found no acceptance bypass but identified missing rollback and
+receipt-value tests. Added a real speculative-allocation rejection test and full receipt
+comparison after adopted-menu reallocation. Full-week tests capture original and delivered
+plans, require an actual adoption, compare observer/no-observer output, and chain previous
+delivered weeks. These are pending executable validation, not proof of shipped improvement.
+The Claude packet review requested executable evidence and caller verification, not a
+specific guard fix. Caller inspection confirmed `preSelectedExerciseMenu` delegates to
+`preSelectedExercisePlan`; `WorkoutGeneratorService.swift` uses that wrapper at week-one
+and next-week entry, applies its menu to AI prescriptions, and supplies the same menu to
+validated procedural fallback. Journey fixtures run those production fallback functions.
+The remaining adoption assertions require macOS CI after publishing this checkpoint;
+the packet review is not represented as unconditional approval.
+
 ### Bounded candidate search and reservation outcomes (2026-09-15)
 
 The optional pressdown trial now has a deterministic, bounded catalog search. It
@@ -20,7 +48,12 @@ Regression coverage includes observer parity, chosen-outcome publication, protec
 conflicts, deload, deterministic/history-filtered candidate order, exact search-budget
 boundaries, and full-week search reporting. Windows smoke and syntax checks passed;
 a standalone execution also checked the framework-free solver's budget boundaries.
-Full generator and app CI evidence is pending. Stage 3 remains open.
+At code `1d3e765`, generator run `35026155421` passed 689 tests and app run
+`35026155405` logged BUILD SUCCEEDED. All 20 complete week objects and the historical
+snapshot match `a257920`. Search proposes Overhead Cable Triceps Extension on the
+back-focus Arms day in all three loading weeks; three lumbar-persona weeks report no
+qualified candidate, and the other nine loading weeks have no redundancy. Artifacts
+are in `.agents/bounded-search-1d3e765/` (ignored). Stage 3 remains open.
 
 Independent review identified and prompted the zero-budget correction and additional
 non-vacuous/boundary assertions. Before live adoption, final ordering, fresh allocation
