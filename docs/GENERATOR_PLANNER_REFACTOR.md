@@ -157,6 +157,45 @@ eligible for adoption. Do not turn the dose-only result into production approval
 or reintroduce the rejected early catalog-selection gate. Crowding, pulling balance,
 fractional targets and the original duplicate in delivered workouts remain open.
 
+### Fixed-dose substitution preflight
+
+`preflightFixedDoseSubstitution` adds a non-adopting check for exactly one changed
+slot with all set counts and calendar dimensions preserved. It requires explicit,
+in-range prefix locks and rejects nonempty rest days. `isProtectedAppearance`
+shares the existing anchor/first-slot/Lower-secondary/prefix protection rule with
+appearance reservation; the new preflight additionally checks the old canonical
+role so a misleading stored role cannot bypass protection.
+
+`SubstitutionPreflightTests` cover exact style-catalog membership, replacement
+metadata, canonical pain-history exclusion, the existing reported-shoulder concern
+check, same-session duplicates and pattern caps, loss of patterns on the changed day,
+and downgrade of allocation/day-focus quality. The additional per-slot major-group
+coverage guard is defensive and currently unisolated by a natural catalog regression
+case; independent source review is not execution proof of that rejection branch.
+Equipment skips remain preferences rather than new bans. The full-week trial
+artifact now reports `PREFLIGHT_NO_HISTORY` separately from dose preservation.
+Its explicit zero locks and empty pain history are synthetic, NOT production
+continuity/history proof. No caller adopts a replacement or changes a locked menu.
+
+Limits: this trusts the generated baseline (including old pattern metadata); it is
+not a general malformed-input or medical-suitability validator. The catalog pool is
+deliberately limited to the day's exact style catalog, without rescue/focus-pool
+expansion. General injury review, selection preferences, prime-slot upper bounds,
+cross-day variation, actual retained-context wiring, whole-plan dose comparison and
+an explicit improvement objective still precede adoption. Prefix locks are not all
+retained identities on focus days. Relocation and set redistribution are out of scope.
+Independent source review found and prompted isolation of the allocation-quality
+test; Windows syntax checks passed. CI and raw-output comparison remain pending.
+
+The staged review also prompted typed `SubstitutionPainExclusions` inputs: display
+names are canonicalized once, while the existing history context's keys are consumed
+without re-stemming. Both routes have exclusion tests. Pattern preservation is
+conservative and local to the changed day; another day cannot hide a lost pattern.
+That restriction is not proof that every original pattern is essential. Full-week
+trial assertions now distinguish structural eligibility from exact-catalog refusal,
+still under explicit synthetic no-history/no-prefix conditions. The SwiftPM test
+target discovers files by directory; executed-test evidence is required after push.
+
 ### Shared-cost extraction slice
 
 `WorkoutGeneratorService+SetAccounting.swift` centralizes per-appearance direct

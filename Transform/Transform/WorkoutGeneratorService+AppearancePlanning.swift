@@ -1,6 +1,14 @@
 import Foundation
 
 extension ClaudeService {
+    // Shared slot-protection rule. SubstitutionPreflightTests cover each protection;
+    // JointAppearancePlanningTests retain the whole-week reservation coverage.
+    func isProtectedAppearance(role: ProceduralExerciseRole, slot: Int, style: String, lockedPrefixCount: Int) -> Bool {
+        role == .anchor || slot == 0
+            || (canonicalTrainingStyle(style) == "Lower" && role == .secondary)
+            || slot < lockedPrefixCount
+    }
+
     // Shared by normal allocation and its whole-set observer. This preserves the existing
     // soft-ceiling policy, including its numerical tolerance; it does not round budgets up.
     // JointAppearancePlanningTests.testFractionalTargetIsAnExecutedAllocationCeiling pins it.
@@ -101,9 +109,9 @@ extension ClaudeService {
         }
         let protected = exercises.indices.map { index in
             let (day, slot) = locations[index]
-            return exercises[index].role == .anchor || slot == 0
-                || (canonicalTrainingStyle(blueprint.dayPlans[day].style) == "Lower" && exercises[index].role == .secondary)
-                || (day < lockedPrefixCounts.count && slot < lockedPrefixCounts[day])
+            return isProtectedAppearance(role: exercises[index].role, slot: slot,
+                style: blueprint.dayPlans[day].style,
+                lockedPrefixCount: day < lockedPrefixCounts.count ? lockedPrefixCounts[day] : 0)
         }
         func focusValue(_ index: Int) -> Int {
             guard let area = blueprint.dayPlans[locations[index].0].focusArea else { return 0 }

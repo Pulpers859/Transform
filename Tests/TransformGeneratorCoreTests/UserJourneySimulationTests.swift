@@ -283,6 +283,17 @@ final class UserJourneySimulationTests: XCTestCase {
                         trialReport.append("BASELINE \(before)")
                         trialReport.append("BASELINE_DOSE \(service.compareAllocatedDoseOnly(baseline, baseline: baseline, blueprint: blueprint, weekNumber: weekIndex + 1))")
                         trialReport.append("CANDIDATE \(candidateSignature)")
+                        // Synthetic no-history preflight only: real retained prefixes must be
+                        // supplied by the production menu builder before adoption is possible.
+                        let preflight = service.preflightFixedDoseSubstitution(candidate, baseline: baseline,
+                            blueprint: blueprint, lockedPrefixCounts: Array(repeating: 0, count: baseline.count),
+                            painExclusions: .init(exerciseNames: []))
+                        trialReport.append("PREFLIGHT_NO_HISTORY \(preflight)")
+                        if persona.name == "Six-day push/pull/legs, back focus, no injuries" {
+                            XCTAssertEqual(preflight, .structurallyEligible)
+                        } else if persona.name == "Five-day lifter reporting lumbar-extension pain" {
+                            XCTAssertEqual(preflight, .rejected(.catalog), "Kickback is not in the Push style catalog; dose safety alone is insufficient")
+                        }
                         XCTAssertFalse(service.minimumDoseCandidatePreservesPlan(candidate, baseline: baseline,
                             blueprint: blueprint, weekNumber: weekIndex + 1), "The existing minimum-dose gate must not adopt these trial replacements")
                         var underfunded = candidate
