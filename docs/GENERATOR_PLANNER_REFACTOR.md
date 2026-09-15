@@ -2,7 +2,40 @@
 
 ## Active roadmap and audit checkpoints (2026-09-13)
 
-### Crowding provenance and rowing alternatives (2026-09-15; probes pending)
+### Crowding provenance and rowing alternatives (2026-09-15; code `2a3a65a`)
+
+Run `35028562024` executed 698 tests and all subsequent audits successfully, but
+the job exceeded its 12-minute ceiling during cleanup and is **cancelled**, not green.
+The headless step ran from 21:59:08 to 22:10:05 UTC; validator-pattern checks then
+took 49 seconds. All reports uploaded. App run `35028561943` logged BUILD SUCCEEDED.
+The workflow ceiling is now 15 minutes to leave bounded report/cleanup headroom;
+no checks are removed, and the Swift step retains an explicit 12-minute limit.
+This does not establish acceptable per-generation speed. Measured headless-step
+durations are 8m20 (`1d3e765`), 9m55 (`21dd72a`), and 10m57 (`2a3a65a`); changed
+test workloads and runner variation prevent assigning that growth to one cause.
+Per-generation performance remains unmeasured, not cleared by the larger job limit.
+
+Downloaded artifacts in `.agents/planning-traces-2a3a65a/` show all 20 complete week
+objects and the historical snapshot identical to `21dd72a`. The first crowding
+transition is `priorityFeasibility -> baselineCoverageRecheck`: append-only baseline
+coverage adds Standing Calf Raise after core replaced a second curl. The final Lower
+day has seven appearances and 20 sets. Deleting the new calf work would lose coverage;
+tracing does not establish that any other exercise is filler or that relocation fits.
+
+The three deload set-transfer trials fail role-dose checks. Both existing same-target
+row substitutions preserve dose: replacing the Pull-Up is refused as protected, while
+Lat Pulldown to Single-Arm Dumbbell Row is refused for focus quality. The Upper catalog
+has no same-target row. These measured refusals are now pinned, not endorsed as optimal
+policy and not proof that every possible alternative fails. The focus-quality refusal
+needs its own audit before any gate is changed. Crowding and rowing remain unresolved.
+
+The evidence-pinning review approved with follow-ups. Its claims that crowding has
+no bounding test and that the refusal caveat exists only in docs are contradicted by
+`testCrowdedLowerSessionTraceAgainstCompletePlannerBaseline`'s explicit expected
+failure and the new inline diagnostic-only comment. No arbitrary set ceiling was
+added. Its runtime concern prompted the separate Swift-step ceiling and measured
+duration comparison above. New assertions still need a fresh successful run; uploaded
+artifacts from a cancelled job are not being relabeled as an overall CI pass.
 
 An optional value-snapshot observer records ten planning boundaries without affecting
 selection. Labels describe pass outputs, not successful constraint resolution. Its

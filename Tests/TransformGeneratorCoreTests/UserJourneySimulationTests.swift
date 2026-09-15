@@ -306,8 +306,19 @@ final class UserJourneySimulationTests: XCTestCase {
                 }
                 let preflight = service.preflightFixedDoseSubstitution(candidate, plannedBaseline: planned)
                 let dose = service.compareAllocatedDoseOnly(candidate, baseline: baseline, blueprint: blueprint, weekNumber: 4)
-                // Candidate outcomes are exploratory until measured; these invalid-dose controls
-                // make the exercised gates falsifiable without guessing a candidate's verdict.
+                // Measured in run 35028562024. Pin the diagnostic boundary, not an
+                // endorsement of the quality heuristic or proof that all alternatives fail.
+                XCTAssertEqual(alternative.name, "Single-Arm Dumbbell Row")
+                switch old.exerciseName {
+                case "Pull-Up (Weighted or Assisted)":
+                    XCTAssertEqual(preflight, .rejected(.protectedSlot))
+                case "Lat Pulldown":
+                    XCTAssertEqual(preflight, .rejected(.focusQuality))
+                default:
+                    XCTFail("New row alternative needs explicit review: \(old.exerciseName)")
+                }
+                XCTAssertEqual(dose, .dosePreserved(improvesMaintenanceMinimum: false))
+                // Invalid-dose controls establish that preserving names alone is insufficient.
                 var invalid = candidate
                 invalid[donor.0][donor.1].prescribedSets = 0
                 XCTAssertEqual(service.preflightFixedDoseSubstitution(invalid, plannedBaseline: planned),
@@ -318,6 +329,7 @@ final class UserJourneySimulationTests: XCTestCase {
             }
         }
         guard substitutionTrials > 0 else { XCTFail("No catalog row alternatives were exercised"); return }
+        XCTAssertEqual(substitutionTrials, 2, "Measured catalog trial count; review newly available alternatives")
         report.append("ROW_SUBSTITUTION_TRIAL same-style same-target alternatives tested=\(substitutionTrials)")
         XCTAssertEqual(signature(planned.menus), original)
         try writeArtifactIfRequested(report.joined(separator: "\n"), environmentKey: "TRANSFORM_ROW_TRIALS_OUTPUT")

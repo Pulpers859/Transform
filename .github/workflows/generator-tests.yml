@@ -17,9 +17,10 @@ permissions:
 jobs:
   generator-tests:
     runs-on: macos-latest
-    # Deterministic generation should be sub-second per program. A hard cap keeps a
-    # future runaway (see the legacy-path over-generation gap) from walling CI for 10+ min.
-    timeout-minutes: 12
+    # Run 35028562024 executed 698 tests and all audits successfully, but hit the
+    # 12-minute job cap during cleanup. Allow report/cleanup headroom; this is a
+    # whole-suite ceiling, not a claim about individual generation performance.
+    timeout-minutes: 15
     env:
       TRANSFORM_FIXTURE_SNAPSHOT_OUTPUT: ${{ github.workspace }}/generator-fixture-snapshot.txt
       # Where the user-journey simulation writes its readable report. It needs its own path:
@@ -40,6 +41,9 @@ jobs:
           xcodebuild -version
 
       - name: Run headless generator tests
+        # Keep the original execution ceiling for the Swift workload itself.
+        # The larger job budget is for independent audits and report cleanup.
+        timeout-minutes: 12
         shell: bash
         run: |
           set -euo pipefail
@@ -60,7 +64,7 @@ jobs:
       # just sits there looking like coverage. Two shipped that way.
       #
       # Runs AFTER the tests, with `if: always()`, deliberately. It needs no toolchain and
-      # takes under a second, so running it first was tempting — but a failure there would
+      # is independent of the Swift build, but a failure there would
       # end the job before `swift test` ran, and a push that breaks both would report only
       # this, hiding the real regression until someone fixed the pattern and pushed again.
       # The Swift suite is the primary signal; a dead pattern is never urgent enough to
