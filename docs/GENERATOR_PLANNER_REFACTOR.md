@@ -21,6 +21,12 @@ finding below is a code defect or that the architectural work is complete.
 
 ### Acceptance backlog
 
+The [September 14 device audit](GENERATOR_DEVICE_AUDIT_2026-09-14.md) adds an actual
+rope/V-bar pressdown family gap, a shoulder-adaptation test gap, and two policy/doc
+reconciliation items (recovery fallback and secondary/accessory ordering). It confirms
+the existing crowding and rowing-dose findings; it does not add a fractional-target
+case. Keep the raw personal device export local rather than committing it as a fixture.
+
 Inputs are the five personas in `UserJourneySimulationTests` and the historical
 `five-maintenance-errors.json` fixture. The downloaded `b187f51` JSON and fixture
 snapshot were inspected locally; they live in ignored evidence storage, not in this doc.
