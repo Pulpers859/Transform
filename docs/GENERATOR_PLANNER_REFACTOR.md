@@ -41,6 +41,23 @@ The rows are reproducible observations to investigate, not endorsements of warni
 | Fractional targets | Export retains raw 7.5 targets with 7 delivered in affected cases | Decide rounding and reconcile all limits during policy work, not this extraction |
 | Unresolved candidate pool | `JointAppearancePlanningTests.testOverfullEarlyArmsDayCannotSpendLateFocusReservation` pins conflict with every slot locked | Replace legacy allocation only with an explicit, tested outcome contract |
 
+### Pressdown handle selection slice (2026-09-15)
+
+The device report's Rope Triceps Pressdown + V-Bar Pressdown pair exposed a
+selection gap: generic grip stemming intentionally refuses to reduce V-Bar
+Pressdown to one word. A closed same-session family now covers the three catalog
+pressdowns (rope, cable, V-bar), resolving aliases locally for comparison. It does
+not rename saved exercises, merge history keys, weaken validation, or trim a
+generated response. Future catalog additions still need an explicit family review.
+
+The first implementation incorrectly assumed metadata lookup resolved aliases.
+Independent review caught that; comparison-local resolution and singular/plural
+alias tests address it. Tests also retain different-movement controls, distinct
+history keys, and a nonempty generated-fixture premise. Local Windows smoke and
+syntax checks passed; full CI and raw before/after workout evidence are still
+required before declaring this slice verified. Row dose, crowding, and fractional
+targets are not solved by this change.
+
 ### Shared-cost extraction slice
 
 `WorkoutGeneratorService+SetAccounting.swift` centralizes per-appearance direct
