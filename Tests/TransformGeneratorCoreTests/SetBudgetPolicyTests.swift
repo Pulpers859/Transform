@@ -7,7 +7,8 @@ final class SetBudgetPolicyTests: XCTestCase {
 
     private func plan(target: Double? = nil, ordinary: Double = 10, focused: Double = 10,
                       focus: String? = nil, fatigue: Int = 48,
-                      recovery: Bool = false, poorNutrition: Bool = false) -> ClaudeService.ProgramBlueprint {
+                      recovery: Bool = false, poorNutrition: Bool = false,
+                      dayCount: Int = 1, priorityArea: String = "Core/Abs") -> ClaudeService.ProgramBlueprint {
         let neutral = service.neutralCalibrationProfile()
         let calibration = ClaudeService.ProgramCalibrationProfile(
             lowPerformanceDataQuality: neutral.lowPerformanceDataQuality,
@@ -18,17 +19,17 @@ final class SetBudgetPolicyTests: XCTestCase {
             defaultSessionTimeCapMinutes: neutral.defaultSessionTimeCapMinutes,
             sessionTimeCapsByStyle: neutral.sessionTimeCapsByStyle, programmingNotes: neutral.programmingNotes)
         let allocations: [ClaudeService.BlueprintPriorityAllocation] = target.map { value in
-            [.init(area: "Core/Abs", priorityLevel: "Medium", rationale: "", targetFrequency: 1,
+            [.init(area: priorityArea, priorityLevel: "Medium", rationale: "", targetFrequency: 1,
                 targetExerciseSlots: 1, directSetTarget: value, weightedStimulusTarget: value,
                 maxPerSessionDirectSets: ordinary, maxFocusSessionDirectSets: focused,
                 preferredStyles: ["Upper"], preferredMovementPatterns: [], volumeBias: "Moderate", directWorkBias: "High")]
         } ?? []
-        return .init(evidenceVersion: "test", splitRecommendation: "Upper", weeklyTrainingDays: 1,
-            priorityAllocations: allocations, dayPlans: [
-                .init(dayIndex: 1, style: "Upper", focusArea: focus, supportAreas: [],
+        return .init(evidenceVersion: "test", splitRecommendation: "Upper", weeklyTrainingDays: dayCount,
+            priorityAllocations: allocations, dayPlans: (1...dayCount).map { day in
+                .init(dayIndex: day, style: "Upper", focusArea: focus, supportAreas: [],
                     targetFatigueCap: fatigue, targetSessionMinutes: 1, targetPrioritySlots: 1,
                     emphasisPatterns: [], isRestDay: false)
-            ], topLeverageChange: "", posturalFocus: "(none)", injuryRiskFocus: "(none)",
+            }, topLeverageChange: "", posturalFocus: "(none)", injuryRiskFocus: "(none)",
             programmingNotes: [], calibration: calibration)
     }
 
@@ -205,6 +206,9 @@ final class SetBudgetPolicyTests: XCTestCase {
             "Counterexample: unconditional minimum-first funding steals the priority dose")
         XCTAssertFalse(service.minimumDoseCandidatePreservesPlan(provisional.menus,
             baseline: baseline.menus, blueprint: blueprint, weekNumber: 1))
+        XCTAssertEqual(service.compareAllocatedDoseOnly(provisional.menus,
+            baseline: baseline.menus, blueprint: blueprint, weekNumber: 1),
+            .rejected(.weeklyPriority(area: "Core/Abs")))
         var reports: [String] = []
         var receipts: [SetFundingObservation] = []
         var receiptCount = 0
@@ -215,5 +219,119 @@ final class SetBudgetPolicyTests: XCTestCase {
         XCTAssertEqual(receiptCount, 1)
         XCTAssertEqual(receipts.map(\.prescribedSets), result[0].map(\.prescribedSets))
         XCTAssertTrue(reports.contains { $0.hasPrefix("minimum dose plan rejected:") })
+    }
+
+    private func dosed(_ name: String, _ target: String, _ sets: Int) -> ClaudeService.PreSelectedExercise {
+        var value = slot(name, target)
+        value.prescribedSets = sets
+        return value
+    }
+
+    func testDoseSafetyAndMinimumImprovementAreSeparate() {
+        let blueprint = plan()
+        let baseline = [[dosed("Cable Crunch", "Abs", 2), dosed("Standing Calf Raise", "Calves", 2)]]
+        XCTAssertEqual(service.compareAllocatedDoseOnly(baseline, baseline: baseline,
+            blueprint: blueprint, weekNumber: 1), .dosePreserved(improvesMaintenanceMinimum: false))
+        XCTAssertFalse(service.minimumDoseCandidatePreservesPlan(baseline, baseline: baseline,
+            blueprint: blueprint, weekNumber: 1))
+        var improved = baseline
+        improved[0][1].prescribedSets = 3
+        XCTAssertEqual(service.compareAllocatedDoseOnly(improved, baseline: baseline,
+            blueprint: blueprint, weekNumber: 1), .dosePreserved(improvesMaintenanceMinimum: true))
+        XCTAssertTrue(service.minimumDoseCandidatePreservesPlan(improved, baseline: baseline,
+            blueprint: blueprint, weekNumber: 1))
+
+        // Dose preservation is NOT permission to replace or relabel an exercise.
+        var replaced = improved
+        replaced[0][1] = dosed("Seated Calf Raise", "Calves", 3)
+        XCTAssertEqual(service.compareAllocatedDoseOnly(replaced, baseline: baseline,
+            blueprint: blueprint, weekNumber: 1), .dosePreserved(improvesMaintenanceMinimum: true))
+        XCTAssertFalse(service.minimumDoseCandidatePreservesPlan(replaced, baseline: baseline,
+            blueprint: blueprint, weekNumber: 1))
+        let original = improved[0][1]
+        for (pattern, role) in [("Changed pattern", original.role), (original.movementPattern, .anchor)] {
+            var relabeled = improved
+            relabeled[0][1] = .init(exerciseName: original.exerciseName, muscleTarget: original.muscleTarget,
+                movementPattern: pattern, role: role, prescribedSets: original.prescribedSets)
+            XCTAssertFalse(service.minimumDoseCandidatePreservesPlan(relabeled, baseline: baseline,
+                blueprint: blueprint, weekNumber: 1))
+        }
+    }
+
+    func testDoseComparisonRejectsShapeAndRoleFloorBeforeImprovement() {
+        let blueprint = plan()
+        let baseline = [[dosed("Cable Crunch", "Abs", 2), dosed("Standing Calf Raise", "Calves", 2)]]
+        XCTAssertEqual(service.compareAllocatedDoseOnly([], baseline: baseline,
+            blueprint: blueprint, weekNumber: 1), .rejected(.calendarShape))
+        XCTAssertEqual(service.compareAllocatedDoseOnly(baseline, baseline: baseline,
+            blueprint: plan(dayCount: 2), weekNumber: 1), .rejected(.calendarShape))
+        var candidate = baseline
+        candidate[0][0].prescribedSets = 1
+        candidate[0][1].prescribedSets = 3
+        XCTAssertEqual(service.compareAllocatedDoseOnly(candidate, baseline: baseline,
+            blueprint: blueprint, weekNumber: 1), .rejected(.roleDose(day: 0, exercise: 0)))
+        candidate[0][0].prescribedSets = 2
+        candidate[0][1].prescribedSets = 4
+        XCTAssertEqual(service.compareAllocatedDoseOnly(candidate, baseline: baseline,
+            blueprint: blueprint, weekNumber: 1), .rejected(.roleDose(day: 0, exercise: 1)))
+    }
+
+    func testDoseComparisonRejectsMovingPriorityDoseBetweenDays() {
+        let blueprint = plan(target: 5, dayCount: 2)
+        let baseline = [[dosed("Cable Crunch", "Abs", 3)], [dosed("Cable Crunch", "Abs", 2)]]
+        let shifted = [[dosed("Cable Crunch", "Abs", 2)], [dosed("Cable Crunch", "Abs", 3)]]
+        XCTAssertEqual(baseline.joined().reduce(0) { $0 + $1.prescribedSets },
+                       shifted.joined().reduce(0) { $0 + $1.prescribedSets })
+        XCTAssertEqual(service.compareAllocatedDoseOnly(shifted, baseline: baseline,
+            blueprint: blueprint, weekNumber: 1), .rejected(.sessionPriority(day: 0, area: "Core/Abs")))
+    }
+
+    func testDoseComparisonPreservesNonPriorityVolumeBeyondItsMinimum() {
+        let blueprint = plan()
+        let baseline = [[dosed("Standing Calf Raise", "Calves", 3)], [dosed("Standing Calf Raise", "Calves", 3)]]
+        let candidate = [[dosed("Standing Calf Raise", "Calves", 2)], [dosed("Standing Calf Raise", "Calves", 3)]]
+        // Five still exceeds the normal maintenance floor, but loses a baseline set.
+        XCTAssertEqual(service.compareAllocatedDoseOnly(candidate, baseline: baseline,
+            blueprint: plan(dayCount: 2), weekNumber: 1), .rejected(.maintenanceLoss(group: "Calves")))
+        XCTAssertEqual(WorkoutSetBudgetPolicy.maintenanceFloor(recoveryTight: blueprint.calibration.recoveryConstrained), 3)
+    }
+
+    func testDoseComparisonRejectsWeightedOnlyPriorityLossWithinADay() {
+        let blueprint = plan(target: 10, dayCount: 2, priorityArea: "Lateral Deltoids")
+        let baseline = [[dosed("Dumbbell Arnold Press", "Anterior Deltoids", 4)],
+                        [dosed("Dumbbell Arnold Press", "Anterior Deltoids", 3)]]
+        let shifted = [[dosed("Dumbbell Arnold Press", "Anterior Deltoids", 3)],
+                       [dosed("Dumbbell Arnold Press", "Anterior Deltoids", 4)]]
+        let unit = WorkoutExerciseResponse(exerciseName: "Dumbbell Arnold Press", sets: 1,
+            reps: "", tempo: "", restSeconds: 0, notes: "", muscleTarget: "Anterior Deltoids")
+        let credit = service.stimulusCredit(for: unit, area: "Lateral Deltoids")
+        XCTAssertEqual(credit.directSets, 0, "Must exercise the weighted-only branch")
+        XCTAssertGreaterThan(credit.weightedStimulus, 0)
+        XCTAssertEqual(service.compareAllocatedDoseOnly(baseline, baseline: baseline,
+            blueprint: blueprint, weekNumber: 2), .dosePreserved(improvesMaintenanceMinimum: false))
+        XCTAssertEqual(service.compareAllocatedDoseOnly(shifted, baseline: baseline,
+            blueprint: blueprint, weekNumber: 2), .rejected(.sessionPriority(day: 0, area: "Lateral Deltoids")))
+    }
+
+    func testDoseComparisonRejectsFatigueAndMaintenanceCeiling() {
+        let baseline = [[dosed("Standing Calf Raise", "Calves", 2)]]
+        let candidate = [[dosed("Standing Calf Raise", "Calves", 3)]]
+        XCTAssertEqual(service.compareAllocatedDoseOnly(candidate, baseline: baseline,
+            blueprint: plan(fatigue: 2), weekNumber: 1), .rejected(.fatigue(day: 0)))
+        let crowded = [[dosed("Standing Calf Raise", "Calves", 3),
+                        dosed("Seated Calf Raise", "Calves", 3),
+                        dosed("Single-Leg Standing Calf Raise", "Calves", 3)]]
+        XCTAssertEqual(service.compareAllocatedDoseOnly(crowded, baseline: baseline,
+            blueprint: plan(recovery: true), weekNumber: 1), .rejected(.maintenanceCeiling(group: "Calves")))
+    }
+
+    func testDoseComparisonCanMeasureDifferentAppearanceCountsWithoutAuthorizingThem() {
+        let blueprint = plan()
+        let baseline = [[dosed("Standing Calf Raise", "Calves", 3)]]
+        let candidate = [[dosed("Standing Calf Raise", "Calves", 2), dosed("Seated Calf Raise", "Calves", 2)]]
+        XCTAssertEqual(service.compareAllocatedDoseOnly(candidate, baseline: baseline,
+            blueprint: blueprint, weekNumber: 1), .dosePreserved(improvesMaintenanceMinimum: false))
+        XCTAssertFalse(service.minimumDoseCandidatePreservesPlan(candidate, baseline: baseline,
+            blueprint: blueprint, weekNumber: 1))
     }
 }

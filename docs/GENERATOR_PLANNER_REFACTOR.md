@@ -87,6 +87,30 @@ objects and the historical snapshot match the `97b7589` baseline exactly. Source
 tests and package configuration match `b830807`; only the audit documentation
 differs. This proves restoration, not resolution of the original duplicate.
 
+### Dose-comparison boundary (2026-09-15)
+
+`compareAllocatedDoseOnly` extracts the existing dose checks from the minimum-dose
+candidate gate. Its result distinguishes the first rejection (calendar shape,
+fatigue, role dose, weekly/session priority, maintenance ceiling/loss) from dose
+preservation with or without a maintenance-minimum improvement. Indices in rejection
+values are zero-based; this is not an exhaustive finding list or malformed-input validator.
+
+The production minimum-dose caller still requires the exact per-slot exercise name,
+target, role, pattern and count, plus a genuine minimum improvement. No substitutions
+are activated. Existing tolerances and check order remain unchanged. Tests distinguish
+weekly from per-day loss, weighted-only credit, role floors/ceilings, maintenance volume
+beyond its minimum, and dose preservation from permission to change identities/counts.
+
+This is a prerequisite, NOT complete-plan approval: a later substitution caller must
+also enforce catalog/pain eligibility, locked identities, rest/day shape, movement and
+prime-focus quality, coverage and its specific improvement objective. Do not treat the
+dose-only `dosePreserved` result as a valid or improved workout. Rejection detail is
+currently consumed by regression tests; the existing production caller still returns
+a Boolean, so no new diagnostic detail is exposed in app reports yet. Wire that detail
+when integrating candidate alternatives without publishing rejected candidates' receipts.
+Acceptance for this extraction
+requires unchanged complete exported week objects and historical snapshot in CI.
+
 ### Shared-cost extraction slice
 
 `WorkoutGeneratorService+SetAccounting.swift` centralizes per-appearance direct

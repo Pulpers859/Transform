@@ -74,6 +74,36 @@ extension ClaudeService {
                       lhs.role == rhs.role, lhs.movementPattern == rhs.movementPattern else { return false }
             }
         }
+        guard case .dosePreserved(let improvesMinimum) = compareAllocatedDoseOnly(candidate,
+            baseline: baseline, blueprint: blueprint, weekNumber: weekNumber) else { return false }
+        return improvesMinimum
+    }
+
+    enum AllocatedPlanDoseFailure: Equatable {
+        case calendarShape
+        case fatigue(day: Int)
+        case roleDose(day: Int, exercise: Int)
+        case weeklyPriority(area: String)
+        case sessionPriority(day: Int, area: String)
+        case maintenanceCeiling(group: String)
+        case maintenanceLoss(group: String)
+    }
+
+    enum AllocatedPlanDoseComparison: Equatable {
+        case rejected(AllocatedPlanDoseFailure)
+        case dosePreserved(improvesMaintenanceMinimum: Bool)
+    }
+
+    /// Dose-only comparison, not authorization to substitute exercises. Callers must separately
+    /// enforce identity/eligibility, locked slots, rest-day shape, movement/focus quality and their
+    /// improvement objective. In particular, the minimum-dose caller above retains its identity lock.
+    /// Returns the first failing check in policy order, not an exhaustive defect list. Day/slot
+    /// indices are zero-based. Existing tolerances and maintenance-minimum objective are unchanged.
+    func compareAllocatedDoseOnly(_ candidate: [[PreSelectedExercise]],
+        baseline: [[PreSelectedExercise]], blueprint: ProgramBlueprint, weekNumber: Int) -> AllocatedPlanDoseComparison {
+        guard candidate.count == baseline.count, candidate.count == blueprint.dayPlans.count else {
+            return .rejected(.calendarShape)
+        }
         func days(_ plan: [[PreSelectedExercise]]) -> [WorkoutDayResponse] {
             plan.indices.map { day in
                 WorkoutDayResponse(dayNumber: day + 1, dayName: "Planning", muscleGroups: "Planning",
@@ -88,13 +118,17 @@ extension ClaudeService {
         let limits = setBudgetLimits(for: blueprint)
         let accounting = weeklyExerciseAccounting(for: candidate, blueprint: blueprint)
         for day in candidate.indices {
-            guard estimatedDayFatigue(for: newDays[day].exercises) <= limits.fatigue[day] else { return false }
+            guard estimatedDayFatigue(for: newDays[day].exercises) <= limits.fatigue[day] else {
+                return .rejected(.fatigue(day: day))
+            }
             for index in candidate[day].indices {
                 let slot = candidate[day][index], cost = accounting.exercises[day][index]
                 let prime = blueprint.priorityAllocations.indices.contains { cost.unitDirect[$0] > 0 && cost.qualityScore[$0] == 30 }
                 let ceiling = max(proceduralSets(for: weekNumber, exerciseName: slot.exerciseName,
                     muscleTarget: slot.muscleTarget), prime ? 4 : 0)
-                guard slot.prescribedSets >= cost.setFloor, slot.prescribedSets <= ceiling else { return false }
+                guard slot.prescribedSets >= cost.setFloor, slot.prescribedSets <= ceiling else {
+                    return .rejected(.roleDose(day: day, exercise: index))
+                }
             }
         }
         for index in blueprint.priorityAllocations.indices {
@@ -103,7 +137,9 @@ extension ClaudeService {
             let new = priorityCoverage(for: allocation, stimulusReport: newReport)
             guard new.directSets + 0.01 >= old.directSets, new.weightedStimulus + 0.01 >= old.weightedStimulus,
                   new.meaningfulDayMatches >= old.meaningfulDayMatches,
-                  new.directSets <= max(old.directSets, limits.normalWeeklyPriority[index]) + 0.001 else { return false }
+                  new.directSets <= max(old.directSets, limits.normalWeeklyPriority[index]) + 0.001 else {
+                return .rejected(.weeklyPriority(area: allocation.area))
+            }
             for day in candidate.indices {
                 let oldCredits = oldDays[day].exercises.map { stimulusCredit(for: $0, area: allocation.area) }
                 let newCredits = newDays[day].exercises.map { stimulusCredit(for: $0, area: allocation.area) }
@@ -111,7 +147,9 @@ extension ClaudeService {
                 let weighted = newCredits.reduce(0.0) { $0 + $1.weightedStimulus }
                 guard direct + 0.01 >= oldCredits.reduce(0.0, { $0 + $1.directSets }),
                       weighted + 0.01 >= oldCredits.reduce(0.0, { $0 + $1.weightedStimulus }),
-                      direct <= limits.sessionFundingCeiling(day: day, allocation: index) else { return false }
+                      direct <= limits.sessionFundingCeiling(day: day, allocation: index) else {
+                    return .rejected(.sessionPriority(day: day, area: allocation.area))
+                }
             }
         }
         let minimum = WorkoutSetBudgetPolicy.maintenanceFloor(recoveryTight:
@@ -124,13 +162,15 @@ extension ClaudeService {
                     sum + (accounting.exercises[day][index].groupTargets[group] ? Double(candidate[day][index].prescribedSets) : 0)
                 }
             }
-            guard debit <= limits.maintenanceFundingCeiling else { return false }
+            guard debit <= limits.maintenanceFundingCeiling else {
+                return .rejected(.maintenanceCeiling(group: item.label))
+            }
             guard !item.residueOnly else { continue }
             let old = weeklyDirectSets(forGroupAliases: item.aliases, days: oldDays)
             let new = weeklyDirectSets(forGroupAliases: item.aliases, days: newDays)
-            guard new + 0.01 >= old else { return false }
+            guard new + 0.01 >= old else { return .rejected(.maintenanceLoss(group: item.label)) }
             improved = improved || min(new, minimum) > min(old, minimum) + 0.01
         }
-        return improved
+        return .dosePreserved(improvesMaintenanceMinimum: improved)
     }
 }
