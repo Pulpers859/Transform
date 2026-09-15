@@ -1798,7 +1798,8 @@ extension ClaudeService {
         exerciseHistory: ExerciseHistoryContext?,
         appearancePlanningReport: ((String) -> Void)? = nil,
         setFundingReport: (([SetFundingObservation]) -> Void)? = nil,
-        pressdownPlanningReport: ((SubstitutionPlanningBaseline, PressdownFinalization) -> Void)? = nil
+        pressdownPlanningReport: ((SubstitutionPlanningBaseline, PressdownFinalization) -> Void)? = nil,
+        menuPlanningTrace: ((String, [[PreSelectedExercise]]) -> Void)? = nil
     ) -> SubstitutionPlanningBaseline {
         let previousExercisesByStyle = proceduralPreviousExercisesByStyle(from: previousWeekDays)
         var previousUsageByStyle: [String: Int] = [:]
@@ -2091,12 +2092,16 @@ extension ClaudeService {
             lockedPrefixCounts.append(min(lockedPrefixCount, allMenus[allMenus.count - 1].count))
         }
 
+        // Optional value snapshots locate the first planning pass that changes a menu.
+        // Observers do not participate in any selection or allocation decision.
+        menuPlanningTrace?("initialSelection", allMenus)
         let coverageCompleteMenus = enforceBaselineMuscleCoverage(
             allMenus,
             blueprint: blueprint,
             trainingIntent: trainingIntent,
             avoidedExercises: avoidedExercises
         )
+        menuPlanningTrace?("baselineCoverage", coverageCompleteMenus)
         let feasibilityCompleteMenus = enforcePriorityDirectSetFeasibility(
             coverageCompleteMenus,
             blueprint: blueprint,
@@ -2104,6 +2109,7 @@ extension ClaudeService {
             weekNumber: weekNumber,
             avoidedExercises: avoidedExercises
         )
+        menuPlanningTrace?("priorityFeasibility", feasibilityCompleteMenus)
         var finalCoverageMenus = feasibilityCompleteMenus
         for _ in 0..<majorMuscleGroups.count {
             let gapsBefore = Set(
@@ -2124,6 +2130,7 @@ extension ClaudeService {
             finalCoverageMenus = repairedMenus
             guard gapsAfter != gapsBefore else { break }
         }
+        menuPlanningTrace?("baselineCoverageRecheck", finalCoverageMenus)
         // Both balance passes run BEFORE the knee anchor on purpose. They are purely additive, so
         // they cannot create the shape the knee anchor repairs, but the knee anchor DOES evict
         // slots on lower-body days — letting it have the last word means a repair it considers
@@ -2141,18 +2148,21 @@ extension ClaudeService {
             weekNumber: weekNumber,
             avoidedExercises: avoidedExercises
         )
+        menuPlanningTrace?("horizontalPullCoverage", rowCompleteMenus)
         let breadthCompleteMenus = enforceMaintenanceExposureBreadth(
             rowCompleteMenus,
             blueprint: blueprint,
             weekNumber: weekNumber,
             avoidedExercises: avoidedExercises
         )
+        menuPlanningTrace?("maintenanceBreadth", breadthCompleteMenus)
         let balancedMenus = enforceLowerSessionKneeAnchor(
             breadthCompleteMenus,
             blueprint: blueprint,
             trainingIntent: trainingIntent,
             avoidedExercises: avoidedExercises
         )
+        menuPlanningTrace?("lowerKneeAnchor", balancedMenus)
         // Last, so every movement any pass above appended is placed in the session by its role
         // rather than simply landing at the end of the day.
         let orderedMenus = reorderedMenusForSessionFlow(
@@ -2161,6 +2171,7 @@ extension ClaudeService {
             trainingIntent: trainingIntent,
             lockedPrefixCounts: lockedPrefixCounts
         )
+        menuPlanningTrace?("sessionOrder", orderedMenus)
         var roleFloorAdmission: RoleFloorAdmission = .unassessed
         var allocationMessages: [String] = []
         var allocationReceipts: [SetFundingObservation] = []
@@ -2176,6 +2187,7 @@ extension ClaudeService {
             roleFloorAdmissionReport: { roleFloorAdmission = $0 },
             publishConflictLogs: false
         )
+        menuPlanningTrace?("allocated", allocatedMenus)
         let baseline = SubstitutionPlanningBaseline(menus: allocatedMenus, blueprint: blueprint,
             weekNumber: weekNumber, lockedPrefixCounts: lockedPrefixCounts,
             retainedKeysByDay: allocatedMenus.indices.map { day in
@@ -2194,6 +2206,7 @@ extension ClaudeService {
         appearancePlanningReport?("optional pressdown quality: \(finalized.decision)")
         setFundingReport?(finalized.receipts)
         pressdownPlanningReport?(baseline, finalized)
+        menuPlanningTrace?("finalized", finalized.plan.menus)
         return finalized.plan
     }
 

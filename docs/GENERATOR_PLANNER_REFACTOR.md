@@ -2,7 +2,37 @@
 
 ## Active roadmap and audit checkpoints (2026-09-13)
 
-### Live optional substitution boundary (2026-09-15; validation pending)
+### Crowding provenance and rowing alternatives (2026-09-15; probes pending)
+
+An optional value-snapshot observer records ten planning boundaries without affecting
+selection. Labels describe pass outputs, not successful constraint resolution. Its
+regression checks phase order and equality with an unobserved complete plan.
+
+The shoulder-beginner crowding case is an explicit expected failure of the six-slot
+comfort criterion, not a resolved quality test. Its artifact identifies the first
+pass to exceed six. The existing seven-slot artifact alone does not identify filler.
+
+Separate, non-adopting deload probes compare one-set vertical-to-row transfers and
+existing same-style/same-target row substitutions against the complete lumbar-persona
+plan. Transfers assert role-dose refusal; substitution verdicts remain exploratory
+until executed, with invalid-dose controls and unchanged-baseline checks. Green probe
+execution does not mean those alternatives qualify or that rowing balance is fixed.
+The two reports have separate artifact paths because parallel Swift tests suppress
+successful stdout and must not overwrite one another's output.
+
+The first Claude review requested stronger evidence semantics. Added the explicit
+expected failure, transfer refusal assertions, invalid-dose controls and saved reports.
+Its claim that an equality-to-seven assertion would also pass at eight was incorrect;
+the useful concern was distinguishing diagnostic observation from quality acceptance.
+The revised review approved with follow-ups. Empty trial sets now fail before producing
+a report; names explicitly label exploration. Referenced helper signatures and explicit
+call-site labels were checked against source. Actual substitution verdicts will be pinned
+after execution rather than guessed. To keep CI within its existing 12-minute bound,
+tests reuse snapshots from their own real generation instead of rerunning the observed
+planner 16 extra times. Independent review confirmed that the separate unobserved runs,
+fallback delivery, fresh-allocation receipt checks and cross-run determinism remain.
+
+### Live optional substitution boundary (2026-09-15; code `21dd72a`)
 
 The planner now attempts one optional pressdown replacement after baseline allocation,
 before the locked menu reaches AI or fallback. Both original and replacement allocations
@@ -29,6 +59,16 @@ and next-week entry, applies its menu to AI prescriptions, and supplies the same
 validated procedural fallback. Journey fixtures run those production fallback functions.
 The remaining adoption assertions require macOS CI after publishing this checkpoint;
 the packet review is not represented as unconditional approval.
+
+Verified checkpoint: generator run `35027160595` passed all 696 tests, including the
+six finalization cases and live history challenge; app run `35027160592` logged BUILD
+SUCCEEDED. Three loading weeks of the back-focus persona actually adopt Rope Pressdown2
+to Overhead Cable Triceps Extension2 at Arms day slot 5. The other 17 complete day arrays
+are unchanged, all 20 ordered-dose arrays/priority reports/validator findings are unchanged,
+and the historical snapshot is identical to `1d3e765`. The lumbar-persona duplication
+remains: all three loading weeks find no qualified catalog candidate. These results
+resolve the review's executable-adoption question, not physical-iPhone or universal
+workout-quality proof. Artifacts: `.agents/live-pressdown-21dd72a/` (ignored).
 
 ### Bounded candidate search and reservation outcomes (2026-09-15)
 

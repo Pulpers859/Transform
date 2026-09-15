@@ -143,6 +143,9 @@ final class UserJourneySimulationTests: XCTestCase {
         let blueprint: ClaudeService.ProgramBlueprint
         let appearancePlanning: [String]
         let nextSetFunding: [SetFundingObservation]
+        // Reuse the real generation's value snapshots within a test, never cache across runs.
+        let planningBaseline: ClaudeService.SubstitutionPlanningBaseline
+        let finalization: ClaudeService.PressdownFinalization
     }
 
     // Test-only export: no changes to production models or the generation contract.
@@ -184,6 +187,140 @@ final class UserJourneySimulationTests: XCTestCase {
     // This observer must fail if direct-credit semantics change; weighted credit is separate.
     private func meetsWholeSetTarget(delivered: Double, ceiling: Double) -> Bool {
         delivered + 0.01 >= floor(ceiling)
+    }
+
+    func testCrowdedLowerSessionTraceAgainstCompletePlannerBaseline() throws {
+        let persona = personas[1]
+        let intent = service.trainingIntentPlan(from: analysis(for: persona))
+        let blueprint = service.programBlueprint(for: intent, weekNumber: 1)
+        let lower = try XCTUnwrap(blueprint.dayPlans.indices.first {
+            service.canonicalTrainingStyle(blueprint.dayPlans[$0].style) == "Lower"
+                && !blueprint.dayPlans[$0].isRestDay
+        })
+        var phases: [(String, [[ClaudeService.PreSelectedExercise]])] = []
+        let observed = service.preSelectedExercisePlan(for: blueprint, trainingIntent: intent,
+            weekNumber: 1, previousWeekDays: nil, exerciseHistory: nil,
+            menuPlanningTrace: { phases.append(($0, $1)) })
+        let unobserved = service.preSelectedExercisePlan(for: blueprint, trainingIntent: intent,
+            weekNumber: 1, previousWeekDays: nil, exerciseHistory: nil)
+        func signature(_ menus: [[ClaudeService.PreSelectedExercise]]) -> [[String]] {
+            menus.map { $0.map { "\($0.exerciseName)|\($0.muscleTarget)|\($0.movementPattern)|\($0.role)|\($0.prescribedSets)" } }
+        }
+        XCTAssertEqual(signature(observed.menus), signature(unobserved.menus), "Tracing cannot alter a complete plan")
+        XCTAssertEqual(phases.map { $0.0 }, ["initialSelection", "baselineCoverage", "priorityFeasibility",
+            "baselineCoverageRecheck", "horizontalPullCoverage", "maintenanceBreadth", "lowerKneeAnchor",
+            "sessionOrder", "allocated", "finalized"], "Phase labels identify operations, not success verdicts")
+        let initial = try XCTUnwrap(phases.first { $0.0 == "initialSelection" })
+        XCTAssertLessThanOrEqual(initial.1[lower].count, 6)
+        XCTExpectFailure("Tracked crowded Lower finding in GENERATOR_PLANNER_REFACTOR.md; not fixed by tracing") {
+            XCTAssertLessThanOrEqual(observed.menus[lower].count, 6)
+        }
+        XCTAssertEqual(phases.last?.0, "finalized")
+        let transition = try XCTUnwrap(phases.indices.first { phases[$0].1[lower].count > 6 })
+        XCTAssertGreaterThan(transition, 0)
+        guard transition > 0 else { return }
+        var report = ["CROWDING_TRACE persona=\(persona.name) week=1 day=\(lower + 1) firstTransition=\(phases[transition - 1].0)->\(phases[transition].0)"]
+        for phase in phases {
+            report.append("CROWDING_TRACE phase=\(phase.0) lower=\(signature(phase.1)[lower])")
+        }
+        try writeArtifactIfRequested(report.joined(separator: "\n"), environmentKey: "TRANSFORM_CROWDING_TRACE_OUTPUT")
+    }
+
+    func testRecordRowAlternativeExplorationAndRejectInvalidDoses() throws {
+        let persona = personas[2]
+        let weeks = try fullMesocycle(for: persona)
+        XCTAssertEqual(weeks.count, 4)
+        guard weeks.count == 4 else { return }
+        var report: [String] = []
+        let blueprint = weeks[3].blueprint
+        let planned = weeks[3].finalization.plan
+        let baseline = planned.menus
+        func signature(_ menus: [[ClaudeService.PreSelectedExercise]]) -> [[String]] {
+            menus.map { $0.map { "\($0.exerciseName)|\($0.muscleTarget)|\($0.movementPattern)|\($0.role)|\($0.prescribedSets)" } }
+        }
+        let original = signature(baseline)
+        XCTAssertEqual(baseline.map { $0.map(\.exerciseName) }, weeks[3].days.map { $0.exercises.map(\.exerciseName) })
+        XCTAssertEqual(baseline.map { $0.map(\.prescribedSets) }, weeks[3].days.map { $0.exercises.map(\.sets) })
+        let back = service.normalizedGroupAliases(forSeed: "back")
+        let locations = baseline.indices.flatMap { day in baseline[day].indices.map { (day, $0) } }
+        func matches(_ location: (Int, Int), patterns: Set<String>) -> Bool {
+            let exercise = baseline[location.0][location.1]
+            guard let pattern = service.menuMovementPattern(forExerciseName: exercise.exerciseName,
+                muscleTarget: exercise.muscleTarget), patterns.contains(pattern) else { return false }
+            return service.exerciseDirectlyTargets(groupAliases: back, exerciseName: exercise.exerciseName,
+                muscleTarget: exercise.muscleTarget)
+        }
+        let vertical = locations.filter { matches($0, patterns: service.verticalPullPatterns) }
+        let rows = locations.filter { matches($0, patterns: service.horizontalPullPatterns) }
+        XCTAssertEqual(vertical.reduce(0) { $0 + baseline[$1.0][$1.1].prescribedSets }, 7)
+        XCTAssertEqual(rows.reduce(0) { $0 + baseline[$1.0][$1.1].prescribedSets }, 3)
+        let originalTotal = baseline.joined().reduce(0) { $0 + $1.prescribedSets }
+        var trialCount = 0
+        for donor in vertical where baseline[donor.0][donor.1].prescribedSets > 1 {
+            for receiver in rows {
+                var candidate = baseline
+                candidate[donor.0][donor.1].prescribedSets -= 1
+                candidate[receiver.0][receiver.1].prescribedSets += 1
+                trialCount += 1
+                XCTAssertEqual(candidate.map(\.count), baseline.map(\.count))
+                XCTAssertEqual(candidate.map { $0.map(\.exerciseName) }, baseline.map { $0.map(\.exerciseName) })
+                XCTAssertEqual(candidate.map { $0.map(\.muscleTarget) }, baseline.map { $0.map(\.muscleTarget) })
+                XCTAssertEqual(candidate.map { $0.map(\.movementPattern) }, baseline.map { $0.map(\.movementPattern) })
+                XCTAssertEqual(candidate.map { $0.map(\.role) }, baseline.map { $0.map(\.role) })
+                XCTAssertEqual(candidate.joined().reduce(0) { $0 + $1.prescribedSets }, originalTotal)
+                let decision = service.compareAllocatedDoseOnly(candidate, baseline: baseline,
+                    blueprint: blueprint, weekNumber: 4)
+                guard case .rejected(.roleDose) = decision else {
+                    XCTFail("A transfer below donor floor or above the row's three-set ceiling must fail: \(decision)")
+                    continue
+                }
+                // Diagnostic trial only: even dose preservation is not permission to change deload policy.
+                report.append("ROW_DOSE_TRIAL persona=\(persona.name) week=4 donorDay=\(donor.0 + 1) donor=\(baseline[donor.0][donor.1].exerciseName) rowDay=\(receiver.0 + 1) row=\(baseline[receiver.0][receiver.1].exerciseName) decision=\(decision) candidate=\(signature(candidate))")
+                XCTAssertEqual(signature(baseline), original, "Each trial starts from the untouched complete baseline")
+            }
+        }
+        guard trialCount > 0 else { XCTFail("No row-dose transfer trials ran"); return }
+        var substitutionTrials = 0
+        for donor in vertical {
+            let old = baseline[donor.0][donor.1]
+            let catalog = service.exerciseCatalog(for: blueprint.dayPlans[donor.0].style)
+            let alternatives = catalog.filter {
+                $0.target == old.muscleTarget
+                    && service.menuMovementPattern(forExerciseName: $0.name, muscleTarget: $0.target) == "Row"
+            }
+            if alternatives.isEmpty {
+                report.append("ROW_SUBSTITUTION_TRIAL day=\(donor.0 + 1) old=\(old.exerciseName) no same-target Row in style catalog=\(blueprint.dayPlans[donor.0].style)")
+            }
+            for alternative in alternatives {
+                var candidate = baseline
+                candidate[donor.0][donor.1] = .init(exerciseName: alternative.name, muscleTarget: alternative.target,
+                    movementPattern: service.exerciseMetadata(forExerciseName: alternative.name,
+                        muscleTarget: alternative.target).movementPattern,
+                    role: service.proceduralExerciseRole(for: alternative.name, muscleTarget: alternative.target),
+                    prescribedSets: old.prescribedSets)
+                substitutionTrials += 1
+                XCTAssertEqual(candidate.map(\.count), baseline.map(\.count))
+                XCTAssertEqual(candidate.map { $0.map(\.prescribedSets) }, baseline.map { $0.map(\.prescribedSets) })
+                for location in locations where location.0 != donor.0 || location.1 != donor.1 {
+                    XCTAssertEqual(signature(candidate)[location.0][location.1], original[location.0][location.1])
+                }
+                let preflight = service.preflightFixedDoseSubstitution(candidate, plannedBaseline: planned)
+                let dose = service.compareAllocatedDoseOnly(candidate, baseline: baseline, blueprint: blueprint, weekNumber: 4)
+                // Candidate outcomes are exploratory until measured; these invalid-dose controls
+                // make the exercised gates falsifiable without guessing a candidate's verdict.
+                var invalid = candidate
+                invalid[donor.0][donor.1].prescribedSets = 0
+                XCTAssertEqual(service.preflightFixedDoseSubstitution(invalid, plannedBaseline: planned),
+                    .rejected(.changeScope))
+                guard case .rejected = service.compareAllocatedDoseOnly(invalid, baseline: baseline,
+                    blueprint: blueprint, weekNumber: 4) else { XCTFail("Zero-dose row must be rejected"); continue }
+                report.append("ROW_SUBSTITUTION_TRIAL persona=\(persona.name) week=4 day=\(donor.0 + 1) old=\(old.exerciseName) replacement=\(alternative.name) sets=\(old.prescribedSets) preflight=\(preflight) dose=\(dose) candidate=\(signature(candidate))")
+            }
+        }
+        guard substitutionTrials > 0 else { XCTFail("No catalog row alternatives were exercised"); return }
+        report.append("ROW_SUBSTITUTION_TRIAL same-style same-target alternatives tested=\(substitutionTrials)")
+        XCTAssertEqual(signature(planned.menus), original)
+        try writeArtifactIfRequested(report.joined(separator: "\n"), environmentKey: "TRANSFORM_ROW_TRIALS_OUTPUT")
     }
 
     // Baseline f0e3f97 artifact delivered Glutes2/Quads7: a third lunge set was
@@ -254,21 +391,14 @@ final class UserJourneySimulationTests: XCTestCase {
             // Deload policy is outside this experiment.
             for weekIndex in 0..<3 {
                 let blueprint = weeks[weekIndex].blueprint
-                var capturedBaseline: ClaudeService.SubstitutionPlanningBaseline?
-                var finalization: ClaudeService.PressdownFinalization?
-                var publishedReceipts: [SetFundingObservation] = []
-                var receiptCalls = 0
-                let delivered = service.preSelectedExercisePlan(for: blueprint, trainingIntent: intent,
-                    weekNumber: weekIndex + 1, previousWeekDays: weekIndex == 0 ? nil : weeks[weekIndex - 1].days,
-                    exerciseHistory: nil, setFundingReport: { publishedReceipts = $0; receiptCalls += 1 },
-                    pressdownPlanningReport: { capturedBaseline = $0; finalization = $1 })
-                let planned = try XCTUnwrap(capturedBaseline)
-                let finalized = try XCTUnwrap(finalization)
+                let planned = weeks[weekIndex].planningBaseline
+                let finalized = weeks[weekIndex].finalization
+                let delivered = finalized.plan
+                let publishedReceipts = weeks[weekIndex].nextSetFunding
                 let unobserved = service.preSelectedExerciseMenu(for: blueprint, trainingIntent: intent,
                     weekNumber: weekIndex + 1, previousWeekDays: weekIndex == 0 ? nil : weeks[weekIndex - 1].days)
                 XCTAssertEqual(signature(unobserved), signature(delivered.menus),
                     "Diagnostic observers must not affect the selected plan")
-                XCTAssertEqual(receiptCalls, 1)
                 XCTAssertEqual(publishedReceipts.map(\.exerciseName), delivered.menus.flatMap { $0.map(\.exerciseName) })
                 XCTAssertEqual(publishedReceipts.map(\.prescribedSets), delivered.menus.flatMap { $0.map(\.prescribedSets) })
                 for receipt in publishedReceipts {
@@ -483,14 +613,32 @@ final class UserJourneySimulationTests: XCTestCase {
             let blueprint = service.programBlueprint(for: intent, weekNumber: weekNumber)
             var appearancePlanning: [String] = []
             var nextSetFunding: [SetFundingObservation] = []
-            let menus = service.preSelectedExerciseMenu(
+            var capturedBaseline: ClaudeService.SubstitutionPlanningBaseline?
+            var capturedFinalization: ClaudeService.PressdownFinalization?
+            var receiptCalls = 0
+            var finalizationCalls = 0
+            let delivered = service.preSelectedExercisePlan(
                 for: blueprint,
                 trainingIntent: intent,
                 weekNumber: weekNumber,
                 previousWeekDays: previous,
+                exerciseHistory: nil,
                 appearancePlanningReport: { appearancePlanning.append($0) },
-                setFundingReport: { nextSetFunding = $0 }
+                setFundingReport: { nextSetFunding = $0; receiptCalls += 1 },
+                pressdownPlanningReport: {
+                    capturedBaseline = $0; capturedFinalization = $1; finalizationCalls += 1
+                }
             )
+            let menus = delivered.menus
+            XCTAssertEqual(receiptCalls, 1)
+            XCTAssertEqual(finalizationCalls, 1)
+            let planningBaseline = try XCTUnwrap(capturedBaseline)
+            let finalization = try XCTUnwrap(capturedFinalization)
+            func signature(_ menus: [[ClaudeService.PreSelectedExercise]]) -> [[String]] {
+                menus.map { $0.map { "\($0.exerciseName)|\($0.muscleTarget)|\($0.movementPattern)|\($0.role)|\($0.prescribedSets)" } }
+            }
+            XCTAssertEqual(signature(delivered.menus), signature(finalization.plan.menus),
+                "Callback must describe the actual returned plan, including deload")
             XCTAssertEqual(nextSetFunding.count, menus.joined().count)
             XCTAssertEqual(nextSetFunding.map { "\($0.dayIndex):\($0.exerciseIndex)" },
                 menus.indices.flatMap { day in menus[day].indices.map { "\(day):\($0)" } })
@@ -563,7 +711,8 @@ final class UserJourneySimulationTests: XCTestCase {
             }.joined(separator: " ")
 
             weeks.append(SimulatedWeek(days: days, findings: findings, shape: shape, blueprint: blueprint,
-                appearancePlanning: appearancePlanning, nextSetFunding: nextSetFunding))
+                appearancePlanning: appearancePlanning, nextSetFunding: nextSetFunding,
+                planningBaseline: planningBaseline, finalization: finalization))
             previous = days
         }
         return weeks
