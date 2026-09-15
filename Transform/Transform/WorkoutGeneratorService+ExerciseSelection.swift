@@ -1782,6 +1782,23 @@ extension ClaudeService {
         appearancePlanningReport: ((String) -> Void)? = nil,
         setFundingReport: (([SetFundingObservation]) -> Void)? = nil
     ) -> [[PreSelectedExercise]] {
+        preSelectedExercisePlan(for: blueprint, trainingIntent: trainingIntent,
+            weekNumber: weekNumber, previousWeekDays: previousWeekDays,
+            exerciseHistory: exerciseHistory, appearancePlanningReport: appearancePlanningReport,
+            setFundingReport: setFundingReport).menus
+    }
+
+    // Keep the allocated baseline and the context that produced it together. Consumers
+    // must not reconstruct continuity locks or substitute an unrelated history snapshot.
+    func preSelectedExercisePlan(
+        for blueprint: ProgramBlueprint,
+        trainingIntent: TrainingIntentPlan,
+        weekNumber: Int,
+        previousWeekDays: [WorkoutDayResponse]?,
+        exerciseHistory: ExerciseHistoryContext?,
+        appearancePlanningReport: ((String) -> Void)? = nil,
+        setFundingReport: (([SetFundingObservation]) -> Void)? = nil
+    ) -> SubstitutionPlanningBaseline {
         let previousExercisesByStyle = proceduralPreviousExercisesByStyle(from: previousWeekDays)
         var previousUsageByStyle: [String: Int] = [:]
         var usedAcrossDays = Set<String>()
@@ -1808,11 +1825,13 @@ extension ClaudeService {
         // the final re-order runs long after this loop and cannot re-derive it, and re-sorting a
         // day with a lock of zero silently discards the continuity the lock exists to hold.
         var lockedPrefixCounts: [Int] = []
+        var retainedKeysByDay: [Set<String>] = []
 
         for plan in blueprint.dayPlans {
             guard !plan.isRestDay else {
                 allMenus.append([])
                 lockedPrefixCounts.append(0)
+                retainedKeysByDay.append([])
                 continue
             }
 
@@ -1864,6 +1883,7 @@ extension ClaudeService {
                 selected.append((exercise.exerciseName, exercise.muscleTarget))
             }
             let retainedCount = selected.count
+            retainedKeysByDay.append(Set(selected.map { ExerciseWeightEntry.canonicalLookupKey($0.name) }))
             let lockedPrefixCount = focusIntent == nil ? retainedCount : 0
 
             let rawCatalog = orderedExerciseCatalog(
@@ -2137,7 +2157,7 @@ extension ClaudeService {
             trainingIntent: trainingIntent,
             lockedPrefixCounts: lockedPrefixCounts
         )
-        return allocateWeeklySetPrescription(
+        let allocatedMenus = allocateWeeklySetPrescription(
             orderedMenus,
             blueprint: blueprint,
             weekNumber: weekNumber,
@@ -2145,6 +2165,13 @@ extension ClaudeService {
             appearancePlanningReport: appearancePlanningReport,
             setFundingReport: setFundingReport
         )
+        return SubstitutionPlanningBaseline(menus: allocatedMenus, blueprint: blueprint,
+            weekNumber: weekNumber, lockedPrefixCounts: lockedPrefixCounts,
+            retainedKeysByDay: allocatedMenus.indices.map { day in
+                retainedKeysByDay[day].intersection(Set(allocatedMenus[day].map {
+                    ExerciseWeightEntry.canonicalLookupKey($0.exerciseName)
+                }))
+            }, exerciseHistory: exerciseHistory)
     }
 
     // MARK: - Lower-Session Knee-Dominant Anchor (menu-level)

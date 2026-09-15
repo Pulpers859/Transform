@@ -229,13 +229,16 @@ final class UserJourneySimulationTests: XCTestCase {
     }
 
     // Test-only, single-slot trials. These deliberately do NOT authorize substitutions:
-    // pain/history eligibility, retained slots and movement quality need a separate gate.
+    // Full selection preferences, movement quality and an adoption objective remain open.
     func testBoundedPressdownSubstitutionsAgainstCompleteBaselineWeeks() throws {
         let family: Set<String> = ["Rope Triceps Pressdown", "Cable Triceps Pressdown", "V-Bar Pressdown"]
         let replacementNames = ["Overhead Cable Triceps Extension", "Cable Kickback"]
         var attempted = 0
         var dosePreserved = 0
         var lumbarTrials = 0
+        var observedLockedDays = 0
+        var observedRetainedDays = 0
+        var observedUnlockedFocusRetention = 0
         var trialReport: [String] = []
         func signature(_ menus: [[ClaudeService.PreSelectedExercise]]) -> [[String]] {
             menus.map { $0.map { "\($0.exerciseName)|\($0.muscleTarget)|\($0.movementPattern)|\($0.role)|\($0.prescribedSets)" } }
@@ -248,8 +251,24 @@ final class UserJourneySimulationTests: XCTestCase {
             // Deload policy is outside this experiment.
             for weekIndex in 0..<3 {
                 let blueprint = weeks[weekIndex].blueprint
-                let baseline = service.preSelectedExerciseMenu(for: blueprint, trainingIntent: intent,
-                    weekNumber: weekIndex + 1, previousWeekDays: weekIndex == 0 ? nil : weeks[weekIndex - 1].days)
+                let planned = service.preSelectedExercisePlan(for: blueprint, trainingIntent: intent,
+                    weekNumber: weekIndex + 1, previousWeekDays: weekIndex == 0 ? nil : weeks[weekIndex - 1].days,
+                    exerciseHistory: nil)
+                let baseline = planned.menus
+                XCTAssertEqual(planned.weekNumber, weekIndex + 1)
+                XCTAssertEqual(planned.lockedPrefixCounts.count, baseline.count)
+                XCTAssertEqual(planned.retainedKeysByDay.count, baseline.count)
+                observedLockedDays += planned.lockedPrefixCounts.filter { $0 > 0 }.count
+                observedRetainedDays += planned.retainedKeysByDay.filter { !$0.isEmpty }.count
+                for day in baseline.indices {
+                    XCTAssertLessThanOrEqual(planned.lockedPrefixCounts[day], baseline[day].count)
+                    XCTAssertTrue(planned.retainedKeysByDay[day].isSubset(of:
+                        Set(baseline[day].map { ExerciseWeightEntry.canonicalLookupKey($0.exerciseName) })))
+                    if blueprint.dayPlans[day].focusArea != nil, planned.lockedPrefixCounts[day] == 0,
+                       !planned.retainedKeysByDay[day].isEmpty {
+                        observedUnlockedFocusRetention += 1
+                    }
+                }
                 let before = signature(baseline)
                 XCTAssertEqual(baseline.map { $0.map { "\($0.exerciseName)|\($0.muscleTarget)|\($0.prescribedSets)" } },
                     weeks[weekIndex].days.map { $0.exercises.map { "\($0.exerciseName)|\($0.muscleTarget)|\($0.sets)" } },
@@ -283,12 +302,8 @@ final class UserJourneySimulationTests: XCTestCase {
                         trialReport.append("BASELINE \(before)")
                         trialReport.append("BASELINE_DOSE \(service.compareAllocatedDoseOnly(baseline, baseline: baseline, blueprint: blueprint, weekNumber: weekIndex + 1))")
                         trialReport.append("CANDIDATE \(candidateSignature)")
-                        // Synthetic no-history preflight only: real retained prefixes must be
-                        // supplied by the production menu builder before adoption is possible.
-                        let preflight = service.preflightFixedDoseSubstitution(candidate, baseline: baseline,
-                            blueprint: blueprint, lockedPrefixCounts: Array(repeating: 0, count: baseline.count),
-                            painExclusions: .init(exerciseNames: []))
-                        trialReport.append("PREFLIGHT_NO_HISTORY \(preflight)")
+                        let preflight = service.preflightFixedDoseSubstitution(candidate, plannedBaseline: planned)
+                        trialReport.append("PREFLIGHT_PLANNER_CONTEXT \(preflight) locks=\(planned.lockedPrefixCounts)")
                         if persona.name == "Six-day push/pull/legs, back focus, no injuries" {
                             XCTAssertEqual(preflight, .structurallyEligible)
                         } else if persona.name == "Five-day lifter reporting lumbar-extension pain" {
@@ -311,9 +326,39 @@ final class UserJourneySimulationTests: XCTestCase {
         XCTAssertGreaterThan(attempted, 0, "The experiment must exercise real duplicate sessions")
         XCTAssertGreaterThan(lumbarTrials, 0, "Do not silently skip the prior lumbar-persona regression")
         XCTAssertGreaterThan(dosePreserved, 0, "At least one full-week alternative must preserve dose")
+        XCTAssertGreaterThan(observedLockedDays, 0, "Exercise real previous-week ordering locks")
+        XCTAssertGreaterThan(observedRetainedDays, 0, "Exercise real retained identities")
+        XCTAssertGreaterThan(observedUnlockedFocusRetention, 0,
+            "The real builder must capture retained identities even on focus days without an ordering lock")
         trialReport.append("SUBSTITUTION_TRIAL_SUMMARY attempted=\(attempted) dosePreserved=\(dosePreserved); eligibility and adoption NOT tested")
         try writeArtifactIfRequested(trialReport.joined(separator: "\n"),
             environmentKey: "TRANSFORM_SUBSTITUTION_REPORT_OUTPUT")
+    }
+
+    func testPlannerCapturedPainHistoryReachesSubstitutionPreflight() throws {
+        let persona = personas[0]
+        let intent = service.trainingIntentPlan(from: analysis(for: persona))
+        let blueprint = service.programBlueprint(for: intent, weekNumber: 1)
+        let key = ExerciseWeightEntry.canonicalLookupKey("Cable Kickbacks")
+        let history = ClaudeService.ExerciseHistoryContext(painExercises: [key], equipmentSkipExercises: [],
+            priorMesocycleExercises: [], mesocycleIndex: 0)
+        let planned = service.preSelectedExercisePlan(for: blueprint, trainingIntent: intent,
+            weekNumber: 1, previousWeekDays: nil, exerciseHistory: history)
+        XCTAssertEqual(planned.exerciseHistory?.painExercises, [key])
+        let day = try XCTUnwrap(planned.menus.indices.first { day in
+            blueprint.dayPlans[day].style == "Arms" && planned.menus[day].contains { $0.exerciseName == "V-Bar Pressdown" }
+        })
+        let slot = try XCTUnwrap(planned.menus[day].firstIndex { $0.exerciseName == "V-Bar Pressdown" })
+        var candidate = planned.menus
+        candidate[day][slot] = .init(exerciseName: "Cable Kickback", muscleTarget: "Triceps",
+            movementPattern: service.exerciseMetadata(forExerciseName: "Cable Kickback", muscleTarget: "Triceps").movementPattern,
+            role: service.proceduralExerciseRole(for: "Cable Kickback", muscleTarget: "Triceps"),
+            prescribedSets: planned.menus[day][slot].prescribedSets)
+        XCTAssertEqual(service.preflightFixedDoseSubstitution(candidate, plannedBaseline: planned), .rejected(.painHistory))
+        XCTAssertEqual(service.preflightFixedDoseSubstitution(candidate, baseline: planned.menus,
+            blueprint: blueprint, lockedPrefixCounts: planned.lockedPrefixCounts,
+            painExclusions: .init(exerciseNames: [])), .structurallyEligible,
+            "The captured pain history, not another guard, must explain the rejection")
     }
 
     func testWholeSetTargetObserverRejectsMissingAttainableSets() {

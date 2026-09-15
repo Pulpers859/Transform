@@ -57,6 +57,25 @@ final class SubstitutionPreflightTests: XCTestCase {
             .rejected(.reportedShoulderConcern))
     }
 
+    func testRetainedIdentityIsProtectedWithoutAnOrderingLock() {
+        let base = baseline
+        let planned = ClaudeService.SubstitutionPlanningBaseline(menus: base, blueprint: plan(),
+            weekNumber: 2, lockedPrefixCounts: [0],
+            retainedKeysByDay: [[ExerciseWeightEntry.canonicalLookupKey("V-Bar Pressdown")]],
+            exerciseHistory: nil)
+        XCTAssertEqual(check(candidate(base), base), .structurallyEligible)
+        XCTAssertEqual(service.preflightFixedDoseSubstitution(candidate(base), plannedBaseline: planned),
+            .rejected(.retainedSlot))
+        var reordered = base
+        reordered[0].swapAt(2, 4)
+        var proposal = reordered
+        proposal[0][4] = slot("Cable Kickback", "Triceps")
+        let moved = ClaudeService.SubstitutionPlanningBaseline(menus: reordered, blueprint: plan(),
+            weekNumber: 2, lockedPrefixCounts: [0], retainedKeysByDay: planned.retainedKeysByDay,
+            exerciseHistory: nil)
+        XCTAssertEqual(service.preflightFixedDoseSubstitution(proposal, plannedBaseline: moved), .rejected(.retainedSlot))
+    }
+
     func testShapeScopeAndExplicitLockContextFailClosed() {
         let base = baseline, proposal = candidate(baseline)
         XCTAssertEqual(check([], base), .rejected(.shape))

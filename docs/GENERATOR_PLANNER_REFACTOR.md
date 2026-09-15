@@ -2,6 +2,34 @@
 
 ## Active roadmap and audit checkpoints (2026-09-13)
 
+### Planner-bound substitution context (2026-09-15; verification pending)
+
+The menu builder now returns an internal baseline containing its allocated menus,
+blueprint/week, actual ordering locks, surviving retained identities and supplied
+exercise history. The existing menu API delegates to that builder without selecting
+or adopting any substitutions. Full-week trial preflights use this context instead
+of reconstructed zero locks and empty history. A separate real-builder pain-history
+test checks that captured pain exclusions reach the preflight.
+
+Independent source audit identified that ordering locks and retained identities are
+not interchangeable: focus days can retain exercises with zero prefix lock, and
+earlier repair passes can replace a locked position. The snapshot records surviving
+retained identities separately; substitution refusal for those identities is a new,
+conservative, non-adopting guard, not a claim that upstream repairs preserve them all.
+Tests cover moved retained identities and real-builder unlocked focus retention.
+
+This connects continuity/pain context, not full selection-policy acceptance. Equipment
+preferences, broader injury/selection review, prime-slot/variation checks, improvement
+objective and adoption remain open. Stage 3 and the outstanding quality findings are
+not complete. Windows smoke and per-file syntax checks passed; CI and raw-output
+comparison are pending for this checkpoint. No device or live-AI result is claimed.
+The Claude packet audit approved with follow-ups. Its missing-initializer question
+was resolved by inspecting the existing `SubstitutionPainExclusions(history:)`;
+CI must still type-check it. The new context-returning builder requires an explicit
+history argument (including explicit nil for no-history fixtures). The legacy menu
+API retains its existing optional default. Any future live adoption path must verify
+that actual history was supplied; this snapshot alone does not prove that provenance.
+
 Starting checkpoint: `b187f51`. This is a staged plan, not a claim that every
 finding below is a code defect or that the architectural work is complete.
 

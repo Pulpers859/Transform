@@ -1,6 +1,40 @@
 import Foundation
 
 extension ClaudeService {
+    struct SubstitutionPlanningBaseline {
+        let menus: [[PreSelectedExercise]]
+        let blueprint: ProgramBlueprint
+        let weekNumber: Int
+        let lockedPrefixCounts: [Int]
+        // Identity protection is separate from ordering: focus days can retain work
+        // while intentionally having no locked prefix. Removed identities are inert.
+        let retainedKeysByDay: [Set<String>]
+        let exerciseHistory: ExerciseHistoryContext?
+    }
+
+    func preflightFixedDoseSubstitution(
+        _ candidate: [[PreSelectedExercise]], plannedBaseline: SubstitutionPlanningBaseline
+    ) -> SubstitutionPreflight {
+        let baseline = plannedBaseline
+        let pain = baseline.exerciseHistory.map { SubstitutionPainExclusions(history: $0) }
+            ?? SubstitutionPainExclusions(exerciseNames: [])
+        let result = preflightFixedDoseSubstitution(candidate, baseline: baseline.menus,
+            blueprint: baseline.blueprint, lockedPrefixCounts: baseline.lockedPrefixCounts,
+            painExclusions: pain)
+        guard result == .structurallyEligible else { return result }
+        guard baseline.retainedKeysByDay.count == baseline.menus.count else { return .rejected(.lockContext) }
+        for day in baseline.menus.indices {
+            for slot in baseline.menus[day].indices {
+                let old = baseline.menus[day][slot]
+                if old.exerciseName != candidate[day][slot].exerciseName,
+                   baseline.retainedKeysByDay[day].contains(ExerciseWeightEntry.canonicalLookupKey(old.exerciseName)) {
+                    return .rejected(.retainedSlot)
+                }
+            }
+        }
+        return result
+    }
+
     struct SubstitutionPainExclusions {
         fileprivate let canonicalKeys: Set<String>
 
@@ -21,7 +55,7 @@ extension ClaudeService {
     }
 
     enum SubstitutionPreflightFailure: Equatable {
-        case shape, lockContext, restDay, changeScope, protectedSlot
+        case shape, lockContext, restDay, changeScope, protectedSlot, retainedSlot
         case catalog, metadata, painHistory, reportedShoulderConcern
         case duplicate, patternCap, coverage, focusQuality
     }
