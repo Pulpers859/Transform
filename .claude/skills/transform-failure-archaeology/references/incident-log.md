@@ -72,6 +72,25 @@ Format per incident: symptom → root cause → fix → doctrine ("do not re-fig
   or repair their own independent set budgets. Post-generation trimming is observability or
   containment, never the primary fix for an infeasible plan.
 
+## INC-9: Duplicate-handle gate destabilized whole-week selection (2026-09-15)
+
+- **Symptom**: `b97254f` prevented Rope/V-Bar Pressdown duplication, but CI run
+  `34960426158` showed lost lateral-delt day-6 focus, four fragmented triceps
+  movements, and nine below-role-floor press prescriptions across three lumbar
+  persona loading weeks. The app compiled; the new classifier tests passed.
+- **Cause boundary**: Adding a rejection to `dayPatternCapAllows` changed greedy
+  catalog selection before complete-week feasibility. The lumbar artifacts report
+  infeasible Chest maintenance/residue reservation and legacy allocation. The exact
+  intermediate pass inserting each replacement still needs instrumented tracing.
+- **Containment**: Withdrew the experiment and restored the prior source/tests;
+  kept its commit, sandbox and raw evidence. Did not weaken assertions or refresh
+  the snapshot to accept these regressions. The original duplicate remains open.
+- **Doctrine**: A locally correct selection predicate is not a safe whole-week fix.
+  Compare complete candidate plans for focus, role floors, coverage and budgets
+  before accepting hygiene improvements. Aggregate priority totals and absence of
+  one-set prescriptions can both pass while focus days and role floors regress.
+  See `docs/GENERATOR_PLANNER_REFACTOR.md`, rejected pressdown experiment.
+
 ## Candidate entries (unverified details — confirm before citing)
 
 - Uniform prescription cleanup in sanitization and prompt-caching/model-ID changes in the Anthropic request path are mentioned in `transform-generator-audit` references as recent-change risks, but no incident narrative is recorded for them.

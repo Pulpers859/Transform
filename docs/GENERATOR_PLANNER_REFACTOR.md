@@ -41,22 +41,45 @@ The rows are reproducible observations to investigate, not endorsements of warni
 | Fractional targets | Export retains raw 7.5 targets with 7 delivered in affected cases | Decide rounding and reconcile all limits during policy work, not this extraction |
 | Unresolved candidate pool | `JointAppearancePlanningTests.testOverfullEarlyArmsDayCannotSpendLateFocusReservation` pins conflict with every slot locked | Replace legacy allocation only with an explicit, tested outcome contract |
 
-### Pressdown handle selection slice (2026-09-15)
+### Rejected pressdown early-gate experiment (2026-09-15)
 
-The device report's Rope Triceps Pressdown + V-Bar Pressdown pair exposed a
-selection gap: generic grip stemming intentionally refuses to reduce V-Bar
-Pressdown to one word. A closed same-session family now covers the three catalog
-pressdowns (rope, cable, V-bar), resolving aliases locally for comparison. It does
-not rename saved exercises, merge history keys, weaken validation, or trim a
-generated response. Future catalog additions still need an explicit family review.
+`b97254f` recognized Rope/Cable/V-Bar Pressdown as one same-session handle family.
+Its classifier passed canonical/alias, identity, and unilateral checks, but applying
+it to the early greedy selection gate was unsafe. The implementation and its new
+tests were withdrawn; the prior production/test tree is restored. The duplicate
+finding remains OPEN. No snapshot or validator expectation was weakened.
 
-The first implementation incorrectly assumed metadata lookup resolved aliases.
-Independent review caught that; comparison-local resolution and singular/plural
-alias tests address it. Tests also retain different-movement controls, distinct
-history keys, and a nonempty generated-fixture premise. Local Windows smoke and
-syntax checks passed; full CI and raw before/after workout evidence are still
-required before declaring this slice verified. Row dose, crowding, and fractional
-targets are not solved by this change.
+Generator run `34960426158` executed 660 tests and failed five test cases (14
+assertion failures). App run `34960426125` built successfully. Raw exports show:
+
+- Historical fixture: day 6 lost all lateral-delt focus work; triceps spread over
+  four distinct movements at two sets each. This was not merely snapshot drift.
+- Lumbar persona loading weeks: three press appearances per week fell below their
+  three-set role floor. Reservation reported infeasible Chest maintenance/residue
+  and used the legacy allocator. Weekly sets fell by 3, 2, and 2 respectively.
+- All 20 synthetic weeks retained their exported priority summaries and appearance
+  counts, and none had one-set prescriptions. Those checks alone MISSED the defects.
+
+Source trace: early candidate rejection advances through the catalog before
+whole-week feasibility. Short-menu rescue may relax dose gates; protected anchors
+can then make reservation infeasible. Final artifacts do not establish exactly
+which intermediate pass inserted each replacement; add a targeted trace before
+claiming that precise causal chain.
+
+Next: retain the narrow classifier concept, but evaluate a bounded, fully allocated
+alternative against the known baseline before materializing the locked menu. Require
+preserved focus-day work, priority delivery, role floors, coverage and all budgets;
+reject unsafe alternatives explicitly. Do not repeat unconditional early gating.
+Row dose and crowding should use the same complete-plan acceptance boundary;
+fractional rounding remains a separate policy decision.
+
+The first classifier also wrongly assumed metadata lookup resolves aliases.
+Review corrected that to explicit catalog-alias lookup, avoiding broad heuristics
+that erase unknown unilateral qualifiers. The final packet-only Claude run returned
+no substantive review and is NOT approval. Independent source review found no local
+classifier defect, but CI correctly rejected the integrated behavior. The detached
+`pressdown-family` sandbox and ignored `.agents/pressdown-b97254f` artifacts retain
+the experiment locally; commit `b97254f` preserves its exact code in history.
 
 ### Shared-cost extraction slice
 

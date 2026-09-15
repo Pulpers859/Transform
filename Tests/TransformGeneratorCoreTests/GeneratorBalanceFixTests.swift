@@ -426,57 +426,6 @@ final class GeneratorBalanceFixTests: XCTestCase {
         )
     }
 
-    func testPressdownHandlesAndCatalogAliasesCannotShareASession() {
-        let names = [
-            "Rope Triceps Pressdown", "Cable Triceps Pressdown", "V-Bar Pressdown",
-            "Cable Rope Pushdown", "Rope Pushdown", "Cable Pushdown",
-            "Cable Tricep Pushdown", "Cable Triceps Pushdown", "V Bar Pressdown",
-            "V-Bar Pushdown", "V Bar Pushdown", "Cable Rope Pushdowns", "Rope Pushdowns",
-            "Cable Pushdowns", "Cable Tricep Pushdowns", "Cable Triceps Pushdowns"
-        ]
-        for candidate in names {
-            for existing in names where candidate != existing {
-                XCTAssertFalse(service.dayPatternCapAllows(
-                    candidateName: candidate, candidateTarget: "Triceps",
-                    in: [(name: existing, target: "Triceps")]
-                ), "Handle-only duplicates: \(candidate) / \(existing)")
-            }
-            XCTAssertTrue(service.dayPatternCapAllows(
-                candidateName: candidate, candidateTarget: "Triceps",
-                in: [(name: "Overhead Cable Triceps Extension", target: "Triceps")]
-            ), "A different triceps movement must remain available with \(candidate)")
-        }
-    }
-
-    func testPressdownSelectionFamilyDoesNotMergeHistoryIdentities() {
-        let names = ["Rope Triceps Pressdown", "Cable Triceps Pressdown", "V-Bar Pressdown"]
-        XCTAssertEqual(Set(names.map { ExerciseWeightEntry.canonicalLookupKey($0) }).count, 3)
-        for name in names {
-            XCTAssertEqual(service.exerciseMetadata(forExerciseName: name, muscleTarget: "Triceps").canonicalName, name)
-        }
-    }
-
-    func testUnknownUnilateralPressdownDoesNotBecomeAKnownBilateralHandle() {
-        XCTAssertFalse(service.isGripVariantDuplicate(
-            candidateName: "Single-Arm Rope Pushdown", candidateTarget: "Triceps",
-            of: "Rope Triceps Pressdown", otherTarget: "Triceps"
-        ))
-    }
-
-    func testPlannedWeekContainsAtMostOnePressdownHandlePerSession() throws {
-        let (_, menus) = try plannedWeek()
-        // Independent catalog oracle, not a call back into the duplicate detector.
-        let family: Set<String> = [
-            "Rope Triceps Pressdown", "Cable Triceps Pressdown", "V-Bar Pressdown"
-        ]
-        XCTAssertTrue(menus.joined().contains { family.contains($0.exerciseName) },
-                      "Fixture must exercise the pressdown selection path")
-        for (index, day) in menus.enumerated() {
-            XCTAssertLessThanOrEqual(day.filter { family.contains($0.exerciseName) }.count, 1,
-                                     "Day \(index + 1) duplicates pressdown handles")
-        }
-    }
-
     /// The exclusions carry the rule. Stance changes the muscle, unilateral changes the demand,
     /// and the implement is normal variation — none of them are relabelling.
     func testStanceUnilateralAndImplementVariantsRemainAllowed() {

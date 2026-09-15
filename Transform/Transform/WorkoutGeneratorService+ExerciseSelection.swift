@@ -210,53 +210,37 @@ extension ClaudeService {
     /// effort target — six sets spent on one exercise while the same week contained no rowing
     /// at all. The two-per-pattern cap allowed it because they are exactly two.
     ///
-    /// Pattern and primary-muscle agreement are required. Pattern alone would block Standing + Seated Calf
+    /// All three conditions are required. Pattern alone would block Standing + Seated Calf
     /// Raise; primary muscles alone would block a barbell and a machine version of the same
-    /// press. A closed catalog handle family or matching stems identifies the duplicate;
-    /// catalog families do not change persisted names or history keys.
+    /// press. The stem comparison is what separates "another way to train this" from "the same
+    /// thing twice".
     func isGripVariantDuplicate(
         candidateName: String,
         candidateTarget: String,
         of otherName: String,
         otherTarget: String
     ) -> Bool {
-        // Resolve only explicit catalog aliases for this comparison. The broader naming
-        // heuristics can erase an unknown unilateral qualifier; never use them here.
-        // Neither the menu nor persisted exercise keys are rewritten.
-        let comparisonCandidate = Self.exerciseNameAliasCache[normalizeExerciseName(candidateName)] ?? candidateName
-        let comparisonOther = Self.exerciseNameAliasCache[normalizeExerciseName(otherName)] ?? otherName
         guard let candidatePattern = menuMovementPattern(
-            forExerciseName: comparisonCandidate,
+            forExerciseName: candidateName,
             muscleTarget: candidateTarget
         ), candidatePattern != "Unknown" else { return false }
         guard let otherPattern = menuMovementPattern(
-            forExerciseName: comparisonOther,
+            forExerciseName: otherName,
             muscleTarget: otherTarget
         ), candidatePattern == otherPattern else { return false }
 
         let candidateMetadata = exerciseMetadata(
-            forExerciseName: comparisonCandidate,
+            forExerciseName: candidateName,
             muscleTarget: candidateTarget
         )
         let otherMetadata = exerciseMetadata(
-            forExerciseName: comparisonOther,
+            forExerciseName: otherName,
             muscleTarget: otherTarget
         )
         let candidateAreas = Set(candidateMetadata.primaryAreas.map(normalizedPriorityText))
         guard !candidateAreas.isEmpty,
               candidateAreas == Set(otherMetadata.primaryAreas.map(normalizedPriorityText))
         else { return false }
-
-        // Selection-only family: handle variants have inconsistent catalog wording
-        // ("Triceps Pressdown" versus "Pressdown"). Do not broaden name stemming
-        // or merge their persisted exercise identities to solve a menu constraint.
-        let pressdownHandleFamily: Set<String> = [
-            "Rope Triceps Pressdown", "Cable Triceps Pressdown", "V-Bar Pressdown"
-        ]
-        if pressdownHandleFamily.contains(candidateMetadata.canonicalName),
-           pressdownHandleFamily.contains(otherMetadata.canonicalName) {
-            return true
-        }
 
         let candidateStem = gripVariantStem(forExerciseName: candidateName)
         guard !candidateStem.isEmpty else { return false }
