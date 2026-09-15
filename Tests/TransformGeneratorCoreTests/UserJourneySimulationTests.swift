@@ -229,12 +229,13 @@ final class UserJourneySimulationTests: XCTestCase {
     }
 
     // Test-only, single-slot trials. These deliberately do NOT authorize substitutions:
-    // Full selection preferences, movement quality and an adoption objective remain open.
+    // A qualified objective/dose/eligibility trial still does not adopt a replacement.
     func testBoundedPressdownSubstitutionsAgainstCompleteBaselineWeeks() throws {
         let family: Set<String> = ["Rope Triceps Pressdown", "Cable Triceps Pressdown", "V-Bar Pressdown"]
         let replacementNames = ["Overhead Cable Triceps Extension", "Cable Kickback"]
         var attempted = 0
         var dosePreserved = 0
+        var qualified = 0
         var lumbarTrials = 0
         var observedLockedDays = 0
         var observedRetainedDays = 0
@@ -308,10 +309,16 @@ final class UserJourneySimulationTests: XCTestCase {
                         trialReport.append("CANDIDATE \(candidateSignature)")
                         let preflight = service.preflightFixedDoseSubstitution(candidate, plannedBaseline: planned)
                         trialReport.append("PREFLIGHT_PLANNER_CONTEXT \(preflight) locks=\(planned.lockedPrefixCounts)")
+                        let decision = service.evaluatePressdownSubstitutionTrial(candidate, plannedBaseline: planned)
+                        trialReport.append("COMBINED_TRIAL_DECISION \(decision)")
+                        if case .qualified = decision { qualified += 1 }
                         if persona.name == "Six-day push/pull/legs, back focus, no injuries" {
                             XCTAssertEqual(preflight, .structurallyEligible)
+                            XCTAssertEqual(decision, .qualified(day: day, excessBefore: duplicates.count - 1,
+                                excessAfter: duplicates.count - 2))
                         } else if persona.name == "Five-day lifter reporting lumbar-extension pain" {
                             XCTAssertEqual(preflight, .rejected(.catalog), "Kickback is not in the Push style catalog; dose safety alone is insufficient")
+                            XCTAssertEqual(decision, .rejected(.eligibility(.catalog)))
                         }
                         XCTAssertFalse(service.minimumDoseCandidatePreservesPlan(candidate, baseline: baseline,
                             blueprint: blueprint, weekNumber: weekIndex + 1), "The existing minimum-dose gate must not adopt these trial replacements")
@@ -330,11 +337,12 @@ final class UserJourneySimulationTests: XCTestCase {
         XCTAssertGreaterThan(attempted, 0, "The experiment must exercise real duplicate sessions")
         XCTAssertGreaterThan(lumbarTrials, 0, "Do not silently skip the prior lumbar-persona regression")
         XCTAssertGreaterThan(dosePreserved, 0, "At least one full-week alternative must preserve dose")
+        XCTAssertGreaterThan(qualified, 0, "Exercise the complete trial decision, not just separate checks")
         XCTAssertGreaterThan(observedLockedDays, 0, "Exercise real previous-week ordering locks")
         XCTAssertGreaterThan(observedRetainedDays, 0, "Exercise real retained identities")
         XCTAssertGreaterThan(observedUnlockedFocusRetention, 0,
             "The real builder must capture retained identities even on focus days without an ordering lock")
-        trialReport.append("SUBSTITUTION_TRIAL_SUMMARY attempted=\(attempted) dosePreserved=\(dosePreserved); eligibility and adoption NOT tested")
+        trialReport.append("SUBSTITUTION_TRIAL_SUMMARY attempted=\(attempted) dosePreserved=\(dosePreserved) qualified=\(qualified); live adoption NOT tested")
         try writeArtifactIfRequested(trialReport.joined(separator: "\n"),
             environmentKey: "TRANSFORM_SUBSTITUTION_REPORT_OUTPUT")
     }

@@ -1,6 +1,52 @@
 import Foundation
 
 extension ClaudeService {
+    enum PressdownTrialDecision: Equatable {
+        case rejected(PressdownTrialFailure)
+        // A measured trial result, not authorization to replace the delivered menu.
+        case qualified(day: Int, excessBefore: Int, excessAfter: Int)
+    }
+
+    enum PressdownTrialFailure: Equatable {
+        case unsupportedWeek
+        case eligibility(SubstitutionPreflightFailure)
+        case dose(AllocatedPlanDoseFailure)
+        case noRedundancyImprovement
+    }
+
+    /// Narrow catalog-identity objective, not a universal movement-equivalence rule.
+    /// Keep naming/history normalization unchanged (INC-2); do not use this to reject
+    /// early catalog candidates (INC-9). Tests pin exact members and unknown variants.
+    func excessPressdownsByDay(in menus: [[PreSelectedExercise]]) -> [Int] {
+        let family: Set<String> = ["Rope Triceps Pressdown", "Cable Triceps Pressdown", "V-Bar Pressdown"]
+        return menus.map { day in max(0, day.filter { family.contains($0.exerciseName) }.count - 1) }
+    }
+
+    /// Optional quality trial only. No mutation, candidate search, live adoption or
+    /// pain-driven replacement fallback is performed here. Returns the first refusal.
+    func evaluatePressdownSubstitutionTrial(
+        _ candidate: [[PreSelectedExercise]], plannedBaseline: SubstitutionPlanningBaseline
+    ) -> PressdownTrialDecision {
+        guard (1..<MesocyclePhase.deloadWeek).contains(plannedBaseline.weekNumber) else { return .rejected(.unsupportedWeek) }
+        switch preflightFixedDoseSubstitution(candidate, plannedBaseline: plannedBaseline) {
+        case .rejected(let failure): return .rejected(.eligibility(failure))
+        case .structurallyEligible: break
+        }
+        switch compareAllocatedDoseOnly(candidate, baseline: plannedBaseline.menus,
+            blueprint: plannedBaseline.blueprint, weekNumber: plannedBaseline.weekNumber) {
+        case .rejected(let failure): return .rejected(.dose(failure))
+        case .dosePreserved: break
+        }
+        let before = excessPressdownsByDay(in: plannedBaseline.menus)
+        let after = excessPressdownsByDay(in: candidate)
+        let improvedDays = before.indices.filter { after[$0] < before[$0] }
+        guard before.indices.allSatisfy({ after[$0] <= before[$0] }),
+              improvedDays.count == 1, let day = improvedDays.first else {
+            return .rejected(.noRedundancyImprovement)
+        }
+        return .qualified(day: day, excessBefore: before[day], excessAfter: after[day])
+    }
+
     struct SubstitutionPlanningBaseline {
         let menus: [[PreSelectedExercise]]
         let blueprint: ProgramBlueprint

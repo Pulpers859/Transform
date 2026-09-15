@@ -277,4 +277,80 @@ final class SubstitutionPreflightTests: XCTestCase {
         XCTAssertEqual(service.preflightFixedDoseSubstitution(proposal,
             plannedBaseline: planned(base, blueprint: blueprint)), .rejected(.weeklyVariation))
     }
+
+    func testPressdownObjectiveCountsOnlyExcessExactCatalogAppearances() {
+        func day(_ names: [String]) -> [ClaudeService.PreSelectedExercise] {
+            names.map { slot($0, "Triceps") }
+        }
+        XCTAssertEqual(service.excessPressdownsByDay(in: [[], day(["Rope Triceps Pressdown"]),
+            day(["Rope Triceps Pressdown", "V-Bar Pressdown"]),
+            day(["Rope Triceps Pressdown", "Cable Triceps Pressdown", "V-Bar Pressdown"])]), [0, 0, 1, 2])
+        XCTAssertEqual(service.excessPressdownsByDay(in: [day(["Rope Triceps Pressdown", "Cable Triceps Pressdown"])]),
+            service.excessPressdownsByDay(in: [day(["Rope Triceps Pressdown", "V-Bar Pressdown"])]))
+        XCTAssertEqual(service.excessPressdownsByDay(in: [day(["Single-Arm Cable Pressdown", "V Bar Pushdown",
+            "Rope Pushdown", "Overhead Cable Triceps Extension", "Cable Kickback"])]), [0],
+            "Do not invent equivalence for aliases or unilateral movements, or change persisted keys")
+    }
+
+    func testCombinedTrialRequiresImprovementAndPreservesFailureReasons() {
+        // Synthetic guard-isolation fixture, not a complete useful workout.
+        let base = [[slot("EZ-Bar Curl", "Biceps"), slot("Rope Triceps Pressdown", "Triceps"),
+            slot("V-Bar Pressdown", "Triceps")]]
+        let blueprint = plan()
+        let context = planned(base, blueprint: blueprint)
+        let proposal = candidate(base)
+        for malformed in [[], [[]], base + base] as [[[ClaudeService.PreSelectedExercise]]] {
+            XCTAssertEqual(service.evaluatePressdownSubstitutionTrial(malformed, plannedBaseline: context),
+                .rejected(.eligibility(.shape)), "Shape rejection must precede objective-array indexing")
+        }
+        XCTAssertEqual(service.evaluatePressdownSubstitutionTrial(proposal, plannedBaseline: context),
+            .qualified(day: 0, excessBefore: 1, excessAfter: 0))
+        XCTAssertEqual(service.evaluatePressdownSubstitutionTrial(base, plannedBaseline: context),
+            .rejected(.eligibility(.changeScope)))
+        var handleOnly = base
+        handleOnly[0][1] = slot("Cable Triceps Pressdown", "Triceps")
+        XCTAssertEqual(service.evaluatePressdownSubstitutionTrial(handleOnly,
+            plannedBaseline: planned(base, blueprint: plan(style: "Upper"))), .rejected(.noRedundancyImprovement))
+        let triple = [[slot("Rope Triceps Pressdown", "Triceps"), slot("Cable Triceps Pressdown", "Triceps"),
+            slot("V-Bar Pressdown", "Triceps")]]
+        XCTAssertEqual(service.evaluatePressdownSubstitutionTrial(candidate(triple),
+            plannedBaseline: planned(triple, blueprint: blueprint)), .qualified(day: 0, excessBefore: 2, excessAfter: 1),
+            "An incremental reduction is not complete elimination of redundancy")
+        let single = [[slot("EZ-Bar Curl", "Biceps"), slot("V-Bar Pressdown", "Triceps")]]
+        var singleProposal = single
+        singleProposal[0][1] = slot("Cable Kickback", "Triceps")
+        XCTAssertEqual(service.excessPressdownsByDay(in: single), [0])
+        XCTAssertEqual(service.excessPressdownsByDay(in: singleProposal), [0])
+        XCTAssertEqual(service.evaluatePressdownSubstitutionTrial(singleProposal,
+            plannedBaseline: planned(single, blueprint: blueprint)), .rejected(.eligibility(.coverage)),
+            "Existing coverage protection refuses loss of the last pressdown pattern before objective scoring")
+        var unrelatedBase = base
+        unrelatedBase[0].append(slot("Incline Dumbbell Curl", "Biceps"))
+        var unrelatedProposal = unrelatedBase
+        unrelatedProposal[0][3] = slot("Dumbbell Spider Curl", "Biceps")
+        XCTAssertEqual(service.evaluatePressdownSubstitutionTrial(unrelatedProposal,
+            plannedBaseline: planned(unrelatedBase, blueprint: blueprint)), .rejected(.noRedundancyImprovement))
+        var underfundedBase = base
+        underfundedBase[0][2].prescribedSets = 1
+        var underfundedProposal = proposal
+        underfundedProposal[0][2].prescribedSets = 1
+        XCTAssertEqual(service.preflightFixedDoseSubstitution(underfundedProposal,
+            plannedBaseline: planned(underfundedBase, blueprint: blueprint)), .structurallyEligible)
+        XCTAssertEqual(service.evaluatePressdownSubstitutionTrial(underfundedProposal,
+            plannedBaseline: planned(underfundedBase, blueprint: blueprint)),
+            .rejected(.dose(.roleDose(day: 0, exercise: 2))))
+        let history = ClaudeService.ExerciseHistoryContext(
+            painExercises: [ExerciseWeightEntry.canonicalLookupKey("Cable Kickback")], equipmentSkipExercises: [],
+            priorMesocycleExercises: [], mesocycleIndex: 0)
+        XCTAssertEqual(service.evaluatePressdownSubstitutionTrial(proposal,
+            plannedBaseline: planned(base, blueprint: blueprint, history: history)),
+            .rejected(.eligibility(.painHistory)))
+        for week in [0, 4, 5] {
+            let outOfScope = ClaudeService.SubstitutionPlanningBaseline(menus: base, blueprint: blueprint,
+                weekNumber: week, lockedPrefixCounts: [0], retainedKeysByDay: [[]],
+                exerciseHistory: nil, selectionFocusIntents: [nil])
+            XCTAssertEqual(service.evaluatePressdownSubstitutionTrial(proposal, plannedBaseline: outOfScope),
+                .rejected(.unsupportedWeek))
+        }
+    }
 }

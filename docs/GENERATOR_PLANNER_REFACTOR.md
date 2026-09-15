@@ -2,6 +2,35 @@
 
 ## Active roadmap and audit checkpoints (2026-09-13)
 
+### Combined pressdown-improvement trial (2026-09-15; verification pending)
+
+`evaluatePressdownSubstitutionTrial` combines the planner-context eligibility checks,
+complete-plan dose comparison, then a narrow objective: fewer excess exact Rope/Cable/
+V-Bar pressdown appearances in one day, with no day's excess increasing. Excess is
+`max(0, count - 1)`, so changing one handle for another or removing a lone pressdown
+does not establish improvement. Three appearances reduced to two is partial improvement,
+not resolution. The result reports the day and before/after excess, or the first refusal.
+
+This is an optional quality trial for loading weeks only, not a safety replacement
+fallback or a claim of universally better programming. It does not select candidates,
+mutate menus, adopt a replacement, or alter names/history keys. INC-9 constrains this
+work: do not reintroduce an early greedy family rejection. Exact catalog identity is
+intentional; aliases/unilateral movements are not silently classified as equivalent.
+
+The nine complete-week trials now exercise this combined decision. Synthetic tests
+isolate objective scope, non-improvements, eligibility and fixed-dose role-floor
+refusals, partial improvement, and unsupported weeks. Windows smoke/syntax checks
+passed; CI and raw-output comparison are pending. The original product findings and
+Stage 3 remain open until actual decision/adoption behavior is proved.
+
+Independent source review found no blocker. Claude approved with follow-ups about
+shape safety, family-list ownership and future adoption claims. The existing preflight
+checks equal day/slot counts before dose/objective access; the combined test now drives
+empty, shortened and extra-day candidates. Production objective membership has one
+owner; the repeated set in the journey test is an independent fixture selector, not
+another production classifier. INC-2/INC-9 references were checked. Neither source
+review replaces executable CI or proves a user-visible workout improvement.
+
 ### Complete-candidate selection checks (2026-09-15; code `4a84efc`)
 
 The non-adopting planner-context preflight now checks complete-day prime counts and
