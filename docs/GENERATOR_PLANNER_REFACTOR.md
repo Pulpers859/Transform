@@ -185,7 +185,7 @@ cross-day variation, actual retained-context wiring, whole-plan dose comparison 
 an explicit improvement objective still precede adoption. Prefix locks are not all
 retained identities on focus days. Relocation and set redistribution are out of scope.
 Independent source review found and prompted isolation of the allocation-quality
-test; Windows syntax checks passed. CI and raw-output comparison remain pending.
+test; Windows syntax checks passed.
 
 The staged review also prompted typed `SubstitutionPainExclusions` inputs: display
 names are canonicalized once, while the existing history context's keys are consumed
@@ -195,6 +195,21 @@ That restriction is not proof that every original pattern is essential. Full-wee
 trial assertions now distinguish structural eligibility from exact-catalog refusal,
 still under explicit synthetic no-history/no-prefix conditions. The SwiftPM test
 target discovers files by directory; executed-test evidence is required after push.
+
+Verified checkpoint `e328643`: generator run `35004726577` passed with 672 executed
+tests, including all eight `SubstitutionPreflightTests`; app run `35004726723`
+logged BUILD SUCCEEDED. All 20 complete exported week objects and the historical
+snapshot are identical to `3440f08`. Of the nine dose-preserving trial swaps, six
+passed the synthetic no-history preflight and three failed exact catalog membership:
+the lumbar persona's Push catalog does not include Cable Kickback. This is not proof
+the exercise is unsuitable, only that this deliberately narrow candidate source
+cannot authorize it. The trial report's eligibility disclaimer refers to full
+eligibility/adoption, not the limited structural checks now separately reported.
+
+Stage 3 remains in progress. Real selection/retained-history context, preference and
+injury review beyond these guards, upper slot/variation constraints and a complete
+accept/reject decision with an improvement objective remain before production
+substitutions. No original workout-quality finding is closed by this preflight.
 
 ### Shared-cost extraction slice
 
