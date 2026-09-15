@@ -258,9 +258,13 @@ final class UserJourneySimulationTests: XCTestCase {
                 XCTAssertEqual(planned.weekNumber, weekIndex + 1)
                 XCTAssertEqual(planned.lockedPrefixCounts.count, baseline.count)
                 XCTAssertEqual(planned.retainedKeysByDay.count, baseline.count)
+                XCTAssertEqual(planned.selectionFocusIntents.count, baseline.count)
                 observedLockedDays += planned.lockedPrefixCounts.filter { $0 > 0 }.count
                 observedRetainedDays += planned.retainedKeysByDay.filter { !$0.isEmpty }.count
                 for day in baseline.indices {
+                    XCTAssertEqual(planned.selectionFocusIntents[day]?.area,
+                        blueprint.dayPlans[day].isRestDay ? nil : service.focusIntentForArea(
+                            blueprint.dayPlans[day].focusArea, within: intent)?.area)
                     XCTAssertLessThanOrEqual(planned.lockedPrefixCounts[day], baseline[day].count)
                     XCTAssertTrue(planned.retainedKeysByDay[day].isSubset(of:
                         Set(baseline[day].map { ExerciseWeightEntry.canonicalLookupKey($0.exerciseName) })))

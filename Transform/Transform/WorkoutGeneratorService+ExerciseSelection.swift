@@ -1826,17 +1826,20 @@ extension ClaudeService {
         // day with a lock of zero silently discards the continuity the lock exists to hold.
         var lockedPrefixCounts: [Int] = []
         var retainedKeysByDay: [Set<String>] = []
+        var selectionFocusIntents: [MusclePriorityIntent?] = []
 
         for plan in blueprint.dayPlans {
             guard !plan.isRestDay else {
                 allMenus.append([])
                 lockedPrefixCounts.append(0)
                 retainedKeysByDay.append([])
+                selectionFocusIntents.append(nil)
                 continue
             }
 
             let style = plan.style
             let focusIntent = focusIntentForArea(plan.focusArea, within: trainingIntent)
+            selectionFocusIntents.append(focusIntent)
             let supportIntents = plan.supportAreas.compactMap { focusIntentForArea($0, within: trainingIntent) }
             let styleKey = canonicalTrainingStyle(style)
             let styleUsage = previousUsageByStyle[styleKey, default: 0]
@@ -2171,7 +2174,7 @@ extension ClaudeService {
                 retainedKeysByDay[day].intersection(Set(allocatedMenus[day].map {
                     ExerciseWeightEntry.canonicalLookupKey($0.exerciseName)
                 }))
-            }, exerciseHistory: exerciseHistory)
+            }, exerciseHistory: exerciseHistory, selectionFocusIntents: selectionFocusIntents)
     }
 
     // MARK: - Lower-Session Knee-Dominant Anchor (menu-level)

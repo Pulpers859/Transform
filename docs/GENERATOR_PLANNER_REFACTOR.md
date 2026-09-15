@@ -2,6 +2,38 @@
 
 ## Active roadmap and audit checkpoints (2026-09-13)
 
+### Complete-candidate selection checks (2026-09-15; verification pending)
+
+The non-adopting planner-context preflight now checks complete-day prime counts and
+whole-week anatomical variation budgets using existing policy helpers. It refuses
+inherited violations too: unchanged warning totals do not establish that a complete
+candidate fits. This is deliberately conservative and may reject a neutral local
+improvement until the separate baseline problem is resolved.
+
+The snapshot carries the builder's actual optional focus intents. Preference scoring
+is compared only where the builder used it, with focus rank preceding score. A new
+relative equipment preference refuses switching from a non-skipped exercise to one
+marked equipment-skipped; it does not ban skipped exercises globally or reject moving
+between two skipped options. This is conservative substitution policy, not a rewrite
+of the existing catalog filter or its accessory rotation.
+
+Regression cases cover repeated old identities elsewhere in the week, replacement at
+the prime cap, inherited excess after a non-prime swap, relative equipment history,
+and recovery/focus-dependent scoring. Full-week trials also verify captured focus
+intent. Windows smoke/syntax checks passed; CI and raw-output comparison remain pending.
+No production caller adopts substitutions. An explicit improvement objective, actual
+history provenance at live adoption, broader selection review and end-to-end adoption
+proof remain open. Stage 3 and the product-quality backlog are not complete.
+
+Claude's packet review requested changes: verify no live pain/equipment replacement
+caller can silently keep unsuitable work after an unrelated limit rejection, cover
+inherited weekly variation excess, and clarify rank/count claims. Caller search found
+only tests plus the internal overload delegation. Added inherited-week coverage and
+planned-context focus-downgrade coverage; removed a redundant rank rejection already
+owned by structural preflight and renamed the complete-day test. Future safety-driven
+replacement orchestration must handle a rejected candidate without retaining painful
+work. The review was a request for changes, not an unconditional approval.
+
 ### Planner-bound substitution context (2026-09-15; code `0f66781`)
 
 The menu builder now returns an internal baseline containing its allocated menus,

@@ -10,6 +10,7 @@ extension ClaudeService {
         // while intentionally having no locked prefix. Removed identities are inert.
         let retainedKeysByDay: [Set<String>]
         let exerciseHistory: ExerciseHistoryContext?
+        let selectionFocusIntents: [MusclePriorityIntent?]
     }
 
     func preflightFixedDoseSubstitution(
@@ -22,7 +23,8 @@ extension ClaudeService {
             blueprint: baseline.blueprint, lockedPrefixCounts: baseline.lockedPrefixCounts,
             painExclusions: pain)
         guard result == .structurallyEligible else { return result }
-        guard baseline.retainedKeysByDay.count == baseline.menus.count else { return .rejected(.lockContext) }
+        guard baseline.retainedKeysByDay.count == baseline.menus.count,
+              baseline.selectionFocusIntents.count == baseline.menus.count else { return .rejected(.lockContext) }
         for day in baseline.menus.indices {
             for slot in baseline.menus[day].indices {
                 let old = baseline.menus[day][slot]
@@ -30,7 +32,55 @@ extension ClaudeService {
                    baseline.retainedKeysByDay[day].contains(ExerciseWeightEntry.canonicalLookupKey(old.exerciseName)) {
                     return .rejected(.retainedSlot)
                 }
+                if old.exerciseName != candidate[day][slot].exerciseName {
+                    let new = candidate[day][slot]
+                    let skipped = baseline.exerciseHistory?.equipmentSkipExercises ?? []
+                    // Relative preference, not an equipment ban: keeping an already-skipped
+                    // option or moving between two skipped options is not rejected here.
+                    if skipped.contains(ExerciseWeightEntry.canonicalLookupKey(new.exerciseName)),
+                       !skipped.contains(ExerciseWeightEntry.canonicalLookupKey(old.exerciseName)) {
+                        return .rejected(.equipmentPreference)
+                    }
+                    // orderedExerciseCatalog scores only focus days, and compares focus rank
+                    // BEFORE score. Preserve that order rather than invent a universal score gate.
+                    if let focus = baseline.selectionFocusIntents[day] {
+                        let oldRank = focusOrderingPriority(exerciseName: old.exerciseName,
+                            muscleTarget: old.muscleTarget, focusArea: focus.area)
+                        let newRank = focusOrderingPriority(exerciseName: new.exerciseName,
+                            muscleTarget: new.muscleTarget, focusArea: focus.area)
+                        let context = ExerciseSelectionContext(calibration: baseline.blueprint.calibration,
+                            injuryRiskFocus: baseline.blueprint.injuryRiskFocus,
+                            style: baseline.blueprint.dayPlans[day].style)
+                        // The structural preflight already refuses a focus-rank downgrade.
+                        // Score is only the tie-breaker; never veto a rank improvement by score.
+                        if newRank == oldRank && exerciseSelectionScore(
+                            exerciseName: new.exerciseName, muscleTarget: new.muscleTarget,
+                            focusIntent: focus, selectionContext: context) < exerciseSelectionScore(
+                            exerciseName: old.exerciseName, muscleTarget: old.muscleTarget,
+                            focusIntent: focus, selectionContext: context) {
+                            return .rejected(.selectionPreference)
+                        }
+                    }
+                }
             }
+        }
+        // Full-candidate checks deliberately reject inherited violations too. A local
+        // insertion check or unchanged warning count cannot establish complete-plan fit.
+        // This experimental gate has no live adoption caller. It must not be used to keep
+        // painful/unavailable work when a future safety-replacement request cannot pass it.
+        for day in candidate.indices {
+            let plan = baseline.blueprint.dayPlans[day]
+            guard let focus = plan.focusArea else { continue }
+            let primeCount = candidate[day].filter {
+                focusStimulusKind(exerciseName: $0.exerciseName, muscleTarget: $0.muscleTarget,
+                    focusArea: focus) == .prime
+            }.count
+            if primeCount > focusPrimeSlotCap(targetPrioritySlots: plan.targetPrioritySlots) {
+                return .rejected(.focusPrimeCap)
+            }
+        }
+        guard weeklyVariationViolations(in: candidate, blueprint: baseline.blueprint).isEmpty else {
+            return .rejected(.weeklyVariation)
         }
         return result
     }
@@ -58,6 +108,7 @@ extension ClaudeService {
         case shape, lockContext, restDay, changeScope, protectedSlot, retainedSlot
         case catalog, metadata, painHistory, reportedShoulderConcern
         case duplicate, patternCap, coverage, focusQuality
+        case equipmentPreference, selectionPreference, focusPrimeCap, weeklyVariation
     }
 
     /// Fixed-dose, single-slot preflight, NOT permission to adopt a replacement.
