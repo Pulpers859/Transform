@@ -2,7 +2,7 @@
 
 ## Active roadmap and audit checkpoints (2026-09-13)
 
-### Combined pressdown-improvement trial (2026-09-15; verification pending)
+### Combined pressdown-improvement trial (2026-09-15; code `a257920`)
 
 `evaluatePressdownSubstitutionTrial` combines the planner-context eligibility checks,
 complete-plan dose comparison, then a narrow objective: fewer excess exact Rope/Cable/
@@ -20,7 +20,7 @@ intentional; aliases/unilateral movements are not silently classified as equival
 The nine complete-week trials now exercise this combined decision. Synthetic tests
 isolate objective scope, non-improvements, eligibility and fixed-dose role-floor
 refusals, partial improvement, and unsupported weeks. Windows smoke/syntax checks
-passed; CI and raw-output comparison are pending. The original product findings and
+passed; executable evidence is recorded below. The original product findings and
 Stage 3 remain open until actual decision/adoption behavior is proved.
 
 Independent source review found no blocker. Claude approved with follow-ups about
@@ -30,6 +30,23 @@ empty, shortened and extra-day candidates. Production objective membership has o
 owner; the repeated set in the journey test is an independent fixture selector, not
 another production classifier. INC-2/INC-9 references were checked. Neither source
 review replaces executable CI or proves a user-visible workout improvement.
+
+Verified code-checkpoint evidence:
+
+- Generator run `35022266350` passed all 681 tests, with both new test methods present
+  in the execution log. iOS run `35022266326` logged `BUILD SUCCEEDED`.
+- Nine full-week trials preserve dose; six qualify with excess `1 -> 0` on zero-based
+  day index 6, while three are rejected by catalog eligibility. These are independent
+  alternative trials, not six changes adopted into a program.
+- All 20 complete exported week objects and the historical fixture snapshot exactly
+  match `4a84efc`. Artifacts: `.agents/substitution-objective-a257920/` (ignored).
+- No live AI or physical-iPhone validation was performed. Actual generated workout
+  selection is unchanged; this does not resolve the shipped duplicate.
+
+Next bounded step: candidate enumeration and deterministic selection using the combined
+decision, including a tested unchanged-baseline result when no candidate qualifies.
+Prove candidate search and any later live integration separately; do not bypass history
+provenance or reinterpret optional-quality refusal as a safety-replacement fallback.
 
 ### Complete-candidate selection checks (2026-09-15; code `4a84efc`)
 
