@@ -8,7 +8,8 @@ final class SetBudgetPolicyTests: XCTestCase {
     private func plan(target: Double? = nil, ordinary: Double = 10, focused: Double = 10,
                       focus: String? = nil, fatigue: Int = 48,
                       recovery: Bool = false, poorNutrition: Bool = false,
-                      dayCount: Int = 1, priorityArea: String = "Core/Abs") -> ClaudeService.ProgramBlueprint {
+                      dayCount: Int = 1, priorityArea: String = "Core/Abs",
+                      additionalPriorities: [ClaudeService.BlueprintPriorityAllocation] = []) -> ClaudeService.ProgramBlueprint {
         let neutral = service.neutralCalibrationProfile()
         let calibration = ClaudeService.ProgramCalibrationProfile(
             lowPerformanceDataQuality: neutral.lowPerformanceDataQuality,
@@ -25,7 +26,7 @@ final class SetBudgetPolicyTests: XCTestCase {
                 preferredStyles: ["Upper"], preferredMovementPatterns: [], volumeBias: "Moderate", directWorkBias: "High")]
         } ?? []
         return .init(evidenceVersion: "test", splitRecommendation: "Upper", weeklyTrainingDays: dayCount,
-            priorityAllocations: allocations, dayPlans: (1...dayCount).map { day in
+            priorityAllocations: allocations + additionalPriorities, dayPlans: (1...dayCount).map { day in
                 .init(dayIndex: day, style: "Upper", focusArea: focus, supportAreas: [],
                     targetFatigueCap: fatigue, targetSessionMinutes: 1, targetPrioritySlots: 1,
                     emphasisPatterns: [], isRestDay: false)
@@ -62,7 +63,13 @@ final class SetBudgetPolicyTests: XCTestCase {
             XCTAssertEqual(limits.floorWeeklyPriority[0], recovery || nutrition ? 9.18 : 10.88, accuracy: 0.000001)
         }
         XCTAssertEqual(WorkoutSetBudgetPolicy.normalWeeklyPriorityCeiling(target: 7.5),
-            7.51, accuracy: 0.000001)
+            8.01, accuracy: 0.000001)
+        XCTAssertEqual(WorkoutSetBudgetPolicy.normalWeeklyPriorityCeiling(target: 7),
+            7.01, accuracy: 0.000001)
+        for target in [6.999999999, 7.000000001] {
+            XCTAssertEqual(WorkoutSetBudgetPolicy.normalWeeklyPriorityCeiling(target: target), 7.01, accuracy: 0.000001)
+        }
+        XCTAssertEqual(WorkoutSetBudgetPolicy.normalWeeklyPriorityCeiling(target: 7.05), 8.01, accuracy: 0.000001)
     }
 
     func testSolverAndFundingTolerancesRemainDistinct() {
@@ -80,17 +87,62 @@ final class SetBudgetPolicyTests: XCTestCase {
 
     func testActualGateReportsWeeklyTargetAndKeepsFloorAllowance() throws {
         let normal = run([slot("Cable Crunch", "Abs")], plan(target: 2.5))
-        XCTAssertEqual(normal.menu[0].prescribedSets, 2)
+        XCTAssertEqual(normal.menu[0].prescribedSets, 3)
         let refusal = try XCTUnwrap(normal.observations[0].rejection)
         XCTAssertEqual(refusal.kind, .weeklyPriority)
         XCTAssertEqual(refusal.subject, "Core/Abs")
+        XCTAssertEqual(try XCTUnwrap(refusal.projected), 4)
+        XCTAssertEqual(try XCTUnwrap(refusal.limit), 3.01, accuracy: 0.000001)
+
+        let floorBlueprint = plan(target: 2, priorityArea: "Quads")
+        let floorRepair = run([slot("Back Squat", "Quads")], floorBlueprint)
+        XCTAssertEqual(service.minimumSetFloor(forExerciseName: "Back Squat", muscleTarget: "Quads"), 3)
+        XCTAssertEqual(floorRepair.menu[0].prescribedSets, 3, "Existing floor allowance still funds the anchor floor above the integer weekly target")
+        XCTAssertGreaterThan(Double(floorRepair.menu[0].prescribedSets),
+            service.setBudgetLimits(for: floorBlueprint).normalWeeklyPriority[0])
+        XCTAssertLessThanOrEqual(Double(floorRepair.menu[0].prescribedSets),
+            service.setBudgetLimits(for: floorBlueprint).floorWeeklyPriority[0])
+
+        // Retain the original fractional floor input as well: rounding now funds
+        // its two-set floor normally, without granting a third set or changing
+        // the separate floor-repair ceiling.
+        let fractionalBlueprint = plan(target: 1.5)
+        let fractionalFloor = run([slot("Cable Crunch", "Abs")], fractionalBlueprint)
+        XCTAssertEqual(fractionalFloor.menu[0].prescribedSets, 2)
+        XCTAssertEqual(service.setBudgetLimits(for: fractionalBlueprint).normalWeeklyPriority[0], 2.01, accuracy: 0.000001)
+        XCTAssertEqual(service.setBudgetLimits(for: fractionalBlueprint).floorWeeklyPriority[0], 2.43, accuracy: 0.000001)
+        XCTAssertEqual(fractionalFloor.observations[0].rejection?.kind, .weeklyPriority)
+    }
+
+    func testFractionalTopUpCannotRoundTheSessionBudget() throws {
+        let result = run([slot("Cable Crunch", "Abs")], plan(target: 2.5, ordinary: 2.5))
+        XCTAssertEqual(result.menu[0].prescribedSets, 2)
+        let refusal = try XCTUnwrap(result.observations[0].rejection)
+        XCTAssertEqual(refusal.kind, .sessionPriority)
         XCTAssertEqual(try XCTUnwrap(refusal.projected), 3)
         XCTAssertEqual(try XCTUnwrap(refusal.limit), 2.51, accuracy: 0.000001)
+    }
 
-        let floorRepair = run([slot("Cable Crunch", "Abs")], plan(target: 1.5))
-        XCTAssertEqual(floorRepair.menu[0].prescribedSets, 2, "Existing floor allowance can fund the second set above 1.51")
-        XCTAssertGreaterThan(Double(floorRepair.menu[0].prescribedSets),
-            service.setBudgetLimits(for: plan(target: 1.5)).normalWeeklyPriority[0])
+    func testFractionalTopUpCannotBypassFatigue() throws {
+        let result = run([slot("Cable Crunch", "Abs")], plan(target: 2.5, fatigue: 2))
+        XCTAssertEqual(result.menu[0].prescribedSets, 2)
+        let refusal = try XCTUnwrap(result.observations[0].rejection)
+        XCTAssertEqual(refusal.kind, .fatigue)
+        XCTAssertEqual(try XCTUnwrap(refusal.projected), 3)
+        XCTAssertEqual(try XCTUnwrap(refusal.limit), 2)
+    }
+
+    func testFractionalTopUpMustFitEveryCreditedPriority() throws {
+        // One crunch set debits both ledgers; rounding Core must not bypass Abs' integer cap.
+        let other = plan(target: 2, priorityArea: "Abs").priorityAllocations
+        let blueprint = plan(target: 2.5, additionalPriorities: other)
+        let result = run([slot("Cable Crunch", "Abs")], blueprint)
+        XCTAssertEqual(result.menu[0].prescribedSets, 2)
+        let refusal = try XCTUnwrap(result.observations[0].rejection)
+        XCTAssertEqual(refusal.kind, .weeklyPriority)
+        XCTAssertEqual(refusal.subject, "Abs")
+        XCTAssertEqual(try XCTUnwrap(refusal.projected), 3)
+        XCTAssertEqual(try XCTUnwrap(refusal.limit), 2.01, accuracy: 0.000001)
     }
 
     func testActualGateUsesNormalizedFocusCapAndReportsRoleFirst() {
@@ -136,13 +188,13 @@ final class SetBudgetPolicyTests: XCTestCase {
     }
 
     func testUnrelatedWeeklyOvershootDoesNotBlockMaintenanceFunding() {
-        let blueprint = plan(target: 1.5)
-        let exercises = [slot("Cable Crunch", "Abs"), slot("Standing Calf Raise", "Calves"),
+        let blueprint = plan(target: 2, priorityArea: "Quads")
+        let exercises = [slot("Back Squat", "Quads"), slot("Standing Calf Raise", "Calves"),
             slot("EZ-Bar Curl", "Biceps"), slot("Rope Triceps Pressdown", "Triceps"),
             slot("Cable Lateral Raise", "Lateral Deltoids")]
         let reservation = service.reserveWeeklyAppearanceFloors([exercises], blueprint: blueprint, weekNumber: 1)
         guard case .admitted = reservation.outcome else { return XCTFail("Premise: floors must reserve before funding") }
-        XCTAssertEqual(reservation.menus[0][0].prescribedSets, 2)
+        XCTAssertEqual(reservation.menus[0][0].prescribedSets, 3)
         XCTAssertGreaterThan(Double(reservation.menus[0][0].prescribedSets),
             service.setBudgetLimits(for: blueprint).normalWeeklyPriority[0])
         XCTAssertEqual(reservation.menus[0][1].prescribedSets, 2)
@@ -150,8 +202,8 @@ final class SetBudgetPolicyTests: XCTestCase {
         let result = service.allocateWeeklySetPrescription([exercises], blueprint: blueprint, weekNumber: 1,
             appearancePlanningReport: { reports.append($0) })
         XCTAssertTrue(reports.contains { $0.hasPrefix("reserved role floors") })
-        XCTAssertEqual(result[0][0].prescribedSets, 2)
-        XCTAssertEqual(result[0][1].prescribedSets, 3, "Calf funding occurs after core already starts above its normal target")
+        XCTAssertEqual(result[0][0].prescribedSets, 3)
+        XCTAssertEqual(result[0][1].prescribedSets, 3, "Calf funding occurs after quads already start above their normal target")
     }
 
     func testEmptyMenuStillReportsAnEmptyFinalObservation() {

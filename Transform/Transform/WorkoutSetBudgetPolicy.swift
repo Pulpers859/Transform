@@ -15,7 +15,12 @@ enum WorkoutSetBudgetPolicy {
     }
 
     static func normalWeeklyPriorityCeiling(target: Double) -> Double {
-        target + fundingTolerance
+        // Whole-set allocation may meet a fractional target from above. This only
+        // lifts the weekly target gate; role, maintenance, fatigue and session
+        // limits must still fund the additional set (SetBudgetPolicyTests).
+        // Snap values already within the existing funding tolerance of an integer
+        // before rounding, so floating-point noise cannot buy a phantom set.
+        ceil(target - fundingTolerance) + fundingTolerance
     }
 
     static func floorWeeklyPriorityCeiling(target: Double, recoveryTight: Bool) -> Double {

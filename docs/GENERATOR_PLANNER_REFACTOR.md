@@ -63,6 +63,53 @@ It records policy and implementation acceptance criteria, not completed code cha
 
 ## Added owner report: chest movement variety (2026-09-16)
 
+### Fractional target implementation candidate (execution pending)
+
+The normal weekly priority gate now uses the next whole set for fractional targets
+plus its existing numerical tolerance. This does not round session, maintenance,
+fatigue, role or floor-reservation budgets. The shared next-set gate still checks
+every credited priority. The exact requested target remains in evidence, so a
+budget-blocked seven-set delivery against 7.5 remains a reported shortfall.
+
+Local execution of `WorkoutSetBudgetPolicy` reproduced 7.5 -> 7.51 before and
+7.5 -> 8.01 after, with integer and session caps unchanged. This is policy-function
+proof only. Allocator tests add admitted eight-set and session-blocked seven-set
+cases, plus fatigue and other-priority refusals. Full CI is still required.
+The historic glute-minimum stress case now supplies an explicit integer seven-set
+quad budget; it retains the scarce-budget assertions rather than requiring the
+newly authorized eighth set to fail. Ordinary journey profiles remain unchanged.
+
+Second-review reconciliation: near-integer floating-point noise is now absorbed
+using the existing funding tolerance before upward rounding; the standalone check
+executes this boundary. Genuine fractional targets still round upward, not to the
+nearest integer. A separate unmodified-generated-blueprint regression explicitly
+tests the naturally generated 7.5 quad target alongside the fixed-budget stress
+case. The admitted fractional JointAppearance test also checks floor reservation.
+The synthetic owner replay deliberately exports quality findings rather than
+asserting they are absent; its pass is not a workout-quality or injury-safety claim.
+Mirrored evidence fields remain a maintenance limitation, not a claim of automatic
+future schema completeness. The review returned REQUEST CHANGES, not approval.
+
+The final packet review also returned REQUEST CHANGES. Reconciliation: the
+seven-to-six Lower transition already occurred in `490e09b`, before this rounding
+change, through corrected lower-body credits; the before/after week comparison
+is recorded in the owner review. The natural-target test uses `personas[1]`,
+which is the same shoulder-beginner persona as the named scarce-budget test,
+not a different persona. Historical direct and automatic core relocation remain
+positive assertions. The original 1.5-target floor input is additionally retained
+alongside the integer over-ceiling repair case. Upward rounding is a bounded
+programming choice to reach requested targets, not a research-derived biological
+threshold or evidence that more sets are always better. Aggregate dose changes
+across all 20 generated weeks must be compared before acceptance; no claim of
+unchanged whole-week volume is made.
+
+A separate synthetic five-day replay exports complete plan snapshots and findings
+under `owner-planning-replay`. It injects missing measured sleep explicitly and
+retains standing recovery caution, without copying private owner history or
+changing shared sleep defaults. It is not an exact reconstruction of the owner's
+historical generation or a quality pass. Its structural assertions do not require
+old warning patterns, a forced fly/hinge, or an arbitrary pulling ratio.
+
 Review found Push's base candidate list has no chest fly, while Upper and the
 priority catalogs do. Muscle-level coverage can be satisfied by presses alone.
 This is a selection limitation, not yet a reproduced defect in the owner's exact

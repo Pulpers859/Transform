@@ -11,14 +11,23 @@ final class JointAppearancePlanningTests: XCTestCase {
               role: service.proceduralExerciseRole(for: name, muscleTarget: target), prescribedSets: 1)
     }
 
-    func testFractionalTargetIsAnExecutedAllocationCeiling() {
+    func testFractionalTargetCanReachNextWholeSet() {
+        checkFractionalTargetFunding(secondDayIsFocus: true)
+    }
+
+    func testFractionalTargetCannotOverrideSessionBudget() {
+        checkFractionalTargetFunding(secondDayIsFocus: false)
+    }
+
+    private func checkFractionalTargetFunding(secondDayIsFocus: Bool) {
         let allocation = ClaudeService.BlueprintPriorityAllocation(area: "Core/Abs", priorityLevel: "Medium",
             rationale: "", targetFrequency: 2, targetExerciseSlots: 2, directSetTarget: 7.5,
-            weightedStimulusTarget: 7.5, maxPerSessionDirectSets: 4, maxFocusSessionDirectSets: 4,
+            weightedStimulusTarget: 7.5, maxPerSessionDirectSets: 3, maxFocusSessionDirectSets: 4,
             preferredStyles: ["Upper", "Lower"], preferredMovementPatterns: [], volumeBias: "Moderate", directWorkBias: "High")
         let blueprint = ClaudeService.ProgramBlueprint(evidenceVersion: "test", splitRecommendation: "Upper / Lower",
             weeklyTrainingDays: 2, priorityAllocations: [allocation], dayPlans: (1...2).map { day in
-                .init(dayIndex: day, style: day == 1 ? "Upper" : "Lower", focusArea: "Core/Abs", supportAreas: [],
+                .init(dayIndex: day, style: day == 1 ? "Upper" : "Lower",
+                    focusArea: day == 1 || secondDayIsFocus ? "Core/Abs" : nil, supportAreas: [],
                     targetFatigueCap: 48, targetSessionMinutes: 75, targetPrioritySlots: 1, emphasisPatterns: [], isRestDay: false)
             }, topLeverageChange: "", posturalFocus: "(none)", injuryRiskFocus: "(none)", programmingNotes: [],
             calibration: service.neutralCalibrationProfile())
@@ -29,14 +38,21 @@ final class JointAppearancePlanningTests: XCTestCase {
              slot("Seated Cable Row", "Mid Back"), slot("Cable Lateral Raise", "Lateral Deltoids"), slot("Seated Leg Curl", "Hamstrings")]
         ]
         var reports: [String] = []
+        var receipts: [SetFundingObservation] = []
         let funded = service.allocateWeeklySetPrescription(menus, blueprint: blueprint, weekNumber: 1,
-            appearancePlanningReport: { reports.append($0) })
+            appearancePlanningReport: { reports.append($0) }, setFundingReport: { receipts = $0 })
         XCTAssertTrue(reports.contains { $0.hasPrefix("reserved role floors") })
         let coreSets = funded.joined().filter { $0.exerciseName == "Cable Crunch" }.map(\.prescribedSets)
-        XCTAssertEqual(coreSets.reduce(0, +), 7, "The real allocator cannot buy an eighth set under its 7.5-set ceiling")
+        XCTAssertEqual(coreSets.reduce(0, +), secondDayIsFocus ? 8 : 7,
+            "Rounding the weekly target must not override the second day's session budget")
+        if !secondDayIsFocus {
+            XCTAssertTrue(receipts.contains {
+                $0.dayIndex == 1 && $0.exerciseName == "Cable Crunch" && $0.rejection?.kind == .sessionPriority
+            })
+        }
         XCTAssertTrue(coreSets.allSatisfy { $0 >= 2 })
-        XCTAssertEqual(service.normalWeeklyPrioritySetCeiling(for: allocation), 7.51, accuracy: 0.0001)
-        XCTAssertGreaterThan(8, service.normalWeeklyPrioritySetCeiling(for: allocation))
+        XCTAssertEqual(service.normalWeeklyPrioritySetCeiling(for: allocation), 8.01, accuracy: 0.0001)
+        XCTAssertGreaterThan(9, service.normalWeeklyPrioritySetCeiling(for: allocation))
     }
 
     func testOverfullEarlyArmsDayCannotSpendLateFocusReservation() {

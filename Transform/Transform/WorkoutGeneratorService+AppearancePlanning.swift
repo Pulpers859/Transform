@@ -9,9 +9,9 @@ extension ClaudeService {
             || slot < lockedPrefixCount
     }
 
-    // Shared by normal allocation and its whole-set observer. This preserves the existing
-    // soft-ceiling policy, including its numerical tolerance; it does not round budgets up.
-    // JointAppearancePlanningTests.testFractionalTargetIsAnExecutedAllocationCeiling pins it.
+    // Shared by normal allocation and its whole-set observer. Only the fractional
+    // weekly target rounds up; other budget limits retain their own policy.
+    // JointAppearancePlanningTests.testFractionalTargetCanReachNextWholeSet pins it.
     func normalWeeklyPrioritySetCeiling(for allocation: BlueprintPriorityAllocation) -> Double {
         WorkoutSetBudgetPolicy.normalWeeklyPriorityCeiling(target: allocation.directSetTarget)
     }

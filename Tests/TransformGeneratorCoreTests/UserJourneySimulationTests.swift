@@ -190,7 +190,7 @@ final class UserJourneySimulationTests: XCTestCase {
         delivered + 0.01 >= floor(ceiling)
     }
 
-    func testCrowdedLowerTraceAndBoundedCoreRelocation() throws {
+    func testCurrentLowerTraceDoesNotRequireArtificialCrowding() throws {
         let persona = personas[1]
         let intent = service.trainingIntentPlan(from: analysis(for: persona))
         let blueprint = service.programBlueprint(for: intent, weekNumber: 1)
@@ -204,7 +204,7 @@ final class UserJourneySimulationTests: XCTestCase {
         let observed = service.preSelectedExercisePlan(for: blueprint, trainingIntent: intent,
             weekNumber: 1, previousWeekDays: nil, exerciseHistory: nil,
             menuPlanningTrace: { phases.append(($0, $1)) },
-            corePlanningReport: { preCore = $0; coreCallbacks += 1; XCTAssertEqual($1.decision, .adopted) })
+            corePlanningReport: { preCore = $0; coreCallbacks += 1; XCTAssertEqual($1.decision, .noEligiblePlacement) })
         let unobserved = service.preSelectedExercisePlan(for: blueprint, trainingIntent: intent,
             weekNumber: 1, previousWeekDays: nil, exerciseHistory: nil)
         func signature(_ menus: [[ClaudeService.PreSelectedExercise]]) -> [[String]] {
@@ -235,15 +235,67 @@ final class UserJourneySimulationTests: XCTestCase {
         XCTAssertLessThanOrEqual(initial.1[lower].count, 6)
         XCTAssertEqual(observed.menus[lower].count, 6)
         let originalPlan = try XCTUnwrap(preCore)
-        XCTAssertEqual(originalPlan.menus[lower].count, 7, "Keep the actual pre-core failure as the independent control")
+        XCTAssertEqual(originalPlan.menus[lower].count, 6)
         XCTAssertEqual(phases.last?.0, "finalized")
-        let transition = try XCTUnwrap(crowdedTransition)
-        XCTAssertGreaterThan(transition, 0)
-        guard transition > 0 else { return }
-        try recordCoreRelocationTrial(planned: originalPlan, intent: intent, result: analysis(for: persona), lower: lower)
+        XCTAssertNil(crowdedTransition)
     }
 
-    /// Replay the captured pre-core plan independently of live placement selection.
+    func testHistoricalCrowdedCompleteMenuStillExercisesCoreRelocation() throws {
+        let persona = personas[1]
+        let result = analysis(for: persona)
+        let intent = service.trainingIntentPlan(from: result)
+        // Reconstructed from d319e9a's synthetic week: reverse its core relocation.
+        // Blueprint/context are explicit test inputs, not captured historical objects.
+        // Integer seven preserves the original scarce quad budget after fractional rounding.
+        let blueprint = withQuadBudget(service.programBlueprint(for: intent, weekNumber: 1), target: 7)
+        let url = try XCTUnwrap(Bundle.module.url(forResource: "historical-crowded-core-week", withExtension: "json"))
+        let days = try JSONDecoder().decode([WorkoutDayResponse].self, from: Data(contentsOf: url))
+        let menus: [[ClaudeService.PreSelectedExercise]] = days.map { day in day.exercises.map {
+            .init(exerciseName: $0.exerciseName, muscleTarget: $0.muscleTarget,
+                movementPattern: service.exerciseMetadata(for: $0).movementPattern,
+                role: service.proceduralExerciseRole(for: $0.exerciseName, muscleTarget: $0.muscleTarget),
+                prescribedSets: $0.sets)
+        } }
+        func signature(_ value: [[ClaudeService.PreSelectedExercise]]) -> [[String]] {
+            value.map { $0.map { "\($0.exerciseName)|\($0.muscleTarget)|\($0.movementPattern)|\($0.role)|\($0.prescribedSets)" } }
+        }
+        XCTAssertEqual(menus.map(\.count), [6, 7, 0, 7, 0, 5, 0])
+        var admission: ClaudeService.RoleFloorAdmission = .unassessed
+        let allocated = service.allocateWeeklySetPrescription(menus, blueprint: blueprint, weekNumber: 1,
+            roleFloorAdmissionReport: { admission = $0 }, publishConflictLogs: false)
+        guard admission == .admitted, signature(allocated) == signature(menus) else {
+            return XCTFail("Historical menu must fund exactly before testing relocation: \(admission), \(signature(allocated))")
+        }
+        let baseline = ClaudeService.SubstitutionPlanningBaseline(menus: menus, blueprint: blueprint, weekNumber: 1,
+            lockedPrefixCounts: Array(repeating: 0, count: 7),
+            retainedKeysByDay: Array(repeating: Set<String>(), count: 7), exerciseHistory: nil,
+            selectionFocusIntents: blueprint.dayPlans.map { service.focusIntentForArea($0.focusArea, within: intent) },
+            roleFloorAdmission: admission)
+        try recordCoreRelocationTrial(planned: baseline, intent: intent, result: result, lower: 1)
+    }
+
+    private func withQuadBudget(_ blueprint: ClaudeService.ProgramBlueprint, target: Double) -> ClaudeService.ProgramBlueprint {
+        return ClaudeService.ProgramBlueprint(
+            evidenceVersion: blueprint.evidenceVersion,
+            splitRecommendation: blueprint.splitRecommendation,
+            weeklyTrainingDays: blueprint.weeklyTrainingDays,
+            priorityAllocations: blueprint.priorityAllocations.map { allocation in
+                guard allocation.area == "Quads" else { return allocation }
+                return .init(area: allocation.area, priorityLevel: allocation.priorityLevel,
+                    rationale: allocation.rationale, targetFrequency: allocation.targetFrequency,
+                    targetExerciseSlots: allocation.targetExerciseSlots, directSetTarget: target,
+                    weightedStimulusTarget: allocation.weightedStimulusTarget,
+                    maxPerSessionDirectSets: allocation.maxPerSessionDirectSets,
+                    maxFocusSessionDirectSets: allocation.maxFocusSessionDirectSets,
+                    preferredStyles: allocation.preferredStyles,
+                    preferredMovementPatterns: allocation.preferredMovementPatterns,
+                    volumeBias: allocation.volumeBias, directWorkBias: allocation.directWorkBias)
+            }, dayPlans: blueprint.dayPlans, topLeverageChange: blueprint.topLeverageChange,
+            posturalFocus: blueprint.posturalFocus, injuryRiskFocus: blueprint.injuryRiskFocus,
+            programmingNotes: blueprint.programmingNotes, calibration: blueprint.calibration)
+    }
+
+    /// Replay the reconstructed pre-core plan independently of live placement selection.
     /// The six-exercise receiver limit does not prove real-world session comfort.
     private func recordCoreRelocationTrial(planned: ClaudeService.SubstitutionPlanningBaseline,
         intent: ClaudeService.TrainingIntentPlan, result: BodyAnalysisResult, lower: Int) throws {
@@ -501,6 +553,13 @@ final class UserJourneySimulationTests: XCTestCase {
         XCTAssertEqual(finalized.plan.roleFloorAdmission, .admitted)
         XCTAssertEqual(finalized.receipts, declaredReceipts, "Accepted receipts must use new day/slot positions")
         XCTAssertFalse(finalized.messages.contains(baselineMessages[0]))
+        let automatic = service.finalizeFirstCoreRelocation(planned, trainingIntent: intent,
+            previousWeekDays: nil, baselineMessages: baselineMessages, baselineReceipts: baselineReceipts,
+            collectFunding: true)
+        XCTAssertEqual(automatic.decision, .adopted)
+        XCTAssertEqual(automatic.plan.blueprint, declaredBlueprint)
+        XCTAssertEqual(signature(automatic.plan.menus), signature(candidate))
+        XCTAssertEqual(automatic.receipts, declaredReceipts)
         let withoutObserver = finalize(planned, collect: false)
         XCTAssertEqual(withoutObserver.decision, finalized.decision)
         XCTAssertEqual(withoutObserver.plan.blueprint, finalized.plan.blueprint)
@@ -1033,12 +1092,34 @@ final class UserJourneySimulationTests: XCTestCase {
         try writeArtifactIfRequested(report.joined(separator: "\n"), environmentKey: "TRANSFORM_ROW_TRIALS_OUTPUT")
     }
 
-    // Baseline f0e3f97 artifact delivered Glutes2/Quads7: a third lunge set was
-    // refused at Quads8 > 7.51 after optional leg-press funding spent the budget.
+    func testGeneratedFractionalQuadBudgetFundsTargetAndGluteMinimum() throws {
+        let persona = personas[1]
+        let intent = service.trainingIntentPlan(from: analysis(for: persona))
+        let requested = service.programBlueprint(for: intent, weekNumber: 1)
+        let allocation = try XCTUnwrap(requested.priorityAllocations.first { $0.area == "Quads" })
+        XCTAssertEqual(allocation.directSetTarget, 7.5)
+        let plan = service.preSelectedExercisePlan(for: requested, trainingIntent: intent,
+            weekNumber: 1, previousWeekDays: nil, exerciseHistory: nil)
+        func direct(_ area: String) -> Double {
+            plan.menus.joined().reduce(0) { total, exercise in
+                total + service.directSetCredit(for: WorkoutExerciseResponse(exerciseName: exercise.exerciseName,
+                    sets: exercise.prescribedSets, reps: "", tempo: "", restSeconds: 0, notes: "",
+                    muscleTarget: exercise.muscleTarget), area: area)
+            }
+        }
+        XCTAssertEqual(direct("Quads"), 8)
+        XCTAssertGreaterThanOrEqual(direct("Glutes"), 3)
+        XCTAssertLessThanOrEqual(plan.menus[1].count, 6)
+    }
+
+    // Historical f0e3f97 delivered Glutes2/Quads7 under a fractional ceiling.
+    // Keep the scarce-budget regression with an explicit integer seven-set cap;
+    // ordinary 7.5 targets may now reach eight under the owner's rounding policy.
     func testGluteMinimumIsReservedWithoutAnExtraAppearanceOrQuadOvershoot() throws {
         let persona = try XCTUnwrap(personas.first { $0.name == "Four-day beginner with a shoulder that hurts overhead" })
         let intent = service.trainingIntentPlan(from: analysis(for: persona))
-        let requestedBlueprint = service.programBlueprint(for: intent, weekNumber: 1)
+        let generatedBlueprint = service.programBlueprint(for: intent, weekNumber: 1)
+        let requestedBlueprint = withQuadBudget(generatedBlueprint, target: 7)
         var observations: [SetFundingObservation] = []
         let plan = service.preSelectedExercisePlan(for: requestedBlueprint, trainingIntent: intent,
             weekNumber: 1, previousWeekDays: nil, exerciseHistory: nil, setFundingReport: { observations = $0 })
@@ -1052,7 +1133,7 @@ final class UserJourneySimulationTests: XCTestCase {
         XCTAssertEqual(refusal.kind, .weeklyPriority)
         XCTAssertEqual(refusal.subject, "Quads")
         XCTAssertEqual(try XCTUnwrap(refusal.projected), 8, accuracy: 0.000001)
-        XCTAssertEqual(try XCTUnwrap(refusal.limit), 7.51, accuracy: 0.000001)
+        XCTAssertEqual(try XCTUnwrap(refusal.limit), 7.01, accuracy: 0.000001)
         let gluteCredit = menus.joined().reduce(0.0) { total, exercise in
             total + service.directSetCredit(for: WorkoutExerciseResponse(exerciseName: exercise.exerciseName,
                 sets: exercise.prescribedSets, reps: "", tempo: "", restSeconds: 0,

@@ -1,0 +1,337 @@
+[
+  {
+    "dayName": "Push - Chest Focus",
+    "dayNumber": 1,
+    "exercises": [
+      {
+        "coachingSource": "procedural",
+        "exerciseName": "Incline Dumbbell Press",
+        "muscleTarget": "Upper Chest",
+        "notes": "Set the bench near thirty degrees and let the dumbbells travel slightly wider than a flat press so the clavicular fibres take the work.",
+        "reps": "6-10",
+        "restSeconds": 150,
+        "sets": 3,
+        "targetRIR": 2,
+        "tempo": "3-0-1-0"
+      },
+      {
+        "coachingSource": "procedural",
+        "exerciseName": "Machine Chest Press",
+        "muscleTarget": "Chest",
+        "notes": "Set the seat height so the handles sit at mid-chest and your elbows track just under shoulder height.",
+        "reps": "8-12",
+        "restSeconds": 120,
+        "sets": 2,
+        "targetRIR": 2,
+        "tempo": "2-0-1-0"
+      },
+      {
+        "coachingSource": "procedural",
+        "exerciseName": "Machine Incline Press",
+        "muscleTarget": "Upper Chest",
+        "notes": "Set the seat so the handles line up with your upper chest, not your collarbone, and drive straight out along that line.",
+        "reps": "8-12",
+        "restSeconds": 120,
+        "sets": 2,
+        "targetRIR": 2,
+        "tempo": "2-0-1-0"
+      },
+      {
+        "coachingSource": "procedural",
+        "exerciseName": "Cable Lateral Raise",
+        "muscleTarget": "Lateral Deltoids",
+        "notes": "Stand tall with the cable behind your back so tension holds through the bottom of every rep.",
+        "reps": "10-14",
+        "restSeconds": 75,
+        "sets": 3,
+        "targetRIR": 2,
+        "tempo": "2-1-1-0"
+      },
+      {
+        "coachingSource": "procedural",
+        "exerciseName": "Leaning Dumbbell Lateral Raise",
+        "muscleTarget": "Lateral Deltoids",
+        "notes": "Keep a soft elbow and raise slightly in front of your body rather than straight out to the side.",
+        "reps": "10-14",
+        "restSeconds": 75,
+        "sets": 3,
+        "targetRIR": 2,
+        "tempo": "2-1-1-0"
+      },
+      {
+        "coachingSource": "procedural",
+        "exerciseName": "Rope Triceps Pressdown",
+        "muscleTarget": "Triceps",
+        "notes": "Fix the elbows against your sides and let only the forearms move through the rep.",
+        "reps": "10-14",
+        "restSeconds": 75,
+        "sets": 3,
+        "targetRIR": 2,
+        "tempo": "2-1-1-0"
+      }
+    ],
+    "isRestDay": false,
+    "muscleGroups": "Upper Chest, Chest, Lateral Deltoids, Triceps",
+    "notes": "Push session with chest emphasis — simulation rationale for chest. Baseline week: establish repeatable technique and progression anchors. Warm-up: 3-5 min light cardio, band pull-aparts and pec stretch, then 2-3 progressive ramp sets into Incline Dumbbell Press. Prep: rotator cuff activation between warm-up sets"
+  },
+  {
+    "dayName": "Lower - Quads Focus",
+    "dayNumber": 2,
+    "exercises": [
+      {
+        "coachingSource": "procedural",
+        "exerciseName": "Barbell Romanian Deadlift",
+        "muscleTarget": "Hamstrings",
+        "notes": "Keep the spine neutral and push the hips back rather than bending at the waist.",
+        "reps": "6-10",
+        "restSeconds": 150,
+        "sets": 4,
+        "targetRIR": 2,
+        "tempo": "3-0-1-0"
+      },
+      {
+        "coachingSource": "procedural",
+        "exerciseName": "Leg Press",
+        "muscleTarget": "Quads",
+        "notes": "Keep the lower back flat against the pad through the whole range.",
+        "reps": "8-12",
+        "restSeconds": 120,
+        "sets": 2,
+        "targetRIR": 2,
+        "tempo": "2-0-1-0"
+      },
+      {
+        "coachingSource": "procedural",
+        "exerciseName": "Dumbbell Walking Lunge",
+        "muscleTarget": "Glutes",
+        "notes": "Keep the front shin roughly vertical and the torso tall.",
+        "reps": "8-12",
+        "restSeconds": 105,
+        "sets": 3,
+        "targetRIR": 2,
+        "tempo": "2-0-1-0"
+      },
+      {
+        "coachingSource": "procedural",
+        "exerciseName": "Machine Leg Extension",
+        "muscleTarget": "Quads",
+        "notes": "Keep the back against the pad and extend without kicking the weight up.",
+        "reps": "10-14",
+        "restSeconds": 75,
+        "sets": 2,
+        "targetRIR": 2,
+        "tempo": "2-1-1-0"
+      },
+      {
+        "coachingSource": "procedural",
+        "exerciseName": "Machine Leg Curl",
+        "muscleTarget": "Hamstrings",
+        "notes": "Keep the hips pinned to the pad so the movement stays at the knee.",
+        "reps": "10-14",
+        "restSeconds": 75,
+        "sets": 3,
+        "targetRIR": 2,
+        "tempo": "2-1-1-0"
+      },
+      {
+        "coachingSource": "procedural",
+        "exerciseName": "Standing Calf Raise",
+        "muscleTarget": "Calves",
+        "notes": "Take a full stretch at the bottom and a hard pause at the top of every rep.",
+        "reps": "10-14",
+        "restSeconds": 75,
+        "sets": 3,
+        "targetRIR": 2,
+        "tempo": "2-1-1-0"
+      },
+      {
+        "coachingSource": "procedural",
+        "exerciseName": "Cable Crunch",
+        "muscleTarget": "Abs",
+        "notes": "Move slowly and keep the ribs pulled toward the hips throughout.",
+        "reps": "10-15",
+        "restSeconds": 60,
+        "sets": 3,
+        "targetRIR": 2,
+        "tempo": "2-1-2-1"
+      }
+    ],
+    "isRestDay": false,
+    "muscleGroups": "Hamstrings, Quads, Glutes, Calves",
+    "notes": "Lower session with quads emphasis — simulation rationale for quads. Baseline week: establish repeatable technique and progression anchors. Warm-up: 5-7 min bike or incline walk, hip flexor stretch and ankle dorsiflexion drills, then 2-3 progressive ramp sets into Barbell Romanian Deadlift."
+  },
+  {
+    "dayName": "Rest / Recovery",
+    "dayNumber": 3,
+    "exercises": [],
+    "isRestDay": true,
+    "muscleGroups": "Recovery",
+    "notes": "Active recovery, mobility work, and light cardio."
+  },
+  {
+    "dayName": "Upper - Chest Focus",
+    "dayNumber": 4,
+    "exercises": [
+      {
+        "coachingSource": "procedural",
+        "exerciseName": "Incline Barbell Press",
+        "muscleTarget": "Upper Chest",
+        "notes": "Keep your shoulder blades pinned to the bench and touch the bar high on the chest, just under the collarbone.",
+        "reps": "6-10",
+        "restSeconds": 150,
+        "sets": 3,
+        "targetRIR": 2,
+        "tempo": "3-0-1-0"
+      },
+      {
+        "coachingSource": "procedural",
+        "exerciseName": "Cable Fly",
+        "muscleTarget": "Chest",
+        "notes": "Keep a fixed soft bend in the elbow and open only at the shoulder.",
+        "reps": "10-14",
+        "restSeconds": 75,
+        "sets": 2,
+        "targetRIR": 2,
+        "tempo": "2-1-1-0"
+      },
+      {
+        "coachingSource": "procedural",
+        "exerciseName": "Chest-Supported Row",
+        "muscleTarget": "Upper Back",
+        "notes": "Initiate each rep by setting the scapula, then pull with the elbows.",
+        "reps": "8-12",
+        "restSeconds": 120,
+        "sets": 3,
+        "targetRIR": 2,
+        "tempo": "2-0-1-0"
+      },
+      {
+        "coachingSource": "procedural",
+        "exerciseName": "Reverse Pec Deck",
+        "muscleTarget": "Rear Deltoids",
+        "notes": "Keep the chest supported and lead with the elbows so the rear delts carry the movement.",
+        "reps": "10-14",
+        "restSeconds": 75,
+        "sets": 2,
+        "targetRIR": 2,
+        "tempo": "2-1-1-0"
+      },
+      {
+        "coachingSource": "procedural",
+        "exerciseName": "Dumbbell Rear Delt Fly",
+        "muscleTarget": "Rear Deltoids",
+        "notes": "Stop when the arms reach the torso line rather than driving them behind it.",
+        "reps": "10-14",
+        "restSeconds": 75,
+        "sets": 2,
+        "targetRIR": 2,
+        "tempo": "2-1-1-0"
+      },
+      {
+        "coachingSource": "procedural",
+        "exerciseName": "Cable Triceps Pressdown",
+        "muscleTarget": "Triceps",
+        "notes": "Fix the elbows against your sides and let only the forearms move through the rep.",
+        "reps": "10-14",
+        "restSeconds": 75,
+        "sets": 3,
+        "targetRIR": 2,
+        "tempo": "2-1-1-0"
+      },
+      {
+        "coachingSource": "procedural",
+        "exerciseName": "Hanging Knee Raise",
+        "muscleTarget": "Lower Abs",
+        "notes": "Move slowly and keep the ribs pulled toward the hips throughout.",
+        "reps": "10-15",
+        "restSeconds": 60,
+        "sets": 3,
+        "targetRIR": 2,
+        "tempo": "2-1-2-1"
+      }
+    ],
+    "isRestDay": false,
+    "muscleGroups": "Upper Chest, Chest, Upper Back, Rear Deltoids",
+    "notes": "Upper session with chest emphasis — simulation rationale for chest. Baseline week: establish repeatable technique and progression anchors. Warm-up: 3-5 min light cardio, band pull-aparts and pec stretch, lat stretch and scapular setting drills, then 2-3 progressive ramp sets into Incline Barbell Press. Prep: rotator cuff activation between warm-up sets"
+  },
+  {
+    "dayName": "Rest / Recovery",
+    "dayNumber": 5,
+    "exercises": [],
+    "isRestDay": true,
+    "muscleGroups": "Recovery",
+    "notes": "Active recovery, mobility work, and light cardio."
+  },
+  {
+    "dayName": "Pull Session",
+    "dayNumber": 6,
+    "exercises": [
+      {
+        "coachingSource": "procedural",
+        "exerciseName": "Pull-Up (Weighted or Assisted)",
+        "muscleTarget": "Lats",
+        "notes": "Start from a full hang with the shoulders pulled down, then lead with the elbows rather than the chin.",
+        "reps": "6-10",
+        "restSeconds": 150,
+        "sets": 3,
+        "targetRIR": 2,
+        "tempo": "3-0-1-0"
+      },
+      {
+        "coachingSource": "procedural",
+        "exerciseName": "Lat Pulldown",
+        "muscleTarget": "Lats",
+        "notes": "Let the shoulders rise slightly at the top of each rep, then pull them down first and follow with the elbows.",
+        "reps": "8-12",
+        "restSeconds": 120,
+        "sets": 2,
+        "targetRIR": 2,
+        "tempo": "2-0-1-0"
+      },
+      {
+        "coachingSource": "procedural",
+        "exerciseName": "Seated Cable Row",
+        "muscleTarget": "Mid Back",
+        "notes": "Set the shoulder blade before the elbow moves, and let the handle come to your waist rather than your ribs.",
+        "reps": "8-12",
+        "restSeconds": 120,
+        "sets": 2,
+        "targetRIR": 2,
+        "tempo": "2-0-1-0"
+      },
+      {
+        "coachingSource": "procedural",
+        "exerciseName": "EZ-Bar Curl",
+        "muscleTarget": "Biceps",
+        "notes": "Keep the elbows fixed and the torso still so nothing swings into the rep.",
+        "reps": "10-14",
+        "restSeconds": 75,
+        "sets": 3,
+        "targetRIR": 2,
+        "tempo": "2-1-1-0"
+      },
+      {
+        "coachingSource": "procedural",
+        "exerciseName": "Incline Dumbbell Curl",
+        "muscleTarget": "Biceps",
+        "notes": "Keep the elbows just in front of your ribs and stop the upswing before the forearms reach vertical.",
+        "reps": "10-14",
+        "restSeconds": 75,
+        "sets": 3,
+        "targetRIR": 2,
+        "tempo": "2-1-1-0"
+      }
+    ],
+    "isRestDay": false,
+    "muscleGroups": "Lats, Mid Back, Biceps, Abs",
+    "notes": "Pull session. Baseline week: establish repeatable technique and progression anchors. Warm-up: 3-5 min light cardio, lat stretch and scapular setting drills, then 2-3 progressive ramp sets into Pull-Up (Weighted or Assisted). Prep: rotator cuff activation between warm-up sets"
+  },
+  {
+    "dayName": "Rest / Recovery",
+    "dayNumber": 7,
+    "exercises": [],
+    "isRestDay": true,
+    "muscleGroups": "Recovery",
+    "notes": "Active recovery, mobility work, and light cardio."
+  }
+]

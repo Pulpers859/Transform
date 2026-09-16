@@ -93,6 +93,30 @@ choices, dose, crowding and warnings. Device behavior remains separate.
 
 ## Follow-up acceptance
 
+### First remote execution: 490e09b
+
+App run `35087806541` logged BUILD SUCCEEDED. Generator run `35087806537`
+executed 721 tests and failed the live-crowding test's three setup assertions:
+the new Lower day had six slots before relocation, not seven, so there was no
+eligible placement or crowded transition. This is a red suite, not approval.
+Complete comparison against d319e9a: twelve week objects unchanged, eight changed
+(the shoulder and lumbar personas). The independent two-set checker passed all
+twenty weeks. Priority direct-set totals remained unchanged in those eight weeks.
+
+Changed workout tradeoffs: the shoulder persona retains curls and glute/quad
+coverage but loses its RDL and no longer needs core relocation. The lumbar
+persona redistributes its twelve hamstring sets toward two RDL appearances and
+smaller curl doses. No new validator findings appeared; the existing deload row
+warning remains. Neither validator output nor modeled budgets proves individual
+tolerability of that redistribution.
+
+Follow-on regression work separates live non-crowded planning from a reconstructed
+historical crowded complete-menu fixture. The latter reverses the recorded core
+relocation in the d319e9a synthetic week, uses an explicit integer-seven quad budget
+to preserve budget pressure, and explicit empty lock/history test inputs. It must
+earn exact allocation/admission before the existing relocation checks run. It is
+not an exact captured historical blueprint/context object. Execution pending.
+
 Replay this owner's five-day constrained-recovery shape without copying private
 analysis text into fixtures. Record pressdown/core finalization decisions, chest
 sets per session and six-to-two pull balance. Do not require an extra fly, a hinge,

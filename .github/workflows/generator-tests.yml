@@ -33,6 +33,7 @@ jobs:
       TRANSFORM_ROW_TRIALS_OUTPUT: ${{ github.workspace }}/rowing-plan-trials.txt
       TRANSFORM_CORE_RELOCATION_OUTPUT: ${{ github.workspace }}/core-relocation-trial.txt
       TRANSFORM_CORE_CHAIN_OUTPUT: ${{ github.workspace }}/core-relocation-chain.txt
+      TRANSFORM_OWNER_REPLAY_OUTPUT: ${{ github.workspace }}/owner-planning-replay.json
 
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
@@ -165,6 +166,15 @@ jobs:
         with:
           name: generator-test-log
           path: ${{ runner.temp }}/transform-generator-tests.log
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload synthetic owner-shaped planning replay
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: owner-planning-replay
+          path: owner-planning-replay.json
           if-no-files-found: error
           retention-days: 14
 
