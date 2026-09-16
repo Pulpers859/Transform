@@ -137,6 +137,47 @@ final class InjuryTimeAndSessionBudgetTests: XCTestCase {
         XCTAssertTrue(issues.isEmpty, "\(issues)")
     }
 
+    func testDayWarmupKeywordsCannotClearAnUnadaptedImplicatedPress() {
+        let press = exercise("Seated Dumbbell Shoulder Press", "Anterior Deltoids", sets: 3,
+            notes: "Keep the torso upright and press smoothly.")
+        let control = service.validateInjuryRiskAlignment(on: day([press], notes: ""), injuryRiskFocus: ownersInjuryText)
+        XCTAssertEqual(control.count, 1)
+        for keyword in ["external rotation", "band pull apart", "band pull-apart", "wall slide", "serratus"] {
+            let issues = service.validateInjuryRiskAlignment(on: day([press], notes: "Warm-up: \(keyword)."),
+                injuryRiskFocus: ownersInjuryText)
+            XCTAssertEqual(issues, control, "Day-level \(keyword) does not adapt this exercise")
+        }
+    }
+
+    func testAnotherExercisesAdaptationCannotClearTheImplicatedPress() {
+        let press = exercise("Seated Dumbbell Shoulder Press", "Anterior Deltoids", sets: 3)
+        let other = exercise("Chest-Supported Row", "Upper Back", sets: 3,
+            notes: "Use a neutral grip and keep the movement pain free.")
+        let control = service.validateInjuryRiskAlignment(on: day([press]), injuryRiskFocus: ownersInjuryText)
+        XCTAssertEqual(control.count, 1)
+        XCTAssertEqual(service.validateInjuryRiskAlignment(on: day([other, press]), injuryRiskFocus: ownersInjuryText), control)
+    }
+
+    func testWarmupChangePreservesPerExerciseExemptionsAndUnimplicatedControls() {
+        for cue in ["neutral grip", "angled grip", "pain free", "shoulder friendly"] {
+            let press = exercise("Seated Dumbbell Shoulder Press", "Anterior Deltoids", sets: 3, notes: cue)
+            XCTAssertTrue(service.validateInjuryRiskAlignment(on: day([press], notes: ""), injuryRiskFocus: ownersInjuryText).isEmpty)
+        }
+        // Preserving these lexical exemptions is not proof of clinical adaptation;
+        // grip-only false clearance is deliberately outside this narrow change.
+        for notes in ["", "Warm-up: external rotation and wall slides."] {
+            XCTAssertTrue(service.validateInjuryRiskAlignment(
+                on: day([exercise("Seated Dumbbell Shoulder Press", "Anterior Deltoids", sets: 3)], notes: notes),
+                injuryRiskFocus: "").isEmpty)
+            XCTAssertTrue(service.validateInjuryRiskAlignment(
+                on: day([exercise("Chest-Supported Row", "Upper Back", sets: 3)], notes: notes),
+                injuryRiskFocus: ownersInjuryText).isEmpty)
+            XCTAssertTrue(service.validateInjuryRiskAlignment(
+                on: day([exercise("Seated Dumbbell Shoulder Press", "Anterior Deltoids", sets: 3)], notes: notes),
+                injuryRiskFocus: "Right shoulder pain during rows.").isEmpty)
+        }
+    }
+
     func testANonShoulderInjuryStillSkipsTheShoulderRule() {
         let issues = service.validateInjuryRiskAlignment(
             on: day([exercise("Seated Dumbbell Shoulder Press", "Anterior Deltoids", sets: 3)]),

@@ -2,6 +2,52 @@
 
 ## Active roadmap and audit checkpoints (2026-09-13)
 
+### Stage 3 architecture decision: bounded complete-plan repair
+
+The current architecture has shared named budget limits, shared appearance costs,
+distinct admitted/infeasible/search-limited outcomes, and live complete-plan
+adoption with matching blueprint/menus/receipts. The menu-only wrapper is removed.
+These boundaries were executed at `57b3425`; later focus/shoulder changes have
+their own evidence requirements below. Older entries saying real-context adoption
+is absent describe historical checkpoints, not the current implementation.
+
+Alternative considered: rebuild the candidate pool when an optional quality
+improvement is desired. A general rebuild is not implemented or experimentally
+claimed superior/inferior. For the pinned pressdown/core cases, the selected bounded
+approach improves an already-admitted plan while preserving complete prescriptions
+and unrelated workouts in executed comparisons. Rebuilding would reopen identity,
+retention and early greedy-selection interactions unnecessarily; the rejected
+early-gate experiment below demonstrates the risk of changing the pool without
+whole-plan proof, not a test of every possible rebuild algorithm.
+
+Decision: retain bounded repair as the architecture for these cases. Keep explicit
+refusal and unsearched outcomes; neither a 64-trial pressdown bound nor the first
+core placement proves universal infeasibility. The all-locked-pool admission test
+does not authorize replacing protected work. Revisit rebuilding if a real failing
+pool has a legal unlocked replacement that these boundaries cannot express.
+This closes the Stage 3 approach-selection decision, not remaining quality/policy
+work in Stages 4–7. Legacy allocation remains necessary for current deload and
+unadmitted paths; it is not declared superseded or removed without a replacement.
+
+### Shoulder day-note false clearance (2026-09-15; execution pending)
+
+The validator no longer treats day-level warm-up keywords as sufficient adaptation
+of an implicated overhead press. The change removes only that exemption; exercise
+selection, the report's movement-family gate, per-exercise cue exemptions, finding
+text and correction tier remain unchanged. Regression tests compare all five former
+warm-up keywords against the same unadapted exercise without a day note, and keep
+exercise-local, unrelated-family and no-complaint controls. Independent source
+review found no blocker; these new assertions have not yet executed.
+Claude's packet review approved with follow-ups, conditional on execution. The
+finding anchor/correction tier were re-read, and a bounded search of this metadata
+file's other day-note consumers found consistency checks, not another equivalent
+warm-up clearance. This does not constitute an all-joints clinical audit.
+
+This fixes neither the separate grip-only contradiction nor the broader question
+of what coaching content should count as adaptation. Existing lexical exemptions
+are explicitly preserved, not endorsed as evidence of tolerance or medical safety.
+No exercise ban, pain threshold, diagnosis or rehabilitation rule is introduced.
+
 ### Directional focus membership (2026-09-15; provisional, execution pending)
 
 Source tracing of the lumbar-persona's four-prime-hamstring finding identified a

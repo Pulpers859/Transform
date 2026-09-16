@@ -800,7 +800,6 @@ extension ClaudeService {
         // validation again.
         guard hasShoulderRisk(injuryRiskFocus: injuryRiskFocus) else { return [] }
 
-        let dayNote = normalizedPriorityText(day.notes)
         let riskyVerticalPresses = day.exercises.filter { exercise in
             // `normalizeExerciseName`, not `normalizedPriorityText`. The latter lowercases and
             // nothing else, so a hyphen survives and the spaced keywords below never matched a
@@ -845,7 +844,6 @@ extension ClaudeService {
             let note = normalizedPriorityText(exercise.notes)
             return !containsAny(name, keywords: ["landmine"])
                 && !containsAny(note, keywords: ["neutral grip", "angled grip", "pain free", "shoulder friendly"])
-                && !containsAny(dayNote, keywords: ["external rotation", "band pull apart", "band pull-apart", "wall slide", "serratus"])
         }
 
         guard !riskyVerticalPresses.isEmpty else { return [] }
