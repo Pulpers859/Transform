@@ -17,7 +17,7 @@ across twenty weeks. This does not establish arbitrary-profile or device quality
 | Stage 4, core crowding | Three loading weeks relocate core without losing prescriptions at `57b3425`; restored at `a695cc9` | Owner's device still needed |
 | Stage 4, focus classification | Attempt `f54f3b4` rejected; prior production code restored at `a695cc9` | Three explicit known defects remain; redesign must preserve full-plan quality |
 | Stage 4, rowing balance | Append and replacement alternatives measured, not adopted | Owner tradeoff on block continuity versus deload-only change remains pending |
-| Stage 4, shoulder coaching | Day-warmup exemption removed; all three new cases executed in `9249fb3` run with no reported failures | Owner-approved explicit guidance implemented below; integrated execution pending |
+| Stage 4, shoulder coaching | Explicit exercise-level guidance verified at `76909c9`, including seven new integration cases | Conservative language coverage and physical-device limits remain |
 | Stage 5, policy | Fractional rounding, recovery fallback, and ordering choices isolated | Await owner answers; do not silently retune these policies |
 | Stages 6–7 | Menu-only wrapper removed; remaining legacy allocation still required | Retire only proven superseded paths; physical-iPhone and history/UI proof outstanding |
 
@@ -61,7 +61,7 @@ unadmitted paths; it is not declared superseded or removed without a replacement
 ### Shoulder day-note false clearance (2026-09-15; execution pending)
 
 **Follow-on approved by owner: explicit exercise-level guidance (implementation,
-execution pending).** Grip-only and bare `pain free`/`shoulder friendly` labels no
+verified at `76909c9`).** Grip-only and bare `pain free`/`shoulder friendly` labels no
 longer clear this finding. The report-specific applicability gate is shared with
 procedural cue production and absent-AI-note substitution. Both procedural routes
 and all eight production/debug sanitization call sites carry the actual report;
@@ -96,6 +96,14 @@ a plan-file review, with no findings or verdict. It is NOT approval. The separat
 independent source audit and main-agent adversarial checks above are the available
 review evidence; full integrated execution remains required.
 
+Subsequent execution: [run 35050635404](https://github.com/Pulpers859/Transform/actions/runs/35050635404)
+ran all 712 cases, including all seven `ExplicitShoulderGuidanceTests`, successfully.
+App run `35050635397` logged `BUILD SUCCEEDED`. All twenty complete week objects
+exactly match rollback `a695cc9`; the synthetic shoulder persona's normal selected
+work already avoids the implicated overhead presses, so the targeted non-vacuous
+tests above supply the changed-behavior proof. This is not real AI-call, full
+unlocked-generation, medical-suitability or physical-iPhone proof.
+
 The following paragraph records the narrower `9249fb3` checkpoint before the
 owner approved replacing its exercise-level lexical exemptions.
 
@@ -117,6 +125,60 @@ are explicitly preserved, not endorsed as evidence of tolerance or medical safet
 No exercise ban, pain threshold, diagnosis or rehabilitation rule is introduced.
 
 ### Directional focus membership (2026-09-15; rejected live experiment `f54f3b4`)
+
+**Evidence correction after independent contract audit:** RDL disappearance and
+lost prescribed sets are verified, but calling that a proven hinge-contract defect
+was too strong. The existing Lower rule requires a knee-dominant anchor under its
+conditions, not a weekly hinge. Blueprint emphasis patterns derive from the focus;
+admission preserves patterns in its incoming pool, not every pattern from a prior
+generator version. Both exports have zero shoulder-persona findings. The honest
+classification is an unapproved material plan change requiring investigation.
+The three crowding assertions pin the prior fixture shape; they do not alone prove
+the changed plan is physiologically worse. Rollback was conservative containment,
+not that proof. Owner has been asked whether a weekly hinge should be explicit
+when equipment/symptoms permit. Do not silently impose it or preserve one by
+retaining incorrect muscle credit. First-divergence tracing is still needed.
+
+**Bounded follow-on, execution pending:** two separately pinned named-focus defects
+are addressed without changing global alias expansion. Corrective-name matching
+alone folds punctuation, so Band Pull-Apart and its spaced/dash forms remain
+support. Explicit front/anterior deltoid requests use existing regional metadata
+membership before the generic Shoulders override. Broad Shoulders, regional
+primary/secondary work and unrelated-focus controls are retained. The two known
+failures become ordinary regression tests; the hip-thrust expected failure remains.
+
+The first placement of the regional branch was rejected by independent audit:
+it changed combined Upper Chest/Front Deltoids incline pressing from prime to
+secondary and combined Rear/Front Deltoids face pulls from secondary to prime.
+Moving it immediately before generic shoulders preserves prior named-case
+precedence; both cases are now explicit controls. These preserve existing behavior,
+not an endorsement of all compound-query semantics. Full generated-plan comparison
+is required before calling either narrow fix verified.
+The packet review requested changes, chiefly the still-pending complete-plan
+execution and coverage of the other punctuation-folded corrective keywords.
+Those additional Y-raise/trap-3/scaption/external-rotation/wall-slide controls are
+now present, with unrelated-focus refusals. The complete switch order was reviewed
+in source (the packet omitted unchanged branches). On this Windows/main-only
+workflow, commit/push is how macOS CI executes; staging is not evidence of runtime
+verification. Do not mark completion until that execution and artifact comparison.
+
+**Audit-tool reliability follow-on:** an unfinished review containing the word
+`findings` previously passed the script's weak completion check. Completion now
+requires an explicit final verdict, separately from human judgment of the findings.
+Seventeen local tests cover incomplete/quoted/code-fenced/real verdicts; the actual
+unfinished shoulder review is rejected. Independent audit caught mismatched fence
+types in the first draft; compatible marker and length checks fix that case.
+Rejected output is retained separately with an explicit warning about older output.
+Local CLI help confirms `--tools` controls built-ins only, so review runs now use
+safe mode, no built-ins, and a strict empty MCP configuration; safe mode preserves
+normal auth unlike bare mode. No credential or provider configuration is changed.
+The isolated review completed with `APPROVE WITH FOLLOW-UPS` for the tooling-only
+packet. Local `claude --help` and that successful invocation verify the flags;
+the argument builder now has an exact-array test (including paths with spaces),
+and the local checks run before every review invocation. The rejected artifact's
+default `.agents` path is confirmed ignored. Inline-code/italic verdicts remain
+conservatively rejected under the explicitly requested plain final-line contract;
+this is not a reason to silently retry a paid review or infer approval.
 
 The production classifier change is withdrawn; the previous classifier is restored.
 Independent rollback review requested retaining coverage: stable broad/named-focus

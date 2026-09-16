@@ -38,15 +38,41 @@ final class FocusCreditBoundaryTests: XCTestCase {
         }
     }
 
-    func testOpenHyphenatedPullApartSupportClassification() {
-        XCTExpectFailure("OPEN: corrective-support name matching misses the hyphenated pull-apart form.") {
-            XCTAssertEqual(service.focusStimulusKind(exerciseName: "Band Pull-Apart", muscleTarget: "Shoulders", focusArea: "Shoulders"), .support)
+    func testPunctuationVariantsOfPullApartRemainSupportOnlyForRelatedFocus() {
+        for name in ["Band Pull-Apart", "Band Pull Apart", "Band Pull–Apart"] {
+            XCTAssertEqual(service.focusStimulusKind(exerciseName: name, muscleTarget: "Shoulders", focusArea: "Shoulders"), .support)
+            XCTAssertEqual(service.focusStimulusKind(exerciseName: name, muscleTarget: "Shoulders", focusArea: "Quads"), .none)
         }
     }
 
-    func testOpenFrontDeltoidAliasMustNotCreditRearDeltWork() {
-        XCTExpectFailure("OPEN: Front Deltoids alias admits rear-delt work as prime.") {
-            XCTAssertEqual(service.focusStimulusKind(exerciseName: "Reverse Pec Deck", muscleTarget: "Rear Deltoids", focusArea: "Front Deltoids"), .none)
+    func testFrontAndAnteriorDeltoidFocusUseRegionalMetadata() {
+        for focus in ["Front Deltoids", "Anterior Deltoids"] {
+            for (name, target) in [("Reverse Pec Deck", "Rear Deltoids"), ("Cable Lateral Raise", "Lateral Deltoids")] {
+                XCTAssertEqual(service.focusStimulusKind(exerciseName: name, muscleTarget: target, focusArea: focus), .none)
+                XCTAssertEqual(service.focusStimulusKind(exerciseName: name, muscleTarget: target, focusArea: "Shoulders"), .prime)
+            }
+            XCTAssertEqual(service.focusStimulusKind(exerciseName: "Seated Dumbbell Shoulder Press",
+                muscleTarget: "Anterior Deltoids", focusArea: focus), .prime)
+            XCTAssertEqual(service.focusStimulusKind(exerciseName: "Incline Dumbbell Press",
+                muscleTarget: "Upper Chest", focusArea: focus), .secondary)
         }
+    }
+
+    func testOtherCorrectiveKeywordsRetainRelatedSupportAndUnrelatedRefusal() {
+        for name in ["Cable Y Raise", "Cable Y-Raise", "Trap 3 Raise", "Trap-3 Raise",
+                     "Dumbbell Scaption", "Cable External Rotation", "Cable External-Rotation",
+                     "Wall Slide", "Wall-Slide"] {
+            XCTAssertEqual(service.focusStimulusKind(exerciseName: name,
+                muscleTarget: "Shoulders", focusArea: "Shoulders"), .support, name)
+            XCTAssertEqual(service.focusStimulusKind(exerciseName: name,
+                muscleTarget: "Shoulders", focusArea: "Quads"), .none, name)
+        }
+    }
+
+    func testRegionalCorrectionPreservesExistingNamedCompositePrecedence() {
+        XCTAssertEqual(service.focusStimulusKind(exerciseName: "Incline Dumbbell Press",
+            muscleTarget: "Upper Chest", focusArea: "Upper Chest / Front Deltoids"), .prime)
+        XCTAssertEqual(service.focusStimulusKind(exerciseName: "Cable Face Pull",
+            muscleTarget: "Rear Deltoids", focusArea: "Rear Deltoids / Front Deltoids"), .secondary)
     }
 }

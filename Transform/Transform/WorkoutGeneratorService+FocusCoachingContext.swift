@@ -50,7 +50,9 @@ extension ClaudeService {
             return .support
         }
 
-        if containsAny(combinedText, keywords: ["y raise", "trap 3", "scaption", "external rotation", "pull apart", "wall slide"]) {
+        // Fold punctuation only for corrective-name recognition; named focus rules below
+        // retain their existing spelling behavior and the original touchesFocus gate.
+        if containsAny(normalizeExerciseName(combinedText), keywords: ["y raise", "trap 3", "scaption", "external rotation", "pull apart", "wall slide"]) {
             return .support
         }
 
@@ -104,6 +106,12 @@ extension ClaudeService {
             if containsAny(combinedText, keywords: ["face pull", "reverse pec deck", "reverse fly"]) {
                 return .secondary
             }
+        case let value where value.contains("front delt") || value.contains("anterior delt"):
+            // Preserve preceding named-focus precedence for composite queries; only
+            // intercept the generic shoulder fallback for front/anterior intent.
+            if !focusAliases.isDisjoint(with: primaryAliases) { return .prime }
+            if !focusAliases.isDisjoint(with: secondaryAliases) { return .secondary }
+            return .none
         case let value where value == "shoulders" || value.contains("deltoid") || value.contains("delt"):
             if containsAny(combinedText, keywords: ["lateral raise", "reverse pec deck", "reverse fly", "rear delt row", "shoulder press", "overhead press", "arnold press"]) {
                 return .prime

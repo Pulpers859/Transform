@@ -4,6 +4,8 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'GeneratorAuditReviewValidation.ps1')
+& (Join-Path $PSScriptRoot 'Test-GeneratorAuditReviewValidation.ps1')
 $repoRoot = 'C:\Dev\Transform_clean'
 
 function Resolve-ClaudeCommand {
@@ -127,17 +129,17 @@ with exact file and line references. Audit these independently:
 - whether a green result proves workout quality, not merely schema or validator cleanliness;
 - missing tests, CI failure modes, and misleading documentation.
 
-Finish with one of: APPROVE, APPROVE WITH FOLLOW-UPS, or REQUEST CHANGES. Be blunt and concise.
+Your final nonempty line must be exactly one of: APPROVE, APPROVE WITH FOLLOW-UPS,
+or REQUEST CHANGES. Put your actual findings in this response, not a promised plan file.
+Be blunt and concise.
 
 $packet
 "@
 
-$claudeArgs = @(
-    '--print',
-    '--permission-mode', 'plan',
-    '--tools=',
-    '--output-format', 'text'
-)
+# --tools controls built-ins, not MCP/custom instructions. Isolate this packet
+# review from plan-file workflows and unrelated connectors while retaining auth.
+# Do not use --bare: that disables the owner's normal OAuth/keychain auth too.
+$claudeArgs = @(Get-GeneratorAuditCLIArguments -MCPConfigPath (Join-Path $PSScriptRoot 'GeneratorAuditMCP.json'))
 $review = $prompt | & $claudeCommand @claudeArgs 2>&1
 if ($LASTEXITCODE -ne 0) {
     throw "Claude Code review failed with exit code $LASTEXITCODE.`n$($review -join "`n")"
@@ -146,9 +148,12 @@ if (-not $review -or [string]::IsNullOrWhiteSpace(($review -join "`n"))) {
     throw "Claude Code returned an empty review."
 }
 $reviewText = $review -join "`n"
-if ($reviewText.Length -lt 300 -or $reviewText -notmatch '(?i)(finding|verdict|approve|request changes|follow-up)') {
-    throw "Claude Code returned an incomplete review; refusing to treat it as an audit."
+$verdict = Get-GeneratorAuditVerdict -ReviewText $reviewText
+if (-not $verdict) {
+    $incompleteFile = $outputFile + '.incomplete.md'
+    Set-Content -LiteralPath $incompleteFile -Value $reviewText -Encoding utf8
+    throw "Claude Code returned an incomplete review; refusing to treat it as an audit. Rejected output: $incompleteFile. Any prior successful file at $outputFile is from an older attempt."
 }
 
 Set-Content -LiteralPath $outputFile -Value ($review -join "`n") -Encoding utf8
-Write-Host "Claude second audit saved to $outputFile" -ForegroundColor Cyan
+Write-Host "Claude second audit saved to $outputFile (verdict: $verdict; inspect findings before proceeding)" -ForegroundColor Cyan
