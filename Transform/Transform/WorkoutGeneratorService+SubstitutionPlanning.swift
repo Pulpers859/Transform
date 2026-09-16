@@ -1,6 +1,108 @@
 import Foundation
 
 extension ClaudeService {
+    enum CoreRelocationRefusal: Equatable {
+        case invalidContext, unsupportedWeek, baselineNotAdmitted, sourcePlacement, receiverCeiling, receiverSize
+        case protectedSource, painExcluded, duplicateIdentity, exposureLoss, spacingChange, doseChange, orderChange
+    }
+
+    enum CoreRelocationTrial {
+        case refused(CoreRelocationRefusal)
+        case candidate(SubstitutionPlanningBaseline)
+    }
+
+    // Non-adopting pilot: a candidate still needs independent allocation, delivery and
+    // validation. The six-exercise receiver ceiling is the owner's explicit trial limit.
+    func proposeCoreRelocationTrial(_ baseline: SubstitutionPlanningBaseline,
+        sourceDay: Int, sourceSlot: Int, destinationDay: Int,
+        trainingIntent: TrainingIntentPlan) -> CoreRelocationTrial {
+        let menus = baseline.menus, blueprint = baseline.blueprint
+        guard menus.count == 7, blueprint.dayPlans.count == 7,
+              baseline.lockedPrefixCounts.count == 7, baseline.retainedKeysByDay.count == 7,
+              baseline.selectionFocusIntents.count == 7,
+              menus.indices.allSatisfy({ day in
+                  baseline.lockedPrefixCounts[day] >= 0 && baseline.lockedPrefixCounts[day] <= menus[day].count
+                      && blueprint.dayPlans[day].dayIndex == day + 1
+                      && (blueprint.dayPlans[day].isRestDay ? menus[day].isEmpty : !menus[day].isEmpty)
+              }), menus.indices.contains(sourceDay), menus.indices.contains(destinationDay),
+              sourceDay != destinationDay, menus[sourceDay].indices.contains(sourceSlot) else {
+            return .refused(.invalidContext)
+        }
+        guard (1...3).contains(baseline.weekNumber) else { return .refused(.unsupportedWeek) }
+        guard baseline.roleFloorAdmission == .admitted else { return .refused(.baselineNotAdmitted) }
+        let source = blueprint.dayPlans[sourceDay], receiver = blueprint.dayPlans[destinationDay]
+        let moved = menus[sourceDay][sourceSlot]
+        guard !source.isRestDay, !receiver.isRestDay,
+              canonicalTrainingStyle(source.style) == "Lower",
+              canonicalTrainingStyle(receiver.style) == "Pull",
+              menus[sourceDay].count == 7, sourceSlot == menus[sourceDay].count - 1,
+              moved.role == .core,
+              proceduralExerciseRole(for: moved.exerciseName, muscleTarget: moved.muscleTarget) == .core,
+              isDirectCoreHypertrophyMovement(exerciseName: moved.exerciseName,
+                  muscleTarget: moved.muscleTarget, reps: proceduralRepRange(for: baseline.weekNumber,
+                      exerciseName: moved.exerciseName, muscleTarget: moved.muscleTarget)) else { return .refused(.sourcePlacement) }
+        guard menus[destinationDay].count < 6 else { return .refused(.receiverCeiling) }
+        guard menus[destinationDay].count == 5 else { return .refused(.receiverSize) }
+        let key = ExerciseWeightEntry.canonicalLookupKey(moved.exerciseName)
+        guard !isProtectedAppearance(role: moved.role, slot: sourceSlot, style: source.style,
+                  lockedPrefixCount: baseline.lockedPrefixCounts[sourceDay]),
+              !baseline.retainedKeysByDay[sourceDay].contains(key) else { return .refused(.protectedSource) }
+        guard !(baseline.exerciseHistory?.painExercises.contains(key) ?? false) else { return .refused(.painExcluded) }
+        guard !menus[destinationDay].contains(where: {
+            ExerciseWeightEntry.canonicalLookupKey($0.exerciseName) == key
+        }) else { return .refused(.duplicateIdentity) }
+        var candidate = menus
+        candidate[sourceDay].removeLast()
+        candidate[destinationDay].append(moved)
+
+        for group in majorMuscleGroups {
+            let aliases = normalizedGroupAliases(forSeed: group.seed)
+            func exposureCount(_ plan: [[PreSelectedExercise]]) -> Int {
+                plan.filter { day in day.contains {
+                    exerciseDirectlyTargets(groupAliases: aliases, exerciseName: $0.exerciseName, muscleTarget: $0.muscleTarget)
+                } }.count
+            }
+            guard exposureCount(candidate) >= exposureCount(menus) else { return .refused(.exposureLoss) }
+        }
+        func coreGaps(_ plan: [[PreSelectedExercise]]) -> [Int] {
+            let days = plan.indices.filter { day in plan[day].contains {
+                proceduralExerciseRole(for: $0.exerciseName, muscleTarget: $0.muscleTarget) == .core
+            } }
+            guard !days.isEmpty else { return [] }
+            return days.indices.map { index in
+                index + 1 < days.count ? days[index + 1] - days[index] : 7 + days[0] - days[index]
+            }.sorted()
+        }
+        // Conservative experiment screen, not a scientific spacing law.
+        guard coreGaps(candidate) == coreGaps(menus) else { return .refused(.spacingChange) }
+        var days = blueprint.dayPlans
+        days[destinationDay] = .init(dayIndex: receiver.dayIndex, style: receiver.style,
+            focusArea: receiver.focusArea,
+            supportAreas: receiver.supportAreas.contains("Core/Abs") ? receiver.supportAreas : receiver.supportAreas + ["Core/Abs"],
+            targetFatigueCap: receiver.targetFatigueCap, targetSessionMinutes: receiver.targetSessionMinutes,
+            targetPrioritySlots: receiver.targetPrioritySlots, emphasisPatterns: receiver.emphasisPatterns,
+            isRestDay: receiver.isRestDay)
+        let candidateBlueprint = ProgramBlueprint(evidenceVersion: blueprint.evidenceVersion,
+            splitRecommendation: blueprint.splitRecommendation, weeklyTrainingDays: blueprint.weeklyTrainingDays,
+            priorityAllocations: blueprint.priorityAllocations, dayPlans: days,
+            topLeverageChange: blueprint.topLeverageChange, posturalFocus: blueprint.posturalFocus,
+            injuryRiskFocus: blueprint.injuryRiskFocus, programmingNotes: blueprint.programmingNotes,
+            calibration: blueprint.calibration)
+        guard case .dosePreserved = compareAllocatedDoseOnly(candidate, baseline: menus,
+            blueprint: candidateBlueprint, weekNumber: baseline.weekNumber) else { return .refused(.doseChange) }
+        func signature(_ plan: [[PreSelectedExercise]]) -> [[String]] {
+            plan.map { $0.map { "\($0.exerciseName)|\($0.muscleTarget)|\($0.movementPattern)|\($0.role)|\($0.prescribedSets)" } }
+        }
+        let ordered = reorderedMenusForSessionFlow(candidate, blueprint: candidateBlueprint,
+            trainingIntent: trainingIntent, lockedPrefixCounts: baseline.lockedPrefixCounts)
+        guard signature(ordered) == signature(candidate) else { return .refused(.orderChange) }
+        return .candidate(.init(menus: candidate, blueprint: candidateBlueprint, weekNumber: baseline.weekNumber,
+            lockedPrefixCounts: baseline.lockedPrefixCounts, retainedKeysByDay: baseline.retainedKeysByDay,
+            exerciseHistory: baseline.exerciseHistory, selectionFocusIntents: baseline.selectionFocusIntents,
+            // A changed placement has not passed a fresh allocation yet.
+            roleFloorAdmission: .unassessed))
+    }
+
     enum PressdownAdoptionDecision: Equatable {
         case baselineNotAdmitted(RoleFloorAdmission)
         case search(PressdownSearchOutcome)

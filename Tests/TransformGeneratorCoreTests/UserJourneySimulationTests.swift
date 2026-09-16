@@ -350,6 +350,106 @@ final class UserJourneySimulationTests: XCTestCase {
             topLeverageChange: blueprint.topLeverageChange, posturalFocus: blueprint.posturalFocus,
             injuryRiskFocus: blueprint.injuryRiskFocus, programmingNotes: blueprint.programmingNotes,
             calibration: blueprint.calibration)
+        // The reusable proposal must reproduce the hand-built control exactly. It does
+        // not allocate, deliver, or adopt: those independent checks stay below.
+        let firstProposal = service.proposeCoreRelocationTrial(planned,
+            sourceDay: lower, sourceSlot: slot, destinationDay: pull, trainingIntent: intent)
+        guard case .candidate(let proposed) = firstProposal else {
+            return XCTFail("Measured candidate refused: \(firstProposal)")
+        }
+        XCTAssertEqual(signature(proposed.menus), signature(candidate))
+        XCTAssertEqual(proposed.blueprint, declaredBlueprint)
+        XCTAssertEqual(proposed.roleFloorAdmission, .unassessed, "Proposing a placement does not certify fresh allocation")
+        func variant(menus: [[ClaudeService.PreSelectedExercise]]? = nil,
+            blueprint replacementBlueprint: ClaudeService.ProgramBlueprint? = nil,
+            locks: [Int]? = nil, retained: [Set<String>]? = nil,
+            history: ClaudeService.ExerciseHistoryContext? = nil, week: Int = 1,
+            admission: ClaudeService.RoleFloorAdmission = .admitted) -> ClaudeService.SubstitutionPlanningBaseline {
+            .init(menus: menus ?? planned.menus, blueprint: replacementBlueprint ?? planned.blueprint, weekNumber: week,
+                lockedPrefixCounts: locks ?? planned.lockedPrefixCounts,
+                retainedKeysByDay: retained ?? planned.retainedKeysByDay,
+                exerciseHistory: history, selectionFocusIntents: planned.selectionFocusIntents,
+                roleFloorAdmission: admission)
+        }
+        func expectRefusal(_ plan: ClaudeService.SubstitutionPlanningBaseline,
+            _ reason: ClaudeService.CoreRelocationRefusal, file: StaticString = #filePath, line: UInt = #line) {
+            guard case .refused(let actual) = service.proposeCoreRelocationTrial(plan,
+                sourceDay: lower, sourceSlot: slot, destinationDay: pull, trainingIntent: intent) else {
+                return XCTFail("Forbidden relocation returned a candidate: \(reason)", file: file, line: line)
+            }
+            XCTAssertEqual(actual, reason, file: file, line: line)
+        }
+        // No dropping a destination exercise or reducing dosage to squeeze core in.
+        for receiverCount in [6, 7] {
+            var full = baseline
+            full[pull].append(contentsOf: baseline[0].prefix(receiverCount - full[pull].count))
+            XCTAssertEqual(Set(full[pull].map { ExerciseWeightEntry.canonicalLookupKey($0.exerciseName) }).count, receiverCount)
+            expectRefusal(variant(menus: full), .receiverCeiling)
+            XCTAssertEqual(full[pull].count, receiverCount)
+        }
+        var locks = planned.lockedPrefixCounts
+        locks[lower] = baseline[lower].count
+        expectRefusal(variant(locks: locks), .protectedSource)
+        let coreKey = ExerciseWeightEntry.canonicalLookupKey(moved.exerciseName)
+        var retained = planned.retainedKeysByDay
+        retained[lower].insert(coreKey)
+        expectRefusal(variant(retained: retained), .protectedSource)
+        let pain = ClaudeService.ExerciseHistoryContext(painExercises: [coreKey], equipmentSkipExercises: [],
+            priorMesocycleExercises: [], mesocycleIndex: 0)
+        expectRefusal(variant(history: pain), .painExcluded)
+        expectRefusal(variant(week: 4), .unsupportedWeek)
+        expectRefusal(variant(admission: .unassessed), .baselineNotAdmitted)
+        expectRefusal(variant(locks: []), .invalidContext)
+        var missingDay = baseline
+        missingDay[0] = []
+        var missingDayLocks = planned.lockedPrefixCounts
+        missingDayLocks[0] = 0
+        expectRefusal(variant(menus: missingDay, locks: missingDayLocks), .invalidContext)
+        var duplicate = baseline
+        duplicate[pull][duplicate[pull].count - 1] = moved
+        expectRefusal(variant(menus: duplicate), .duplicateIdentity)
+        let otherCoreDay = try XCTUnwrap(baseline.indices.first { day in
+            day != lower && baseline[day].last?.role == .core
+        })
+        let otherCore = try XCTUnwrap(baseline[otherCoreDay].last)
+        var reducedExposure = baseline
+        reducedExposure[pull][reducedExposure[pull].count - 1] = otherCore
+        expectRefusal(variant(menus: reducedExposure), .exposureLoss)
+        var changedSpacing = baseline
+        changedSpacing[otherCoreDay].removeLast()
+        changedSpacing[0].append(otherCore)
+        expectRefusal(variant(menus: changedSpacing), .spacingChange)
+        var smallReceiver = baseline
+        smallReceiver[pull].removeLast()
+        expectRefusal(variant(menus: smallReceiver), .receiverSize)
+        var nonCore = baseline
+        nonCore[lower][slot] = .init(exerciseName: moved.exerciseName, muscleTarget: moved.muscleTarget,
+            movementPattern: moved.movementPattern, role: .accessory, prescribedSets: moved.prescribedSets)
+        expectRefusal(variant(menus: nonCore), .sourcePlacement)
+        XCTAssertEqual(planned.lockedPrefixCounts[pull], 0, "This order-control fixture has no retained prefix")
+        var misordered = baseline
+        misordered[pull].swapAt(0, misordered[pull].count - 1)
+        expectRefusal(variant(menus: misordered), .orderChange)
+        var undosed = baseline
+        undosed[lower][slot] = .init(exerciseName: moved.exerciseName, muscleTarget: moved.muscleTarget,
+            movementPattern: moved.movementPattern, role: moved.role, prescribedSets: 0)
+        expectRefusal(variant(menus: undosed), .doseChange)
+        let corePriority = ClaudeService.BlueprintPriorityAllocation(area: "Core/Abs", priorityLevel: "High",
+            rationale: "Adversarial test: preserve this day's priority dose", targetFrequency: 2,
+            targetExerciseSlots: 2, directSetTarget: 6, weightedStimulusTarget: 6,
+            maxPerSessionDirectSets: 6, maxFocusSessionDirectSets: 6,
+            preferredStyles: ["Lower", "Pull"], preferredMovementPatterns: [moved.movementPattern],
+            volumeBias: "", directWorkBias: "")
+        let prioritizedCoreBlueprint = ClaudeService.ProgramBlueprint(evidenceVersion: blueprint.evidenceVersion,
+            splitRecommendation: blueprint.splitRecommendation, weeklyTrainingDays: blueprint.weeklyTrainingDays,
+            priorityAllocations: blueprint.priorityAllocations + [corePriority], dayPlans: blueprint.dayPlans,
+            topLeverageChange: blueprint.topLeverageChange, posturalFocus: blueprint.posturalFocus,
+            injuryRiskFocus: blueprint.injuryRiskFocus, programmingNotes: blueprint.programmingNotes,
+            calibration: blueprint.calibration)
+        XCTAssertEqual(service.compareAllocatedDoseOnly(candidate, baseline: baseline,
+            blueprint: prioritizedCoreBlueprint, weekNumber: 1),
+            .rejected(.sessionPriority(day: lower, area: "Core/Abs")))
+        expectRefusal(variant(blueprint: prioritizedCoreBlueprint), .doseChange)
         let declaredAfter = try service.validatedProceduralWeekOneProgram(from: result, trainingIntent: intent,
             blueprint: declaredBlueprint, exerciseMenus: candidate)
         XCTAssertEqual(declaredAfter.days.map { $0.exercises.map(\.exerciseName) }, after.days.map { $0.exercises.map(\.exerciseName) })
@@ -373,8 +473,8 @@ final class UserJourneySimulationTests: XCTestCase {
         report.append("DECLARED_SUPPORT_EXPERIMENT day=\(pull + 1) support=\(receiver.supportAreas)->\(declaredDays[pull].supportAreas) findings=\(declaredIssues) admission=\(declaredAdmission) exactCandidatePreserved=\(signature(declaredAllocation) == signature(candidate)) NOT_ADOPTED")
         try writeArtifactIfRequested(report.joined(separator: "\n"), environmentKey: "TRANSFORM_CORE_RELOCATION_OUTPUT")
 
-        // Diagnostic continuation only: feed the delivered experiment forward without moving
-        // core again. This does not authorize production relocation or assert it persists.
+        // Repeat the bounded proposal on each actual next-week baseline. This is repeated
+        // planning, NOT evidence that the prior support declaration is persisted or retained.
         var previousExperimentalDays = declaredAfter.days
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
@@ -382,7 +482,7 @@ final class UserJourneySimulationTests: XCTestCase {
             String(decoding: try encoder.encode(days), as: UTF8.self)
         }
         let originalDeliveredExperiment = try encodedDays(declaredAfter.days)
-        var chain = ["CORE_CHAIN_EXPERIMENT NOT_ADOPTED; week1 core moved once; no manual relocation in weeks2/3; exerciseHistory=nil; no pain-history variant",
+        var chain = ["CORE_CHAIN_EXPERIMENT NOT_ADOPTED; repeat six-exercise-ceiling proposal in weeks1/2/3; actual delivered prior week; exerciseHistory=nil; pain refusal tested separately, not a full history-driven chain",
             "ORIGINAL_WEEK1_BASELINE \(original)",
             "DELIVERED_EXPERIMENT_WEEK1 \(originalDeliveredExperiment)"]
         for week in 2...3 {
@@ -394,19 +494,56 @@ final class UserJourneySimulationTests: XCTestCase {
             let next = service.preSelectedExercisePlan(for: nextBlueprint, trainingIntent: intent,
                 weekNumber: week, previousWeekDays: previousExperimentalDays, exerciseHistory: nil,
                 menuPlanningTrace: { traces.append(($0, $1)) })
+            let nextSlot = try XCTUnwrap(next.menus[lower].indices.last)
+            let nextProposal = service.proposeCoreRelocationTrial(next,
+                sourceDay: lower, sourceSlot: nextSlot, destinationDay: pull, trainingIntent: intent)
+            guard case .candidate(let relocated) = nextProposal else {
+                return XCTFail("Week \(week) measured candidate refused: \(nextProposal)")
+            }
+            XCTAssertEqual(relocated.roleFloorAdmission, .unassessed)
+            XCTAssertEqual(relocated.menus[lower].count, 6)
+            XCTAssertEqual(relocated.menus[pull].count, 6)
+            XCTAssertEqual(signature(relocated.menus).flatMap { $0 }.sorted(), signature(next.menus).flatMap { $0 }.sorted())
+            XCTAssertEqual(service.compareAllocatedDoseOnly(relocated.menus, baseline: next.menus,
+                blueprint: relocated.blueprint, weekNumber: week), .dosePreserved(improvesMaintenanceMinimum: false))
+            var nextAdmission: ClaudeService.RoleFloorAdmission = .unassessed
+            let reallocated = service.allocateWeeklySetPrescription(relocated.menus, blueprint: relocated.blueprint,
+                weekNumber: week, lockedPrefixCounts: relocated.lockedPrefixCounts,
+                roleFloorAdmissionReport: { nextAdmission = $0 }, publishConflictLogs: false)
+            XCTAssertEqual(nextAdmission, .admitted)
+            XCTAssertEqual(signature(reallocated), signature(relocated.menus))
             let dayStart = (week - 1) * 7 + 1, dayEnd = week * 7
             let delivered = try service.validatedProceduralWeek(weekNumber: week, dayStart: dayStart,
                 dayEnd: dayEnd, splitType: intent.splitRecommendation, programName: "Core relocation chain experiment",
-                trainingIntent: intent, blueprint: next.blueprint, previousWeekDays: previousExperimentalDays,
-                exerciseMenus: next.menus)
+                trainingIntent: intent, blueprint: relocated.blueprint, previousWeekDays: previousExperimentalDays,
+                exerciseMenus: relocated.menus)
             XCTAssertEqual(delivered.days.count, 7)
             XCTAssertEqual(delivered.days.map(\.dayNumber), Array(dayStart...dayEnd))
-            XCTAssertEqual(delivered.days.map { $0.exercises.map(\.exerciseName) }, next.menus.map { $0.map(\.exerciseName) })
-            XCTAssertEqual(delivered.days.map { $0.exercises.map(\.muscleTarget) }, next.menus.map { $0.map(\.muscleTarget) })
-            XCTAssertEqual(delivered.days.map { $0.exercises.map(\.sets) }, next.menus.map { $0.map(\.prescribedSets) })
+            XCTAssertEqual(delivered.days.map { $0.exercises.map(\.exerciseName) }, relocated.menus.map { $0.map(\.exerciseName) })
+            XCTAssertEqual(delivered.days.map { $0.exercises.map(\.muscleTarget) }, relocated.menus.map { $0.map(\.muscleTarget) })
+            XCTAssertEqual(delivered.days.map { $0.exercises.map(\.sets) }, relocated.menus.map { $0.map(\.prescribedSets) })
+            for day in [lower, pull] {
+                XCTAssertLessThanOrEqual(service.estimatedSessionMinutes(for: delivered.days[day]), relocated.blueprint.dayPlans[day].targetSessionMinutes)
+                XCTAssertLessThanOrEqual(service.estimatedDayFatigue(for: delivered.days[day].exercises), service.setBudgetLimits(for: relocated.blueprint).fatigue[day])
+            }
+            // Compare the real delivered transition, not just a hypothetical repeated week.
+            // Day numbers are ordinals, not logged calendar dates or medical recovery proof.
+            let previousLastCore = try XCTUnwrap(previousExperimentalDays.last { day in day.exercises.contains {
+                service.proceduralExerciseRole(for: $0.exerciseName, muscleTarget: $0.muscleTarget) == .core
+            } }?.dayNumber)
+            let baselineFirstCore = try XCTUnwrap(next.menus.indices.first { day in next.menus[day].contains {
+                service.proceduralExerciseRole(for: $0.exerciseName, muscleTarget: $0.muscleTarget) == .core
+            } }).advanced(by: dayStart)
+            let deliveredFirstCore = try XCTUnwrap(delivered.days.first { day in day.exercises.contains {
+                service.proceduralExerciseRole(for: $0.exerciseName, muscleTarget: $0.muscleTarget) == .core
+            } }?.dayNumber)
+            XCTAssertGreaterThanOrEqual(deliveredFirstCore - previousLastCore, baselineFirstCore - previousLastCore,
+                "This trial must not shorten the actual prior-week core interval")
+            chain.append("WEEK \(week) CORE_BOUNDARY previousLast=\(previousLastCore) baselineFirst=\(baselineFirstCore) deliveredFirst=\(deliveredFirstCore) baselineGap=\(baselineFirstCore - previousLastCore) deliveredGap=\(deliveredFirstCore - previousLastCore); ordinal days, not actual dates")
             XCTAssertEqual(try encodedDays(previousExperimentalDays), previousSnapshot, "Planning cannot mutate its previous-week input")
             chain.append("WEEK \(week) INPUT_PREVIOUS_DELIVERED \(previousSnapshot)")
             chain.append("WEEK \(week) PLAN admission=\(next.roleFloorAdmission) locks=\(next.lockedPrefixCounts) retainedKeys=\(next.retainedKeysByDay.map { $0.sorted() }) menus=\(signature(next.menus))")
+            chain.append("WEEK \(week) REPEATED_PROPOSAL source=\(lower + dayStart) destination=\(pull + dayStart) receivingCeiling=6 admission=\(nextAdmission) exactReallocation=\(signature(reallocated) == signature(relocated.menus)) menus=\(signature(relocated.menus))")
             for phase in traces {
                 chain.append("WEEK \(week) PHASE \(phase.0) counts=\(phase.1.map(\.count)) menus=\(signature(phase.1))")
             }
@@ -425,12 +562,8 @@ final class UserJourneySimulationTests: XCTestCase {
                 chain.append("WEEK \(week) DELIVERED_DAY \(day.dayNumber) name=\(day.dayName) count=\(day.exercises.count) core=\(core)")
             }
             let findings = service.validateWeekResponse(delivered, dayStart: dayStart, dayEnd: dayEnd,
-                previousWeekDays: previousExperimentalDays, blueprint: next.blueprint, expectedExerciseMenus: next.menus)
-            // Original exported weeks 2/3 at 56632b1 have only this unresolved finding.
-            // This is a nonregression screen, not acceptance of later-week crowding.
-            let knownBaselineFinding = "Day \(dayStart + lower) is too crowded for a fatigue-managed Lower session. In a shift-work recomposition block, prefer fewer high-value lower-body movements over extra filler."
-            XCTAssertTrue(Set(findings).isSubset(of: Set([knownBaselineFinding])),
-                "Experimental prior week introduced findings beyond the measured baseline: \(findings)")
+                previousWeekDays: previousExperimentalDays, blueprint: relocated.blueprint, expectedExerciseMenus: relocated.menus)
+            XCTAssertTrue(findings.isEmpty, "Repeatable relocation must resolve crowding without new findings: \(findings)")
             chain.append("WEEK \(week) FINDINGS \(findings)")
             chain.append("WEEK \(week) DELIVERED \(try encodedDays(delivered.days))")
             previousExperimentalDays = delivered.days

@@ -2,7 +2,48 @@
 
 ## Active roadmap and audit checkpoints (2026-09-13)
 
-### Complete-plan consumer wiring (2026-09-15; validation pending)
+### Six-exercise core-placement ceiling (2026-09-15; pending execution)
+
+The owner explicitly approved a hard ceiling of six total exercises on a Pull
+day receiving core. This does not authorize deleting Pull work to fit core or
+changing the ceiling for every unrelated day. `proposeCoreRelocationTrial` is a
+non-adopting candidate constructor, called only by tests. It narrowly evaluates
+an existing last, direct-core appearance on a seven-exercise Lower day moving to
+the end of a five-exercise Pull day. It refuses an already-six-or-more receiver,
+protected/retained/pain-excluded core, malformed context, deload, lost exposure,
+changed cyclic spacing, dose loss and reordering. It does not search every possible
+placement or certify comfort, safety or arbitrary profiles.
+
+The candidate carries its blueprint and menus together; only receiver Core/Abs
+support changes. Admission is cleared to unassessed until a fresh allocation.
+Existing substitution eligibility, global style filters, catalogs, history keys,
+live generation and dose policies are unchanged. This respects INC-3/8 locked-plan
+ownership and INC-9's warning about destabilizing whole-week greedy selection.
+
+The existing crowding trial now checks receiver ceilings of six/seven, protected
+and retained source work, pain exclusion, bad locks, deload, duplicate identity,
+zero dose and newly prioritized core. Its repeated week-two/three experiment
+reuses the actual prior delivery, independently proposes each week, and demands
+admitted exact allocation, delivered name/target/set parity, affected-day modeled
+budgets and zero findings. It uses no additional planner calls; two fresh allocation
+checks are added. It does not claim persistence of a support declaration or a full
+pain-history generation chain. A source-only independent audit prompted actual
+cross-week core interval reporting/nonshortening assertions; ordinal day numbers
+are not real dated recovery evidence. No result is claimed before CI execution.
+Claude approved with follow-ups. Source inspection confirmed its rep-range concern:
+the classifier's fallback branch consults reps. The proposal now uses the real
+procedural rep range, not a literal; no prior runtime misclassification is claimed.
+Additional refusal tests cover exposure/spacing, source eligibility
+and order; the smaller-receiver case now has its own refusal instead of calling
+a four-exercise day malformed. These revisions still require executable CI.
+
+### Complete-plan consumer wiring (2026-09-15; verified `0beec10`)
+
+[Generator run 35037715206](https://github.com/Pulpers859/Transform/actions/runs/35037715206)
+succeeded with 698 executed tests; [app run 35037715208](https://github.com/Pulpers859/Transform/actions/runs/35037715208)
+logged BUILD SUCCEEDED. All 20 complete normal exported weeks match `08343b9`, and
+the two core experiment reports are byte-identical. Physical-device behavior and
+paid API execution are not established by this checkpoint.
 
 All four live/debug week-one/next-week entry points now consume the planner's
 returned blueprint and menus together, before constructing prompt summaries.
@@ -23,9 +64,9 @@ Today's baseline construction retains the input blueprint, and both retained and
 adopted paths in `finalizePressdownReduction` preserve it; these are source facts,
 not evidence that future blueprint modifications would be safe. The experimental
 chain also now delivers and validates against its returned blueprint.
-Syntax/source review cannot establish runtime or device correctness. The added
-equality assertions, CI build and complete snapshots remain pending verification;
-they do not execute live paid API calls or prove physical-device behavior.
+Syntax/source review alone cannot establish runtime or device correctness. The
+equality assertions, CI build and complete snapshots were subsequently verified
+above; they do not execute live paid API calls or prove physical-device behavior.
 The revised Claude invocation returned an incomplete response and the audit script
 rejected it; there is no revised Claude approval. A separate adversarial source
 review by `adoption_boundary_audit` checked synthesized equality, unchanged planner
