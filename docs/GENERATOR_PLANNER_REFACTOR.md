@@ -1,5 +1,62 @@
 # Generator planner refactor: evidence and acceptance
 
+## Owner policy decisions and research interpretation (2026-09-16)
+
+This section supersedes older statements that these owner answers are pending.
+It records policy and implementation acceptance criteria, not completed code changes.
+
+1. **Hinges:** hinge-free plans are permitted when appropriate for the complete
+   plan. Do not impose a universal weekly hinge requirement. This does not waive
+   muscle coverage, useful exercise selection, symptom constraints or honest
+   stimulus accounting; apparent coverage from incorrect credits is not enough.
+2. **Fractional targets:** a 7.5-set target may reach 8 only when the complete
+   plan's budgets permit it. Do not loosen other ceilings to make rounding fit.
+   If rounding cannot fit, preserve the shortfall in diagnostics rather than
+   treating 7 as meeting 7.5. The target is a planning quantity, not a biological
+   threshold between effective and ineffective training.
+3. **Recovery:** fresh sleep logs are not a prerequisite for good workouts.
+   Retain recovery caution from applicable standing context without inventing
+   current sleep measurements or treating missing logs as proof of readiness.
+   Preserve provenance: standing caution is not a measured acute sleep tier.
+   Improving sleep logging is future work, not a dependency of generator fixes.
+4. **Ordering:** the owner prefers compounds first and defers to hypertrophy
+   research. Recommendation: retain compound-first as the default, with priority
+   ordering within the established bands. Do not claim every compound must precede
+   every isolation exercise for superior growth. Any cross-band exception needs
+   a specific rationale and explicit reconciliation with ORD-001, not an accidental
+   sorting side effect. No new exception is authorized by this documentation.
+5. **Rowing:** the owner approves planning rowing balance. Recommendation: plan
+   horizontal and vertical pulling together across the block, preserving useful
+   muscle coverage, focus dose, tolerability and continuity. Do not mandate equal
+   sets or claim a precise ratio is scientifically optimal. Prefer planning the
+   mix upstream over deload-only replacement to clear a diagnostic.
+
+### Evidence and limits
+
+- [Nunes et al., exercise-order systematic review/meta-analysis](https://doi.org/10.1080/17461391.2020.1733672):
+  strength improvements favored exercises performed earlier; no significant
+  hypertrophy difference was detected between multi-joint-first and single-joint-first
+  orders. This supports flexibility, not proof that order never matters.
+- [Lehman et al., rowing/pulldown experiment](https://doi.org/10.1186/1476-5918-3-4):
+  acute muscle-activity measurements differed between movements, with greater
+  middle-trapezius/rhomboid activity during seated rowing. This was not a long-term
+  hypertrophy or injury-prevention trial and establishes no weekly set ratio.
+  Combining pulling directions is a programming inference, not a proven formula.
+
+### Next bounded implementation sequence
+
+- Correct remaining stimulus-accounting defects without adding a hinge mandate;
+  compare full plans, not only disappearance of warnings.
+- Implement budget-conditional fractional rounding and explicit unmet-target
+  reporting; cover both permitted and refused extra-set cases.
+- Reconcile recovery fallback with SLEEP-001 while keeping missing, stale and
+  genuinely fresh measured sleep distinct. Test standing caution without logs.
+- Reconcile exercise ordering with ORD-001 and test priority-versus-role conflicts.
+- Plan rowing balance upstream and compare complete loading and deload weeks;
+  do not sacrifice focus quality or crowd sessions to satisfy a ratio.
+- Independently audit each behavior-changing batch and compare complete baseline
+  workouts before declaring it complete. Device proof remains separate.
+
 ## Added owner report: chest movement variety (2026-09-16)
 
 Review found Push's base candidate list has no chest fly, while Upper and the
