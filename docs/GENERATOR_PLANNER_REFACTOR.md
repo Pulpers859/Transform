@@ -1,5 +1,17 @@
 # Generator planner refactor: evidence and acceptance
 
+## Added owner report: chest movement variety (2026-09-16)
+
+Review found Push's base candidate list has no chest fly, while Upper and the
+priority catalogs do. Muscle-level coverage can be satisfied by presses alone.
+This is a selection limitation, not yet a reproduced defect in the owner's exact
+workout or proof that a press-only plan cannot build chest muscle. Next: inspect
+his full-week snapshot, then compare bounded fly-for-press alternatives against
+complete-plan budgets, continuity, symptoms and the relevant exercise ceiling.
+Do not append an extra fly after planning or impose an unapproved weekly mandate.
+See [the bounded review](BARBELL_AND_CHEST_REVIEW_2026-09-16.md), including the
+separate barbell increment and coaching-disclosure changes and evidence limits.
+
 ## Active roadmap and audit checkpoints (2026-09-13)
 
 ### Current proof boundary (2026-09-15, rollback `a695cc9` verified)

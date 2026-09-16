@@ -1500,10 +1500,12 @@ struct WorkoutView: View {
         case .holdBelowRange:
             return "fell below the \(range.low)-\(range.high) rep target — cue HOLDING \(weight) lb and building reps"
         case .reduceLoad:
-            let easier = formatWeight(
-                WorkoutProgressionEngine.reducedLoad(from: decision.workingWeight, exerciseName: entry.exerciseName)
+            let cue = WorkoutProgressionEngine.reductionPromptCue(
+                from: decision.workingWeight,
+                exerciseName: entry.exerciseName,
+                formatLoad: { formatWeight($0) }
             )
-            return "stalled under the \(range.low)-\(range.high) rep target at \(weight) lb across repeated sessions — cue REDUCING LOAD to \(easier) lb"
+            return "stalled under the \(range.low)-\(range.high) rep target at \(weight) lb across repeated sessions — \(cue)"
         case .holdForRecovery:
             return "repeated low RIR at \(weight) lb — cue HOLDING LOAD to protect recovery before progressing"
         case .addRepsInRange:

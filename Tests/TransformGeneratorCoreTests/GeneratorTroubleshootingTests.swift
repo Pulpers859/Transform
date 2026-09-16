@@ -196,7 +196,7 @@ final class GeneratorTroubleshootingTests: XCTestCase {
         // confirmed available. On a light isolation lift the old step was a ~10% jump, enough to
         // knock the lifter out of the prescribed rep range in a single session.
         XCTAssertEqual(WorkoutProgressionEngine.nextLoad(from: 70, exerciseName: "Cable Lateral Raise"), 72.5)
-        XCTAssertEqual(WorkoutProgressionEngine.nextLoad(from: 100, exerciseName: "Barbell Row"), 102.5)
+        XCTAssertEqual(WorkoutProgressionEngine.nextLoad(from: 100, exerciseName: "Barbell Row"), 105)
     }
 
     func testProgressionEngineFallsBackToLegacySummaryWithoutSetLogs() throws {

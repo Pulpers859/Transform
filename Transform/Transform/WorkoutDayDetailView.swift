@@ -956,28 +956,6 @@ struct ExerciseCard: View {
         return Int(text[captureRange])
     }
 
-    private func conciseWorkoutInsight(
-        from note: String,
-        hideProgressionCue: Bool,
-        hideDeloadCue: Bool
-    ) -> String {
-        let kept = coachingSentences(
-            from: note,
-            hideProgressionCue: hideProgressionCue,
-            hideDeloadCue: hideDeloadCue
-        ).prefix(3)
-
-        let compact = kept.joined(separator: " ")
-        if compact.count > 420 {
-            // Cut on a word boundary, never mid-word.
-            let hard = compact.prefix(417)
-            let wordSafe = (hard.lastIndex(of: " ").map { String(hard[..<$0]) } ?? String(hard))
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            return "\(wordSafe)…"
-        }
-        return tidyTrailingFragment(compact)
-    }
-
     /// Defends the cue against a coaching note stored truncated mid-thought (seen live:
     /// "…chase reps first at"). A well-formed note ends in . ! or ? and is returned
     /// untouched; only text that trails off with no terminal punctuation AND ends on a
@@ -1002,8 +980,7 @@ struct ExerciseCard: View {
         return rebuilt.isEmpty ? trimmed : "\(rebuilt)…"
     }
 
-    /// Full-length variant for the expanded Details view: same sentence filtering as the
-    /// collapsed cue, no sentence cap. The deterministic progression banner owns load/rep
+    /// Full-length coaching for the Details view. The progression banner owns load/rep
     /// advice, so an AI progression sentence surviving here can sit directly under a
     /// banner saying the opposite (seen live: "hold 70 lb" under an "Add load" banner
     /// after 3x14 beat a 10-12 prescription).
@@ -1180,14 +1157,6 @@ struct ExerciseCard: View {
             return parsedPrescription.cleanedNotes
         }
         return exercise.notes.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    var conciseCoachingNote: String {
-        conciseWorkoutInsight(
-            from: cleanedCoachingNote,
-            hideProgressionCue: progressionSuggestion != nil,
-            hideDeloadCue: isDeloadContext
-        )
     }
 
     var detailedCoachingNote: String {
@@ -1402,15 +1371,10 @@ struct ExerciseCard: View {
                 // covers both shapes: `setLogBreakdown` when previous sets exist, and
                 // `ExerciseWeightSnapshotTile` when only a summary row does.
 
-                // One guidance tile, not two banners: what to do about load, and how to
-                // execute the reps. See `ExerciseGuidanceCard`.
-                if progressionSuggestion != nil || !conciseCoachingNote.isEmpty {
+                if let suggestion = progressionSuggestion {
                     ExerciseGuidanceCard(
-                        suggestion: progressionSuggestion,
-                        // Expanded view gets the filtered full note, not the raw one: the raw
-                        // note can carry a generation-time progression cue that contradicts
-                        // the live progression bullet rendered directly above it.
-                        coachingText: showDetails ? detailedCoachingNote : conciseCoachingNote
+                        suggestion: suggestion,
+                        coachingText: ""
                     )
                 }
 
@@ -1618,6 +1582,10 @@ struct ExerciseCard: View {
     @ViewBuilder
     private var detailContent: some View {
         VStack(alignment: .leading, spacing: 10) {
+            if !detailedCoachingNote.isEmpty {
+                ExerciseGuidanceCard(suggestion: nil, coachingText: detailedCoachingNote)
+            }
+
             if parsedPrescription != nil || displayTargetRIR != nil {
                 HStack(alignment: .center) {
                     if let intensity = parsedPrescription?.intensity,

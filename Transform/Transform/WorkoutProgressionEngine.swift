@@ -271,23 +271,21 @@ enum WorkoutProgressionEngine {
         // DOWN, never nearest. Rounding a reduce-load cue up would hand back part of the drop
         // the lifter is being told to take, on the one verdict that fires because the current
         // load is already too heavy.
-        return max(step, ((weight - cappedDrop) / step).rounded(.down) * step)
+        return min(weight, max(step, ((weight - cappedDrop) / step).rounded(.down) * step))
     }
 
-    /// The smallest load step this exercise's equipment can actually make.
-    ///
-    /// ONE definition, used by every load the app recommends — up, down, or translated across a
-    /// prescription change. Three copies of this rule would be three chances to recommend a
-    /// weight that cannot be assembled.
-    ///
-    /// Selectorised stacks and barbells are 2.5 lb: the owner has 2.5 lb add-ons, and the old
-    /// flat 5 lb assumption was a 10% jump on a 50 lb isolation lift — big enough to knock a
-    /// lifter out of a 15-20 rep range in one step, which is exactly what happened on the cable
-    /// face pull. Fixed dumbbells stay 5 lb because add-on plates do not apply to them.
-    ///
-    /// `override` is a per-exercise correction for equipment that genuinely cannot do 2.5 (a
-    /// machine with welded 10 lb plates); ignored when zero or negative so "not recorded" can
-    /// never be read as "no increment".
+    static func reductionPromptCue(
+        from weight: Double,
+        exerciseName: String,
+        formatLoad: (Double) -> String
+    ) -> String {
+        let reduced = reducedLoad(from: weight, exerciseName: exerciseName)
+        guard reduced < weight else {
+            return "no smaller load step is available; cue an easier variation rather than claiming the same load is a reduction"
+        }
+        return "cue REDUCING LOAD to \(formatLoad(reduced)) lb"
+    }
+
     /// Movements whose real resistance is the lifter's own body, where any logged number is
     /// ADDED load rather than the load being lifted.
     ///
@@ -321,13 +319,17 @@ enum WorkoutProgressionEngine {
 
     static func incrementLbs(forExerciseName name: String, override: Double = 0) -> Double {
         if override > 0 { return override }
-        return isDumbbellLift(name) ? 5.0 : 2.5
+        // Total barbell load changes by 5 lb (2.5 on each side); cable add-ons remain
+        // 2.5 lb. BarbellIncrementTests covers the equipment boundary and consumers.
+        return isDumbbellLift(name) || isBarbellLift(name) ? 5.0 : 2.5
     }
 
     static func nextLoad(from weight: Double, exerciseName: String) -> Double {
         // From bodyweight (or a fake ~1 lb record), the first external step is one
         // small increment, not percentage math off a meaningless base.
-        guard !isBodyweightEquivalent(weight) else { return 2.5 }
+        guard !isBodyweightEquivalent(weight) else {
+            return incrementLbs(forExerciseName: exerciseName)
+        }
         let isDumbbell = isDumbbellLift(exerciseName)
         let step = incrementLbs(forExerciseName: exerciseName)
         let rawJump = max(weight * 0.025, step)
@@ -342,6 +344,12 @@ enum WorkoutProgressionEngine {
         return tokens.contains("db")
     }
 
-    // `isStackLift` was removed with the coarse-increment rule it existed to serve: stacks and
-    // barbells now share the same 2.5 lb step, so nothing needed to tell them apart any more.
+    private static func isBarbellLift(_ name: String) -> Bool {
+        // Resolve legacy aliases for this calculation only; never rewrite saved names/keys.
+        let resolved = ExerciseNameDisambiguation.resolved(name).lowercased()
+        let tokens = resolved.split { !$0.isLetter }.map(String.init)
+        if tokens.contains("barbell") || tokens.contains("bb") || tokens.contains("smith") { return true }
+        if tokens.contains("bar") && (tokens.contains("ez") || tokens.contains("trap")) { return true }
+        return tokens == ["back", "squat"] || tokens == ["front", "squat"]
+    }
 }

@@ -232,7 +232,7 @@ final class PrescriptionAndStallTests: XCTestCase {
 
     func testStacksAndBarbellsUseTheOwnersSmallestRealStep() {
         XCTAssertEqual(WorkoutProgressionEngine.incrementLbs(forExerciseName: "Cable Face Pull"), 2.5)
-        XCTAssertEqual(WorkoutProgressionEngine.incrementLbs(forExerciseName: "Barbell Row"), 2.5)
+        XCTAssertEqual(WorkoutProgressionEngine.incrementLbs(forExerciseName: "Barbell Row"), 5)
         XCTAssertEqual(WorkoutProgressionEngine.incrementLbs(forExerciseName: "Dumbbell Curl"), 5.0,
                        "Add-on plates do not apply to fixed dumbbells")
         XCTAssertEqual(WorkoutProgressionEngine.incrementLbs(forExerciseName: "Cable Face Pull", override: 10), 10,
