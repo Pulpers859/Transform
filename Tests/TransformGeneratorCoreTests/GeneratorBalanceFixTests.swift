@@ -41,13 +41,14 @@ final class GeneratorBalanceFixTests: XCTestCase {
         let fixture = try JSONDecoder().decode(Fixture.self, from: Data(contentsOf: url))
         let intent = service.trainingIntentPlan(from: fixture.analysis)
         let blueprint = service.programBlueprint(for: intent, weekNumber: weekNumber)
-        let menus = service.preSelectedExerciseMenu(
+        let plan = service.preSelectedExercisePlan(
             for: blueprint,
             trainingIntent: intent,
             weekNumber: weekNumber,
-            previousWeekDays: nil
+            previousWeekDays: nil,
+            exerciseHistory: nil
         )
-        return (blueprint, menus)
+        return (plan.blueprint, plan.menus)
     }
 
     private func role(_ exercise: ClaudeService.PreSelectedExercise) -> ClaudeService.ProceduralExerciseRole {
@@ -804,7 +805,7 @@ final class GeneratorBalanceFixTests: XCTestCase {
         }
     }
 
-    /// A deload week is BUILT smaller on purpose — `preSelectedExerciseMenu` drops its per-day
+    /// A deload week is BUILT smaller on purpose — `preSelectedExercisePlan` drops its per-day
     /// target from six movements to five to reduce the work. A pass that appends movements back
     /// would undo the deload, and would do it more eagerly than in a loading week: a five-movement
     /// day leaves more muscle groups holding a single slot for the breadth pass to notice.

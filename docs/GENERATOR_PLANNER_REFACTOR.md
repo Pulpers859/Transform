@@ -2,9 +2,43 @@
 
 ## Active roadmap and audit checkpoints (2026-09-13)
 
-### Core-placement acceptance boundary (2026-09-15; execution pending)
+### Bounded core-placement live wiring (2026-09-15; execution pending)
 
-`finalizeCoreRelocation` remains non-live. It evaluates one explicitly selected
+The planner now evaluates the first qualifying Lower-to-Pull relocation after
+pressdown finalization and before publishing its chosen complete plan. At most one
+proposal receives fresh allocation. Refusal preserves the preceding pressdown
+result and its receipts; untried alternatives are not declared impossible. Deload
+remains unchanged. The six-exercise receiver limit, existing dose/focus/retention
+checks and relative-spacing rule are unchanged. This wiring has syntax/source
+review only so far, not a verified workout result. Once this change is committed,
+it is the default live behavior, not a feature-flagged experiment. Core decisions
+are reported through the same planning diagnostic channel as pressdown decisions.
+
+A value-only observer captures the actual pre-core control and chosen result.
+Journey tests keep the original seven-exercise failure as that control, require
+six on the returned Lower day, replay the next weeks from actual delivered days,
+and compare whole blueprints with only receiver Core/Abs support allowed to change.
+Pressdown tests now distinguish their intermediate chosen plan from the final
+core plan; receipts and delivered workouts are checked against the latter.
+
+All nine remaining test calls to the menu-only compatibility wrapper are migrated
+to complete-plan consumption, including the optional live troubleshooting test's
+prompt context. The unused wrapper is removed so a caller cannot discard a changed
+blueprint through that API. Original fixture expectations remain intact; changed
+workouts must be inspected before any snapshot update. Full CI, complete exported
+workout comparison, and physical-iPhone validation remain required. Fractional
+targets and deload row balance remain separate open work, not fixed by relocation.
+The Claude live-wiring review returned a draft requesting changes, not approval.
+Its missing-diagnostic finding was addressed. Source checks show the glute-dose
+test uses the same shoulder-beginner persona as the crowding test, not a newly
+identified population; `fullMesocycle` delivers and validates the returned plan
+for every persona/week, including the adopting case. Those source facts do not
+replace the pending execution proof. The one-allocation bound deliberately leaves
+other placements unassessed; it is not a general crowding solver.
+
+### Core-placement acceptance boundary (2026-09-15; verified non-live checkpoint `ae19fbb`)
+
+At this checkpoint `finalizeCoreRelocation` had no live caller. It evaluates one explicitly selected
 proposal, buffers fresh allocation under the candidate blueprint, requires exact
 prescription preservation and admitted role floors, checks the preceding week's
 ordinal calendar, and refuses to shorten the existing core interval relative to
@@ -34,12 +68,16 @@ Claude's revised review still requested changes for missing live wiring and an
 executed allocation-disagreement example. Live wiring is the next isolated change,
 not an indefinite endpoint. The test now lowers the source core prescription to its
 legal floor and requires the real fresh allocator to disagree, with complete
-rollback; this new fixture is pending execution, not evidence of a passed refusal.
+rollback; that assertion subsequently passed in the run below.
 The strict finding comparison intentionally rejects a problem moved to another day.
 The relative gap screen is not applicable when the prior week contains no core.
-Windows syntax checks passed; runtime assertions and complete
-artifact comparisons still require CI. Live adoption and the later roadmap stages
-remain unfinished.
+[Generator run 35044979139](https://github.com/Pulpers859/Transform/actions/runs/35044979139)
+succeeded with 698 executed tests, including the complete core boundary test.
+[App run 35044979193](https://github.com/Pulpers859/Transform/actions/runs/35044979193)
+logged BUILD SUCCEEDED. Exported decisions show adoption in all three experimental
+weeks, receipt/observer parity and mirrored-boundary refusal. All 20 complete normal
+week objects and all three complete experimental deliveries match `2a5d380`.
+The live-wiring change above and later roadmap stages are not covered by these runs.
 
 ### Six-exercise core-placement ceiling (2026-09-15; verified experiment `2a5d380`)
 

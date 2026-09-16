@@ -1773,21 +1773,6 @@ extension ClaudeService {
         return weeklyVariationViolations(for: identities, blueprint: blueprint).isEmpty
     }
 
-    func preSelectedExerciseMenu(
-        for blueprint: ProgramBlueprint,
-        trainingIntent: TrainingIntentPlan,
-        weekNumber: Int,
-        previousWeekDays: [WorkoutDayResponse]?,
-        exerciseHistory: ExerciseHistoryContext? = nil,
-        appearancePlanningReport: ((String) -> Void)? = nil,
-        setFundingReport: (([SetFundingObservation]) -> Void)? = nil
-    ) -> [[PreSelectedExercise]] {
-        preSelectedExercisePlan(for: blueprint, trainingIntent: trainingIntent,
-            weekNumber: weekNumber, previousWeekDays: previousWeekDays,
-            exerciseHistory: exerciseHistory, appearancePlanningReport: appearancePlanningReport,
-            setFundingReport: setFundingReport).menus
-    }
-
     // Keep the allocated baseline and the context that produced it together. Consumers
     // must not reconstruct continuity locks or substitute an unrelated history snapshot.
     func preSelectedExercisePlan(
@@ -1799,7 +1784,8 @@ extension ClaudeService {
         appearancePlanningReport: ((String) -> Void)? = nil,
         setFundingReport: (([SetFundingObservation]) -> Void)? = nil,
         pressdownPlanningReport: ((SubstitutionPlanningBaseline, PressdownFinalization) -> Void)? = nil,
-        menuPlanningTrace: ((String, [[PreSelectedExercise]]) -> Void)? = nil
+        menuPlanningTrace: ((String, [[PreSelectedExercise]]) -> Void)? = nil,
+        corePlanningReport: ((SubstitutionPlanningBaseline, CoreRelocationFinalization) -> Void)? = nil
     ) -> SubstitutionPlanningBaseline {
         let previousExercisesByStyle = proceduralPreviousExercisesByStyle(from: previousWeekDays)
         var previousUsageByStyle: [String: Int] = [:]
@@ -2199,15 +2185,20 @@ extension ClaudeService {
         let finalized = finalizePressdownReduction(baseline, trainingIntent: trainingIntent,
             baselineMessages: allocationMessages, baselineReceipts: allocationReceipts,
             collectFunding: setFundingReport != nil)
-        for message in finalized.messages {
+        let coreFinalized = finalizeFirstCoreRelocation(finalized.plan, trainingIntent: trainingIntent,
+            previousWeekDays: previousWeekDays, baselineMessages: finalized.messages,
+            baselineReceipts: finalized.receipts, collectFunding: setFundingReport != nil)
+        for message in coreFinalized.messages {
             if message.hasPrefix("APPEARANCE PLANNING CONFLICT") { print(message) }
             appearancePlanningReport?(message)
         }
         appearancePlanningReport?("optional pressdown quality: \(finalized.decision)")
-        setFundingReport?(finalized.receipts)
+        appearancePlanningReport?("optional core placement: \(coreFinalized.decision)")
+        setFundingReport?(coreFinalized.receipts)
         pressdownPlanningReport?(baseline, finalized)
-        menuPlanningTrace?("finalized", finalized.plan.menus)
-        return finalized.plan
+        corePlanningReport?(finalized.plan, coreFinalized)
+        menuPlanningTrace?("finalized", coreFinalized.plan.menus)
+        return coreFinalized.plan
     }
 
     // MARK: - Lower-Session Knee-Dominant Anchor (menu-level)

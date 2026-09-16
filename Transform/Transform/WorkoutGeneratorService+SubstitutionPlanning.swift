@@ -2,6 +2,7 @@ import Foundation
 
 extension ClaudeService {
     enum CoreRelocationDecision: Equatable {
+        case noEligiblePlacement, unsupportedWeek
         case proposal(CoreRelocationRefusal)
         case invalidPreviousWeek, boundarySpacing, allocationChanged, deliveryMismatch, findingsNotImproved
         case finalNotAdmitted(RoleFloorAdmission)
@@ -13,6 +14,47 @@ extension ClaudeService {
         let messages: [String]
         let receipts: [SetFundingObservation]
         let decision: CoreRelocationDecision
+    }
+
+    // Deterministic, bounded placement search. Only the first qualifying proposal gets
+    // fresh allocation; a later refusal leaves other placements unassessed, not exhausted.
+    func finalizeFirstCoreRelocation(_ baseline: SubstitutionPlanningBaseline,
+        trainingIntent: TrainingIntentPlan, previousWeekDays: [WorkoutDayResponse]?,
+        baselineMessages: [String], baselineReceipts: [SetFundingObservation], collectFunding: Bool
+    ) -> CoreRelocationFinalization {
+        func retained(_ decision: CoreRelocationDecision) -> CoreRelocationFinalization {
+            .init(plan: baseline, messages: baselineMessages, receipts: baselineReceipts, decision: decision)
+        }
+        guard (1...3).contains(baseline.weekNumber) else { return retained(.unsupportedWeek) }
+        guard baseline.roleFloorAdmission == .admitted else {
+            return retained(.proposal(.baselineNotAdmitted))
+        }
+        guard baseline.menus.count == 7, baseline.blueprint.dayPlans.count == 7,
+              baseline.lockedPrefixCounts.count == 7, baseline.retainedKeysByDay.count == 7,
+              baseline.selectionFocusIntents.count == 7,
+              baseline.menus.indices.allSatisfy({ day in
+                  baseline.lockedPrefixCounts[day] >= 0 && baseline.lockedPrefixCounts[day] <= baseline.menus[day].count
+                      && baseline.blueprint.dayPlans[day].dayIndex == day + 1
+                      && (baseline.blueprint.dayPlans[day].isRestDay ? baseline.menus[day].isEmpty : !baseline.menus[day].isEmpty)
+              }) else {
+            return retained(.proposal(.invalidContext))
+        }
+        for source in baseline.menus.indices {
+            guard baseline.menus[source].count == 7,
+                  canonicalTrainingStyle(baseline.blueprint.dayPlans[source].style) == "Lower",
+                  let slot = baseline.menus[source].indices.last else { continue }
+            for destination in baseline.menus.indices {
+                guard baseline.menus[destination].count == 5,
+                      canonicalTrainingStyle(baseline.blueprint.dayPlans[destination].style) == "Pull" else { continue }
+                guard case .candidate = proposeCoreRelocationTrial(baseline, sourceDay: source,
+                    sourceSlot: slot, destinationDay: destination, trainingIntent: trainingIntent) else { continue }
+                return finalizeCoreRelocation(baseline, sourceDay: source, sourceSlot: slot,
+                    destinationDay: destination, trainingIntent: trainingIntent,
+                    previousWeekDays: previousWeekDays, baselineMessages: baselineMessages,
+                    baselineReceipts: baselineReceipts, collectFunding: collectFunding)
+            }
+        }
+        return retained(.noEligiblePlacement)
     }
 
     // A narrow verification seam, not an allocator override. A fresh reservation must
@@ -62,7 +104,7 @@ extension ClaudeService {
         return nil
     }
 
-    // Non-live boundary: returns a complete chosen plan but has no production caller.
+    // Complete-plan boundary used by the bounded placement wrapper.
     // All speculative messages/receipts remain private until the entire candidate passes.
     func finalizeCoreRelocation(_ baseline: SubstitutionPlanningBaseline,
         sourceDay: Int, sourceSlot: Int, destinationDay: Int,

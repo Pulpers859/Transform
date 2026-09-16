@@ -36,13 +36,14 @@ final class MaintenanceDoseFragmentationTests: XCTestCase {
         let fixture = try JSONDecoder().decode(Fixture.self, from: Data(contentsOf: url))
         let intent = service.trainingIntentPlan(from: fixture.analysis)
         let blueprint = service.programBlueprint(for: intent, weekNumber: 1)
-        let menus = service.preSelectedExerciseMenu(
+        let plan = service.preSelectedExercisePlan(
             for: blueprint,
             trainingIntent: intent,
             weekNumber: 1,
-            previousWeekDays: nil
+            previousWeekDays: nil,
+            exerciseHistory: nil
         )
-        return (blueprint, menus)
+        return (plan.blueprint, plan.menus)
     }
 
     /// Weekly sets per DISTINCT movement, for every non-priority major muscle group.

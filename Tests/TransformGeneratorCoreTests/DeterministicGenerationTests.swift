@@ -101,13 +101,14 @@ final class DeterministicGenerationTests: XCTestCase {
     ) {
         let intent = service.trainingIntentPlan(from: result)
         let blueprint = service.programBlueprint(for: intent, weekNumber: 1)
-        let menus = service.preSelectedExerciseMenu(
+        let plan = service.preSelectedExercisePlan(
             for: blueprint,
             trainingIntent: intent,
             weekNumber: 1,
-            previousWeekDays: nil
+            previousWeekDays: nil,
+            exerciseHistory: nil
         )
-        return (intent, blueprint, menus)
+        return (intent, plan.blueprint, plan.menus)
     }
 
     /// Runs the full deterministic chain and returns the validated Week 1 program plus the

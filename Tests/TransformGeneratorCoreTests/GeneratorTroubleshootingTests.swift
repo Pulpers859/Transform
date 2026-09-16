@@ -30,16 +30,19 @@ final class GeneratorTroubleshootingTests: XCTestCase {
         XCTAssertEqual(fixture.schemaVersion, 1)
         XCTAssertEqual(fixture.stage, "weekOne")
         let intent = service.trainingIntentPlan(from: fixture.analysis)
-        let blueprint = service.programBlueprint(for: intent, weekNumber: 1)
+        let planningBlueprint = service.programBlueprint(for: intent, weekNumber: 1)
+        let plan = service.preSelectedExercisePlan(
+            for: planningBlueprint,
+            trainingIntent: intent,
+            weekNumber: 1,
+            previousWeekDays: nil,
+            exerciseHistory: nil
+        )
+        let blueprint = plan.blueprint
+        let menus = plan.menus
         XCTAssertEqual(blueprint.calibration.recoveryConstrained, fixture.expected.recoveryConstrained)
         XCTAssertEqual(blueprint.calibration.poorNutritionAdherence, fixture.expected.poorNutritionAdherence)
         XCTAssertEqual(blueprint.calibration.recompositionGoal, fixture.expected.recompositionGoal)
-        let menus = service.preSelectedExerciseMenu(
-            for: blueprint,
-            trainingIntent: intent,
-            weekNumber: 1,
-            previousWeekDays: nil
-        )
         let program = try service.validatedProceduralWeekOneProgram(
             from: fixture.analysis,
             trainingIntent: intent,
@@ -367,19 +370,22 @@ final class GeneratorTroubleshootingTests: XCTestCase {
         do {
             let analysisSummary = service.analysisContext(from: fixture.analysis)
             let intent = service.trainingIntentPlan(from: fixture.analysis)
-            let blueprint = service.programBlueprint(for: intent, weekNumber: 1)
+            let planningBlueprint = service.programBlueprint(for: intent, weekNumber: 1)
+            let plan = service.preSelectedExercisePlan(
+                for: planningBlueprint,
+                trainingIntent: intent,
+                weekNumber: 1,
+                previousWeekDays: nil,
+                exerciseHistory: nil
+            )
+            let blueprint = plan.blueprint
+            let menus = plan.menus
             let intentSummary = service.trainingIntentContext(from: intent, blueprint: blueprint)
             let blueprintSummary = service.blueprintContext(from: blueprint)
             let context = service.generationContext(
                 analysisSummary: analysisSummary,
                 trainingIntentSummary: intentSummary,
                 blueprintSummary: blueprintSummary
-            )
-            let menus = service.preSelectedExerciseMenu(
-                for: blueprint,
-                trainingIntent: intent,
-                weekNumber: 1,
-                previousWeekDays: nil
             )
             let menuContext = service.exerciseMenuContext(from: menus, blueprint: blueprint)
             let config = ClaudeService.GenerationConfig(
@@ -454,13 +460,16 @@ final class GeneratorTroubleshootingTests: XCTestCase {
     func testMaintenanceVolumeGuardPositiveControls() throws {
         let fixture = try loadFixture()
         let intent = service.trainingIntentPlan(from: fixture.analysis)
-        let blueprint = service.programBlueprint(for: intent, weekNumber: 1)
-        let menus = service.preSelectedExerciseMenu(
-            for: blueprint,
+        let planningBlueprint = service.programBlueprint(for: intent, weekNumber: 1)
+        let plan = service.preSelectedExercisePlan(
+            for: planningBlueprint,
             trainingIntent: intent,
             weekNumber: 1,
-            previousWeekDays: nil
+            previousWeekDays: nil,
+            exerciseHistory: nil
         )
+        let blueprint = plan.blueprint
+        let menus = plan.menus
         let baseline = try service.validatedProceduralWeekOneProgram(
             from: fixture.analysis,
             trainingIntent: intent,
