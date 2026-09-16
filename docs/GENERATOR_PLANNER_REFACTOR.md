@@ -48,7 +48,45 @@ of what coaching content should count as adaptation. Existing lexical exemptions
 are explicitly preserved, not endorsed as evidence of tolerance or medical safety.
 No exercise ban, pain threshold, diagnosis or rehabilitation rule is introduced.
 
-### Directional focus membership (2026-09-15; provisional, execution pending)
+### Directional focus membership (2026-09-15; rejected live experiment `f54f3b4`)
+
+The production classifier change is withdrawn; the previous classifier is restored.
+Independent rollback review requested retaining coverage: stable broad/named-focus
+controls remain, and three strict expected-failure cases explicitly track the open
+hip-thrust, hyphenated pull-apart and Front Deltoids defects. These are acknowledged
+failures, not fixes or approval of current classification. Re-execution is pending.
+The revised packet review still requested changes; this is not represented as
+Claude approval. Main-agent reconciliation: `git diff 824180e --` for the restored
+source is empty, including the old upper-chest branch. The review reversed the
+documented direction of the regression: the NEW classifier caused the exported
+selection changes, not this restoration. `priorityExerciseRemovalScore` and
+multiple other selection callers in `+ExerciseSelection.swift` directly consume
+`focusStimulusKind`; the filename does not make this a prose-only function.
+Rollback is containment of a failed experiment, not incident resolution. Three
+strict expected failures remain visible; green must not be described as correct
+classification. New composite-query expectations depended on the withdrawn
+resolver and are deferred with that work, not claimed preserved by this rollback.
+[Run 35048159249](https://github.com/Pulpers859/Transform/actions/runs/35048159249)
+executed all 701 tests and failed two cases with five assertions. This was a test/
+behavior failure, not a workflow-configuration diagnosis. The app build succeeded.
+The attempted code/tests remain recoverable in Git history and the detached
+`focus-credit-boundary` sandbox; the inconsistency remains OPEN.
+
+Complete exported weeks show unintended selection changes: the shoulder-beginner
+lost Romanian deadlifts (four/five/five sets in loading weeks), so the core
+relocation case no longer reached its required seven-exercise baseline. Its deload
+also replaced the hinge with a curl. The lumbar persona's lower sessions changed
+in all four weeks. Twelve other full weeks stayed identical. Exported priority
+summaries were unchanged, illustrating why those summaries and fewer findings
+alone cannot establish preserved workout quality. Do not change the crowding
+expectations to bless this drift. Existing row diagnostics/assertions are retained.
+
+Two focused assertions also exposed unhandled existing paths: hyphenated Band
+Pull-Apart remained prime rather than support, and Front Deltoids still allowed
+Reverse Pec Deck as prime. Source review missed these. A replacement must account
+for name punctuation and priority-profile keyword resolution, not merely aliases.
+The following describes the rejected proposal and its audit history, not current
+production behavior.
 
 Source tracing of the lumbar-persona's four-prime-hamstring finding identified a
 membership inconsistency: focus classification expanded both the requested area

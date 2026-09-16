@@ -27,44 +27,19 @@ extension ClaudeService {
         }
     }
 
-    // Query-only membership for explicit composite goals. Do not use this to expand
-    // exercise metadata or direct-set credit; those have separate accounting contracts.
-    private func focusQueryMembership(for focusArea: String) -> Set<String> {
-        let tokens = priorityTextTokens(focusArea)
-        let areas: [String]
-        if tokens == ["posterior", "chain"] {
-            areas = ["Posterior Chain", "Hamstrings", "Glutes", "Quads/Glutes"]
-        } else if tokens == ["quads", "glutes"] || tokens == ["glutes", "quads"] {
-            areas = ["Quads/Glutes", "Quads", "Glutes", "Posterior Chain"]
-        } else {
-            areas = stimulusAreaAliases(for: focusArea)
-        }
-        return Set(areas.map(normalizedPriorityText))
-    }
-
     func focusStimulusKind(exerciseName: String, muscleTarget: String, focusArea: String) -> FocusStimulusKind {
         let metadata = exerciseMetadata(forExerciseName: exerciseName, muscleTarget: muscleTarget)
         let focus = normalizedPriorityText(focusArea)
         let nameText = normalizedPriorityText(exerciseName)
         let combinedText = "\(nameText) \(normalizedPriorityText(muscleTarget))"
-        let focusAliases = focusQueryMembership(for: focusArea)
-        // Expand the requested focus, not anatomical membership on both sides. Shared
-        // umbrella labels must not turn explicit secondary work into primary work.
-        // FocusCreditBoundaryTests pins this boundary and the named-focus overrides.
-        let primaryAreas = Set(metadata.primaryAreas.map(normalizedPriorityText))
-        let secondaryAreas = Set(metadata.secondaryAreas.map(normalizedPriorityText))
-        // Preserve this explicit regional secondary override without reopening
-        // all neighboring muscles through a shared major-group gate. The name
-        // rule alone is insufficient: metadata must actually declare Chest.
-        let upperChestSecondaryPattern = (focus.contains("upper chest") || focus.contains("clavicular"))
-            && containsAny(combinedText, keywords: ["bench press", "chest press", "pec deck", "fly", "dip"])
-        let declaredChestSecondaryOverride = upperChestSecondaryPattern
-            && (primaryAreas.contains("chest") || secondaryAreas.contains("chest"))
+        let focusAliases = Set(stimulusAreaAliases(for: focusArea).map(normalizedPriorityText))
+        let primaryAliases = Set(metadata.primaryAreas.flatMap { stimulusAreaAliases(for: $0) }.map(normalizedPriorityText))
+        let secondaryAliases = Set(metadata.secondaryAreas.flatMap { stimulusAreaAliases(for: $0) }.map(normalizedPriorityText))
 
-        let touchesFocus = !focusAliases.isDisjoint(with: primaryAreas)
-            || !focusAliases.isDisjoint(with: secondaryAreas)
+        let touchesFocus = !focusAliases.isDisjoint(with: primaryAliases)
+            || !focusAliases.isDisjoint(with: secondaryAliases)
             || containsAny(combinedText, keywords: priorityCoverageKeywords(for: focusArea))
-        guard touchesFocus || declaredChestSecondaryOverride else { return .none }
+        guard touchesFocus else { return .none }
 
         let coreFocusAliases = Set(
             ["Core/Abs", "Abs", "Lower Abs", "Anterior Core", "Obliques", "Serratus"]
@@ -101,7 +76,7 @@ extension ClaudeService {
             if containsAny(combinedText, keywords: ["incline press", "incline dumbbell press", "incline barbell press", "low incline", "incline fly", "incline cable fly", "incline machine fly", "reverse grip", "machine incline"]) {
                 return .prime
             }
-            if upperChestSecondaryPattern {
+            if containsAny(combinedText, keywords: ["bench press", "chest press", "pec deck", "fly", "dip"]) {
                 return .secondary
             }
         case let value where value.contains("bicep"):
@@ -144,11 +119,10 @@ extension ClaudeService {
             break
         }
 
-        guard touchesFocus else { return .none }
-        if !focusAliases.isDisjoint(with: primaryAreas) {
+        if !focusAliases.isDisjoint(with: primaryAliases) {
             return .prime
         }
-        if !focusAliases.isDisjoint(with: secondaryAreas) {
+        if !focusAliases.isDisjoint(with: secondaryAliases) {
             return .secondary
         }
         return .support
