@@ -2,6 +2,35 @@
 
 ## Active roadmap and audit checkpoints (2026-09-13)
 
+### Current proof boundary (2026-09-15, rollback `a695cc9` verified)
+
+Historical sections below retain their original checkpoints; they are not all
+current-status claims. In particular, the initial one-set baseline has since changed.
+On the downloaded `824180e` artifact, the independent Python checker and all seven
+checker tests pass; the explicit two-set gate finds zero prescriptions below two
+across twenty weeks. This does not establish arbitrary-profile or device quality.
+
+| Work | Evidence-backed status | Remaining proof/work |
+| --- | --- | --- |
+| Stages 1–2, observable shared accounting | Complete-plan evidence and shared accounting exercised by the harness | Preserve these contracts in every subsequent change |
+| Stage 3, planning/adoption boundaries | Live bounded repair verified at `57b3425`; approach decision recorded below | No claim of exhaustive search or universal feasibility |
+| Stage 4, core crowding | Three loading weeks relocate core without losing prescriptions at `57b3425`; restored at `a695cc9` | Owner's device still needed |
+| Stage 4, focus classification | Attempt `f54f3b4` rejected; prior production code restored at `a695cc9` | Three explicit known defects remain; redesign must preserve full-plan quality |
+| Stage 4, rowing balance | Append and replacement alternatives measured, not adopted | Owner tradeoff on block continuity versus deload-only change remains pending |
+| Stage 4, shoulder coaching | Day-warmup exemption removed; all three new cases executed in `9249fb3` run with no reported failures | Owner-approved explicit guidance implemented below; integrated execution pending |
+| Stage 5, policy | Fractional rounding, recovery fallback, and ordering choices isolated | Await owner answers; do not silently retune these policies |
+| Stages 6–7 | Menu-only wrapper removed; remaining legacy allocation still required | Retire only proven superseded paths; physical-iPhone and history/UI proof outstanding |
+
+The `9249fb3` generator run executed 704 cases but still failed the same two
+focus-experiment cases (five assertions). Its new shoulder tests are not a claim
+that the full run passed. Rollback [run 35049712234](https://github.com/Pulpers859/Transform/actions/runs/35049712234)
+executed 705 tests successfully, including the core relocation and strict expected
+classification failures. App run `35049712195` logged `BUILD SUCCEEDED`. All twenty
+complete week objects exactly match `824180e`; the independent two-set gate passes.
+Fresh cross-catalog row reallocation on the restored baseline reports `deloadPolicy`,
+exact candidate preserved, dose preserved, and no findings. It remains diagnostic,
+not adoption or proof of preserved focus-quality rank or block continuity.
+
 ### Stage 3 architecture decision: bounded complete-plan repair
 
 The current architecture has shared named budget limits, shared appearance costs,
@@ -30,6 +59,45 @@ work in Stages 4–7. Legacy allocation remains necessary for current deload and
 unadmitted paths; it is not declared superseded or removed without a replacement.
 
 ### Shoulder day-note false clearance (2026-09-15; execution pending)
+
+**Follow-on approved by owner: explicit exercise-level guidance (implementation,
+execution pending).** Grip-only and bare `pain free`/`shoulder friendly` labels no
+longer clear this finding. The report-specific applicability gate is shared with
+procedural cue production and absent-AI-note substitution. Both procedural routes
+and all eight production/debug sanitization call sites carry the actual report;
+usable AI prose stays intact and remains eligible for correction if inadequate.
+The finding anchor and correction tier are unchanged; prompts, correction tactic
+and notice explain the exercise-local requirement rather than warm-up clearance.
+
+The first prefix-matching draft falsely accepted `Stop if pain does not occur` and
+`Keep the movement pain free is not required`. Main/independent audits rejected it.
+The revision recognizes complete imperative clauses, handles common contractions,
+and rejects quoted/known contradictory instructions. Tests include those exact
+counterexamples, grip-only refusals, report-family controls, cue uniqueness,
+prescription/provenance preservation, and program/week absent-note sanitization.
+This is a conservative text contract: unfamiliar valid phrasing may need correction,
+and arbitrary contradiction/negation comprehension is not established. It cannot
+certify medical safety or whether an exercise should be selected. The full unlocked
+producer has source-threading plus shared-helper tests, not a separate full replay.
+
+The crowding diagnostic now writes captured phases before throwing assertions,
+so another lost-baseline regression will not erase the trace needed to diagnose it.
+No crowding acceptance assertion was relaxed. Local Swift parsing and Python
+shoulder-family/validator-pattern checks pass; full XCTest and output comparison
+remain pending for this implementation.
+An extracted Foundation-only Swift probe executes all 29 positive/negative clause
+assertions successfully on Windows using the production recognizer and normalizer.
+This is isolated language-contract execution, not type-checking the app or proving
+report threading. Independent source audit found no further blocker; its suggested
+integration control now checks a usable contradictory note through sanitization,
+AI provenance, the actual finding, and the locked-menu correction disposition.
+The required Claude packet review returned only an unfinished narrative promising
+a plan-file review, with no findings or verdict. It is NOT approval. The separate
+independent source audit and main-agent adversarial checks above are the available
+review evidence; full integrated execution remains required.
+
+The following paragraph records the narrower `9249fb3` checkpoint before the
+owner approved replacing its exercise-level lexical exemptions.
 
 The validator no longer treats day-level warm-up keywords as sufficient adaptation
 of an implicated overhead press. The change removes only that exemption; exercise

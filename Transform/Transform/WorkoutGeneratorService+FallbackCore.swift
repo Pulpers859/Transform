@@ -176,7 +176,8 @@ extension ClaudeService {
                     // The exercise-selection layer already penalises shoulder-risky movements
                     // from this same signal. The execution CUE was the one layer it never
                     // reached, so a flagged shoulder could still be coached into end range.
-                    avoidEndRangeShoulder: hasShoulderRisk(injuryRiskFocus: blueprint.injuryRiskFocus)
+                    avoidEndRangeShoulder: hasShoulderRisk(injuryRiskFocus: blueprint.injuryRiskFocus),
+                    injuryRiskFocus: blueprint.injuryRiskFocus
                 )
             } else {
                 let styleKey = canonicalTrainingStyle(style)
@@ -1295,7 +1296,8 @@ extension ClaudeService {
                 supportIntents: supportIntents,
                 targetFatigueCap: targetFatigueCap
             ),
-            avoidEndRangeShoulder: hasShoulderRisk(injuryRiskFocus: selectionContext.injuryRiskFocus)
+            avoidEndRangeShoulder: hasShoulderRisk(injuryRiskFocus: selectionContext.injuryRiskFocus),
+            injuryRiskFocus: selectionContext.injuryRiskFocus
         )
     }
 
@@ -1303,7 +1305,8 @@ extension ClaudeService {
         menu: [PreSelectedExercise],
         weekNumber: Int,
         focus: String,
-        avoidEndRangeShoulder: Bool = false
+        avoidEndRangeShoulder: Bool = false,
+        injuryRiskFocus: String = ""
     ) -> [WorkoutExerciseResponse] {
         let mapped = menu.enumerated().map { index, item in
             let reps = proceduralRepRange(
@@ -1334,7 +1337,7 @@ extension ClaudeService {
             )
         }
 
-        return withDayScopedCues(mapped, avoidEndRangeShoulder: avoidEndRangeShoulder)
+        return withDayScopedCues(mapped, avoidEndRangeShoulder: avoidEndRangeShoulder, injuryRiskFocus: injuryRiskFocus)
     }
 
     func exerciseCatalog(for style: String) -> [(name: String, target: String)] {
@@ -1676,7 +1679,8 @@ extension ClaudeService {
     /// flag from `blueprint.injuryRiskFocus`.
     func withDayScopedCues(
         _ exercises: [WorkoutExerciseResponse],
-        avoidEndRangeShoulder: Bool = false
+        avoidEndRangeShoulder: Bool = false,
+        injuryRiskFocus: String = ""
     ) -> [WorkoutExerciseResponse] {
         let cues = CoachingVoice.assignCues(
             for: exercises.map { (name: $0.exerciseName, muscleTarget: $0.muscleTarget) },
@@ -1689,7 +1693,8 @@ extension ClaudeService {
                 reps: exercise.reps,
                 tempo: exercise.tempo,
                 restSeconds: exercise.restSeconds,
-                notes: cue,
+                notes: addingExplicitShoulderGuidance(to: cue, exerciseName: exercise.exerciseName,
+                    muscleTarget: exercise.muscleTarget, injuryRiskFocus: injuryRiskFocus),
                 muscleTarget: exercise.muscleTarget,
                 targetRIR: exercise.targetRIR,
                 coachingSource: .procedural

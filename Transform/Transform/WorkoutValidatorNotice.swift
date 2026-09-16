@@ -200,7 +200,7 @@ extension WorkoutValidatorNotice {
             return notice(
                 .attention,
                 "A session isn't clearly adapted to your shoulder notes",
-                "Your analysis flagged a shoulder problem, but this day's overhead pressing and prep don't obviously work around it. Warm the shoulder up properly, and stop short of anything that pinches rather than pushing through it."
+                "An overhead exercise implicated by your shoulder notes lacks clear symptom-limited guidance. Its own coaching should explain staying within a pain-free range or stopping if symptoms occur; grip labels and a warm-up alone do not establish that adaptation."
             )
         }
 

@@ -801,49 +801,9 @@ extension ClaudeService {
         guard hasShoulderRisk(injuryRiskFocus: injuryRiskFocus) else { return [] }
 
         let riskyVerticalPresses = day.exercises.filter { exercise in
-            // `normalizeExerciseName`, not `normalizedPriorityText`. The latter lowercases and
-            // nothing else, so a hyphen survives and the spaced keywords below never matched a
-            // hyphenated name: "Behind-the-Neck Press" and "Close-Grip Bench Press" walked
-            // straight past a rule written to catch them. Its sibling
-            // `validateArmsDayShoulderStress` had always used the punctuation-folding key; the
-            // two shoulder rules disagreeing about what a name IS is how one of them quietly
-            // policed less than it claimed.
-            let name = normalizeExerciseName(exercise.exerciseName)
-            guard containsAny(
-                name,
-                keywords: ["shoulder press", "overhead press", "arnold press", "military press", "push press", "behind the neck"]
-            ) else {
-                return false
-            }
-
-            // Per-exercise, not just per-week: the gate above says a shoulder problem exists, this
-            // says the lifter's own words reach THIS movement.
-            //
-            // The family is asserted, not inferred, and that distinction is the whole safety of
-            // this rule. The keyword list above already IS the definition of the family being
-            // policed — overhead pressing — so that is what the report is asked about. Letting
-            // `exerciseMetadata` infer it instead made the rule fail OPEN on a name the model can
-            // easily produce: "Push Press" carrying `muscleTarget: "Triceps"` matches the list,
-            // and `inferredExerciseMetadata` gives it the pattern "Close-Grip Press" — the
-            // triceps branch claims any name containing "press" before the shoulder branch is
-            // reached. That family has no overhead phrase, so the finding vanished with no trace.
-            //
-            // An audit caught the original overstatement ("every name in the list above is a
-            // vertical press", untrue of a grip modifier). A later audit caught the REPLACEMENT
-            // example: it cited "Behind-the-Neck Lat Pulldown", which under the old
-            // `normalizedPriorityText` did not match the keyword list at all, because the hyphens
-            // survived. It matches now that the name is folded properly above, and it does infer
-            // as a Vertical Pull — but the sentence was asserted before either half was checked.
-            guard reportedShoulderPainImplicates(
-                exerciseName: exercise.exerciseName,
-                muscleTarget: exercise.muscleTarget,
-                injuryRiskFocus: injuryRiskFocus,
-                treatAsMovementPattern: "vertical press"
-            ) else { return false }
-
-            let note = normalizedPriorityText(exercise.notes)
-            return !containsAny(name, keywords: ["landmine"])
-                && !containsAny(note, keywords: ["neutral grip", "angled grip", "pain free", "shoulder friendly"])
+            requiresExplicitShoulderGuidance(exerciseName: exercise.exerciseName,
+                muscleTarget: exercise.muscleTarget, injuryRiskFocus: injuryRiskFocus)
+                && !hasExplicitShoulderGuidance(exercise.notes)
         }
 
         guard !riskyVerticalPresses.isEmpty else { return [] }
@@ -864,10 +824,62 @@ extension ClaudeService {
             // day" and "excessive shoulder joint stress". Neither of those is this finding.
             //
             // It is repairable under a locked menu even though the exercise is not: the check below
-            // clears the day as soon as the note carries a "neutral grip" / "pain free" style cue,
+            // requires an affirmative exercise-level symptom-limited instruction,
             // so a correction pass has something real to do.
-            "Day \(day.dayNumber) includes shoulder pressing that is not clearly adapted to the shoulder risk in the analysis (\(names)). Use more shoulder-friendly setup cues or choose a better-aligned press variation."
+            "Day \(day.dayNumber) includes shoulder pressing that is not clearly adapted to the shoulder risk in the analysis (\(names)). Give each implicated exercise explicit symptom-limited range or stopping guidance; grip labels and warm-up notes alone do not establish adaptation."
         ]
+    }
+
+    // MARK: - Exercise-level shoulder coaching contract
+
+    /// This is a bounded coaching-text contract, not a medical suitability assessment.
+    func requiresExplicitShoulderGuidance(exerciseName: String, muscleTarget: String, injuryRiskFocus: String) -> Bool {
+        guard hasShoulderRisk(injuryRiskFocus: injuryRiskFocus) else { return false }
+        let name = normalizeExerciseName(exerciseName)
+        return containsAny(name, keywords: ["shoulder press", "overhead press", "arnold press", "military press", "push press", "behind the neck"])
+            && !containsAny(name, keywords: ["landmine"])
+            && reportedShoulderPainImplicates(exerciseName: exerciseName, muscleTarget: muscleTarget,
+                injuryRiskFocus: injuryRiskFocus, treatAsMovementPattern: "vertical press")
+    }
+
+    var explicitShoulderGuidance: String {
+        "Keep the movement pain free and stop if shoulder pain or pinching occurs."
+    }
+
+    func hasExplicitShoulderGuidance(_ notes: String) -> Bool {
+        let expanded = notes.lowercased().replacingOccurrences(of: "don't", with: "do not")
+            .replacingOccurrences(of: "don’t", with: "do not")
+        let text = normalizeExerciseName(expanded)
+        // Refuse ambiguous quoted/negated instructions rather than certifying arbitrary prose.
+        guard !notes.contains("\""), !notes.contains("“"), !notes.contains("”"),
+              notes.range(of: "(^|\\s)['‘]", options: .regularExpression) == nil else { return false }
+        let contradictions = ["not pain free", "ignore pain", "ignore shoulder pain", "ignore the pain",
+            "continue even if", "continue through pain", "push through the pinch", "work through pain",
+            "do not stop", "dont stop", "don t stop", "do not keep", "never stop", "never keep",
+            "do not use a pain free", "do not stay within", "avoid stopping", "no need to stop",
+            "not necessary to stop", "ignore the instruction", "ignore this instruction"]
+        guard !containsAny(text, keywords: contradictions) else { return false }
+        let withoutProhibition = text.replacingOccurrences(of: "do not push through pain", with: "")
+        guard withoutProhibition.range(of: "\\b(push|work|continue) through(?: [a-z]+){0,4} (pain|pinch|pinching|symptoms)\\b",
+            options: .regularExpression) == nil else { return false }
+        // Require an imperative at a sentence/clause boundary, not a reported or hypothetical
+        // quotation such as 'the previous coach said to stop if pain occurs'.
+        let clauses = expanded.components(separatedBy: CharacterSet(charactersIn: ".!?;\n"))
+            .flatMap { $0.components(separatedBy: " and ") }.map { normalizeExerciseName($0) }
+        let instructions: Set<String> = ["keep the movement pain free", "use a pain free range",
+            "stay within a pain free range", "stop short of any pinch", "do not push through pain",
+            "stop if pain occurs", "stop if pain develops", "stop if shoulder pain occurs",
+            "stop if pinching occurs", "stop if shoulder pain or pinching occurs"]
+        // Full clauses, not prefixes: 'stop if pain goes away' and '... is unnecessary'
+        // must not gain credit from their opening words. Unrecognized prose stays reviewable.
+        return clauses.contains { instructions.contains($0) }
+    }
+
+    func addingExplicitShoulderGuidance(to cue: String, exerciseName: String, muscleTarget: String,
+                                       injuryRiskFocus: String) -> String {
+        guard requiresExplicitShoulderGuidance(exerciseName: exerciseName, muscleTarget: muscleTarget,
+            injuryRiskFocus: injuryRiskFocus) else { return cue }
+        return "\(cue) \(explicitShoulderGuidance)"
     }
 
     // MARK: - Joint-Stress Budget

@@ -210,6 +210,21 @@ final class UserJourneySimulationTests: XCTestCase {
         func signature(_ menus: [[ClaudeService.PreSelectedExercise]]) -> [[String]] {
             menus.map { $0.map { "\($0.exerciseName)|\($0.muscleTarget)|\($0.movementPattern)|\($0.role)|\($0.prescribedSets)" } }
         }
+        // Emit the captured phases BEFORE throwing assertions. A selection regression
+        // can eliminate the crowded baseline itself; that is when this trace is needed
+        // most, not a reason to omit it from the failed run's diagnostic artifact.
+        let crowdedTransition = phases.indices.first { phases[$0].1[lower].count > 6 }
+        let transitionLabel: String
+        if let index = crowdedTransition, index > 0 {
+            transitionLabel = "\(phases[index - 1].0)->\(phases[index].0)"
+        } else {
+            transitionLabel = crowdedTransition == nil ? "none" : "initialSelection"
+        }
+        var report = ["CROWDING_TRACE persona=\(persona.name) week=1 day=\(lower + 1) firstTransition=\(transitionLabel)"]
+        for phase in phases {
+            report.append("CROWDING_TRACE phase=\(phase.0) lower=\(signature(phase.1)[lower])")
+        }
+        try writeArtifactIfRequested(report.joined(separator: "\n"), environmentKey: "TRANSFORM_CROWDING_TRACE_OUTPUT")
         XCTAssertEqual(signature(observed.menus), signature(unobserved.menus), "Tracing cannot alter a complete plan")
         XCTAssertEqual(observed.blueprint, unobserved.blueprint)
         XCTAssertEqual(coreCallbacks, 1)
@@ -222,14 +237,9 @@ final class UserJourneySimulationTests: XCTestCase {
         let originalPlan = try XCTUnwrap(preCore)
         XCTAssertEqual(originalPlan.menus[lower].count, 7, "Keep the actual pre-core failure as the independent control")
         XCTAssertEqual(phases.last?.0, "finalized")
-        let transition = try XCTUnwrap(phases.indices.first { phases[$0].1[lower].count > 6 })
+        let transition = try XCTUnwrap(crowdedTransition)
         XCTAssertGreaterThan(transition, 0)
         guard transition > 0 else { return }
-        var report = ["CROWDING_TRACE persona=\(persona.name) week=1 day=\(lower + 1) firstTransition=\(phases[transition - 1].0)->\(phases[transition].0)"]
-        for phase in phases {
-            report.append("CROWDING_TRACE phase=\(phase.0) lower=\(signature(phase.1)[lower])")
-        }
-        try writeArtifactIfRequested(report.joined(separator: "\n"), environmentKey: "TRANSFORM_CROWDING_TRACE_OUTPUT")
         try recordCoreRelocationTrial(planned: originalPlan, intent: intent, result: analysis(for: persona), lower: lower)
     }
 

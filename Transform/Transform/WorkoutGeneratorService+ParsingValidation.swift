@@ -94,7 +94,7 @@ extension ClaudeService {
 
     // MARK: - Sanitization (async pipeline with per-exercise diagnostics)
 
-    func sanitizeProgramResponse(_ program: WorkoutProgramResponse) async throws -> WorkoutProgramResponse {
+    func sanitizeProgramResponse(_ program: WorkoutProgramResponse, injuryRiskFocus: String = "") async throws -> WorkoutProgramResponse {
         if WorkoutGenerationDiagnostics.bypassSanitization {
             WorkoutGenerationDiagnostics.markStage("BYPASS: returning raw decoded program")
             return program
@@ -108,7 +108,7 @@ extension ClaudeService {
             try Task.checkCancellation()
             let tag = "d\(i + 1)/\(sortedDays.count)"
             WorkoutGenerationDiagnostics.markStage("sanitize \(tag)")
-            let cleaned = sanitizeDay(day, tag: tag)
+            let cleaned = sanitizeDay(day, tag: tag, injuryRiskFocus: injuryRiskFocus)
             cleanedDays.append(cleaned)
         }
 
@@ -122,7 +122,7 @@ extension ClaudeService {
         )
     }
 
-    func sanitizeWeekResponse(_ week: WorkoutWeekResponse) async throws -> WorkoutWeekResponse {
+    func sanitizeWeekResponse(_ week: WorkoutWeekResponse, injuryRiskFocus: String = "") async throws -> WorkoutWeekResponse {
         if WorkoutGenerationDiagnostics.bypassSanitization {
             WorkoutGenerationDiagnostics.markStage("BYPASS: returning raw decoded week")
             return week
@@ -136,7 +136,7 @@ extension ClaudeService {
             try Task.checkCancellation()
             let tag = "d\(i + 1)/\(sortedDays.count)"
             WorkoutGenerationDiagnostics.markStage("sanitize \(tag)")
-            let cleaned = sanitizeDay(day, tag: tag)
+            let cleaned = sanitizeDay(day, tag: tag, injuryRiskFocus: injuryRiskFocus)
             cleanedDays.append(cleaned)
         }
 
@@ -147,7 +147,7 @@ extension ClaudeService {
         )
     }
 
-    private func sanitizeDay(_ day: WorkoutDayResponse, tag: String) -> WorkoutDayResponse {
+    private func sanitizeDay(_ day: WorkoutDayResponse, tag: String, injuryRiskFocus: String) -> WorkoutDayResponse {
         let weekNumber = ((day.dayNumber - 1) / 7) + 1
         let cleanedDayName = normalizedDisplayText(day.dayName, fallback: "Day \(day.dayNumber)")
         let cleanedMuscleGroups = normalizedDisplayText(
@@ -171,7 +171,8 @@ extension ClaudeService {
                     weekNumber: weekNumber,
                     exerciseIndex: j,
                     tag: exTag,
-                    cuesAlreadyOnDay: Set(cleanedExercises.map(\.notes))
+                    cuesAlreadyOnDay: Set(cleanedExercises.map(\.notes)),
+                    injuryRiskFocus: injuryRiskFocus
                 )
                 cleanedExercises.append(cleaned)
             }
@@ -215,7 +216,8 @@ extension ClaudeService {
         weekNumber: Int,
         exerciseIndex: Int,
         tag: String,
-        cuesAlreadyOnDay: Set<String> = []
+        cuesAlreadyOnDay: Set<String> = [],
+        injuryRiskFocus: String = ""
     ) -> WorkoutExerciseResponse {
         WorkoutGenerationDiagnostics.markStage("sanitize \(tag) name")
         let cleanedTarget = normalizedDisplayText(exercise.muscleTarget, fallback: "Primary Target")
@@ -273,7 +275,8 @@ extension ClaudeService {
             muscleTarget: cleanedTarget,
             weekNumber: weekNumber,
             exerciseIndex: exerciseIndex,
-            cuesAlreadyOnDay: cuesAlreadyOnDay
+            cuesAlreadyOnDay: cuesAlreadyOnDay,
+            injuryRiskFocus: injuryRiskFocus
         )
         // Keep any set-count the note cites in step with the (possibly polished) structured
         // count so prose and the SETS tile / log rows can't disagree.

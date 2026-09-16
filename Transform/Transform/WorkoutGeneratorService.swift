@@ -285,7 +285,7 @@ extension ClaudeService {
                             context: requestContext
                         )
                         let decoded = try self.decodeJSONPayload(WorkoutProgramResponse.self, from: jsonString)
-                        let cleaned = try await self.sanitizeProgramResponse(decoded)
+                        let cleaned = try await self.sanitizeProgramResponse(decoded, injuryRiskFocus: blueprint.injuryRiskFocus)
                         return (i, .success(cleaned))
                     } catch {
                         return (i, .failure(error))
@@ -399,7 +399,7 @@ extension ClaudeService {
                     )
                     let correctedDecoded = try decodeJSONPayload(WorkoutProgramResponse.self, from: correctedJSON)
                     let correctedCleaned = applyingPreselectedSetPrescription(
-                        to: try await sanitizeProgramResponse(correctedDecoded),
+                        to: try await sanitizeProgramResponse(correctedDecoded, injuryRiskFocus: blueprint.injuryRiskFocus),
                         menus: exerciseMenus
                     )
                     let correctedIssues = validateProgramResponse(correctedCleaned, blueprint: blueprint, expectedExerciseMenus: exerciseMenus, progressionVerdicts: progressionVerdicts)
@@ -623,7 +623,7 @@ extension ClaudeService {
                             context: requestContext
                         )
                         let decoded = try self.decodeJSONPayload(WorkoutWeekResponse.self, from: jsonString)
-                        let cleaned = try await self.sanitizeWeekResponse(decoded)
+                        let cleaned = try await self.sanitizeWeekResponse(decoded, injuryRiskFocus: blueprint.injuryRiskFocus)
                         return (i, .success(cleaned))
                     } catch {
                         return (i, .failure(error))
@@ -746,7 +746,7 @@ extension ClaudeService {
                     )
                     let correctedDecoded = try decodeJSONPayload(WorkoutWeekResponse.self, from: correctedJSON)
                     let correctedCleaned = applyingPreselectedSetPrescription(
-                        to: try await sanitizeWeekResponse(correctedDecoded),
+                        to: try await sanitizeWeekResponse(correctedDecoded, injuryRiskFocus: blueprint.injuryRiskFocus),
                         menus: exerciseMenus,
                         dayStart: dayStart
                     )
@@ -926,7 +926,7 @@ extension ClaudeService {
 
             let decoded = try decodeJSONPayload(WorkoutProgramResponse.self, from: candidate)
             let cleaned = applyingPreselectedSetPrescription(
-                to: try await sanitizeProgramResponse(decoded),
+                to: try await sanitizeProgramResponse(decoded, injuryRiskFocus: blueprint.injuryRiskFocus),
                 menus: exerciseMenus
             )
             let issues = validateProgramResponse(cleaned, blueprint: blueprint, expectedExerciseMenus: exerciseMenus)
@@ -986,7 +986,7 @@ extension ClaudeService {
                         try Task.checkCancellation()
                         let decoded = try decodeJSONPayload(WorkoutProgramResponse.self, from: jsonString)
                         let cleaned = applyingPreselectedSetPrescription(
-                            to: try await sanitizeProgramResponse(decoded),
+                            to: try await sanitizeProgramResponse(decoded, injuryRiskFocus: blueprint.injuryRiskFocus),
                             menus: exerciseMenus
                         )
                         let issues = validateProgramResponse(cleaned, blueprint: blueprint, expectedExerciseMenus: exerciseMenus)
@@ -1335,7 +1335,7 @@ extension ClaudeService {
 
             let decoded = try decodeJSONPayload(WorkoutWeekResponse.self, from: candidate)
             let cleaned = applyingPreselectedSetPrescription(
-                to: try await sanitizeWeekResponse(decoded),
+                to: try await sanitizeWeekResponse(decoded, injuryRiskFocus: blueprint.injuryRiskFocus),
                 menus: exerciseMenus,
                 dayStart: dayStart
             )
@@ -1402,7 +1402,7 @@ extension ClaudeService {
                         try Task.checkCancellation()
                         let decoded = try decodeJSONPayload(WorkoutWeekResponse.self, from: jsonString)
                         let cleaned = applyingPreselectedSetPrescription(
-                            to: try await sanitizeWeekResponse(decoded),
+                            to: try await sanitizeWeekResponse(decoded, injuryRiskFocus: blueprint.injuryRiskFocus),
                             menus: exerciseMenus,
                             dayStart: dayStart
                         )

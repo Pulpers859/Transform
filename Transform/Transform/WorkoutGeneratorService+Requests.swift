@@ -271,6 +271,9 @@ extension ClaudeService {
         var rules: [String] = [
             "- Preserve the program's real strengths, but the listed validator issues are not optional."
         ]
+        if issues.contains(where: { $0.contains("is not clearly adapted to the shoulder risk") }) {
+            rules.append("- Rewrite ONLY each implicated overhead exercise's note with explicit symptom-limited range or stopping guidance: keep the movement pain free and stop if shoulder pain or pinching occurs. Grip labels, shoulder-friendly claims and day warm-ups alone do not satisfy this requirement. Preserve the locked names, order and sets; do not instruct continuing through symptoms.")
+        }
 
         if issues.contains(where: { $0.contains("contradicts the app's logged progression verdict") }) {
             rules.append("- Rewrite only the flagged coaching cue text so it agrees with the app's logged progression verdict quoted in the issue. Do not change sets, reps, or exercises to resolve a cue contradiction.")
@@ -437,6 +440,10 @@ extension ClaudeService {
         - Do not write posture language with fake certainty. Frame pelvic-tilt and posture work
           as improving setup, bracing, hip control, and tolerance rather than claiming you are
           "fixing" a diagnosis.
+        - For overhead exercises implicated by the reported shoulder symptoms, include an explicit
+          exercise-level instruction to keep the movement pain free and stop if shoulder pain or
+          pinching occurs. Grip labels and day warm-ups alone are not adaptations; never coach
+          continuing through symptoms. Preserve the locked exercise names, order and sets.
         - Any injury or postural note from the analysis must be addressed explicitly in the
           warm-up/mobility guidance of the relevant day.
         - Session Notes must match the actual session. Do not mention pressing, pulling, or hinge
@@ -565,6 +572,10 @@ extension ClaudeService {
         state the day's intent and the warm-up, never a load or rep progression instruction
         ("put 5 lb on the top set", "beat last week's reps") — the app renders progression on each
         exercise card and a load instruction in the briefing contradicts the card below it.
+        For overhead exercises implicated by the reported shoulder symptoms, include an explicit
+        exercise-level instruction to keep the movement pain free and stop if shoulder pain or
+        pinching occurs. Grip labels and day warm-ups alone are not adaptations; never coach
+        continuing through symptoms. Preserve the locked exercise names, order and sets.
         Exercise notes still must be
         execution-only: a form cue + a setup/ROM/control cue, with NO load- or rep-progression
         instructions (the app computes and displays progression from logs; state effort intent in

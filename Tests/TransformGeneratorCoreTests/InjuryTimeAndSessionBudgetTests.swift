@@ -158,13 +158,12 @@ final class InjuryTimeAndSessionBudgetTests: XCTestCase {
         XCTAssertEqual(service.validateInjuryRiskAlignment(on: day([other, press]), injuryRiskFocus: ownersInjuryText), control)
     }
 
-    func testWarmupChangePreservesPerExerciseExemptionsAndUnimplicatedControls() {
+    func testGripLabelsDoNotClearWarningAndUnimplicatedControlsRemainUnchanged() {
         for cue in ["neutral grip", "angled grip", "pain free", "shoulder friendly"] {
             let press = exercise("Seated Dumbbell Shoulder Press", "Anterior Deltoids", sets: 3, notes: cue)
-            XCTAssertTrue(service.validateInjuryRiskAlignment(on: day([press], notes: ""), injuryRiskFocus: ownersInjuryText).isEmpty)
+            XCTAssertEqual(service.validateInjuryRiskAlignment(on: day([press], notes: ""), injuryRiskFocus: ownersInjuryText).count, 1)
         }
-        // Preserving these lexical exemptions is not proof of clinical adaptation;
-        // grip-only false clearance is deliberately outside this narrow change.
+        // The applicability gate remains report- and exercise-specific.
         for notes in ["", "Warm-up: external rotation and wall slides."] {
             XCTAssertTrue(service.validateInjuryRiskAlignment(
                 on: day([exercise("Seated Dumbbell Shoulder Press", "Anterior Deltoids", sets: 3)], notes: notes),
@@ -206,8 +205,8 @@ final class InjuryTimeAndSessionBudgetTests: XCTestCase {
         //
         // `.correctionPass` is also the RIGHT tier, which is why the code is left alone. A locked
         // menu forbids swapping the press, but the repair this finding actually asks for is a note
-        // rewrite — `validateInjuryRiskAlignment` clears the day as soon as the exercise note says
-        // "neutral grip", "pain free" or similar — and that is exactly what a correction pass is
+        // rewrite — `validateInjuryRiskAlignment` requires explicit symptom-limited guidance
+        // on the implicated exercise — and that is exactly what a correction pass is
         // for. Demoting it to a warning would mean the model never gets the chance to make the day
         // safer, and the week would carry a permanent shoulder complaint instead of a cheap fix.
         XCTAssertEqual(

@@ -241,7 +241,8 @@ extension ClaudeService {
         muscleTarget: String,
         weekNumber: Int,
         exerciseIndex: Int,
-        cuesAlreadyOnDay: Set<String> = []
+        cuesAlreadyOnDay: Set<String> = [],
+        injuryRiskFocus: String = ""
     ) -> String {
         let trimmed = rawNotes.trimmingCharacters(in: .whitespacesAndNewlines)
 
@@ -266,28 +267,30 @@ extension ClaudeService {
             //
             // `coachingSource` separately records that this cue was substituted, so a mixed
             // day stays auditable rather than silently indistinguishable from AI output.
-            return evidenceTunedCoachingLanguage(
+            let cue = evidenceTunedCoachingLanguage(
                 // `avoidEndRangeShoulder: true` unconditionally, and deliberately.
                 //
                 // This is the AI-repair path: it fires when the model returned nothing usable
-                // for one exercise. The injury flag lives on the blueprint, which does not
-                // reach here — `sanitizeWeekResponse` takes only the decoded week, so wiring
-                // the real signal in means threading a parameter through four signatures and
-                // eight call sites in the async generation flow.
+                // for one exercise. The real report now reaches this path for the explicit
+                // guidance below; preserve the existing end-range filtering policy separately.
                 //
                 // The trade being made, stated plainly: an uninjured lifter loses the
                 // end-range phrasing ("descend until the upper arms break parallel") on
                 // SUBSTITUTED notes only, and gets the protective cue sitting one rung below
                 // it instead — coaching that is still specific and still true. That is a small
                 // price for never handing a flagged shoulder an aggravating cue on a path that
-                // cannot currently tell whether the shoulder is flagged.
+                // may be called without report context by older diagnostic callers.
                 CoachingVoice.cue(
                     forName: exerciseName,
                     muscleTarget: muscleTarget,
-                    avoiding: cuesAlreadyOnDay,
+                    avoiding: Set(cuesAlreadyOnDay.map {
+                        $0.replacingOccurrences(of: " " + explicitShoulderGuidance, with: "")
+                    }),
                     avoidEndRangeShoulder: true
                 )
             )
+            return addingExplicitShoulderGuidance(to: cue, exerciseName: exerciseName,
+                muscleTarget: muscleTarget, injuryRiskFocus: injuryRiskFocus)
         }
 
         // Execution-only notes: the deterministic progression banner owns load/rep
