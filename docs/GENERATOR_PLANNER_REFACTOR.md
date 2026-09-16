@@ -2,7 +2,43 @@
 
 ## Active roadmap and audit checkpoints (2026-09-13)
 
-### Deload rowing alternatives (2026-09-15; diagnostic execution pending)
+### Directional focus membership (2026-09-15; provisional, execution pending)
+
+Source tracing of the lumbar-persona's four-prime-hamstring finding identified a
+membership inconsistency: focus classification expanded both the requested area
+and explicit exercise metadata through shared umbrella labels. Glutes and
+Hamstrings therefore met through Posterior Chain, promoting hip thrusts to prime
+hamstring work even though metadata lists Hamstrings as secondary and direct-set
+accounting gives them zero direct hamstring credit.
+
+The proposed correction expands only the requested focus and matches explicit
+metadata membership. The first two-line solution was inadequate: broad Posterior
+Chain and Quads/Glutes queries still need their constituents. A focus-local resolver
+handles those explicit composites without changing global aliases or direct-set
+accounting. Named-focus heuristics remain intact, including secondary Lats credit
+for rows, corrective support and carry support. Tests cover adjacent-muscle false
+promotion, true primary/secondary work, broad requests and regional aliases.
+Independent review caught another flaw before publication: the early membership
+guard prevented the existing Upper Chest/chest-press secondary override from being
+reached. A broad same-major-group repair was also rejected: it promoted rear/lateral
+delt work to anterior-delt prime work. Instead, the existing Upper Chest secondary
+name rule is evaluated once and may enter only with explicit Chest metadata.
+Other named rules do not gain a wider gate. Cross-group leg-press/shoulder,
+leg-extension/chest and neighboring-deltoid controls pin the rejected alternatives.
+An unnamed chest movement does not gain Upper Chest primary credit. Inferred glute
+metadata receives its own secondary-hamstring control.
+The first Claude packet review requested source verification and full execution;
+the relevant metadata, aliases and tokenization were inspected directly. Its
+revised run returned an unfinished narrative, not an approval. Independent source
+review found no further blocker after the two corrections. A bare Clavicular
+secondary control addresses the unfinished review's conditional guard concern.
+
+This affects selection/order/allocation quality as well as warning wording. Focused
+test success alone cannot establish a safe fix: replay all full workout artifacts,
+role floors, priority delivery and the original case before accepting it. No
+metadata, canonical name, history key, fractional target or recovery policy changes.
+
+### Deload rowing alternatives (2026-09-15; measured at `824180e`)
 
 The existing lumbar-persona week-four trial is designed to explore at most 16 absent Row
 appearances from the existing Pull/Upper catalogs. Each starts from the complete
@@ -18,15 +54,31 @@ protection, retention, pain history, ordering, style and focus-quality differenc
 These are non-adopting experiments, not evidence that current eligibility is wrong.
 No production logic, targets, movement metadata or history keys change. Independent
 source review requested delivered-target parity and baseline findings; both are
-included. Syntax checks passed, but the new outcomes have not been executed yet.
-This is temporary evidence collection: after its first macOS execution, inspect
-the artifacts and pin meaningful measured refusal/acceptance controls rather than
-retain print-only conclusions. Candidates are visited in day/catalog order; the
+included. The initial diagnostic was explicitly provisional pending execution;
+the measured outcomes below are now promoted to behavioral assertions rather
+than retained as print-only conclusions. Candidates are visited in day/catalog order; the
 global cap can leave later days unassessed. Claude's packet review requested
 changes for missing execution and behavioral outcome assertions, not a production
 defect. Signatures were independently checked against source; that is not a
 type-check. On this Windows host, publication to the existing macOS CI is the
-execution route. No runtime claim is made before that run completes.
+execution route.
+
+[Generator run 35046866513](https://github.com/Pulpers859/Transform/actions/runs/35046866513)
+executed all 698 tests successfully; [app run 35046866428](https://github.com/Pulpers859/Transform/actions/runs/35046866428)
+logged BUILD SUCCEEDED. All 20 complete baseline week objects match `57b3425`.
+Four append candidates ran. Three non-Lats rows preserved the dose checks and had
+no findings, but all exceeded the five-exercise deload ceiling and fresh allocation
+changed their prescriptions (`deloadPolicy`, not role-floor admission). The Lats
+row also exceeded its priority ceiling and variation limit. Those measured
+boundaries are now asserted instead of left as report-only diagnostics.
+
+One cross-catalog trial ran: the Upper-day Neutral-Grip Lat Pulldown's two sets
+became Single-Arm Dumbbell Row, with count/dose/order preserved and no findings.
+It matched Upper style, was not protected/retained, and had no day focus. However,
+strict preflight refused catalog membership and its Lats focus kind changed from
+prime to secondary. This is not authorization to weaken the existing preference
+guard or broaden the live catalog. A new fresh-allocation check for this candidate
+is still pending execution; no row alternative is adopted.
 
 ### Bounded core-placement live wiring (2026-09-15; verified `57b3425`)
 

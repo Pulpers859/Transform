@@ -902,6 +902,17 @@ final class UserJourneySimulationTests: XCTestCase {
                 let findings = service.validateWeekResponse(output, dayStart: 22, dayEnd: 28,
                     previousWeekDays: weeks[2].days, blueprint: blueprint, expectedExerciseMenus: candidate)
                 let ceiling = service.comfortableDayExerciseCeiling(forStyle: style, weekNumber: 4)
+                // Measured in run 35046866513: validator cleanliness does not
+                // authorize exceeding the independent deload appearance ceiling.
+                XCTAssertEqual(candidate[day].count, 6)
+                XCTAssertEqual(ceiling, 5)
+                if entry.name == "Single-Arm Dumbbell Row" {
+                    XCTAssertEqual(dose, .rejected(.weeklyPriority(area: "Lats")))
+                    XCTAssertFalse(findings.isEmpty)
+                } else {
+                    XCTAssertEqual(dose, .dosePreserved(improvesMaintenanceMinimum: false))
+                    XCTAssertTrue(findings.isEmpty, "\(findings)")
+                }
                 let unit = WorkoutExerciseResponse(exerciseName: entry.name, sets: 1, reps: "", tempo: "",
                     restSeconds: 0, notes: "", muscleTarget: entry.target)
                 report.append("ROW_APPEARANCE_TRIAL day=\(day + 1) name=\(entry.name) target=\(entry.target) primary=\(metadata.primaryAreas) secondary=\(metadata.secondaryAreas) pattern=\(metadata.movementPattern) roleFloor=\(floor) directLatsPerSet=\(service.directSetCredit(for: unit, area: "Lats")) dose=\(dose) count=\(candidate[day].count) deloadCeiling=\(ceiling) deloadCeilingRefused=\(candidate[day].count > ceiling) fatigue=\(service.estimatedDayFatigue(for: output.days[day].exercises)) fatigueCap=\(limits.fatigue[day]) variations=\(service.weeklyVariationViolations(in: candidate, blueprint: blueprint)) findings=\(findings) candidate=\(signature(candidate))")
@@ -917,12 +928,16 @@ final class UserJourneySimulationTests: XCTestCase {
                     XCTAssertEqual(delivered.days.map { $0.exercises.map(\.sets) }, allocated.map { $0.map(\.prescribedSets) })
                     let allocatedFindings = service.validateWeekResponse(delivered, dayStart: 22, dayEnd: 28,
                         previousWeekDays: weeks[2].days, blueprint: blueprint, expectedExerciseMenus: allocated)
+                    XCTAssertEqual(admission, .deloadPolicy)
+                    XCTAssertNotEqual(signature(allocated), signature(candidate), "Fresh allocation disagreed in the measured baseline")
+                    XCTAssertTrue(allocatedFindings.isEmpty, "\(allocatedFindings)")
                     report.append("ROW_APPEARANCE_REALLOCATION day=\(day + 1) name=\(entry.name) admission=\(admission) exactCandidatePreserved=\(signature(allocated) == signature(candidate)) findings=\(allocatedFindings) menus=\(signature(allocated)); not permission to exceed deload ceiling")
                 }
                 XCTAssertEqual(signature(planned.menus), original)
             }
         }
-        XCTAssertGreaterThan(appearanceTrials, 0)
+        XCTAssertEqual(appearanceTrials, 4, "Measured catalog scope; changed candidates require review")
+        XCTAssertFalse(appearanceLimitReached)
         report.append("ROW_APPEARANCE_SUMMARY tested=\(appearanceTrials) limitReached=\(appearanceLimitReached); finite catalog experiment, not proof no whole-plan solution exists")
         var crossCatalogTrials = 0
         let upperVertical = vertical.filter { service.canonicalTrainingStyle(blueprint.dayPlans[$0.0].style) == "Upper" }
@@ -970,10 +985,39 @@ final class UserJourneySimulationTests: XCTestCase {
                 let newLats = service.focusStimulusKind(exerciseName: alternative.name, muscleTarget: alternative.target, focusArea: "Lats")
                 let findings = service.validateWeekResponse(output, dayStart: 22, dayEnd: 28,
                     previousWeekDays: weeks[2].days, blueprint: blueprint, expectedExerciseMenus: candidate)
+                // Pin the measured candidate's limits; this is not production eligibility.
+                XCTAssertEqual(old.exerciseName, "Neutral-Grip Lat Pulldown")
+                XCTAssertEqual(alternative.name, "Single-Arm Dumbbell Row")
+                XCTAssertEqual(strict, .rejected(.catalog))
+                XCTAssertFalse(protected)
+                XCTAssertFalse(retained)
+                XCTAssertFalse(pain)
+                XCTAssertTrue(styleMatch)
+                XCTAssertNil(dayPlan.focusArea)
+                XCTAssertEqual(oldLats, .prime)
+                XCTAssertEqual(newLats, .secondary)
+                XCTAssertEqual(signature(ordered), signature(candidate))
+                XCTAssertEqual(dose, .dosePreserved(improvesMaintenanceMinimum: false))
+                XCTAssertTrue(findings.isEmpty, "\(findings)")
                 report.append("ROW_CROSS_CATALOG_TRIAL day=\(location.0 + 1) slot=\(location.1 + 1) old=\(old.exerciseName) new=\(alternative.name) sets=\(old.prescribedSets) strictPreflight=\(strict) protected=\(protected) retained=\(retained) painExcluded=\(pain) historySupplied=\(planned.exerciseHistory != nil) styleMatch=\(styleMatch) focusArea=\(focusArea) dayFocusKind=\(oldKind)->\(newKind) latsKind=\(oldLats)->\(newLats) exactOrderPreserved=\(signature(ordered) == signature(candidate)) ordered=\(signature(ordered)) dose=\(dose) findings=\(findings) candidate=\(signature(candidate)); validator cleanliness is not eligibility approval")
+                var admission: ClaudeService.RoleFloorAdmission = .unassessed
+                let allocated = service.allocateWeeklySetPrescription(candidate, blueprint: blueprint, weekNumber: 4,
+                    lockedPrefixCounts: planned.lockedPrefixCounts, roleFloorAdmissionReport: { admission = $0 }, publishConflictLogs: false)
+                let reallocatedOutput = service.buildProceduralWeek(weekNumber: 4, dayStart: 22, dayEnd: 28,
+                    splitType: intent.splitRecommendation, programName: "Cross-catalog row reallocation",
+                    trainingIntent: intent, blueprint: blueprint, previousWeekDays: weeks[2].days, exerciseMenus: allocated)
+                XCTAssertEqual(reallocatedOutput.days.map { $0.exercises.map(\.exerciseName) }, allocated.map { $0.map(\.exerciseName) })
+                XCTAssertEqual(reallocatedOutput.days.map { $0.exercises.map(\.muscleTarget) }, allocated.map { $0.map(\.muscleTarget) })
+                XCTAssertEqual(reallocatedOutput.days.map { $0.exercises.map(\.sets) }, allocated.map { $0.map(\.prescribedSets) })
+                let reallocatedDose = service.compareAllocatedDoseOnly(allocated, baseline: baseline, blueprint: blueprint, weekNumber: 4)
+                let reallocatedFindings = service.validateWeekResponse(reallocatedOutput, dayStart: 22, dayEnd: 28,
+                    previousWeekDays: weeks[2].days, blueprint: blueprint, expectedExerciseMenus: allocated)
+                report.append("ROW_CROSS_CATALOG_REALLOCATION admission=\(admission) exactCandidatePreserved=\(signature(allocated) == signature(candidate)) dose=\(reallocatedDose) findings=\(reallocatedFindings) menus=\(signature(allocated)); NOT_ADOPTED")
                 XCTAssertEqual(signature(planned.menus), original)
             }
         }
+        XCTAssertEqual(upperVertical.count, 1)
+        XCTAssertEqual(crossCatalogTrials, 1)
         report.append("ROW_CROSS_CATALOG_SUMMARY sourceSlots=\(upperVertical.count) tested=\(crossCatalogTrials)\(crossCatalogTrials == 0 ? "; no matching source/candidate found" : "")")
         XCTAssertEqual(signature(planned.menus), original)
         try writeArtifactIfRequested(report.joined(separator: "\n"), environmentKey: "TRANSFORM_ROW_TRIALS_OUTPUT")
