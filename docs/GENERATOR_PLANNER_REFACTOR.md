@@ -2,6 +2,45 @@
 
 ## Active roadmap and audit checkpoints (2026-09-13)
 
+### Core-placement acceptance boundary (2026-09-15; execution pending)
+
+`finalizeCoreRelocation` remains non-live. It evaluates one explicitly selected
+proposal, buffers fresh allocation under the candidate blueprint, requires exact
+prescription preservation and admitted role floors, checks the preceding week's
+ordinal calendar, and refuses to shorten the existing core interval relative to
+the unchanged baseline when a preceding core session exists. This relative rule
+algebraically reduces to not moving the first core session earlier; varying the
+preceding core day intentionally cannot change the verdict. It imposes no absolute
+minimum recovery interval. It compares complete procedural-week findings.
+Acceptance requires fewer messages without increasing any message's occurrence
+count; rejection
+returns the input plan, messages and receipts together. This is not exhaustive
+search, physical recovery proof, or full AI/program-wrapper validation. It does
+not restore a session-time gate or change fractional volume policy.
+
+The existing core journey now exercises this boundary in weeks one through three,
+compares accepted receipts to a separate allocation, and checks observer parity,
+history/retention refusal, malformed prior-week rollback and rejected allocation
+verification. Independent review requested a mirrored-session control: a proposal
+can preserve cyclic spacing while shortening the actual previous-week boundary.
+That refusal test and a changed-prior-day invariance test are added. A separate
+delivery-verification seam tests mismatched delivery and unchanged findings;
+those late failures are not forced end-to-end through the finalizer. Claude's
+first review requested changes: its algebra observation is correct, but cancellation
+is intentional for a relative rule, not evidence of a missing minimum-gap policy.
+An independent second agent agreed; wording and tests now pin the narrower claim.
+Repeated-message counts are preserved rather than collapsed into sets.
+Claude's revised review still requested changes for missing live wiring and an
+executed allocation-disagreement example. Live wiring is the next isolated change,
+not an indefinite endpoint. The test now lowers the source core prescription to its
+legal floor and requires the real fresh allocator to disagree, with complete
+rollback; this new fixture is pending execution, not evidence of a passed refusal.
+The strict finding comparison intentionally rejects a problem moved to another day.
+The relative gap screen is not applicable when the prior week contains no core.
+Windows syntax checks passed; runtime assertions and complete
+artifact comparisons still require CI. Live adoption and the later roadmap stages
+remain unfinished.
+
 ### Six-exercise core-placement ceiling (2026-09-15; verified experiment `2a5d380`)
 
 [Generator run 35040772399](https://github.com/Pulpers859/Transform/actions/runs/35040772399)

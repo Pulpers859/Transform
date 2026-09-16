@@ -461,11 +461,84 @@ final class UserJourneySimulationTests: XCTestCase {
         XCTAssertEqual(service.compareAllocatedDoseOnly(candidate, baseline: baseline, blueprint: declaredBlueprint,
             weekNumber: 1), .dosePreserved(improvesMaintenanceMinimum: false))
         var declaredAdmission: ClaudeService.RoleFloorAdmission = .unassessed
+        var declaredReceipts: [SetFundingObservation] = []
         let declaredAllocation = service.allocateWeeklySetPrescription(candidate, blueprint: declaredBlueprint,
             weekNumber: 1, lockedPrefixCounts: planned.lockedPrefixCounts,
+            setFundingReport: { declaredReceipts = $0 },
             roleFloorAdmissionReport: { declaredAdmission = $0 }, publishConflictLogs: false)
         XCTAssertEqual(declaredAdmission, .admitted)
         XCTAssertEqual(signature(declaredAllocation), signature(candidate))
+        let baselineMessages = ["Baseline diagnostic retained on refusal"]
+        let baselineReceipts = [SetFundingObservation(dayIndex: lower, exerciseIndex: slot,
+            exerciseName: moved.exerciseName, muscleTarget: moved.muscleTarget,
+            prescribedSets: moved.prescribedSets, rejection: nil)]
+        func finalize(_ input: ClaudeService.SubstitutionPlanningBaseline,
+            previous: [WorkoutDayResponse]? = nil, collect: Bool = true) -> ClaudeService.CoreRelocationFinalization {
+            service.finalizeCoreRelocation(input, sourceDay: lower, sourceSlot: slot,
+                destinationDay: pull, trainingIntent: intent, previousWeekDays: previous,
+                baselineMessages: baselineMessages, baselineReceipts: baselineReceipts, collectFunding: collect)
+        }
+        let finalized = finalize(planned)
+        XCTAssertEqual(finalized.decision, .adopted)
+        XCTAssertEqual(finalized.plan.blueprint, declaredBlueprint)
+        XCTAssertEqual(signature(finalized.plan.menus), signature(candidate))
+        XCTAssertEqual(finalized.plan.roleFloorAdmission, .admitted)
+        XCTAssertEqual(finalized.receipts, declaredReceipts, "Accepted receipts must use new day/slot positions")
+        XCTAssertFalse(finalized.messages.contains(baselineMessages[0]))
+        let withoutObserver = finalize(planned, collect: false)
+        XCTAssertEqual(withoutObserver.decision, finalized.decision)
+        XCTAssertEqual(withoutObserver.plan.blueprint, finalized.plan.blueprint)
+        XCTAssertEqual(signature(withoutObserver.plan.menus), signature(finalized.plan.menus))
+        XCTAssertEqual(withoutObserver.messages, finalized.messages)
+        XCTAssertTrue(withoutObserver.receipts.isEmpty)
+        report.append("CORE_ACCEPTANCE_BOUNDARY decision=\(finalized.decision) receiptParity=\(finalized.receipts == declaredReceipts) observerParity=\(signature(withoutObserver.plan.menus) == signature(finalized.plan.menus)); test invocation only, no live adoption")
+        func expectRollback(_ input: ClaudeService.SubstitutionPlanningBaseline,
+            previous: [WorkoutDayResponse]? = nil, reason: ClaudeService.CoreRelocationDecision,
+            file: StaticString = #filePath, line: UInt = #line) {
+            let refused = finalize(input, previous: previous)
+            XCTAssertEqual(refused.decision, reason, file: file, line: line)
+            XCTAssertEqual(refused.plan.blueprint, input.blueprint, file: file, line: line)
+            XCTAssertEqual(signature(refused.plan.menus), signature(input.menus), file: file, line: line)
+            XCTAssertEqual(refused.plan.roleFloorAdmission, input.roleFloorAdmission, file: file, line: line)
+            XCTAssertEqual(refused.plan.lockedPrefixCounts, input.lockedPrefixCounts, file: file, line: line)
+            XCTAssertEqual(refused.plan.retainedKeysByDay, input.retainedKeysByDay, file: file, line: line)
+            XCTAssertEqual(refused.messages, baselineMessages, file: file, line: line)
+            XCTAssertEqual(refused.receipts, baselineReceipts, file: file, line: line)
+        }
+        expectRollback(variant(history: pain), reason: .proposal(.painExcluded))
+        expectRollback(variant(retained: retained), reason: .proposal(.protectedSource))
+        expectRollback(planned, previous: before.days, reason: .invalidPreviousWeek)
+        var lowerCoreFloor = baseline
+        lowerCoreFloor[lower][slot].prescribedSets = service.minimumSetFloor(
+            forExerciseName: moved.exerciseName, muscleTarget: moved.muscleTarget)
+        XCTAssertLessThan(lowerCoreFloor[lower][slot].prescribedSets, moved.prescribedSets)
+        let floorBaseline = variant(menus: lowerCoreFloor)
+        guard case .candidate(let floorProposal) = service.proposeCoreRelocationTrial(floorBaseline,
+            sourceDay: lower, sourceSlot: slot, destinationDay: pull, trainingIntent: intent) else {
+            return XCTFail("Allocation-change control must first pass proposal checks")
+        }
+        var floorAdmission: ClaudeService.RoleFloorAdmission = .unassessed
+        let refundedFloor = service.allocateWeeklySetPrescription(floorProposal.menus,
+            blueprint: floorProposal.blueprint, weekNumber: 1, lockedPrefixCounts: floorProposal.lockedPrefixCounts,
+            roleFloorAdmissionReport: { floorAdmission = $0 }, publishConflictLogs: false)
+        XCTAssertEqual(floorAdmission, .admitted)
+        XCTAssertNotEqual(signature(refundedFloor), signature(floorProposal.menus),
+            "This control must make the real allocator change the proposed dose")
+        expectRollback(floorBaseline, reason: .allocationChanged)
+        XCTAssertEqual(service.verifyCoreRelocationAllocation(candidate, admission: .unassessed,
+            proposed: proposed), .finalNotAdmitted(.unassessed))
+        var alteredAllocation = candidate
+        alteredAllocation[pull][alteredAllocation[pull].count - 1].prescribedSets -= 1
+        XCTAssertEqual(service.verifyCoreRelocationAllocation(alteredAllocation, admission: .admitted,
+            proposed: proposed), .allocationChanged)
+        let originalWeek = WorkoutWeekResponse(weekSummary: "Control", days: before.days)
+        let proposedWeek = WorkoutWeekResponse(weekSummary: "Control", days: declaredAfter.days)
+        XCTAssertNil(service.verifyCoreRelocationDelivery(original: originalWeek, candidate: proposedWeek,
+            baseline: planned, proposed: proposed, previousWeekDays: nil))
+        XCTAssertEqual(service.verifyCoreRelocationDelivery(original: originalWeek, candidate: originalWeek,
+            baseline: planned, proposed: proposed, previousWeekDays: nil), .deliveryMismatch)
+        XCTAssertEqual(service.verifyCoreRelocationDelivery(original: originalWeek, candidate: originalWeek,
+            baseline: planned, proposed: planned, previousWeekDays: nil), .findingsNotImproved)
         for day in [lower, pull] {
             XCTAssertLessThanOrEqual(service.estimatedSessionMinutes(for: declaredAfter.days[day]), declaredDays[day].targetSessionMinutes)
             XCTAssertLessThanOrEqual(service.estimatedDayFatigue(for: declaredAfter.days[day].exercises), limits.fatigue[day])
@@ -506,10 +579,85 @@ final class UserJourneySimulationTests: XCTestCase {
             XCTAssertEqual(signature(relocated.menus).flatMap { $0 }.sorted(), signature(next.menus).flatMap { $0 }.sorted())
             XCTAssertEqual(service.compareAllocatedDoseOnly(relocated.menus, baseline: next.menus,
                 blueprint: relocated.blueprint, weekNumber: week), .dosePreserved(improvesMaintenanceMinimum: false))
-            var nextAdmission: ClaudeService.RoleFloorAdmission = .unassessed
-            let reallocated = service.allocateWeeklySetPrescription(relocated.menus, blueprint: relocated.blueprint,
-                weekNumber: week, lockedPrefixCounts: relocated.lockedPrefixCounts,
-                roleFloorAdmissionReport: { nextAdmission = $0 }, publishConflictLogs: false)
+            let nextFinalized = service.finalizeCoreRelocation(next, sourceDay: lower,
+                sourceSlot: nextSlot, destinationDay: pull, trainingIntent: intent,
+                previousWeekDays: previousExperimentalDays, baselineMessages: [], baselineReceipts: [],
+                collectFunding: true)
+            XCTAssertEqual(nextFinalized.decision, .adopted)
+            XCTAssertEqual(nextFinalized.plan.blueprint, relocated.blueprint)
+            if week == 2 {
+                XCTAssertEqual(nextSlot, slot, "Rollback helper must address the same last source slot")
+                expectRollback(next, reason: .invalidPreviousWeek)
+                expectRollback(next, previous: Array(previousExperimentalDays.dropLast()), reason: .invalidPreviousWeek)
+                expectRollback(next, previous: Array(previousExperimentalDays.reversed()), reason: .invalidPreviousWeek)
+                // Mirror the two sessions: cyclic spacing still passes, but the first
+                // core day is now earlier relative to the actual previous delivery.
+                func mirrored<T>(_ values: [T]) -> [T] {
+                    var copy = values
+                    copy.swapAt(lower, pull)
+                    return copy
+                }
+                let mirroredDays = mirrored(next.blueprint.dayPlans).enumerated().map { index, day in
+                    ClaudeService.BlueprintDayPlan(dayIndex: index + 1, style: day.style,
+                        focusArea: day.focusArea, supportAreas: day.supportAreas,
+                        targetFatigueCap: day.targetFatigueCap, targetSessionMinutes: day.targetSessionMinutes,
+                        targetPrioritySlots: day.targetPrioritySlots, emphasisPatterns: day.emphasisPatterns,
+                        isRestDay: day.isRestDay)
+                }
+                let nb = next.blueprint
+                let mirroredBlueprint = ClaudeService.ProgramBlueprint(evidenceVersion: nb.evidenceVersion,
+                    splitRecommendation: nb.splitRecommendation, weeklyTrainingDays: nb.weeklyTrainingDays,
+                    priorityAllocations: nb.priorityAllocations, dayPlans: mirroredDays,
+                    topLeverageChange: nb.topLeverageChange, posturalFocus: nb.posturalFocus,
+                    injuryRiskFocus: nb.injuryRiskFocus, programmingNotes: nb.programmingNotes, calibration: nb.calibration)
+                let mirroredPlan = ClaudeService.SubstitutionPlanningBaseline(menus: mirrored(next.menus),
+                    blueprint: mirroredBlueprint, weekNumber: week,
+                    lockedPrefixCounts: mirrored(next.lockedPrefixCounts), retainedKeysByDay: mirrored(next.retainedKeysByDay),
+                    exerciseHistory: next.exerciseHistory, selectionFocusIntents: mirrored(next.selectionFocusIntents),
+                    roleFloorAdmission: next.roleFloorAdmission)
+                guard case .candidate = service.proposeCoreRelocationTrial(mirroredPlan,
+                    sourceDay: pull, sourceSlot: nextSlot, destinationDay: lower, trainingIntent: intent) else {
+                    return XCTFail("Boundary-refusal control must first pass within-week proposal checks")
+                }
+                let boundaryRefusal = service.finalizeCoreRelocation(mirroredPlan, sourceDay: pull,
+                    sourceSlot: nextSlot, destinationDay: lower, trainingIntent: intent,
+                    previousWeekDays: previousExperimentalDays, baselineMessages: baselineMessages,
+                    baselineReceipts: baselineReceipts, collectFunding: true)
+                XCTAssertEqual(boundaryRefusal.decision, .boundarySpacing)
+                XCTAssertEqual(signature(boundaryRefusal.plan.menus), signature(mirroredPlan.menus))
+                XCTAssertEqual(boundaryRefusal.plan.blueprint, mirroredBlueprint)
+                XCTAssertEqual(boundaryRefusal.messages, baselineMessages)
+                XCTAssertEqual(boundaryRefusal.receipts, baselineReceipts)
+                // A relative no-shortening rule intentionally has the same verdict
+                // regardless of which preceding day held the last core session.
+                let previousLastIndex = try XCTUnwrap(previousExperimentalDays.indices.last { day in
+                    previousExperimentalDays[day].exercises.contains {
+                        service.proceduralExerciseRole(for: $0.exerciseName, muscleTarget: $0.muscleTarget) == .core
+                    }
+                })
+                let previousRestIndex = try XCTUnwrap(previousExperimentalDays.indices.last {
+                    previousExperimentalDays[$0].isRestDay
+                })
+                XCTAssertNotEqual(previousLastIndex, previousRestIndex)
+                var shiftedPrevious = previousExperimentalDays
+                shiftedPrevious.swapAt(previousLastIndex, previousRestIndex)
+                shiftedPrevious = shiftedPrevious.enumerated().map { index, day in
+                    WorkoutDayResponse(dayNumber: previousExperimentalDays[index].dayNumber,
+                        dayName: day.dayName, muscleGroups: day.muscleGroups, isRestDay: day.isRestDay,
+                        notes: day.notes, exercises: day.exercises)
+                }
+                let shiftedRefusal = service.finalizeCoreRelocation(mirroredPlan, sourceDay: pull,
+                    sourceSlot: nextSlot, destinationDay: lower, trainingIntent: intent,
+                    previousWeekDays: shiftedPrevious, baselineMessages: baselineMessages,
+                    baselineReceipts: baselineReceipts, collectFunding: true)
+                XCTAssertEqual(shiftedRefusal.decision, .boundarySpacing)
+                XCTAssertEqual(signature(shiftedRefusal.plan.menus), signature(mirroredPlan.menus))
+                XCTAssertEqual(shiftedRefusal.receipts, baselineReceipts)
+                chain.append("WEEK \(week) MIRRORED_BOUNDARY_REFUSAL \(boundaryRefusal.decision) completeBaselineRetained=true")
+            }
+            let nextAdmission = nextFinalized.plan.roleFloorAdmission
+            let reallocated = nextFinalized.plan.menus
+            chain.append("WEEK \(week) CORE_ACCEPTANCE_BOUNDARY \(nextFinalized.decision); test invocation only")
             XCTAssertEqual(nextAdmission, .admitted)
             XCTAssertEqual(signature(reallocated), signature(relocated.menus))
             let dayStart = (week - 1) * 7 + 1, dayEnd = week * 7

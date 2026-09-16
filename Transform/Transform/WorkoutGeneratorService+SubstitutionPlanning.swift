@@ -1,6 +1,141 @@
 import Foundation
 
 extension ClaudeService {
+    enum CoreRelocationDecision: Equatable {
+        case proposal(CoreRelocationRefusal)
+        case invalidPreviousWeek, boundarySpacing, allocationChanged, deliveryMismatch, findingsNotImproved
+        case finalNotAdmitted(RoleFloorAdmission)
+        case adopted
+    }
+
+    struct CoreRelocationFinalization {
+        let plan: SubstitutionPlanningBaseline
+        let messages: [String]
+        let receipts: [SetFundingObservation]
+        let decision: CoreRelocationDecision
+    }
+
+    // A narrow verification seam, not an allocator override. A fresh reservation must
+    // preserve every proposed appearance and prescription before its receipts can publish.
+    func verifyCoreRelocationAllocation(_ allocated: [[PreSelectedExercise]],
+        admission: RoleFloorAdmission, proposed: SubstitutionPlanningBaseline) -> CoreRelocationDecision? {
+        guard admission == .admitted else { return .finalNotAdmitted(admission) }
+        guard allocated.count == proposed.menus.count,
+              zip(allocated, proposed.menus).allSatisfy({ actual, expected in
+                  actual.count == expected.count && zip(actual, expected).allSatisfy { lhs, rhs in
+                      lhs.exerciseName == rhs.exerciseName && lhs.muscleTarget == rhs.muscleTarget
+                          && lhs.movementPattern == rhs.movementPattern && lhs.role == rhs.role
+                          && lhs.prescribedSets == rhs.prescribedSets
+                  }
+              }) else { return .allocationChanged }
+        return nil
+    }
+
+    func verifyCoreRelocationDelivery(original: WorkoutWeekResponse, candidate: WorkoutWeekResponse,
+        baseline: SubstitutionPlanningBaseline, proposed: SubstitutionPlanningBaseline,
+        previousWeekDays: [WorkoutDayResponse]?) -> CoreRelocationDecision? {
+        let dayStart = (baseline.weekNumber - 1) * 7 + 1
+        func matches(_ output: WorkoutWeekResponse, _ menus: [[PreSelectedExercise]]) -> Bool {
+            output.days.count == 7 && menus.count == 7
+                && output.days.map(\.dayNumber) == Array(dayStart...(dayStart + 6))
+                && zip(output.days, menus).allSatisfy { day, menu in
+                    day.exercises.count == menu.count && zip(day.exercises, menu).allSatisfy { lhs, rhs in
+                        lhs.exerciseName == rhs.exerciseName && lhs.muscleTarget == rhs.muscleTarget
+                            && lhs.sets == rhs.prescribedSets
+                    }
+                }
+        }
+        guard matches(original, baseline.menus), matches(candidate, proposed.menus) else {
+            return .deliveryMismatch
+        }
+        func findings(_ output: WorkoutWeekResponse, _ plan: SubstitutionPlanningBaseline) -> [String] {
+            validateWeekResponse(output, dayStart: dayStart, dayEnd: dayStart + 6,
+                previousWeekDays: previousWeekDays, blueprint: plan.blueprint, expectedExerciseMenus: plan.menus)
+        }
+        let oldIssues = findings(original, baseline), newIssues = findings(candidate, proposed)
+        let oldCounts = Dictionary(grouping: oldIssues, by: { $0 }).mapValues(\.count)
+        let newCounts = Dictionary(grouping: newIssues, by: { $0 }).mapValues(\.count)
+        guard newIssues.count < oldIssues.count,
+              newCounts.allSatisfy({ message, count in count <= oldCounts[message, default: 0] }) else {
+            return .findingsNotImproved
+        }
+        return nil
+    }
+
+    // Non-live boundary: returns a complete chosen plan but has no production caller.
+    // All speculative messages/receipts remain private until the entire candidate passes.
+    func finalizeCoreRelocation(_ baseline: SubstitutionPlanningBaseline,
+        sourceDay: Int, sourceSlot: Int, destinationDay: Int,
+        trainingIntent: TrainingIntentPlan, previousWeekDays: [WorkoutDayResponse]?,
+        baselineMessages: [String], baselineReceipts: [SetFundingObservation], collectFunding: Bool
+    ) -> CoreRelocationFinalization {
+        func retained(_ decision: CoreRelocationDecision) -> CoreRelocationFinalization {
+            .init(plan: baseline, messages: baselineMessages, receipts: baselineReceipts, decision: decision)
+        }
+        let trial = proposeCoreRelocationTrial(baseline, sourceDay: sourceDay, sourceSlot: sourceSlot,
+            destinationDay: destinationDay, trainingIntent: trainingIntent)
+        guard case .candidate(let proposed) = trial else {
+            if case .refused(let reason) = trial { return retained(.proposal(reason)) }
+            return retained(.proposal(.invalidContext))
+        }
+        let week = baseline.weekNumber
+        let dayStart = (week - 1) * 7 + 1
+        let previous: [WorkoutDayResponse]?
+        if week == 1 {
+            guard previousWeekDays?.isEmpty ?? true else { return retained(.invalidPreviousWeek) }
+            previous = nil
+        } else {
+            guard let days = previousWeekDays, days.count == 7,
+                  days.map(\.dayNumber) == Array((dayStart - 7)..<dayStart),
+                  days.allSatisfy({ $0.isRestDay == $0.exercises.isEmpty }) else {
+                return retained(.invalidPreviousWeek)
+            }
+            previous = days
+        }
+        func firstCore(_ menus: [[PreSelectedExercise]]) -> Int? {
+            menus.indices.first { day in menus[day].contains {
+                proceduralExerciseRole(for: $0.exerciseName, muscleTarget: $0.muscleTarget) == .core
+            } }.map { dayStart + $0 }
+        }
+        if let previousLast = previous?.last(where: { day in day.exercises.contains {
+            proceduralExerciseRole(for: $0.exerciseName, muscleTarget: $0.muscleTarget) == .core
+        } })?.dayNumber {
+            // Relative nonregression only: previousLast cancels algebraically. Moving
+            // the prior session cannot change this verdict. No minimum recovery gap
+            // is imposed or established by preserving the unchanged plan's interval.
+            guard let oldFirst = firstCore(baseline.menus), let newFirst = firstCore(proposed.menus),
+                  newFirst - previousLast >= oldFirst - previousLast else { return retained(.boundarySpacing) }
+        }
+
+        var messages: [String] = []
+        var receipts: [SetFundingObservation] = []
+        var admission: RoleFloorAdmission = .unassessed
+        let observer: (([SetFundingObservation]) -> Void)? = collectFunding ? { receipts = $0 } : nil
+        let allocated = allocateWeeklySetPrescription(proposed.menus, blueprint: proposed.blueprint,
+            weekNumber: week, lockedPrefixCounts: proposed.lockedPrefixCounts,
+            appearancePlanningReport: { messages.append($0) }, setFundingReport: observer,
+            roleFloorAdmissionReport: { admission = $0 }, publishConflictLogs: false)
+        if let refusal = verifyCoreRelocationAllocation(allocated, admission: admission, proposed: proposed) {
+            return retained(refusal)
+        }
+        func delivered(_ menus: [[PreSelectedExercise]], _ blueprint: ProgramBlueprint) -> WorkoutWeekResponse {
+            // Explicit menus bypass legacy repair and do not invoke menu planning again.
+            buildProceduralWeek(weekNumber: week, dayStart: dayStart, dayEnd: dayStart + 6,
+                splitType: trainingIntent.splitRecommendation, programName: "Core relocation verification",
+                trainingIntent: trainingIntent, blueprint: blueprint, previousWeekDays: previous,
+                exerciseMenus: menus)
+        }
+        let originalOutput = delivered(baseline.menus, baseline.blueprint)
+        let candidateOutput = delivered(allocated, proposed.blueprint)
+        if let refusal = verifyCoreRelocationDelivery(original: originalOutput, candidate: candidateOutput,
+            baseline: baseline, proposed: proposed, previousWeekDays: previous) { return retained(refusal) }
+        let plan = SubstitutionPlanningBaseline(menus: allocated, blueprint: proposed.blueprint,
+            weekNumber: week, lockedPrefixCounts: proposed.lockedPrefixCounts,
+            retainedKeysByDay: proposed.retainedKeysByDay, exerciseHistory: proposed.exerciseHistory,
+            selectionFocusIntents: proposed.selectionFocusIntents, roleFloorAdmission: admission)
+        return .init(plan: plan, messages: messages, receipts: receipts, decision: .adopted)
+    }
+
     enum CoreRelocationRefusal: Equatable {
         case invalidContext, unsupportedWeek, baselineNotAdmitted, sourcePlacement, receiverCeiling, receiverSize
         case protectedSource, painExcluded, duplicateIdentity, exposureLoss, spacingChange, doseChange, orderChange
