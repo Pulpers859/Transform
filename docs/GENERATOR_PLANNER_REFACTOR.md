@@ -2,6 +2,10 @@
 
 ## Owner policy decisions and research interpretation (2026-09-16)
 
+New owner workout reviewed: see [September 16 evidence and bounded correction](GENERATOR_OWNER_REVIEW_2026-09-16.md).
+It contains a fly; rowing balance and press concentration remain review cases.
+Lower-focus classification correction is under validation, not yet whole-plan proof.
+
 This section supersedes older statements that these owner answers are pending.
 It records policy and implementation acceptance criteria, not completed code changes.
 

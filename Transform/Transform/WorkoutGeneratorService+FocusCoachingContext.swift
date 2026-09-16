@@ -123,6 +123,16 @@ extension ClaudeService {
             if containsAny(combinedText, keywords: ["curl", "pressdown", "extension", "skull crusher", "close-grip", "jm press", "hammer curl"]) {
                 return .prime
             }
+        case let value where containsPriorityPhrase(in: value,
+            keywords: ["hamstring", "hamstrings", "glute", "glutes", "gluteal", "gluteus", "quad", "quads", "quadriceps"]):
+            // Match the requested muscle against declared metadata, as directSetCredit does.
+            // Expanding both sides bridges distinct muscles through umbrella labels.
+            // FocusCreditBoundaryTests pins primary, secondary and unrelated lower-body cases.
+            let declaredPrimary = Set(metadata.primaryAreas.map(normalizedPriorityText))
+            let declaredSecondary = Set(metadata.secondaryAreas.map(normalizedPriorityText))
+            if !focusAliases.isDisjoint(with: declaredPrimary) { return .prime }
+            if !focusAliases.isDisjoint(with: declaredSecondary) { return .secondary }
+            return .none
         default:
             break
         }

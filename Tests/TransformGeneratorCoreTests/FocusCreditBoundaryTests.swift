@@ -22,9 +22,7 @@ final class FocusCreditBoundaryTests: XCTestCase {
         }
     }
 
-    // Explicit unresolved defects, not acceptance of the restored classifier.
-    // Strict expected failures force removal/reassessment when a future fix lands.
-    func testOpenHipThrustFocusCreditDisagreesWithExplicitMetadata() {
+    func testHipThrustFocusCreditRespectsExplicitMetadata() {
         let name = "Barbell Hip Thrust"
         let metadata = service.exerciseMetadata(forExerciseName: name, muscleTarget: "Glutes")
         XCTAssertEqual(metadata.primaryAreas, ["Glutes"])
@@ -33,9 +31,47 @@ final class FocusCreditBoundaryTests: XCTestCase {
             tempo: "", restSeconds: 0, notes: "", muscleTarget: "Glutes")
         XCTAssertEqual(service.directSetCredit(for: exercise, area: "Hamstrings"), 0)
         XCTAssertEqual(service.directSetCredit(for: exercise, area: "Glutes"), 3)
-        XCTExpectFailure("OPEN: bilateral umbrella aliases promote secondary Hamstrings to prime; rejected fix f54f3b4 changed whole plans.") {
-            XCTAssertEqual(service.focusStimulusKind(exerciseName: name, muscleTarget: "Glutes", focusArea: "Hamstrings"), .secondary)
+        XCTAssertEqual(service.focusStimulusKind(exerciseName: name, muscleTarget: "Glutes", focusArea: "Hamstrings"), .secondary)
+    }
+
+    func testNamedLowerFocusDoesNotBridgeThroughUmbrellaAliases() {
+        let cases: [(String, String, [ClaudeService.FocusStimulusKind])] = [
+            ("Barbell Hip Thrust", "Glutes", [.prime, .secondary, .none]),
+            ("Single-Leg Hip Thrust", "Glutes", [.prime, .secondary, .none]),
+            ("Seated Leg Curl", "Hamstrings", [.none, .prime, .none]),
+            ("Machine Leg Extension", "Quads", [.none, .none, .prime]),
+            ("Barbell Romanian Deadlift", "Hamstrings", [.secondary, .prime, .none]),
+            ("Leg Press", "Quads", [.secondary, .none, .prime]),
+            ("Dumbbell Bulgarian Split Squat", "Quads/Glutes", [.prime, .none, .prime]),
+            // Explicit composite primary metadata retains its existing direct-credit meaning.
+            ("Trap Bar Deadlift", "Quads", [.prime, .prime, .prime])
+        ]
+        for (name, target, expected) in cases {
+            for (index, focus) in ["Glutes", "Hamstrings", "Quads"].enumerated() {
+                XCTAssertEqual(service.focusStimulusKind(exerciseName: name, muscleTarget: target,
+                    focusArea: focus), expected[index], "\(name), focus \(focus)")
+            }
         }
+    }
+
+    func testLowerFocusVariantsRetainQuerySideAliasContract() {
+        for focus in ["Hamstring", "Hamstrings", "Hamstring development"] {
+            XCTAssertEqual(service.focusStimulusKind(exerciseName: "Barbell Hip Thrust",
+                muscleTarget: "Glutes", focusArea: focus), .secondary, focus)
+        }
+        for focus in ["Glute", "Glutes", "Glute development"] {
+            XCTAssertEqual(service.focusStimulusKind(exerciseName: "Seated Leg Curl",
+                muscleTarget: "Hamstrings", focusArea: focus), .none, focus)
+        }
+        for focus in ["Quad", "Quads", "Quadriceps development"] {
+            XCTAssertEqual(service.focusStimulusKind(exerciseName: "Barbell Hip Thrust",
+                muscleTarget: "Glutes", focusArea: focus), .none, focus)
+        }
+        // These are existing query aliases, not newly introduced composite-union semantics.
+        XCTAssertEqual(service.focusStimulusKind(exerciseName: "Dumbbell Bulgarian Split Squat",
+            muscleTarget: "Quads/Glutes", focusArea: "Quads/Glutes"), .prime)
+        XCTAssertEqual(service.focusStimulusKind(exerciseName: "Trap Bar Deadlift",
+            muscleTarget: "Quads", focusArea: "Posterior Chain"), .prime)
     }
 
     func testPunctuationVariantsOfPullApartRemainSupportOnlyForRelatedFocus() {
@@ -74,5 +110,9 @@ final class FocusCreditBoundaryTests: XCTestCase {
             muscleTarget: "Upper Chest", focusArea: "Upper Chest / Front Deltoids"), .prime)
         XCTAssertEqual(service.focusStimulusKind(exerciseName: "Cable Face Pull",
             muscleTarget: "Rear Deltoids", focusArea: "Rear Deltoids / Front Deltoids"), .secondary)
+        XCTAssertEqual(service.focusStimulusKind(exerciseName: "Cable Face Pull",
+            muscleTarget: "Rear Deltoids", focusArea: "Rear Deltoids / Hamstrings"), .secondary)
+        XCTAssertEqual(service.focusStimulusKind(exerciseName: "Incline Dumbbell Press",
+            muscleTarget: "Upper Chest", focusArea: "Upper Chest / Glutes"), .prime)
     }
 }
