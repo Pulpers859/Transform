@@ -61,6 +61,91 @@ It records policy and implementation acceptance criteria, not completed code cha
 - Independently audit each behavior-changing batch and compare complete baseline
   workouts before declaring it complete. Device proof remains separate.
 
+### Ordering and recovery contract reconciliation (candidate)
+
+The owner's captured order is deterministic: secondary lifts and accessories shared
+one sorting band, allowing focus to put lateral raises before Machine Incline Press.
+The no-anchor core exception also permitted knee raises before Leg Press. Neither
+requires changing the AI prompt or allowing the AI to rewrite the locked menu.
+
+Two simple alternatives were rejected on inspection: equating every secondary role
+with a compound incorrectly includes Nordic curls and carries; using `exerciseClass`
+inherits another string heuristic that misses dips, lunges and hip thrusts. The
+candidate is an ordering-only main-lift classification using reviewed movement
+families and existing roles, leaving dosage roles and shared metadata unchanged.
+Independent review caught the missing Split Squat family before integration.
+This is a default session-order policy, not a universal anatomical definition.
+Retained prefixes must stay unchanged, and complete-week selection/dose comparisons
+remain required because sorting can influence later planning passes (INC-9).
+
+Recovery fallback already exists in production: missing/stale measured sleep can
+retain explicitly attributed standing caution, but cannot manufacture a measured
+Restricted tier. Added regression cases pin fresh measured precedence and stale
+state with/without standing concern. SLEEP-001 is reconciled with this existing
+behavior rather than making fresh logs mandatory. Evidence version v1_10 records
+the ordering policy, owner-approved fractional funding and recovery clarification.
+Execution and whole-plan comparison are pending; this paragraph is not acceptance.
+
+### Fractional integration findings at `3a62fd0`
+
+Run `35090075800` reported 728 test entries, assertion failures and the 12-minute
+Swift-step timeout; the iOS build passed. Sixteen weeks' delivered prescriptions match
+`490e09b`; four lumbar-profile weeks add one pulldown set each. Only four entire
+evidence objects are identical because funding receipts also change in twelve
+otherwise unchanged prescriptions. Deload also changes
+Machine Shoulder Press 2->3 and Cable Lateral Raise 3->2. All identities/order are
+unchanged, net weekly-set change across the matrix is +4, and the independent
+arithmetic check finds no prescriptions below two sets. Deload vertical/row work
+worsens 7:3->8:3; row balance remains a real unresolved finding.
+
+Quads and Calves remain at 7 against 7.5: the blueprint's focus-session cap is
+still 7.5 (funding limit 7.51). Every Quad top-up projects 8; calf top-ups hit
+either that same session ceiling or the four-set role limit. These caps are not
+rounded or bypassed. The matrix observer now accepts a fractional remainder only
+with independently recomputed role/session arithmetic for EVERY direct-paying
+retained slot, exact matching receipts and no missing or unsupported blockers.
+It still fails six-of-7.5, missing/nil receipts and forged refusal arithmetic;
+it proves no immediate top-up in that menu, not global plan optimality.
+
+The redundant-volume validator still compared raw 7.5 against allowed 8 and is
+aligned to the normal funding ceiling, with integer/above-ceiling controls. The
+captured maintenance snapshot gains the observed third crunch set; its Day 2/4
+expected order separately encodes the new ordering contract and awaits execution.
+Historical core Week 1 positive checks passed, but later current menus no longer
+met the old forced-crowding premise. Historical phase-funded controls retain all
+positive/rollback tests; a separate actual-policy chain permits honest non-adoption
+and checks complete-plan/delivery/diagnostic parity. Neither fabricates crowding.
+The expanded suite receives an 18-minute step/22-minute job ceiling, not a claim
+that generator runtime improved. Actual assertion failures still must be resolved.
+
+Final integrated packet review returned REQUEST CHANGES, not approval. Its
+remaining concerns are retained explicitly: CI/full-output execution is pending;
+the row imbalance is tracked here and the next experiment compares complete
+loading-week alternatives before touching deload. Single-session 7.5 caps are
+intentionally not rounded (the owner's budget condition), while real Lats plans
+and the admitted two-session allocator test demonstrate that rounding is reachable.
+Historical adoption is asserted on funded full plans rather than forcing the
+improved current selector to re-create crowding. Current-chain parity is wiring
+coverage, not an independent proof of quality. Recovery remains the explicit
+owner policy, not an unapproved removal of standing caution. Ordering is a
+reviewed heuristic with hand-authored expected sequences; CI and full prescription
+comparison must still challenge it. Increasing suite timeouts does not fix runtime;
+per-test profiling/CI cost remains a follow-up rather than endlessly raising caps.
+
+Independent packet review returned REQUEST CHANGES. The recovery implementation
+is not new: `git blame` traces the entire fallback and provenance branch to
+`5c462a05` (July 18). The owner explicitly reaffirmed retaining standing caution
+without requiring fresh logs on September 16. No expiry for standing context is
+introduced here; stale standing assessments can therefore continue caution until
+updated or superseded by fresh measurements. That limitation is explicit, not a
+claim that the text measures current sleep. The unrelated-focus/no-main-lift
+ordering control was added, and ambiguous inferred `Pull` is not promoted.
+Catalog-family tests do not certify correctness of all future metadata entries.
+All callers of the changed band signature were searched; only the updated sort
+calls it. Versioning identifies the policy revision, not proof of passed CI or
+owner/device acceptance. The evidence-checker version-mismatch attack was updated
+to v1_10 versus v1_9 and all ten checker attacks passed locally.
+
 ## Added owner report: chest movement variety (2026-09-16)
 
 ### Fractional target implementation candidate (execution pending)

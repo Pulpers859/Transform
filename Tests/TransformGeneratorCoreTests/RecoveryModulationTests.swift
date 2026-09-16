@@ -3,8 +3,8 @@ import XCTest
 
 /// Headless coverage for the sleep-recovery modulation (EvidenceProfile SLEEP-001/SLEEP-002):
 /// the tier decision runs on structured, dated numbers; tier cuts are whole-set caps anchored
-/// to the VOL-001 evidence bands; and missing/stale data yields NO adjustment — never a
-/// silent stale-string influence.
+/// to the VOL-001 evidence bands. Missing/stale measurements do not invent an acute
+/// tier; separately identified standing context may retain constrained caution.
 @MainActor
 final class RecoveryModulationTests: XCTestCase {
 
@@ -71,10 +71,10 @@ final class RecoveryModulationTests: XCTestCase {
         )
     }
 
-    private func blankAnalysis() -> BodyAnalysisResult {
+    private func blankAnalysis(recoveryRisk: String = "") -> BodyAnalysisResult {
         BodyAnalysisResult(
             overallAssessment: "", trainingAssessment: "", nutritionAssessment: "",
-            recoveryRiskAssessment: "", adherenceAssessment: "", analysisLimitations: "",
+            recoveryRiskAssessment: recoveryRisk, adherenceAssessment: "", analysisLimitations: "",
             inputContext: nil, regionBreakdown: [], topLeverageChange: "",
             priorityMuscles: [], workoutRecommendations: [], dietRecommendations: [],
             posturalNotes: "", estimatedBodyFat: "", metabolicHealthNotes: "",
@@ -251,5 +251,28 @@ final class RecoveryModulationTests: XCTestCase {
         )
         XCTAssertTrue(profile.recoveryAudit.contains("no fresh sleep logs"),
                       "The audit must say the tier came from prose fallback: \(profile.recoveryAudit)")
+    }
+
+    func testStaleMeasurementsDoNotEraseStandingCautionOrInventAcuteRestriction() {
+        let stale = SleepRecoveryPolicy.decision(from: state(builtDaysAgo: 5, threeDay: 4.5, underFive: 3))
+        let standing = service.calibrationProfile(
+            from: blankAnalysis(recoveryRisk: "Variable sleep from shift-work."), recoveryDecision: stale)
+        XCTAssertEqual(standing.recoveryTier, .constrained)
+        XCTAssertTrue(standing.recoveryAudit.contains("profile/check-in context"))
+        XCTAssertTrue(standing.recoveryAudit.contains("stale"))
+        let noStandingConcern = service.calibrationProfile(from: blankAnalysis(), recoveryDecision: stale)
+        XCTAssertEqual(noStandingConcern.recoveryTier, .insufficientData)
+        XCTAssertFalse(noStandingConcern.recoveryConstrained)
+    }
+
+    func testFreshMeasuredDecisionTakesPrecedenceOverStandingProse() {
+        let standing = blankAnalysis(recoveryRisk: "Variable sleep from shift-work includes nights under 5 hours.")
+        for measured in [state(), state(sevenDay: 6.4), state(threeDay: 5.2)] {
+            let decision = SleepRecoveryPolicy.decision(from: measured)
+            let profile = service.calibrationProfile(from: standing, recoveryDecision: decision)
+            XCTAssertEqual(profile.recoveryTier, decision.tier)
+            XCTAssertEqual(profile.recoveryAudit, decision.audit)
+            XCTAssertFalse(profile.recoveryAudit.contains("profile/check-in context"))
+        }
     }
 }

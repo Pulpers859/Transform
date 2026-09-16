@@ -546,7 +546,10 @@ extension ClaudeService {
 
         for allocation in blueprint.priorityAllocations {
             let coverage = priorityCoverage(for: allocation, stimulusReport: stimulusReport)
-            guard coverage.directSets > allocation.directSetTarget else { continue }
+            // Match the normal funding gate: a whole set meeting a fractional target from
+            // above is not surplus. Allocated-day exclusions and all other validators retain
+            // their existing rules; the floor-repair allowance is not used here.
+            guard coverage.directSets > normalWeeklyPrioritySetCeiling(for: allocation) else { continue }
 
             let allocatedDays = allocatedDayNumbers(for: allocation, blueprint: blueprint, dayStart: dayStart)
             guard !allocatedDays.contains(day.dayNumber) else { continue }

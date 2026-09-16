@@ -44,31 +44,33 @@ extension ClaudeService {
             .map(\.element)
     }
 
-    /// Where an exercise sits in the session's coarse running order, per EvidenceProfile.md
-    /// ORD-001: anchor compounds first, the secondary/accessory body of the session next, direct
-    /// core last.
-    ///
-    /// This band is the OUTER sort key in `arrangeProceduralSelection`, and focus ordering only
-    /// applies WITHIN it. That relationship is the whole point. Focus ordering used to be the
-    /// outer key, so a day's focus area could hoist a small isolation ahead of the session's
-    /// heaviest lift: a Legs day carrying the week's Core/Abs focus shipped `Hanging Knee Raise`
-    /// in slot 1 and `Trap Bar Deadlift` in slot 2 — direct trunk flexion immediately before a
-    /// loaded hinge, for a lifter the same analysis had flagged for bracing and pelvic position.
-    /// The AI path inherits menu order verbatim (the menu is locked and the prompt says to keep
-    /// the order given), so nothing downstream could undo it.
-    ///
-    /// ORD-001's "unless the day is explicitly core-biased" clause survives as `dayHasAnchor`. A
-    /// session with no anchor compound genuinely IS built around its small work, so core may lead
-    /// there. A session containing a heavy compound is not that day, whatever its focus tag says.
-    func sessionOrderingBand(role: ProceduralExerciseRole, dayHasAnchor: Bool) -> Int {
-        switch role {
-        case .anchor:
-            return 0
-        case .secondary, .accessory:
-            return 1
-        case .core:
-            return dayHasAnchor ? 2 : 1
+    /// Ordering-only main-lift programming default, not an anatomical compound classifier.
+    /// Roles still govern dosage/fatigue elsewhere. A secondary role alone is insufficient:
+    /// Nordic curls and carries also have fatigue cost 2. Exact canonical families keep those
+    /// out while admitting machine presses, dips, lunges and hip thrusts. Low-fatigue support
+    /// work stays accessory even if its movement involves more than one joint.
+    func isSessionMainLift(role: ProceduralExerciseRole, movementPattern: String) -> Bool {
+        if role == .anchor { return true }
+        guard role == .secondary else { return false }
+        switch movementPattern {
+        case "Horizontal Press", "Incline Press", "Vertical Press", "Landmine Press",
+             "Close-Grip Press", "Press", "Row", "Vertical Pull", "Squat",
+             "Split Squat", "Lunge", "Hinge", "Hip Thrust", "Dip", "Upright Row":
+            return true
+        default:
+            return false
         }
+    }
+
+    /// ORD-001 bands precede focus ordering: anchors, other main lifts, accessories, then core.
+    /// A genuinely accessory/core-only session may still put its core focus first. No-anchor
+    /// alone is not that exception: a machine-press or leg-press day still has a main lift.
+    /// The AI inherits this locked menu order; downstream coaching cannot repair its sequence.
+    func sessionOrderingBand(role: ProceduralExerciseRole, isMainLift: Bool, dayHasMainLift: Bool) -> Int {
+        if role == .anchor { return 0 }
+        if isMainLift { return 1 }
+        if role == .core && dayHasMainLift { return 3 }
+        return 2
     }
 
     func arrangeProceduralSelection(
@@ -81,11 +83,13 @@ extension ClaudeService {
         let locked = Array(exercises.prefix(safeLockedCount))
         let remaining = Array(exercises.dropFirst(safeLockedCount))
 
-        // Read from the WHOLE day, not just the sortable tail: a retained anchor sitting in the
-        // locked prefix still makes this a session with a heavy lift in it, and core must not be
-        // promoted to the front on the strength of the tail happening to look small.
-        let dayHasAnchor = exercises.contains { exercise in
-            proceduralExerciseRole(for: exercise.name, muscleTarget: exercise.target) == .anchor
+        // Read the WHOLE day: a retained main lift in the locked prefix still keeps core behind
+        // accessories in the sortable tail. The prefix itself always wins over the default.
+        let dayHasMainLift = exercises.contains { exercise in
+            isSessionMainLift(
+                role: proceduralExerciseRole(for: exercise.name, muscleTarget: exercise.target),
+                movementPattern: exerciseMetadata(forExerciseName: exercise.name, muscleTarget: exercise.target).movementPattern
+            )
         }
 
         let orderedRemaining = remaining
@@ -94,8 +98,12 @@ extension ClaudeService {
                 let lhsRole = proceduralExerciseRole(for: lhs.element.name, muscleTarget: lhs.element.target)
                 let rhsRole = proceduralExerciseRole(for: rhs.element.name, muscleTarget: rhs.element.target)
 
-                let lhsBand = sessionOrderingBand(role: lhsRole, dayHasAnchor: dayHasAnchor)
-                let rhsBand = sessionOrderingBand(role: rhsRole, dayHasAnchor: dayHasAnchor)
+                let lhsBand = sessionOrderingBand(role: lhsRole, isMainLift: isSessionMainLift(role: lhsRole,
+                    movementPattern: exerciseMetadata(forExerciseName: lhs.element.name, muscleTarget: lhs.element.target).movementPattern),
+                    dayHasMainLift: dayHasMainLift)
+                let rhsBand = sessionOrderingBand(role: rhsRole, isMainLift: isSessionMainLift(role: rhsRole,
+                    movementPattern: exerciseMetadata(forExerciseName: rhs.element.name, muscleTarget: rhs.element.target).movementPattern),
+                    dayHasMainLift: dayHasMainLift)
                 if lhsBand != rhsBand { return lhsBand < rhsBand }
 
                 if let focusIntent {

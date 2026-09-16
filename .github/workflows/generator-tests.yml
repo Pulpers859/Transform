@@ -17,10 +17,10 @@ permissions:
 jobs:
   generator-tests:
     runs-on: macos-latest
-    # Run 35028562024 executed 698 tests and all audits successfully, but hit the
-    # 12-minute job cap during cleanup. Allow report/cleanup headroom; this is a
-    # whole-suite ceiling, not a claim about individual generation performance.
-    timeout-minutes: 15
+    # Run 35090075800 reached the 12-minute Swift step cap with 728 test entries
+    # and assertion failures. Keep those failures visible and allow the expanded
+    # complete-plan suite to finish; this is not a generation-performance claim.
+    timeout-minutes: 22
     env:
       TRANSFORM_FIXTURE_SNAPSHOT_OUTPUT: ${{ github.workspace }}/generator-fixture-snapshot.txt
       # Where the user-journey simulation writes its readable report. It needs its own path:
@@ -44,9 +44,9 @@ jobs:
           xcodebuild -version
 
       - name: Run headless generator tests
-        # Keep the original execution ceiling for the Swift workload itself.
-        # The larger job budget is for independent audits and report cleanup.
-        timeout-minutes: 12
+        # Bounded headroom for the expanded suite, distinct from per-generation
+        # performance. The job also needs independent audits and report cleanup.
+        timeout-minutes: 18
         shell: bash
         run: |
           set -euo pipefail

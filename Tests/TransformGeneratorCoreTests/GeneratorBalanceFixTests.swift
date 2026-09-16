@@ -208,9 +208,8 @@ final class GeneratorBalanceFixTests: XCTestCase {
         )
     }
 
-    /// ORD-001's "explicitly core-biased" exception, read narrowly: a session with no anchor at
-    /// all really is built around its small work, so core may lead there.
-    func testCoreMayLeadASessionThatHasNoAnchor() {
+    /// ORD-001's core-biased exception: no anchor OR other main lift, so core may lead.
+    func testCoreMayLeadASessionThatHasNoMainLift() {
         let coreFocus = ClaudeService.MusclePriorityIntent(
             area: "Core/Abs",
             priorityLevel: "Medium",

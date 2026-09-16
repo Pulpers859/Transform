@@ -55,7 +55,7 @@ POLICY = FILES[5]
 # (name, [(file, old, new), ...], substring the failure message must contain)
 ATTACKS = [
     ("stale version string, which is printed into the AI prompt",
-     [(SVC, 'version: "hypertrophy_v1_9"', 'version: "hypertrophy_v1_8"')],
+     [(SVC, 'version: "hypertrophy_v1_10"', 'version: "hypertrophy_v1_9"')],
      "prompt"),
     ("doc band drifts from the Swift band",
      [(SVC, '"High": 8...12', '"High": 10...14')],
