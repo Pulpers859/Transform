@@ -2,16 +2,41 @@
 
 ## Active roadmap and audit checkpoints (2026-09-13)
 
-### Bounded core-placement live wiring (2026-09-15; execution pending)
+### Deload rowing alternatives (2026-09-15; diagnostic execution pending)
+
+The existing lumbar-persona week-four trial is designed to explore at most 16 absent Row
+appearances from the existing Pull/Upper catalogs. Each starts from the complete
+unchanged baseline, adds only its computed role floor, preserves all existing
+prescriptions, and checks actual delivery, dose, fatigue, variation and findings
+against the real preceding week. Dose-preserving candidates also receive fresh
+allocation. The five-exercise deload ceiling is reported separately and remains
+binding; a clean validator result cannot authorize a sixth appearance.
+
+A second diagnostic replaces the Upper vertical slot with a same-target Row from
+the Pull catalog without changing the catalog. It reports strict eligibility,
+protection, retention, pain history, ordering, style and focus-quality differences.
+These are non-adopting experiments, not evidence that current eligibility is wrong.
+No production logic, targets, movement metadata or history keys change. Independent
+source review requested delivered-target parity and baseline findings; both are
+included. Syntax checks passed, but the new outcomes have not been executed yet.
+This is temporary evidence collection: after its first macOS execution, inspect
+the artifacts and pin meaningful measured refusal/acceptance controls rather than
+retain print-only conclusions. Candidates are visited in day/catalog order; the
+global cap can leave later days unassessed. Claude's packet review requested
+changes for missing execution and behavioral outcome assertions, not a production
+defect. Signatures were independently checked against source; that is not a
+type-check. On this Windows host, publication to the existing macOS CI is the
+execution route. No runtime claim is made before that run completes.
+
+### Bounded core-placement live wiring (2026-09-15; verified `57b3425`)
 
 The planner now evaluates the first qualifying Lower-to-Pull relocation after
 pressdown finalization and before publishing its chosen complete plan. At most one
 proposal receives fresh allocation. Refusal preserves the preceding pressdown
 result and its receipts; untried alternatives are not declared impossible. Deload
 remains unchanged. The six-exercise receiver limit, existing dose/focus/retention
-checks and relative-spacing rule are unchanged. This wiring has syntax/source
-review only so far, not a verified workout result. Once this change is committed,
-it is the default live behavior, not a feature-flagged experiment. Core decisions
+checks and relative-spacing rule are unchanged. This is now the default live
+behavior, not a feature-flagged experiment. Core decisions
 are reported through the same planning diagnostic channel as pressdown decisions.
 
 A value-only observer captures the actual pre-core control and chosen result.
@@ -25,16 +50,28 @@ All nine remaining test calls to the menu-only compatibility wrapper are migrate
 to complete-plan consumption, including the optional live troubleshooting test's
 prompt context. The unused wrapper is removed so a caller cannot discard a changed
 blueprint through that API. Original fixture expectations remain intact; changed
-workouts must be inspected before any snapshot update. Full CI, complete exported
-workout comparison, and physical-iPhone validation remain required. Fractional
+workouts must be inspected before any snapshot update. Physical-iPhone validation
+remains required. Fractional
 targets and deload row balance remain separate open work, not fixed by relocation.
 The Claude live-wiring review returned a draft requesting changes, not approval.
 Its missing-diagnostic finding was addressed. Source checks show the glute-dose
 test uses the same shoulder-beginner persona as the crowding test, not a newly
 identified population; `fullMesocycle` delivers and validates the returned plan
 for every persona/week, including the adopting case. Those source facts do not
-replace the pending execution proof. The one-allocation bound deliberately leaves
+replace execution proof. The one-allocation bound deliberately leaves
 other placements unassessed; it is not a general crowding solver.
+
+[Generator run 35045948971](https://github.com/Pulpers859/Transform/actions/runs/35045948971)
+executed all 698 tests successfully, including the live core integration test.
+[App run 35045948958](https://github.com/Pulpers859/Transform/actions/runs/35045948958)
+logged BUILD SUCCEEDED. Independent comparison with `ae19fbb` preserved every full
+exercise prescription across all 20 exported weeks. Only the shoulder-beginner's
+loading weeks changed delivered days: Cable Crunch moved from Lower to Pull, both
+now six exercises; the receiver's muscle-group label gained Abs. The three crowding
+findings disappeared. Priority summaries remained identical; other findings stayed
+unchanged. All weeks gained a core-decision diagnostic; the three adopting weeks
+also changed allocation receipts, which the executed tests compare to fresh
+allocation. This is fixture/integration evidence, not device or arbitrary-profile proof.
 
 ### Core-placement acceptance boundary (2026-09-15; verified non-live checkpoint `ae19fbb`)
 
