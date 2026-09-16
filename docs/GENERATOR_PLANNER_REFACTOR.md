@@ -2,7 +2,20 @@
 
 ## Active roadmap and audit checkpoints (2026-09-13)
 
-### Six-exercise core-placement ceiling (2026-09-15; pending execution)
+### Six-exercise core-placement ceiling (2026-09-15; verified experiment `2a5d380`)
+
+[Generator run 35040772399](https://github.com/Pulpers859/Transform/actions/runs/35040772399)
+succeeded with 698 executed tests, including the revised core trial and refusal
+assertions. [App run 35040772398](https://github.com/Pulpers859/Transform/actions/runs/35040772398)
+logged BUILD SUCCEEDED. The saved experimental workouts keep Lower/Pull at six/six
+in weeks one through three. Pull has 16/18/18 sets respectively. Fresh allocation
+preserves each proposal exactly; all three delivered experiments have no validator
+findings. A separate artifact comparison found every full exercise prescription
+identical to the original baseline after relocating Cable Crunch; all other work,
+reps, rest and coaching fields are preserved. All 20 normal exported baseline week
+objects remain unchanged. The actual experimental cross-week ordinal core gap is
+five days, versus three for an unrelocated next week after the same prior delivery.
+This is repeatable experimental planning, not live adoption or device proof.
 
 The owner explicitly approved a hard ceiling of six total exercises on a Pull
 day receiving core. This does not authorize deleting Pull work to fit core or
@@ -29,13 +42,13 @@ budgets and zero findings. It uses no additional planner calls; two fresh alloca
 checks are added. It does not claim persistence of a support declaration or a full
 pain-history generation chain. A source-only independent audit prompted actual
 cross-week core interval reporting/nonshortening assertions; ordinal day numbers
-are not real dated recovery evidence. No result is claimed before CI execution.
+are not real dated recovery evidence. The execution evidence is recorded above.
 Claude approved with follow-ups. Source inspection confirmed its rep-range concern:
 the classifier's fallback branch consults reps. The proposal now uses the real
 procedural rep range, not a literal; no prior runtime misclassification is claimed.
 Additional refusal tests cover exposure/spacing, source eligibility
 and order; the smaller-receiver case now has its own refusal instead of calling
-a four-exercise day malformed. These revisions still require executable CI.
+a four-exercise day malformed. These revisions passed in the run recorded above.
 
 ### Complete-plan consumer wiring (2026-09-15; verified `0beec10`)
 
