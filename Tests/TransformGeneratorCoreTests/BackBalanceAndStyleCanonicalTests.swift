@@ -314,6 +314,157 @@ final class BackBalanceAndStyleCanonicalTests: XCTestCase {
         XCTAssertTrue(issues.isEmpty, "\(issues)")
     }
 
+    /// An existing row is not enough when the funded menu still carries the same >2:1
+    /// directional imbalance the validator reports. A fixed-dose, same-target row trade may
+    /// clear that warning only when it keeps style, coverage, variation, and priority quality.
+    func testExistingRowImbalanceCanUseAQualifiedSameTargetTrade() throws {
+        let blueprint = try fixtureBlueprint()
+        let intent = try fixtureIntent()
+        guard let pullDay = blueprint.dayPlans.firstIndex(where: {
+            !$0.isRestDay && service.canonicalTrainingStyle($0.style) == "Pull"
+        }) else {
+            throw XCTSkip("Fixture has no Pull day")
+        }
+
+        func menu(_ name: String, _ target: String, _ sets: Int) -> ClaudeService.PreSelectedExercise {
+            .init(exerciseName: name, muscleTarget: target,
+                movementPattern: service.exerciseMetadata(forExerciseName: name, muscleTarget: target).movementPattern,
+                role: service.proceduralExerciseRole(for: name, muscleTarget: target), prescribedSets: sets)
+        }
+
+        var menus = blueprint.dayPlans.map { $0.isRestDay ? [] : [menu("Cable Crunch", "Abs", 2)] }
+        menus[pullDay] = [
+            menu("Pull-Up (Weighted or Assisted)", "Lats", 3),
+            menu("Lat Pulldown", "Lats", 3),
+            menu("Chest-Supported Row", "Upper Back", 2),
+            menu("EZ-Bar Curl", "Biceps", 2)
+        ]
+        let repaired = service.enforceHorizontalPullCoverage(
+            menus, blueprint: blueprint, trainingIntent: intent, weekNumber: 1,
+            avoidedExercises: [], lockedPrefixCounts: Array(repeating: 0, count: menus.count)
+        )
+
+        func sets(_ patterns: Set<String>, in candidate: [[ClaudeService.PreSelectedExercise]]) -> Int {
+            candidate.joined().reduce(0) { total, item in
+                guard patterns.contains(item.movementPattern) else { return total }
+                return total + item.prescribedSets
+            }
+        }
+
+        XCTAssertEqual(sets(service.verticalPullPatterns, in: menus), 6)
+        XCTAssertEqual(sets(service.horizontalPullPatterns, in: menus), 2)
+        XCTAssertEqual(sets(service.verticalPullPatterns, in: repaired), 3)
+        XCTAssertEqual(sets(service.horizontalPullPatterns, in: repaired), 5)
+        XCTAssertEqual(repaired.map(\.count), menus.map(\.count), "Balance trade must not add an appearance")
+        XCTAssertEqual(repaired.joined().reduce(0) { $0 + $1.prescribedSets },
+            menus.joined().reduce(0) { $0 + $1.prescribedSets }, "Balance trade must preserve total sets")
+        for day in menus.indices where day != pullDay {
+            XCTAssertEqual(repaired[day].map(\.exerciseName), menus[day].map(\.exerciseName))
+        }
+        XCTAssertFalse(repaired[pullDay].contains { $0.exerciseName == "Lat Pulldown" })
+        XCTAssertTrue(repaired[pullDay].contains { $0.exerciseName == "Single-Arm Dumbbell Row" })
+
+        var admission: ClaudeService.RoleFloorAdmission = .unassessed
+        let allocated = service.allocateWeeklySetPrescription(
+            repaired, blueprint: blueprint, weekNumber: 1,
+            lockedPrefixCounts: Array(repeating: 0, count: menus.count),
+            roleFloorAdmissionReport: { admission = $0 }, publishConflictLogs: false
+        )
+        XCTAssertEqual(admission, .admitted, "The repaired candidate must be admitted before its funded ratio is trusted")
+        XCTAssertLessThanOrEqual(
+            sets(service.verticalPullPatterns, in: allocated),
+            sets(service.horizontalPullPatterns, in: allocated) * 2,
+            "The funded menu must not undo a qualified row trade"
+        )
+    }
+
+    func testRowBalanceNeverReplacesAContinuityLockedPull() throws {
+        let blueprint = try fixtureBlueprint()
+        let intent = try fixtureIntent()
+        guard let pullDay = blueprint.dayPlans.firstIndex(where: {
+            !$0.isRestDay && service.canonicalTrainingStyle($0.style) == "Pull"
+        }) else {
+            throw XCTSkip("Fixture has no Pull day")
+        }
+        func menu(_ name: String, _ target: String, _ sets: Int) -> ClaudeService.PreSelectedExercise {
+            .init(exerciseName: name, muscleTarget: target,
+                movementPattern: service.exerciseMetadata(forExerciseName: name, muscleTarget: target).movementPattern,
+                role: service.proceduralExerciseRole(for: name, muscleTarget: target), prescribedSets: sets)
+        }
+        var menus = blueprint.dayPlans.map { $0.isRestDay ? [] : [menu("Cable Crunch", "Abs", 2)] }
+        menus[pullDay] = [
+            menu("Pull-Up (Weighted or Assisted)", "Lats", 3),
+            menu("Lat Pulldown", "Lats", 3),
+            menu("Neutral-Grip Lat Pulldown", "Lats", 2),
+            menu("EZ-Bar Curl", "Biceps", 2)
+        ]
+        var locks = Array(repeating: 0, count: menus.count)
+        locks[pullDay] = 3
+        let repaired = service.enforceHorizontalPullCoverage(
+            menus, blueprint: blueprint, trainingIntent: intent, weekNumber: 2,
+            avoidedExercises: [], lockedPrefixCounts: locks
+        )
+        XCTAssertEqual(repaired[pullDay].prefix(3).map(\.exerciseName), menus[pullDay].prefix(3).map(\.exerciseName))
+    }
+
+    func testNoRowPathRechecksBalanceAfterAppending() throws {
+        let blueprint = try fixtureBlueprint()
+        let intent = try fixtureIntent()
+        guard let pullDay = blueprint.dayPlans.firstIndex(where: {
+            !$0.isRestDay && service.canonicalTrainingStyle($0.style) == "Pull"
+        }) else {
+            throw XCTSkip("Fixture has no Pull day")
+        }
+        func menu(_ name: String, _ target: String, _ sets: Int) -> ClaudeService.PreSelectedExercise {
+            .init(exerciseName: name, muscleTarget: target,
+                movementPattern: service.exerciseMetadata(forExerciseName: name, muscleTarget: target).movementPattern,
+                role: service.proceduralExerciseRole(for: name, muscleTarget: target), prescribedSets: sets)
+        }
+        var menus = blueprint.dayPlans.map { $0.isRestDay ? [] : [menu("Cable Crunch", "Abs", 2)] }
+        menus[pullDay] = [
+            menu("Pull-Up (Weighted or Assisted)", "Lats", 3),
+            menu("Lat Pulldown", "Lats", 3),
+            menu("Neutral-Grip Lat Pulldown", "Lats", 2),
+            menu("EZ-Bar Curl", "Biceps", 2)
+        ]
+        let repaired = service.enforceHorizontalPullCoverage(
+            menus, blueprint: blueprint, trainingIntent: intent, weekNumber: 1,
+            avoidedExercises: [], lockedPrefixCounts: Array(repeating: 0, count: menus.count)
+        )
+        func sets(_ patterns: Set<String>, in candidate: [[ClaudeService.PreSelectedExercise]]) -> Int {
+            candidate.joined().reduce(0) { $0 + (patterns.contains($1.movementPattern) ? $1.prescribedSets : 0) }
+        }
+        XCTAssertGreaterThan(sets(service.horizontalPullPatterns, in: repaired), 0)
+        XCTAssertLessThanOrEqual(
+            sets(service.verticalPullPatterns, in: repaired),
+            sets(service.horizontalPullPatterns, in: repaired) * 2,
+            "Appending a row must be followed by the same balance check as an existing row"
+        )
+        var admission: ClaudeService.RoleFloorAdmission = .unassessed
+        let allocated = service.allocateWeeklySetPrescription(
+            repaired, blueprint: blueprint, weekNumber: 1,
+            lockedPrefixCounts: Array(repeating: 0, count: menus.count),
+            roleFloorAdmissionReport: { admission = $0 }, publishConflictLogs: false
+        )
+        XCTAssertEqual(admission, .admitted, "The repaired no-row candidate must be admitted before its funded ratio is trusted")
+        XCTAssertLessThanOrEqual(
+            sets(service.verticalPullPatterns, in: allocated),
+            sets(service.horizontalPullPatterns, in: allocated) * 2,
+            "The funded no-row repair must retain its balance"
+        )
+        let allocatedDays = allocated.enumerated().map { index, day in
+            WorkoutDayResponse(
+                dayNumber: index + 1, dayName: blueprint.dayPlans[index].style,
+                muscleGroups: "", isRestDay: blueprint.dayPlans[index].isRestDay, notes: "",
+                exercises: day.map { item in
+                    WorkoutExerciseResponse(exerciseName: item.exerciseName, sets: item.prescribedSets,
+                        reps: "10-12", tempo: "", restSeconds: 60, notes: "", muscleTarget: item.muscleTarget)
+                }
+            )
+        }
+        XCTAssertTrue(service.validateBackPatternBalance(days: allocatedDays).isEmpty)
+    }
+
     /// Deliberately asymmetric: rows load the lats through a full range, so a row-dominant week
     /// is not told off for lacking a pulldown.
     func testARowDominantWeekIsNotFlagged() {

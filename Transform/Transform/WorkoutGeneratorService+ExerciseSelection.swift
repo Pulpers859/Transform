@@ -2140,7 +2140,8 @@ extension ClaudeService {
             blueprint: blueprint,
             trainingIntent: trainingIntent,
             weekNumber: weekNumber,
-            avoidedExercises: avoidedExercises
+            avoidedExercises: avoidedExercises,
+            lockedPrefixCounts: lockedPrefixCounts
         )
         menuPlanningTrace?("horizontalPullCoverage", rowCompleteMenus)
         let breadthCompleteMenus = enforceMaintenanceExposureBreadth(
@@ -2832,7 +2833,8 @@ extension ClaudeService {
         blueprint: ProgramBlueprint,
         trainingIntent: TrainingIntentPlan,
         weekNumber: Int,
-        avoidedExercises: Set<String>
+        avoidedExercises: Set<String>,
+        lockedPrefixCounts: [Int] = []
     ) -> [[PreSelectedExercise]] {
         let backAliases = normalizedGroupAliases(forSeed: "back")
         let trainsBack = menus.joined().contains { exercise in
@@ -2843,18 +2845,114 @@ extension ClaudeService {
             )
         }
         guard trainsBack else { return menus }
-        guard !menusContainMovementPattern(
-            horizontalPullPatterns,
-            trainingGroupSeed: "back",
-            in: menus
-        ) else { return menus }
-
         let rowCandidates = metadataFocusExerciseCatalog(for: "back").filter { candidate in
             guard let pattern = menuMovementPattern(
                 forExerciseName: candidate.name,
                 muscleTarget: candidate.target
             ) else { return false }
             return horizontalPullPatterns.contains(pattern)
+        }
+
+        func backSetCount(_ patterns: Set<String>, in candidateMenus: [[PreSelectedExercise]]) -> Int {
+            candidateMenus.joined().reduce(0) { total, exercise in
+                guard let pattern = menuMovementPattern(
+                    forExerciseName: exercise.exerciseName,
+                    muscleTarget: exercise.muscleTarget
+                ), patterns.contains(pattern), exerciseDirectlyTargets(
+                    groupAliases: backAliases,
+                    exerciseName: exercise.exerciseName,
+                    muscleTarget: exercise.muscleTarget
+                ) else { return total }
+                return total + exercise.prescribedSets
+            }
+        }
+
+        // Presence is not balance. If a week already has a row but still trips the same
+        // directional >2:1 warning the validator uses, try a fixed-dose same-target row
+        // substitution before declaring the menu complete. This remains an upstream menu
+        // decision: no post-generation trim, no ratio mandate, and no set-transfer that the
+        // allocator can silently undo.
+        func firstValidExistingRowTrade(in sourceMenus: [[PreSelectedExercise]]) -> [[PreSelectedExercise]]? {
+            let verticalSetsBefore = backSetCount(verticalPullPatterns, in: sourceMenus)
+            let rowSetsBefore = backSetCount(horizontalPullPatterns, in: sourceMenus)
+            guard verticalSetsBefore >= 4, rowSetsBefore * 2 < verticalSetsBefore else { return nil }
+
+            let existingVariation = weeklyVariationViolations(in: sourceMenus, blueprint: blueprint)
+                .map { "\($0.area)|\($0.bucket)|\($0.count)|\($0.cap)" }.sorted()
+            for dayIndex in sourceMenus.indices where dayIndex < blueprint.dayPlans.count && !blueprint.dayPlans[dayIndex].isRestDay {
+                let plan = blueprint.dayPlans[dayIndex]
+                let focusIntent = focusIntentForArea(plan.focusArea, within: trainingIntent)
+                let lockedPrefixCount = lockedPrefixCounts.indices.contains(dayIndex) ? lockedPrefixCounts[dayIndex] : 0
+                for slotIndex in sourceMenus[dayIndex].indices {
+                    let old = sourceMenus[dayIndex][slotIndex]
+                    guard old.role != .anchor,
+                          let oldPattern = menuMovementPattern(forExerciseName: old.exerciseName, muscleTarget: old.muscleTarget),
+                          verticalPullPatterns.contains(oldPattern),
+                          !isProtectedAppearance(role: old.role, slot: slotIndex, style: plan.style,
+                              lockedPrefixCount: lockedPrefixCount) else { continue }
+                    for candidate in rowCandidates {
+                        guard candidate.target == old.muscleTarget,
+                              !avoidedExercises.contains(ExerciseWeightEntry.canonicalLookupKey(candidate.name)),
+                              !sourceMenus[dayIndex].contains(where: {
+                                  ExerciseWeightEntry.canonicalLookupKey($0.exerciseName)
+                                      == ExerciseWeightEntry.canonicalLookupKey(candidate.name)
+                              }) else { continue }
+                        let metadata = exerciseMetadata(forExerciseName: candidate.name, muscleTarget: candidate.target)
+                        guard exerciseMatchesDayStyle(
+                            WorkoutExerciseResponse(exerciseName: candidate.name, sets: old.prescribedSets,
+                                reps: "10-12", tempo: "", restSeconds: 60, notes: "", muscleTarget: candidate.target),
+                            style: canonicalTrainingStyle(plan.style)
+                        ) else { continue }
+                        let oldUnit = WorkoutExerciseResponse(exerciseName: old.exerciseName, sets: 1,
+                            reps: "10-12", tempo: "", restSeconds: 60, notes: "", muscleTarget: old.muscleTarget)
+                        let newUnit = WorkoutExerciseResponse(exerciseName: candidate.name, sets: 1,
+                            reps: "10-12", tempo: "", restSeconds: 60, notes: "", muscleTarget: candidate.target)
+                        guard directSetCredit(for: newUnit, area: old.muscleTarget)
+                            >= directSetCredit(for: oldUnit, area: old.muscleTarget) else { continue }
+                        if let focusIntent {
+                            let oldKind = focusStimulusKind(exerciseName: old.exerciseName, muscleTarget: old.muscleTarget,
+                                focusArea: focusIntent.area)
+                            let newKind = focusStimulusKind(exerciseName: candidate.name, muscleTarget: candidate.target,
+                                focusArea: focusIntent.area)
+                            guard focusOrderingPriority(exerciseName: candidate.name, muscleTarget: candidate.target,
+                                    focusArea: focusIntent.area)
+                                <= focusOrderingPriority(exerciseName: old.exerciseName, muscleTarget: old.muscleTarget,
+                                    focusArea: focusIntent.area),
+                                !(oldKind == .prime && newKind != .prime) else { continue }
+                        }
+                        let candidateMenu = PreSelectedExercise(
+                            exerciseName: candidate.name,
+                            muscleTarget: candidate.target,
+                            movementPattern: metadata.movementPattern,
+                            role: proceduralExerciseRole(for: candidate.name, muscleTarget: candidate.target),
+                            prescribedSets: old.prescribedSets
+                        )
+                        let remaining = sourceMenus[dayIndex].enumerated()
+                            .filter { $0.offset != slotIndex }.map(\.element)
+                        guard dayPatternCapAllows(candidateName: candidate.name, candidateTarget: candidate.target,
+                            in: remaining.map { ($0.exerciseName, $0.muscleTarget) }) else { continue }
+                        var swapped = sourceMenus
+                        swapped[dayIndex][slotIndex] = candidateMenu
+                        let gapsBefore = Set(baselineCoverageGaps(in: sourceMenus, blueprint: blueprint).map { $0.seed })
+                        let gapsAfter = Set(baselineCoverageGaps(in: swapped, blueprint: blueprint).map { $0.seed })
+                        let swappedVariation = weeklyVariationViolations(in: swapped, blueprint: blueprint)
+                            .map { "\($0.area)|\($0.bucket)|\($0.count)|\($0.cap)" }.sorted()
+                        guard gapsAfter.isSubset(of: gapsBefore),
+                              maintenanceSlotBudgetsAreFeasible(existingMenus: swapped, selectedToday: [], blueprint: blueprint),
+                              swappedVariation == existingVariation else { continue }
+                        let verticalSetsAfter = backSetCount(verticalPullPatterns, in: swapped)
+                        let rowSetsAfter = backSetCount(horizontalPullPatterns, in: swapped)
+                        guard verticalSetsAfter <= rowSetsAfter * 2,
+                              abs(verticalSetsAfter - rowSetsAfter) < abs(verticalSetsBefore - rowSetsBefore) else { continue }
+                        return swapped
+                    }
+                }
+            }
+            return nil
+        }
+
+        if menusContainMovementPattern(horizontalPullPatterns, trainingGroupSeed: "back", in: menus) {
+            return firstValidExistingRowTrade(in: menus) ?? menus
         }
 
         if let appended = menusByAppendingBalanceExercise(
@@ -2864,7 +2962,7 @@ extension ClaudeService {
             avoidedExercises: avoidedExercises,
             candidates: rowCandidates
         ) {
-            return appended
+            return firstValidExistingRowTrade(in: appended) ?? appended
         }
 
         // Appending failed, so TRADE instead of giving up.
@@ -2942,6 +3040,8 @@ extension ClaudeService {
                         focusIntent: focusIntent,
                         supportIntents: supportIntents
                     ) {
+                        let lockedPrefixCount = lockedPrefixCounts.indices.contains(dayIndex) ? lockedPrefixCounts[dayIndex] : 0
+                        guard replaceIndex >= lockedPrefixCount else { continue }
                         var swapped = menus
                         swapped[dayIndex].remove(at: replaceIndex)
                         swapped[dayIndex].insert(candidateMenu, at: replaceIndex)

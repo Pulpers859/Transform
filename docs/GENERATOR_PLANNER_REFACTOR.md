@@ -106,6 +106,24 @@ The bounded trials investigate that gap without weakening eligibility or budgets
 Per-test xUnit timing is also being captured to investigate suite runtime rather than
 assuming more timeout is a performance fix. Remote execution remains required.
 
+### Upstream row-balance experiment (candidate)
+
+The bounded owner replay found one viable loading-week candidate: replacing a same-target
+three-set Lat Pulldown with Single-Arm Dumbbell Row preserved direct Lats credit, passed
+structural preflight, delivered without menu drift, and moved the observed 6:2 back mix to
+3:5. A one-set transfer was reallocated away, and deload additions exceeded the independent
+appearance ceiling. This does not establish a required ratio.
+
+The candidate planner change is deliberately narrower than the warning: it runs only when
+the existing funded menu is above the same >2:1 directional warning, replaces a non-anchor
+vertical pull with a same-target row in the day style, preserves direct credit, avoids pain
+and continuity-locked identities, respects day pattern caps and maintenance budgets, keeps
+weekly variation unchanged, and refuses focus-priority downgrades. If an appended row still
+leaves the warning, the same bounded trade is reconsidered; otherwise the original menu is
+retained. The no-row fallback also now skips locked prefixes. Full multi-week artifacts and
+macOS CI are required before calling this production experiment accepted; physical-iPhone
+generation remains a separate proof boundary.
+
 Recovery fallback already exists in production: missing/stale measured sleep can
 retain explicitly attributed standing caution, but cannot manufacture a measured
 Restricted tier. Added regression cases pin fresh measured precedence and stale
