@@ -84,13 +84,29 @@ final class OwnerPlanningReplayTests: XCTestCase {
             XCTAssertTrue(day.exercises.allSatisfy { $0.sets > 0 })
             XCTAssertTrue(day.isRestDay ? day.exercises.isEmpty : !day.exercises.isEmpty)
         }
+        let deliveredBaseline = coreResult.plan
+        let unchangedMenus = snapshot(deliveredBaseline.menus)
+        let rowTrials = rowingTrials(baseline: deliveredBaseline, intent: intent, analysis: analysis)
+        XCTAssertLessThanOrEqual(rowTrials.count, 3)
+        let rowBaseline = rowSummary(deliveredBaseline.menus, blueprint: deliveredBaseline.blueprint)
+        if rowBaseline.verticalSets > rowBaseline.rowingSets {
+            XCTAssertFalse(rowTrials.isEmpty, "A vertical-heavy back plan must exercise at least one diagnostic proposal, including zero-row plans")
+        }
+        XCTAssertEqual(snapshot(deliveredBaseline.menus), unchangedMenus, "Diagnostic proposals never adopt into the baseline")
+        XCTAssertEqual(snapshot(delivered.menus), unchangedMenus)
         let evidence = ReplayEvidence(analysis: analysis,
             initialBlueprint: BlueprintEvidence(initialBlueprint), blueprint: BlueprintEvidence(delivered.blueprint),
             baselineMenus: snapshot(original.menus), postPressdownMenus: snapshot(pressdownResult.plan.menus),
             menus: snapshot(delivered.menus), days: program.days, validatorFindings: findings,
             baselineAdmission: String(describing: original.roleFloorAdmission),
             pressdownDecision: String(describing: pressdownResult.decision),
-            coreDecision: String(describing: coreResult.decision), diagnostics: diagnostics)
+            coreDecision: String(describing: coreResult.decision), diagnostics: diagnostics,
+            rowBaselineContext: .init(weekNumber: deliveredBaseline.weekNumber,
+                lockedPrefixCounts: deliveredBaseline.lockedPrefixCounts,
+                retainedKeysByDay: deliveredBaseline.retainedKeysByDay.map { $0.sorted() },
+                selectionFocusContexts: deliveredBaseline.selectionFocusIntents.map { $0.map { String(describing: $0) } },
+                admission: String(describing: deliveredBaseline.roleFloorAdmission),
+                historySupplied: deliveredBaseline.exerciseHistory != nil), rowTrials: rowTrials)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         let data = try encoder.encode(evidence)
@@ -108,6 +124,159 @@ final class OwnerPlanningReplayTests: XCTestCase {
             movementPattern: $0.movementPattern, role: $0.role.rawValue, prescribedSets: $0.prescribedSets) } }
     }
 
+    /// Diagnostic only. Reuse the one actual delivered baseline; never rerun complete selection,
+    /// append an appearance, relax preflight, or adopt a trial. At most three fresh allocations.
+    private func rowingTrials(baseline: ClaudeService.SubstitutionPlanningBaseline,
+                              intent: ClaudeService.TrainingIntentPlan, analysis: BodyAnalysisResult) -> [RowTrialEvidence] {
+        let menus = baseline.menus
+        let locations = menus.indices.filter { !baseline.blueprint.dayPlans[$0].isRestDay }
+            .flatMap { day in menus[day].indices.map { (day, $0) } }
+        let donors = locations.filter { day, slot in
+            let entry = menus[day][slot]
+            return entry.role != .anchor && matchesBackPattern(entry, patterns: service.verticalPullPatterns)
+        }
+        let rows = locations.filter { day, slot in
+            matchesBackPattern(menus[day][slot], patterns: service.horizontalPullPatterns)
+        }
+        var proposals: [(kind: String, edit: String, menus: [[ClaudeService.PreSelectedExercise]])] = []
+        if let donor = donors.first(where: { menus[$0.0][$0.1].prescribedSets > 1 }), let row = rows.first {
+            var candidate = menus
+            candidate[donor.0][donor.1].prescribedSets -= 1
+            candidate[row.0][row.1].prescribedSets += 1
+            proposals.append(("oneSetTransfer", "day \(donor.0 + 1) \(menus[donor.0][donor.1].exerciseName) -1; day \(row.0 + 1) \(menus[row.0][row.1].exerciseName) +1", candidate))
+        }
+        var substitutions = 0
+        var proposedRowKeys = Set<String>()
+        for donor in donors {
+            guard substitutions < 2 else { break }
+            let old = menus[donor.0][donor.1]
+            for alternative in service.exerciseCatalog(for: baseline.blueprint.dayPlans[donor.0].style) {
+                guard substitutions < 2 else { break }
+                guard alternative.target == old.muscleTarget,
+                      let pattern = service.menuMovementPattern(forExerciseName: alternative.name, muscleTarget: alternative.target),
+                      service.horizontalPullPatterns.contains(pattern) else { continue }
+                let key = ExerciseWeightEntry.canonicalLookupKey(alternative.name)
+                // Spend the two trial slots on distinct row identities, not aliases or the same
+                // row swapped into two donors. Existing same-day rows cannot be added twice.
+                guard !proposedRowKeys.contains(key),
+                      !menus[donor.0].contains(where: { ExerciseWeightEntry.canonicalLookupKey($0.exerciseName) == key }) else { continue }
+                var candidate = menus
+                candidate[donor.0][donor.1] = .init(exerciseName: alternative.name, muscleTarget: alternative.target,
+                    movementPattern: service.exerciseMetadata(forExerciseName: alternative.name, muscleTarget: alternative.target).movementPattern,
+                    role: service.proceduralExerciseRole(for: alternative.name, muscleTarget: alternative.target),
+                    prescribedSets: old.prescribedSets)
+                guard matchesBackPattern(candidate[donor.0][donor.1], patterns: service.horizontalPullPatterns) else { continue }
+                proposals.append(("sameTargetCatalogSubstitution", "day \(donor.0 + 1) slot \(donor.1 + 1): \(old.exerciseName) -> \(alternative.name)", candidate))
+                substitutions += 1
+                proposedRowKeys.insert(key)
+            }
+        }
+        XCTAssertLessThanOrEqual(proposals.count, 3)
+        return proposals.map { proposal in
+            XCTAssertEqual(proposal.menus.map(\.count), menus.map(\.count), "No appearance growth")
+            let preflight = proposal.kind == "sameTargetCatalogSubstitution"
+                ? String(describing: service.preflightFixedDoseSubstitution(proposal.menus, plannedBaseline: baseline))
+                : "not applicable: fixed-dose substitution preflight does not authorize set transfers"
+            let dose = service.compareAllocatedDoseOnly(proposal.menus, baseline: menus,
+                blueprint: baseline.blueprint, weekNumber: baseline.weekNumber)
+            var admission: ClaudeService.RoleFloorAdmission = .unassessed
+            var receipts: [SetFundingObservation] = []
+            var messages: [String] = []
+            let allocated = service.allocateWeeklySetPrescription(proposal.menus, blueprint: baseline.blueprint,
+                weekNumber: baseline.weekNumber, lockedPrefixCounts: baseline.lockedPrefixCounts,
+                appearancePlanningReport: { messages.append($0) }, setFundingReport: { receipts = $0 },
+                roleFloorAdmissionReport: { admission = $0 }, publishConflictLogs: false)
+            let ordered = service.reorderedMenusForSessionFlow(allocated, blueprint: baseline.blueprint,
+                trainingIntent: intent, lockedPrefixCounts: baseline.lockedPrefixCounts)
+            let finalDose = service.compareAllocatedDoseOnly(ordered, baseline: menus,
+                blueprint: baseline.blueprint, weekNumber: baseline.weekNumber)
+            var deliveryDays: [WorkoutDayResponse] = []
+            var findings: [String] = []
+            var deliveryError: String?
+            var deliveryMatchesMenus: Bool?
+            do {
+                let delivery = try service.validatedProceduralWeekOneProgram(from: analysis, trainingIntent: intent,
+                    blueprint: baseline.blueprint, exerciseMenus: ordered)
+                deliveryDays = delivery.days
+                findings = service.validateProgramResponse(delivery, blueprint: baseline.blueprint, expectedExerciseMenus: ordered)
+                deliveryMatchesMenus = delivery.days.count == ordered.count && zip(delivery.days, ordered).allSatisfy { day, menu in
+                    day.exercises.map(\.exerciseName) == menu.map(\.exerciseName)
+                        && day.exercises.map(\.muscleTarget) == menu.map(\.muscleTarget)
+                        && day.exercises.map(\.sets) == menu.map(\.prescribedSets)
+                }
+            } catch {
+                deliveryError = String(describing: error)
+            }
+            // This is deliberately diagnostic, not an acceptance gate for a proposed
+            // replacement: preflight, dose, and validator findings remain evidence that
+            // may reject the candidate. The invariant below only ensures the procedural
+            // replay cannot silently diverge from its own ordered locked menu.
+            if deliveryError == nil {
+                XCTAssertEqual(deliveryMatchesMenus, true, "A successful diagnostic delivery must remain menu-locked")
+            } else {
+                XCTAssertNil(deliveryMatchesMenus, "A failed diagnostic delivery cannot claim menu equivalence")
+            }
+            return RowTrialEvidence(kind: proposal.kind, edit: proposal.edit,
+                preflight: preflight, doseComparison: String(describing: dose),
+                before: rowSummary(menus, blueprint: baseline.blueprint),
+                proposed: rowSummary(proposal.menus, blueprint: baseline.blueprint),
+                afterAllocationAndOrdering: rowSummary(ordered, blueprint: baseline.blueprint),
+                proposedMenus: snapshot(proposal.menus), allocatedMenus: snapshot(allocated), orderedMenus: snapshot(ordered),
+                allocationAdmission: String(describing: admission), allocationMessages: messages, allocationReceipts: receipts,
+                allocationPreservedProposal: snapshot(allocated) == snapshot(proposal.menus),
+                orderingPreservedAllocation: snapshot(ordered) == snapshot(allocated), finalDoseComparison: String(describing: finalDose),
+                deliveryDays: deliveryDays, deliveryMatchesMenus: deliveryMatchesMenus,
+                validatorFindings: findings, deliveryError: deliveryError)
+        }
+    }
+
+    private func matchesBackPattern(_ exercise: ClaudeService.PreSelectedExercise, patterns: Set<String>) -> Bool {
+        guard let pattern = service.menuMovementPattern(forExerciseName: exercise.exerciseName,
+            muscleTarget: exercise.muscleTarget), patterns.contains(pattern) else { return false }
+        return service.exerciseDirectlyTargets(groupAliases: service.normalizedGroupAliases(forSeed: "back"),
+            exerciseName: exercise.exerciseName, muscleTarget: exercise.muscleTarget)
+    }
+
+    private func rowSummary(_ menus: [[ClaudeService.PreSelectedExercise]], blueprint: ClaudeService.ProgramBlueprint) -> RowSummary {
+        // Same pattern AND direct Back eligibility as validateBackPatternBalance; ignore rest days.
+        let active = menus.indices.filter { !blueprint.dayPlans[$0].isRestDay }.flatMap { menus[$0] }
+        func sets(_ patterns: Set<String>) -> Int {
+            active.filter { matchesBackPattern($0, patterns: patterns) }.reduce(0) { $0 + $1.prescribedSets }
+        }
+        return .init(verticalSets: sets(service.verticalPullPatterns), rowingSets: sets(service.horizontalPullPatterns), slotsByDay: menus.map(\.count))
+    }
+
+    private struct RowBaselineContext: Codable {
+        let weekNumber: Int
+        let lockedPrefixCounts: [Int]
+        let retainedKeysByDay: [[String]]
+        let selectionFocusContexts: [String?]
+        let admission: String
+        let historySupplied: Bool
+    }
+
+    private struct RowSummary: Codable {
+        let verticalSets: Int, rowingSets: Int
+        let slotsByDay: [Int]
+    }
+
+    private struct RowTrialEvidence: Codable {
+        var scope = "Synthetic diagnostic only; NOT ADOPTED. Substitution eligibility and dose comparison are separate. No whole-block or private-history proof. Delivery uses the freshly allocated, ordered candidate."
+        var allocationReceiptCoordinates = "Zero-based dayIndex/exerciseIndex in allocatedMenus BEFORE ordering, not orderedMenus or deliveryDays."
+        let kind: String, edit: String, preflight: String, doseComparison: String
+        let before: RowSummary, proposed: RowSummary, afterAllocationAndOrdering: RowSummary
+        let proposedMenus: [[MenuEvidence]], allocatedMenus: [[MenuEvidence]], orderedMenus: [[MenuEvidence]]
+        let allocationAdmission: String
+        let allocationMessages: [String]
+        let allocationReceipts: [SetFundingObservation]
+        let allocationPreservedProposal: Bool, orderingPreservedAllocation: Bool
+        let finalDoseComparison: String
+        let deliveryDays: [WorkoutDayResponse]
+        let deliveryMatchesMenus: Bool?
+        let validatorFindings: [String]
+        let deliveryError: String?
+    }
+
     private struct MenuEvidence: Codable, Equatable {
         let exerciseName: String
         let muscleTarget: String
@@ -117,7 +286,7 @@ final class OwnerPlanningReplayTests: XCTestCase {
     }
 
     private struct ReplayEvidence: Codable {
-        var schemaVersion = 1
+        var schemaVersion = 2
         var scope = "Synthetic network-free procedural replay; no private history, live AI, or iPhone/UI validation."
         let analysis: BodyAnalysisResult
         let initialBlueprint: BlueprintEvidence
@@ -131,6 +300,8 @@ final class OwnerPlanningReplayTests: XCTestCase {
         let pressdownDecision: String
         let coreDecision: String
         let diagnostics: [String]
+        let rowBaselineContext: RowBaselineContext
+        let rowTrials: [RowTrialEvidence]
     }
 
     private struct BlueprintEvidence: Codable {

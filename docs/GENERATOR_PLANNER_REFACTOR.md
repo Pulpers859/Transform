@@ -78,6 +78,34 @@ This is a default session-order policy, not a universal anatomical definition.
 Retained prefixes must stay unchanged, and complete-week selection/dose comparisons
 remain required because sorting can influence later planning passes (INC-9).
 
+### Owner-shaped rowing experiment (diagnostic, not adoption)
+
+Preceding checkpoint `62f2031` passed iOS run `35092437270` and generator run
+`35092437261` (746 test entries, successful test step and downstream checks).
+Against `3a62fd0`, all twenty weeks retain each day's complete exercise/target/set
+multiset; ordering changes in every week. Independent arithmetic finds zero
+prescriptions below two sets. The four erroneous Lats 8-versus-7.5 findings clear;
+the lumbar deload's 8-vertical/3-row finding remains. The owner-shaped replay now
+starts Upper with Machine Incline Press and Lower with Leg Press, but still has
+6-vertical/2-row pulling, twelve Push pressing sets and duplicate pressdowns.
+Historical core-chain checks also pass. None of this proves new device behavior.
+
+This replay exports at most three proposals from its actual post-core baseline:
+one set transfer and two distinct same-target catalog row substitutions. It retains
+the complete blueprint, locks, retained identities and selection context. Each trial
+records structural preflight separately from dose comparison, fresh allocation,
+ordering and procedural delivery. A warning disappearing is not acceptance.
+Allocation receipts refer to the exported pre-ordering allocated menus, not delivery
+indices. No trial is adopted, no appearance is appended, and no private history or
+paid generation is used. This single-week experiment cannot establish block continuity.
+
+Independent review caught potentially empty trial evidence and ambiguous receipt
+coordinates; both are now explicit. The early horizontal-pull coverage pass stops
+once any row exists, so it does not plan the eventual funded vertical/row distribution.
+The bounded trials investigate that gap without weakening eligibility or budgets.
+Per-test xUnit timing is also being captured to investigate suite runtime rather than
+assuming more timeout is a performance fix. Remote execution remains required.
+
 Recovery fallback already exists in production: missing/stale measured sleep can
 retain explicitly attributed standing caution, but cannot manufacture a measured
 Restricted tier. Added regression cases pin fresh measured precedence and stale
