@@ -48,6 +48,38 @@ final class BackBalanceAndStyleCanonicalTests: XCTestCase {
         return service.trainingIntentPlan(from: fixture.analysis)
     }
 
+    /// The row-balance tests deliberately use sparse menus. Keep the planner's own guards
+    /// under test, but remove unrelated fixture priority requirements that would make a sparse
+    /// menu allocator-infeasible before row balance can be evaluated.
+    private func rowExperimentBlueprint(
+        from source: ClaudeService.ProgramBlueprint
+    ) -> ClaudeService.ProgramBlueprint {
+        ClaudeService.ProgramBlueprint(
+            evidenceVersion: source.evidenceVersion,
+            splitRecommendation: source.splitRecommendation,
+            weeklyTrainingDays: source.weeklyTrainingDays,
+            priorityAllocations: [],
+            dayPlans: source.dayPlans.map {
+                ClaudeService.BlueprintDayPlan(
+                    dayIndex: $0.dayIndex,
+                    style: $0.style,
+                    focusArea: nil,
+                    supportAreas: [],
+                    targetFatigueCap: $0.targetFatigueCap,
+                    targetSessionMinutes: $0.targetSessionMinutes,
+                    targetPrioritySlots: $0.targetPrioritySlots,
+                    emphasisPatterns: [],
+                    isRestDay: $0.isRestDay
+                )
+            },
+            topLeverageChange: source.topLeverageChange,
+            posturalFocus: source.posturalFocus,
+            injuryRiskFocus: source.injuryRiskFocus,
+            programmingNotes: source.programmingNotes,
+            calibration: source.calibration
+        )
+    }
+
     private func exercise(_ name: String, _ target: String, sets: Int) -> WorkoutExerciseResponse {
         WorkoutExerciseResponse(
             exerciseName: name,
@@ -318,7 +350,7 @@ final class BackBalanceAndStyleCanonicalTests: XCTestCase {
     /// directional imbalance the validator reports. A fixed-dose, same-target row trade may
     /// clear that warning only when it keeps style, coverage, variation, and priority quality.
     func testExistingRowImbalanceCanUseAQualifiedSameTargetTrade() throws {
-        let blueprint = try fixtureBlueprint()
+        let blueprint = rowExperimentBlueprint(from: try fixtureBlueprint())
         let intent = try fixtureIntent()
         guard let pullDay = blueprint.dayPlans.firstIndex(where: {
             !$0.isRestDay && service.canonicalTrainingStyle($0.style) == "Pull"
@@ -408,7 +440,7 @@ final class BackBalanceAndStyleCanonicalTests: XCTestCase {
     }
 
     func testNoRowPathRechecksBalanceAfterAppending() throws {
-        let blueprint = try fixtureBlueprint()
+        let blueprint = rowExperimentBlueprint(from: try fixtureBlueprint())
         let intent = try fixtureIntent()
         guard let pullDay = blueprint.dayPlans.firstIndex(where: {
             !$0.isRestDay && service.canonicalTrainingStyle($0.style) == "Pull"
