@@ -189,6 +189,8 @@ final class OwnerPlanningReplayTests: XCTestCase {
         let rowTrials = rowingTrials(baseline: deliveredBaseline, intent: intent, analysis: analysis)
         XCTAssertLessThanOrEqual(rowTrials.count, 3)
         let rowBaseline = rowSummary(deliveredBaseline.menus, blueprint: deliveredBaseline.blueprint)
+        let consolidationTrials = try pressdownConsolidationTrials(baseline: deliveredBaseline,
+            intent: intent, analysis: analysis)
         if rowBaseline.verticalSets > rowBaseline.rowingSets {
             XCTAssertFalse(rowTrials.isEmpty, "A vertical-heavy back plan must exercise at least one diagnostic proposal, including zero-row plans")
         }
@@ -206,7 +208,8 @@ final class OwnerPlanningReplayTests: XCTestCase {
                 retainedKeysByDay: deliveredBaseline.retainedKeysByDay.map { $0.sorted() },
                 selectionFocusContexts: deliveredBaseline.selectionFocusIntents.map { $0.map { String(describing: $0) } },
                 admission: String(describing: deliveredBaseline.roleFloorAdmission),
-                historySupplied: deliveredBaseline.exerciseHistory != nil), rowTrials: rowTrials)
+                historySupplied: deliveredBaseline.exerciseHistory != nil), rowTrials: rowTrials,
+            consolidationTrials: consolidationTrials)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         let data = try encoder.encode(evidence)
@@ -330,6 +333,116 @@ final class OwnerPlanningReplayTests: XCTestCase {
         }
     }
 
+    // Two explicit hypotheses on the complete synthetic baseline, never production adoption.
+    // Removal changes slot count, so fixed-dose substitution preflight is NOT authorization.
+    private func pressdownConsolidationTrials(baseline: ClaudeService.SubstitutionPlanningBaseline,
+        intent: ClaudeService.TrainingIntentPlan, analysis: BodyAnalysisResult) throws -> [String] {
+        let original = snapshot(baseline.menus)
+        let day = try XCTUnwrap(baseline.blueprint.dayPlans.firstIndex { $0.style == "Arms" })
+        let rope = try XCTUnwrap(baseline.menus[day].firstIndex { $0.exerciseName == "Rope Triceps Pressdown" })
+        let bar = try XCTUnwrap(baseline.menus[day].firstIndex { $0.exerciseName == "V-Bar Pressdown" })
+        let kickback = try XCTUnwrap(baseline.menus[day].firstIndex { $0.exerciseName == "Cable Kickback" })
+        func primarySets(_ menus: [[ClaudeService.PreSelectedExercise]]) -> [String: Int] {
+            var result: [String: Int] = [:]
+            for slot in menus.joined() {
+                let regions = Set(service.exerciseMetadata(forExerciseName: slot.exerciseName,
+                    muscleTarget: slot.muscleTarget).primaryAreas.map(service.normalizedPriorityText))
+                for region in regions { result[region, default: 0] += slot.prescribedSets }
+            }
+            return result
+        }
+        let originalProgram = try service.validatedProceduralWeekOneProgram(from: analysis,
+            trainingIntent: intent, blueprint: baseline.blueprint, exerciseMenus: baseline.menus)
+        let oldFindings = service.validateProgramResponse(originalProgram, blueprint: baseline.blueprint,
+            expectedExerciseMenus: baseline.menus)
+        let oldCounts = Dictionary(grouping: oldFindings, by: { $0 }).mapValues(\.count)
+        var report = ["TEST ONLY: two same-day pressdown removals; no new exercises, API or live adoption. Primary metadata totals are not proof of equal biological stimulus."]
+        let upper = try XCTUnwrap(baseline.blueprint.dayPlans.firstIndex { $0.style == "Upper" })
+        let cable = try XCTUnwrap(baseline.menus[upper].firstIndex { $0.exerciseName == "Cable Lateral Raise" })
+        let behind = try XCTUnwrap(baseline.menus[upper].firstIndex { $0.exerciseName == "Behind-the-Back Cable Lateral Raise" })
+        var lateralConsolidation = baseline.menus
+        lateralConsolidation[upper][cable].prescribedSets += lateralConsolidation[upper][behind].prescribedSets
+        lateralConsolidation[upper].remove(at: behind)
+        XCTAssertEqual(primarySets(lateralConsolidation), primarySets(baseline.menus))
+        let lateralDose = service.compareAllocatedDoseOnly(lateralConsolidation, baseline: baseline.menus,
+            blueprint: baseline.blueprint, weekNumber: 1)
+        guard case .rejected(.roleDose) = lateralDose else {
+            XCTFail("Six lateral sets in one slot must not bypass its four-set ceiling")
+            return report
+        }
+        report.append("LATERAL single-slot consolidation refused by existing role ceiling: \(lateralDose)")
+        for (donor, receiver) in [(rope, bar), (bar, rope)] {
+            let removed = baseline.menus[day][donor]
+            XCTAssertEqual(removed.prescribedSets, 2)
+            for index in [donor, receiver, kickback] {
+                let slot = baseline.menus[day][index]
+                XCTAssertGreaterThanOrEqual(index, baseline.lockedPrefixCounts[day])
+                XCTAssertFalse(baseline.retainedKeysByDay[day].contains(ExerciseWeightEntry.canonicalLookupKey(slot.exerciseName)))
+                XCTAssertEqual(service.exerciseMetadata(forExerciseName: slot.exerciseName,
+                    muscleTarget: slot.muscleTarget).primaryAreas, ["Triceps"])
+            }
+            XCTAssertFalse(service.isProtectedAppearance(role: removed.role, slot: donor,
+                style: baseline.blueprint.dayPlans[day].style, lockedPrefixCount: baseline.lockedPrefixCounts[day]))
+            var proposed = baseline.menus
+            proposed[day][receiver].prescribedSets += 1
+            proposed[day][kickback].prescribedSets += 1
+            proposed[day].remove(at: donor)
+            XCTAssertEqual(proposed[day].count, 5)
+            XCTAssertEqual(primarySets(proposed), primarySets(baseline.menus))
+            XCTAssertNil(service.capacityShoulderRegionLoss(proposed, baseline: baseline.menus))
+            let proposedDose = service.compareAllocatedDoseOnly(proposed, baseline: baseline.menus,
+                blueprint: baseline.blueprint, weekNumber: 1)
+            XCTAssertEqual(proposedDose, .dosePreserved(improvesMaintenanceMinimum: false))
+            // Negative control: putting both removed sets onto one accessory exceeds its cap.
+            var concentrated = baseline.menus
+            concentrated[day][receiver].prescribedSets += removed.prescribedSets
+            concentrated[day].remove(at: donor)
+            guard case .rejected(.roleDose) = service.compareAllocatedDoseOnly(concentrated,
+                baseline: baseline.menus, blueprint: baseline.blueprint, weekNumber: 1) else {
+                XCTFail("Consolidation must not bypass the existing per-exercise set ceiling")
+                continue
+            }
+            var admission: ClaudeService.RoleFloorAdmission = .unassessed
+            var receipts: [SetFundingObservation] = []
+            let allocated = service.allocateWeeklySetPrescription(proposed, blueprint: baseline.blueprint,
+                weekNumber: 1, lockedPrefixCounts: baseline.lockedPrefixCounts,
+                setFundingReport: { receipts = $0 }, roleFloorAdmissionReport: { admission = $0 }, publishConflictLogs: false)
+            let ordered = service.reorderedMenusForSessionFlow(allocated, blueprint: baseline.blueprint,
+                trainingIntent: intent, lockedPrefixCounts: baseline.lockedPrefixCounts)
+            let dose = service.compareAllocatedDoseOnly(ordered, baseline: baseline.menus,
+                blueprint: baseline.blueprint, weekNumber: 1)
+            let delivered = try service.validatedProceduralWeekOneProgram(from: analysis,
+                trainingIntent: intent, blueprint: baseline.blueprint, exerciseMenus: ordered)
+            let findings = service.validateProgramResponse(delivered, blueprint: baseline.blueprint,
+                expectedExerciseMenus: ordered)
+            let newCounts = Dictionary(grouping: findings, by: { $0 }).mapValues(\.count)
+            let noNewFindings = newCounts.allSatisfy { message, count in count <= oldCounts[message, default: 0] }
+            XCTAssertEqual(receipts.count, allocated.joined().count)
+            let expectedCoordinates = Set(allocated.indices.flatMap { day in
+                allocated[day].indices.map { "\(day):\($0)" }
+            })
+            XCTAssertEqual(Set(receipts.map { "\($0.dayIndex):\($0.exerciseIndex)" }), expectedCoordinates)
+            for receipt in receipts {
+                guard allocated.indices.contains(receipt.dayIndex),
+                    allocated[receipt.dayIndex].indices.contains(receipt.exerciseIndex) else {
+                    XCTFail("Funding receipt references an absent exercise")
+                    continue
+                }
+                let actual = allocated[receipt.dayIndex][receipt.exerciseIndex]
+                XCTAssertEqual(receipt.exerciseName, actual.exerciseName)
+                XCTAssertEqual(receipt.muscleTarget, actual.muscleTarget)
+                XCTAssertEqual(receipt.prescribedSets, actual.prescribedSets)
+            }
+            XCTAssertEqual(delivered.days.map { $0.exercises.map(\.exerciseName) }, ordered.map { $0.map(\.exerciseName) })
+            XCTAssertEqual(delivered.days.map { $0.exercises.map(\.sets) }, ordered.map { $0.map(\.prescribedSets) })
+            report.append("REMOVE \(removed.exerciseName); admission=\(admission); dose=\(dose); allPrimarySetsPreserved=\(primarySets(ordered) == primarySets(baseline.menus)); noNewFindings=\(noNewFindings); orderingStable=\(snapshot(ordered) == snapshot(allocated)); proposalRetained=\(snapshot(ordered) == snapshot(proposed)); counts=\(ordered.map(\.count))")
+            report.append("PROPOSED \(snapshot(proposed))")
+            report.append("DELIVERED \(snapshot(ordered)); findings=\(findings)")
+        }
+        XCTAssertEqual(snapshot(baseline.menus), original)
+        return report
+    }
+
     private func matchesBackPattern(_ exercise: ClaudeService.PreSelectedExercise, patterns: Set<String>) -> Bool {
         guard let pattern = service.menuMovementPattern(forExerciseName: exercise.exerciseName,
             muscleTarget: exercise.muscleTarget), patterns.contains(pattern) else { return false }
@@ -386,7 +499,7 @@ final class OwnerPlanningReplayTests: XCTestCase {
     }
 
     private struct ReplayEvidence: Codable {
-        var schemaVersion = 2
+        var schemaVersion = 3
         var scope = "Synthetic network-free procedural replay; no private history, live AI, or iPhone/UI validation."
         let analysis: BodyAnalysisResult
         let initialBlueprint: BlueprintEvidence
@@ -402,6 +515,7 @@ final class OwnerPlanningReplayTests: XCTestCase {
         let diagnostics: [String]
         let rowBaselineContext: RowBaselineContext
         let rowTrials: [RowTrialEvidence]
+        let consolidationTrials: [String]
     }
 
     private struct BlueprintEvidence: Codable {

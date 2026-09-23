@@ -1,5 +1,25 @@
 # Generator planner refactor: evidence and acceptance
 
+## Bounded same-region consolidation trial (2026-09-23, test only)
+
+The owner-shaped synthetic replay matches the supplied phone menu's exercise names
+and sets, but does not replay private analysis/history or prove AI coaching quality.
+Two explicit Arms-day hypotheses remove one of the two pressdowns and transfer its
+two sets: one to the remaining pressdown and one to Cable Kickback. Proposed triceps
+work stays at six sets, all primary metadata-region totals stay unchanged, and the
+day falls from six exercises to five. This is not a claim of identical biological stimulus.
+
+Each hypothesis receives one fresh full-week allocation, then ordering and procedural
+delivery. The exported `consolidationTrials` records admission, complete-plan dose
+comparison, region totals, validator changes, and proposed/delivered prescriptions.
+Green tests alone do NOT authorize adoption: these diagnostic outcomes must be read.
+Negative controls reject putting four sets on one accessory or combining six lateral
+raise sets into one four-set-capped slot. Existing limits are not relaxed.
+
+No production consolidation has been enabled. No paid API call or new iPhone build
+is required for this experiment. Local syntax checks and independent source review
+are separate from remote execution, which remains pending at this checkpoint.
+
 ## Owner policy decisions and research interpretation (2026-09-16)
 
 New owner workout reviewed: see [September 16 evidence and bounded correction](GENERATOR_OWNER_REVIEW_2026-09-16.md).
