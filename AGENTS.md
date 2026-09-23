@@ -43,6 +43,12 @@
 - After pushing, confirm it was a fast-forward (`old..new`), not a forced replacement, and that the prior `origin/main` commits are still ancestors.
 
 ## Minimal Working Rules
+- For exercise-programming policy questions, the owner delegates judgment to an
+  exercise-evidence expert agent. Consult that agent, check its sources and
+  reasoning, then choose and test the bounded recommendation within the owner's
+  existing constraints. Do not hand the same technical choice back to the owner
+  for routine approval. Ask the owner only for personal preferences, missing
+  personal facts, or a genuine safety/authority issue experts cannot resolve.
 - At every handoff, state the owner's exact next steps in concise plain language.
   If no owner action is needed and authorized work remains, keep working instead
   of ending the turn with "nothing needed from you." Stop only for a real owner

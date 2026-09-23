@@ -2205,7 +2205,7 @@ extension ClaudeService {
             roleFloorAdmission: roleFloorAdmission)
         let capacityFinalized = finalizeSessionCapacity(baseline, trainingIntent: trainingIntent,
             baselineMessages: allocationMessages, baselineReceipts: allocationReceipts,
-            collectFunding: setFundingReport != nil)
+            collectFunding: setFundingReport != nil, previousWeekDays: previousWeekDays)
         menuPlanningTrace?("sessionCapacity", capacityFinalized.plan.menus)
         let rowFinalized = finalizeRowBalance(capacityFinalized.plan, trainingIntent: trainingIntent,
             baselineMessages: capacityFinalized.messages, baselineReceipts: capacityFinalized.receipts,

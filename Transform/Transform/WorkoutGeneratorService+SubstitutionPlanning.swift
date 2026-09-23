@@ -175,9 +175,25 @@ extension ClaudeService {
         let decision: String
     }
 
-    /// Bounded capacity planning. A reservation is only a proposal;
-    /// one fresh allocation must preserve complete-plan dose before its result can be returned.
+    /// Bounded capacity planning. The subset and optional relocation stages each
+    /// permit at most one fresh allocation; neither may lose complete-plan dose.
     func finalizeSessionCapacity(_ baseline: SubstitutionPlanningBaseline,
+        trainingIntent: TrainingIntentPlan, baselineMessages: [String],
+        baselineReceipts: [SetFundingObservation], collectFunding: Bool,
+        previousWeekDays: [WorkoutDayResponse]? = nil) -> SessionCapacityFinalization {
+        let subset = finalizeSessionCapacitySubset(baseline, trainingIntent: trainingIntent,
+            baselineMessages: baselineMessages, baselineReceipts: baselineReceipts, collectFunding: collectFunding)
+        guard !subset.decision.hasPrefix("adopted"), baseline.menus.contains(where: { $0.count > 6 }) else {
+            return subset
+        }
+        let placement = finalizeFirstAccessoryRelocation(baseline, trainingIntent: trainingIntent,
+            previousWeekDays: previousWeekDays, baselineMessages: baselineMessages,
+            baselineReceipts: baselineReceipts, collectFunding: collectFunding)
+        // Keep the existing refusal and its reports unless the whole placement passes.
+        return placement.decision.hasPrefix("adopted") ? placement : subset
+    }
+
+    private func finalizeSessionCapacitySubset(_ baseline: SubstitutionPlanningBaseline,
         trainingIntent: TrainingIntentPlan, baselineMessages: [String],
         baselineReceipts: [SetFundingObservation], collectFunding: Bool) -> SessionCapacityFinalization {
         func retained(_ reason: String) -> SessionCapacityFinalization {

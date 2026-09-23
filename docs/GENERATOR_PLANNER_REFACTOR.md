@@ -1,6 +1,45 @@
 # Generator planner refactor: evidence and acceptance
 
-## Bounded symptom-text interpretation (2026-09-23, integration pending)
+## Bounded accessory placement (2026-09-23, integration verification pending)
+
+The owner reaffirmed that exercise-programming policy is delegated to an exercise-evidence
+expert agent, not a routine approval question to return to him. The consulted reviewer
+recommended testing unchanged nonpriority accessory work distributed over two days.
+Primary-study support is limited: [Brigatto 2019](https://pubmed.ncbi.nlm.nih.gov/29528962/)
+found no significant between-group differences in measured muscle thickness for volume-equated
+once- versus twice-weekly training in twenty trained men over eight weeks. This is not
+rear-delt-specific proof or proof of equivalence. [Yang 2018](https://www.frontiersin.org/journals/physiology/articles/10.3389/fphys.2018.00725/full)
+does not establish an injury-risk or individual recovery threshold.
+
+The selected engineering boundary is deliberately narrower than general frequency optimization:
+one loading-week day has seven exercises, a compatible receiver has five, and one unchanged
+nonpriority accessory moves between them. Its original primary-region exposure remains at
+two or more sets, while that region gains one nonadjacent exposure. Cyclic gaps must be at
+least two calendar days; this is NOT a 48-hour recovery guarantee. An actual prior-week
+calendar is required after Week 1, and the first exposure cannot move earlier relative to
+that baseline boundary. Secondary pulling involvement is not claimed to be biologically
+equivalent to the direct accessory work, nor is absent recorded pain clinical clearance.
+
+Existing subset capacity planning remains first. Only after it refuses may one relocation
+receive a fresh allocation. Both stages have their own one-allocation bound. Source locks,
+retained identities, pain/equipment history, reported joint symptoms, exact receiver catalog,
+style, duplicate and pattern checks apply. Direct OR weighted priority involvement excludes
+the donor. Full-plan dose, unchanged ordering and exact allocation identity/sets must pass.
+Delivery must match its planned calendar, rest flags, names, targets and sets; the complete
+execution-prescription multiset (reps, tempo, rest, RIR included) must also remain unchanged.
+No new validator-finding multiplicities are allowed. Refusal keeps the original reports.
+
+Source audit and Windows syntax checks are not runtime proof. Focused tests cover guards,
+calendar boundaries, allocation/delivery tampering and refusal receipts. Sequential journey
+tests now require the beginner loading weeks to fit six, without assuming three separate
+adoptions: an adopted Week 1 can alter later retention. Historical 7/5 diagnostics are skipped
+only when the final beginner plan actually fits six; other profiles retain their trials.
+Before calling this integrated, inspect all generated weeks, not just test results (INC-9).
+The independent Codex source review found no concrete blocker; the main review added
+execution-prescription equality and a RIR-tampering control. The staged Claude review
+was attempted but failed because its OAuth session expired, so it supplied no approval.
+
+## Bounded symptom-text interpretation (2026-09-23, integration verified)
 
 The prior cross-day experiment exposed the existing text limitation, not a reason
 to weaken relocation eligibility. A Foundation-only preprocessor now recognizes
@@ -14,7 +53,12 @@ negation understanding or a judgment that a movement is safe.
 The shared 28-case helper table was run as a Windows executable: eight failures with
 pass-through behavior, zero after implementation. The actual generator corpus adds
 six mixed-report rows across its existing movement grid. Syntax and 19 shoulder
-checker self-tests passed locally; full generator/build verification is pending.
+checker self-tests passed locally. Commit `11cc835` passed Generator `35929473556`
+(752 XML test cases, zero failures/errors) and Swift `35929473551` (BUILD SUCCEEDED).
+All twenty production workout `days` arrays are unchanged from `5cf8649`; eleven
+over-six sessions remain. The three Reverse Pec Deck relocation trials now have no
+context blockers, retain exact proposed allocations/region totals and add no findings.
+The other rear-fly candidate still fails receiver-catalog eligibility.
 Independent Codex review found no source blocker. The phrase union is shared with
 specificity checking; its source checker now follows that explicit helper call and
 rejects unused/empty helper attacks. Original shoulder-risk detection, saved pain

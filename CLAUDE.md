@@ -238,6 +238,12 @@ waste. The one thing that must never happen is the same overstatement shipped tw
   end-of-task summaries. He has had to ask for it more than once; asking again is a failure.
 
 ## Never Hand Him A Task Without The Answer
+- Exercise-programming policy questions are delegated to an exercise-evidence
+  expert agent. Consult it, verify its sources and reasoning, then choose and
+  test the bounded recommendation within the owner's existing constraints.
+  Do not send the same technical choice back for routine approval. Ask the owner
+  only for personal preferences, missing personal facts, or a genuine unresolved
+  safety/authority issue.
 - At every handoff, give the owner's exact next steps in concise plain language.
   If no owner action is needed and authorized work remains, continue working;
   "nothing needed from you" is not a stopping point. Stop only for a real owner
