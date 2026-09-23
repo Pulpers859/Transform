@@ -255,8 +255,16 @@ final class OwnerPlanningReplayTests: XCTestCase {
         let donor = try XCTUnwrap(baseline.menus[day].firstIndex { $0.exerciseName == "Rope Triceps Pressdown" })
         let key = ExerciseWeightEntry.canonicalLookupKey(baseline.menus[day][donor].exerciseName)
         func context(locks: [Int]? = nil, retained: [Set<String>]? = nil,
-            history: ClaudeService.ExerciseHistoryContext? = nil, week: Int = 1) -> ClaudeService.SubstitutionPlanningBaseline {
-            .init(menus: baseline.menus, blueprint: baseline.blueprint, weekNumber: week,
+            history: ClaudeService.ExerciseHistoryContext? = nil, week: Int = 1,
+            injury: String? = nil) -> ClaudeService.SubstitutionPlanningBaseline {
+            let original = baseline.blueprint
+            let blueprint = ClaudeService.ProgramBlueprint(evidenceVersion: original.evidenceVersion,
+                splitRecommendation: original.splitRecommendation, weeklyTrainingDays: original.weeklyTrainingDays,
+                priorityAllocations: original.priorityAllocations, dayPlans: original.dayPlans,
+                topLeverageChange: original.topLeverageChange, posturalFocus: original.posturalFocus,
+                injuryRiskFocus: injury ?? original.injuryRiskFocus, programmingNotes: original.programmingNotes,
+                calibration: original.calibration)
+            return .init(menus: baseline.menus, blueprint: blueprint, weekNumber: week,
                 lockedPrefixCounts: locks ?? baseline.lockedPrefixCounts,
                 retainedKeysByDay: retained ?? baseline.retainedKeysByDay, exerciseHistory: history,
                 selectionFocusIntents: baseline.selectionFocusIntents, roleFloorAdmission: baseline.roleFloorAdmission)
@@ -270,7 +278,8 @@ final class OwnerPlanningReplayTests: XCTestCase {
         let skipped = ClaudeService.ExerciseHistoryContext(painExercises: [], equipmentSkipExercises: [key],
             priorMesocycleExercises: [], mesocycleIndex: 0)
         let invalid = [context(locks: locks), context(retained: retained), context(history: pain),
-            context(history: skipped), context(week: 2), context(week: 4), context(locks: [])]
+            context(history: skipped), context(week: 2), context(week: 4), context(locks: []),
+            context(injury: "Shoulder pain during Rope Triceps Pressdown")]
         for fixture in invalid {
             let result = service.finalizeSameRegionPressdownConsolidation(fixture, day: day, donor: donor,
                 trainingIntent: intent, baselineMessages: ["baseline marker"], baselineReceipts: [])
@@ -279,6 +288,18 @@ final class OwnerPlanningReplayTests: XCTestCase {
             XCTAssertEqual(result.messages, ["baseline marker"])
             XCTAssertEqual(result.receipts, [])
         }
+        // Include a recognized movement phrase so the broad unknown-movement fallback
+        // cannot reject the donor and accidentally make this receiver test vacuous.
+        let reportedReceiver = context(injury: "Shoulder pain during Cable Kickback and overhead pressing")
+        XCTAssertFalse(service.reportedShoulderPainImplicates(exerciseName: "Rope Triceps Pressdown",
+            muscleTarget: "Triceps", injuryRiskFocus: reportedReceiver.blueprint.injuryRiskFocus))
+        XCTAssertTrue(service.reportedShoulderPainImplicates(exerciseName: "Cable Kickback",
+            muscleTarget: "Triceps", injuryRiskFocus: reportedReceiver.blueprint.injuryRiskFocus))
+        let reportedRefusal = service.finalizeSameRegionPressdownConsolidation(reportedReceiver, day: day, donor: donor,
+            trainingIntent: intent, baselineMessages: ["reported marker"], baselineReceipts: [])
+        XCTAssertEqual(reportedRefusal.decision, .consolidationRefused("same-region receivers lack set capacity"))
+        XCTAssertEqual(snapshot(reportedRefusal.plan.menus), snapshot(baseline.menus))
+        XCTAssertEqual(reportedRefusal.messages, ["reported marker"])
         // The allocator adds a set to Push's existing pressdown. Protecting that
         // receiver must refuse the ACTUAL allocation, not just the proposed Arms edit.
         var receiverRetained = baseline.retainedKeysByDay

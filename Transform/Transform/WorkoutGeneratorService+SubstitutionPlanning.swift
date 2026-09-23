@@ -39,6 +39,8 @@ extension ClaudeService {
                 && !baseline.retainedKeysByDay[index].contains(key)
                 && !(baseline.exerciseHistory?.painExercises.contains(key) ?? false)
                 && !(baseline.exerciseHistory?.equipmentSkipExercises.contains(key) ?? false)
+                && !reportedShoulderPainImplicates(exerciseName: item.exerciseName, muscleTarget: item.muscleTarget,
+                    injuryRiskFocus: blueprint.injuryRiskFocus)
         }
         guard editable(day, donor) else { return refused("protected consolidation donor") }
         func regions(_ item: PreSelectedExercise) -> Set<String> {
