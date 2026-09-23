@@ -1,6 +1,24 @@
 # Generator planner refactor: evidence and acceptance
 
-## Bounded same-region consolidation (2026-09-23, integration verification pending)
+## Bounded cross-day crowding experiments (2026-09-23, diagnostic only)
+
+The next trial reuses the complete sequential user-journey baselines, not a hand-built
+partial menu. For the beginner's loading weeks it separately relocates either rear-delt
+exercise from Upper to Pull. For the small-muscle persona's Weeks 2/3 it separately
+consolidates Upper's two pressdown sets into Arms' Rope Pressdown or Overhead Extension.
+The Rope receiver is a protected first slot: it is an explicit negative control,
+not permission to override continuity. Catalog/style, protection and reported-symptom
+blockers are exported even when an arithmetic experiment proceeds for comparison.
+
+Each hypothesis gets one fresh allocation, complete dose comparison, exact primary-region
+totals, primary-region exposure days (at least two sets), ordering, procedural delivery,
+validator-finding multiplicities and funding receipts. Proposed and allocated days are
+exported separately from ordered output; receipts belong to allocated order. Changes to
+surviving prescriptions remain visible. These diagnostics are not a production eligibility
+checker or adoption rule. No candidate feeds the next week, and no app behavior changes.
+Runtime results are pending; inspect `crossDayTrials` before selecting an implementation.
+
+## Bounded same-region consolidation (2026-09-23, bounded device check passed)
 
 The owner-shaped synthetic replay matches the supplied phone menu's exercise names
 and sets, but does not replay private analysis/history or prove AI coaching quality.
@@ -46,8 +64,14 @@ The workflow nevertheless FAILED: it crossed the 18-minute test-step cap by abou
 nine seconds. The owner replay took 67.39 seconds (prior diagnostic run 69.85);
 the longest matrix test rose from 389.80 to 471.14 seconds. These are CI timings,
 not isolated app benchmarks or proof of the cause of runtime variation. A bounded
-20-minute step / 24-minute job rerun is pending; no assertions were weakened.
-Swift app-build run `35894757718` passed. Physical-iPhone proof remains outstanding.
+20-minute step / 24-minute job rerun at `dcbb455` passed: Generator run `35897442216`
+recorded 751 XCTest entries with zero failures/errors, and Swift `35897442207` passed.
+No assertions were weakened. The owner's subsequent physical-iPhone Week 1 Procedural
+bundle matched the CI owner replay's ordered names, targets and sets on every day:
+Arms five exercises, V-Bar 3, Kickback 2, no Arms Rope, Push Rope 3, 81 weekly sets,
+eight direct triceps sets, no validator findings, and Used API: No. The private bundle
+is not checked into this repository. This proves that device procedural example, not
+AI coaching or every profile. All twenty synthetic journey weeks stayed unchanged.
 This is not an all-profile quality claim. Claude's separate review could not run
 because its OAuth session expired; independent Codex and main-agent audits were used.
 

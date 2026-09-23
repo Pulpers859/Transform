@@ -171,6 +171,179 @@ final class UserJourneySimulationTests: XCTestCase {
         let validatorFindings: [String]
         let appearancePlanning: [String]
         let nextSetFunding: [SetFundingObservation]
+        let crossDayTrials: [CrossDayTrial]
+    }
+
+    // Diagnostic only: candidates never feed the next week or the shipping planner.
+    private struct CrossDayTrial: Encodable {
+        let hypothesis: String
+        let contextBlockers: [String]
+        let proposedDose: String
+        let allocatedDose: String
+        let admission: String
+        let exactProposalRetained: Bool
+        let allPrimaryRegionSetsPreserved: Bool
+        let changedSurvivors: [String]
+        let newValidatorFindings: [String]
+        let baselinePrimaryRegionDays: [String: Int]
+        let candidatePrimaryRegionDays: [String: Int]
+        let proposedDays: [WorkoutDayResponse]
+        let allocatedDays: [WorkoutDayResponse]
+        let days: [WorkoutDayResponse]
+        let receipts: [SetFundingObservation]
+    }
+
+    private func crossDayTrials(persona: Persona, weeks: [SimulatedWeek], index: Int) throws -> [CrossDayTrial] {
+        let beginner = persona.name == "Four-day beginner with a shoulder that hurts overhead"
+        let small = persona.name == "Compound priority area, small muscles"
+        guard (beginner && index < 3) || (small && (1...2).contains(index)) else { return [] }
+        let plan = weeks[index].coreFinalization.plan
+        let menus = plan.menus, blueprint = plan.blueprint
+        let intent = service.trainingIntentPlan(from: analysis(for: persona))
+        let previous = index == 0 ? nil : weeks[index - 1].days
+        let source = try XCTUnwrap(blueprint.dayPlans.indices.first {
+            service.canonicalTrainingStyle(blueprint.dayPlans[$0].style) == "Upper"
+        })
+        let receiver = try XCTUnwrap(blueprint.dayPlans.indices.first {
+            service.canonicalTrainingStyle(blueprint.dayPlans[$0].style) == (beginner ? "Pull" : "Arms")
+        })
+        XCTAssertEqual(menus[source].count, 7)
+        XCTAssertEqual(menus[receiver].count, 5)
+        XCTAssertEqual(plan.roleFloorAdmission, .admitted)
+        XCTAssertNil(plan.exerciseHistory, "These are synthetic trials, not real-history proof")
+        let hypotheses = beginner ? ["Dumbbell Rear Delt Fly", "Reverse Pec Deck"]
+            : ["Rope Triceps Pressdown", "Overhead Cable Triceps Extension"]
+        func signature(_ value: [[ClaudeService.PreSelectedExercise]]) -> [[String]] {
+            value.map { $0.map { "\($0.exerciseName)|\($0.muscleTarget)|\($0.role)|\($0.movementPattern)|\($0.prescribedSets)" } }
+        }
+        func regions(_ item: ClaudeService.PreSelectedExercise) -> Set<String> {
+            Set(service.exerciseMetadata(forExerciseName: item.exerciseName, muscleTarget: item.muscleTarget)
+                .primaryAreas.map(service.normalizedPriorityText))
+        }
+        func totals(_ value: [[ClaudeService.PreSelectedExercise]]) -> [String: Int] {
+            var result: [String: Int] = [:]
+            for item in value.joined() { for region in regions(item) { result[region, default: 0] += item.prescribedSets } }
+            return result
+        }
+        func exposureDays(_ value: [[ClaudeService.PreSelectedExercise]]) -> [String: Int] {
+            var result: [String: Int] = [:]
+            for day in value {
+                var sets: [String: Int] = [:]
+                for item in day { for region in regions(item) { sets[region, default: 0] += item.prescribedSets } }
+                for (region, count) in sets where count >= 2 { result[region, default: 0] += 1 }
+            }
+            return result
+        }
+        func protected(_ day: Int, _ slot: Int) -> Bool {
+            let item = menus[day][slot]
+            return service.isProtectedAppearance(role: item.role, slot: slot,
+                style: blueprint.dayPlans[day].style, lockedPrefixCount: plan.lockedPrefixCounts[day])
+                || service.isProtectedAppearance(role: service.proceduralExerciseRole(for: item.exerciseName,
+                    muscleTarget: item.muscleTarget), slot: slot, style: blueprint.dayPlans[day].style,
+                    lockedPrefixCount: plan.lockedPrefixCounts[day])
+                || plan.retainedKeysByDay[day].contains(ExerciseWeightEntry.canonicalLookupKey(item.exerciseName))
+                || service.reportedShoulderPainImplicates(exerciseName: item.exerciseName,
+                    muscleTarget: item.muscleTarget, injuryRiskFocus: blueprint.injuryRiskFocus)
+        }
+        func response(_ value: [[ClaudeService.PreSelectedExercise]]) -> WorkoutWeekResponse {
+            service.buildProceduralWeek(weekNumber: index + 1, dayStart: index * 7 + 1, dayEnd: index * 7 + 7,
+                splitType: intent.splitRecommendation, programName: "Cross-day diagnostic", trainingIntent: intent,
+                blueprint: blueprint, previousWeekDays: previous, exerciseMenus: value)
+        }
+        func findings(_ output: WorkoutWeekResponse, _ value: [[ClaudeService.PreSelectedExercise]]) -> [String] {
+            service.validateWeekResponse(output, dayStart: index * 7 + 1, dayEnd: index * 7 + 7,
+                previousWeekDays: previous, blueprint: blueprint, expectedExerciseMenus: value)
+        }
+        let oldFindings = Dictionary(grouping: findings(response(menus), menus), by: { $0 }).mapValues(\.count)
+        var trials: [CrossDayTrial] = []
+        for hypothesis in hypotheses {
+            let donorName = beginner ? hypothesis : "Cable Triceps Pressdown"
+            let donor = try XCTUnwrap(menus[source].firstIndex { $0.exerciseName == donorName })
+            let removed = menus[source][donor]
+            var blockers: [String] = []
+            if protected(source, donor) { blockers.append("source protected or symptom-implicated") }
+            var proposed = menus
+            proposed[source].remove(at: donor)
+            if beginner {
+                XCTAssertFalse(menus[receiver].contains { $0.exerciseName == donorName })
+                proposed[receiver].append(removed)
+                let movement = WorkoutExerciseResponse(exerciseName: donorName, sets: removed.prescribedSets,
+                    reps: "10-15", tempo: "", restSeconds: 0, notes: "", muscleTarget: removed.muscleTarget)
+                if !service.exerciseMatchesDayStyle(movement, style: blueprint.dayPlans[receiver].style) {
+                    blockers.append("receiver style mismatch")
+                }
+                if !service.exerciseCatalog(for: blueprint.dayPlans[receiver].style).contains(where: {
+                    $0.name == removed.exerciseName && $0.target == removed.muscleTarget
+                }) { blockers.append("absent from receiver selection catalog") }
+            } else {
+                let slot = try XCTUnwrap(menus[receiver].firstIndex { $0.exerciseName == hypothesis })
+                XCTAssertEqual(regions(menus[receiver][slot]), regions(removed))
+                if protected(receiver, slot) { blockers.append("receiver protected or symptom-implicated") }
+                if hypothesis == "Rope Triceps Pressdown" {
+                    XCTAssertEqual(slot, 0)
+                    XCTAssertTrue(protected(receiver, slot), "Negative control must expose the protected receiver")
+                }
+                proposed[receiver][slot].prescribedSets += removed.prescribedSets
+            }
+            XCTAssertEqual(totals(proposed), totals(menus), "The proposal cannot exchange muscle regions")
+            XCTAssertEqual(proposed[source].count, 6)
+            XCTAssertEqual(proposed[receiver].count, beginner ? 6 : 5)
+            let proposedDose = service.compareAllocatedDoseOnly(proposed, baseline: menus,
+                blueprint: blueprint, weekNumber: index + 1)
+            var admission: ClaudeService.RoleFloorAdmission = .unassessed
+            var receipts: [SetFundingObservation] = []
+            let allocated = service.allocateWeeklySetPrescription(proposed, blueprint: blueprint, weekNumber: index + 1,
+                lockedPrefixCounts: plan.lockedPrefixCounts, setFundingReport: { receipts = $0 },
+                roleFloorAdmissionReport: { admission = $0 }, publishConflictLogs: false)
+            let ordered = service.reorderedMenusForSessionFlow(allocated, blueprint: blueprint,
+                trainingIntent: intent, lockedPrefixCounts: plan.lockedPrefixCounts)
+            func identities(_ value: [[ClaudeService.PreSelectedExercise]]) -> [[String]] {
+                value.map { $0.map { "\($0.exerciseName)|\($0.muscleTarget)|\($0.role)|\($0.movementPattern)" } }
+            }
+            XCTAssertEqual(identities(allocated), identities(proposed), "Allocation cannot change the proposed exercise menu")
+            // Receipt coordinates belong to the allocated order, before the independent ordering check.
+            XCTAssertEqual(receipts.map { "\($0.dayIndex):\($0.exerciseIndex):\($0.exerciseName):\($0.muscleTarget):\($0.prescribedSets)" },
+                allocated.indices.flatMap { day in allocated[day].indices.map { slot in
+                    let item = allocated[day][slot]
+                    return "\(day):\(slot):\(item.exerciseName):\(item.muscleTarget):\(item.prescribedSets)"
+                } })
+            if signature(ordered) != signature(allocated) { blockers.append("fresh allocation needs reordering") }
+            var changed: [String] = []
+            if beginner {
+                let relocated = try XCTUnwrap(ordered[receiver].first { $0.exerciseName == removed.exerciseName })
+                if relocated.prescribedSets != removed.prescribedSets {
+                    changed.append("relocated \(removed.exerciseName): \(removed.prescribedSets)->\(relocated.prescribedSets)")
+                }
+            }
+            for day in menus.indices { for slot in menus[day].indices where !(day == source && slot == donor) {
+                let old = menus[day][slot]
+                guard let current = ordered[day].first(where: { $0.exerciseName == old.exerciseName && $0.muscleTarget == old.muscleTarget }) else {
+                    XCTFail("Fresh allocation lost a survivor"); continue
+                }
+                if current.prescribedSets != old.prescribedSets {
+                    changed.append("day \(day + 1) \(old.exerciseName): \(old.prescribedSets)->\(current.prescribedSets)")
+                    if protected(day, slot) { blockers.append("fresh allocation changed protected \(old.exerciseName)") }
+                }
+            } }
+            let output = response(ordered)
+            XCTAssertEqual(output.days.map { $0.exercises.map(\.exerciseName) }, ordered.map { $0.map(\.exerciseName) })
+            XCTAssertEqual(output.days.map { $0.exercises.map(\.sets) }, ordered.map { $0.map(\.prescribedSets) })
+            let newCounts = Dictionary(grouping: findings(output, ordered), by: { $0 }).mapValues(\.count)
+            let added = newCounts.keys.sorted().flatMap { message in
+                Array(repeating: message, count: max(0, newCounts[message, default: 0] - oldFindings[message, default: 0]))
+            }
+            trials.append(.init(hypothesis: beginner ? "relocate \(hypothesis) Upper->Pull" : "consolidate Upper pressdown into Arms \(hypothesis)",
+                contextBlockers: blockers, proposedDose: String(describing: proposedDose),
+                allocatedDose: String(describing: service.compareAllocatedDoseOnly(ordered, baseline: menus,
+                    blueprint: blueprint, weekNumber: index + 1)), admission: String(describing: admission),
+                exactProposalRetained: signature(ordered) == signature(proposed),
+                allPrimaryRegionSetsPreserved: totals(ordered) == totals(menus), changedSurvivors: changed,
+                newValidatorFindings: added, baselinePrimaryRegionDays: exposureDays(menus),
+                candidatePrimaryRegionDays: exposureDays(ordered), proposedDays: response(proposed).days,
+                allocatedDays: response(allocated).days, days: output.days, receipts: receipts))
+        }
+        XCTAssertEqual(trials.count, 2)
+        return trials
     }
 
     private struct PriorityEvidence: Encodable {
@@ -1790,7 +1963,7 @@ final class UserJourneySimulationTests: XCTestCase {
             evidence.append(PersonaEvidence(
                 name: persona.name,
                 analysis: analysis(for: persona),
-                weeks: weeks.enumerated().map { index, week in
+                weeks: try weeks.enumerated().map { index, week in
                     let stimulus = service.buildWeekStimulusReport(from: week.days)
                     return WeekEvidence(
                         weekNumber: index + 1,
@@ -1812,7 +1985,8 @@ final class UserJourneySimulationTests: XCTestCase {
                         days: week.days,
                         validatorFindings: week.findings,
                         appearancePlanning: week.appearancePlanning,
-                        nextSetFunding: week.nextSetFunding
+                        nextSetFunding: week.nextSetFunding,
+                        crossDayTrials: try crossDayTrials(persona: persona, weeks: weeks, index: index)
                     )
                 }
             ))

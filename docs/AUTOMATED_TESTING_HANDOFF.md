@@ -44,7 +44,11 @@ or test a simulator runtime; physical-iPhone validation remains required for app
   limit by about nine seconds. The workflow still failed; do not call it green.
   The deterministic step now allows 20 minutes, with a 24-minute job/profile cap.
   No assertions, workout limits, paid jobs or API-call budgets changed. Verify the
-  replacement run before claiming complete CI success.
+  replacement run before claiming complete CI success. Replacement `dcbb455` is
+  verified: Generator `35897442216` succeeded with 751 XCTest entries and zero
+  failures/errors; Swift `35897442207` succeeded. The owner's subsequent no-API
+  Week 1 Procedural bundle matched the owner replay's ordered exercises/targets/sets.
+  This is bounded device proof, not an AI-coaching or all-profile approval.
 - Repository commit when this handoff was rendered: `1ac5cbaafae3772b2a37a5425b5b07f9d8201f04`
 - Local profile validation: passed.
 - Latest GitHub Actions result, observed HTTP-call count, and physical-device result: not recorded by the installer; verify and update after execution.
