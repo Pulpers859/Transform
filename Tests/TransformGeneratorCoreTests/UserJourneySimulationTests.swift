@@ -1780,8 +1780,20 @@ final class UserJourneySimulationTests: XCTestCase {
             report.append("PERSONA: \(persona.name)")
 
             for (index, week) in weeks.enumerated() {
-                let days = week.days
                 let weekNumber = index + 1
+                let days = week.days
+                if persona.name == "Four-day beginner with a shoulder that hurts overhead" {
+                    // Preserve the complete pre-classifier-change pulling prescription.
+                    // Green unit tests hid an 8-vertical/2-row regression at 53f360e.
+                    let pulls = days.flatMap(\.exercises).filter { exercise in
+                        let pattern = service.exerciseMetadata(for: exercise).movementPattern
+                        return service.verticalPullPatterns.contains(pattern) || service.horizontalPullPatterns.contains(pattern)
+                    }.map { "\($0.exerciseName)|\($0.sets)|\($0.muscleTarget)" }.sorted()
+                    XCTAssertEqual(pulls, ["Pull-Up (Weighted or Assisted)|3|Lats", "Lat Pulldown|2|Lats",
+                        "Chest-Supported Row|3|Upper Back", "Seated Cable Row|2|Mid Back"].sorted(),
+                        "Chest-accounting correction must not damage the established pulling plan in week \(weekNumber)")
+                    XCTAssertFalse(week.findings.contains { $0.contains("The week's back work") })
+                }
                 let dayStart = ((weekNumber - 1) * 7) + 1
                 let trainingDays = days.filter { !$0.isRestDay }
                 let totalSets = trainingDays.flatMap(\.exercises).reduce(0) { $0 + $1.sets }

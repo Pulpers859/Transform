@@ -749,13 +749,22 @@ extension ClaudeService {
 
     func stimulusCredit(for exercise: WorkoutExerciseResponse, area: String) -> StimulusCredit {
         let directSets = directSetCredit(for: exercise, area: area)
+        let metadata = exerciseMetadata(for: exercise)
+        // Selection relevance is not anatomical dose. Keep the shared ranking classifier
+        // unchanged; names such as Reverse Pec Deck cannot manufacture chest stimulus.
+        // Exact query aliases avoid redefining existing named/composite-focus precedence.
+        let chestQueries: Set<String> = ["chest", "pec", "pecs", "pectoral", "pectorals",
+            "pectoralis", "pectoralis major", "upper chest", "clavicular"]
         let qualityKind = focusStimulusKind(
             exerciseName: exercise.exerciseName,
             muscleTarget: exercise.muscleTarget,
             focusArea: area
         )
-        let qualityCredit = focusStimulusCredit(for: qualityKind) * Double(exercise.sets)
-        let metadata = exerciseMetadata(for: exercise)
+        var qualityCredit = focusStimulusCredit(for: qualityKind) * Double(exercise.sets)
+        if chestQueries.contains(normalizedPriorityText(area).trimmingCharacters(in: .whitespacesAndNewlines)) {
+            let declared = Set((metadata.primaryAreas + metadata.secondaryAreas).map(normalizedPriorityText))
+            if declared.isDisjoint(with: ["chest", "upper chest"]) { qualityCredit = 0 }
+        }
         let areaAliases = Set(stimulusAreaAliases(for: area).map(normalizedPriorityText))
         let secondaryAreas = Set(metadata.secondaryAreas.map(normalizedPriorityText))
         let secondaryCredit = areaAliases.isDisjoint(with: secondaryAreas)

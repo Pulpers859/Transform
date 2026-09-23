@@ -188,7 +188,17 @@ These are execution hypotheses, not adopted fixes; reserving the funded baseline
 is a different boundary from the earlier pre-allocation diagnostic. No live caller
 uses the prototype, and global capacity remains open until those results are reviewed.
 
-### False chest support-credit boundary (candidate, 2026-09-23)
+The lumbar diagnostic exposes a second boundary: its two remaining Pull-day Lats
+slots offer optimistic capacity 4+4, but the shared focus-session ceiling is 7.5
+(7.51 with funding tolerance), permitting only seven whole direct sets. A continuous
+capacity sum capped at 7.51 would still overstate reachability of the 7.5 target.
+Future reachability diagnostics must account for the attainable whole-set amounts
+and shared day ceilings, as well as competing budgets. This does not authorize
+making rounded eight sets mandatory: the owner's conditional-rounding policy still
+permits a constrained seven with an explicit shortfall. Keep role-floor feasibility,
+target reachability and preservation of the old funded plan separate.
+
+### False chest support-credit boundary (first implementation rejected, 2026-09-23)
 
 The beginner six-slot candidate only removes two Dumbbell Rear Delt Fly sets and
 increases Reverse Pec Deck from two to three. Actual chest prescriptions are
@@ -198,14 +208,26 @@ fall through to support credit (0.35 per set). The candidate therefore loses 0.3
 of fictitious Chest credit. This is an accounting defect, not permission to weaken
 the conservative dose comparator or adopt the candidate; other losses may remain.
 
-The candidate makes broad Chest classification depend on declared metadata and
-guards upper-chest name rules against unrelated anatomy. Corrective-name support
-also requires related metadata. Independent review caught named/composite precedence
-and corrective-return bypasses in the first patch. Regression controls cover genuine
-primary/secondary chest work, rear-delt/row counterexamples, corrective history names,
-and existing named-focus precedence. Complete-week execution/comparison is pending;
-the earlier global focus-credit rollback remains a reason not to infer safety from
-these unit tests alone. No exercise identity, persistence, or dose-comparison rule changes.
+`53f360e` corrected shared focus classification. Independent review improved composite
+precedence and corrective-name guards, and run `35821504741` passed all 750 tests.
+Nevertheless, raw evidence rejects that implementation: all four beginner weeks
+changed from five vertical/five rowing sets to eight/two, creating a new finding.
+Sixteen other weeks were identical. Unit-test success was not complete-plan safety.
+
+The replacement restores `FocusCoachingContext.swift` exactly to `abc4157`, keeping
+selection ranking unchanged. It gates only quality-derived numerical credit inside
+`stimulusCredit` for explicitly recognized chest query aliases when neither declared
+primary nor secondary anatomy contains Chest/Upper Chest. Direct and metadata-secondary
+credit paths are unchanged. Exact aliases avoid capturing `specialization` or silently
+redefining named/composite precedence; the older alias-helper substring limitation is
+not changed here. Regression tests preserve legacy ranking while requiring zero false
+numerical chest credit, retain true primary/secondary credit, and pin the beginner's
+four-week pulling identities/doses and absence of the new imbalance finding.
+
+The accounting-only replacement still needs full execution and artifact comparison:
+weighted credit also feeds allocation and candidate comparison. No persistence,
+canonical-key, or dose-comparison acceptance rule changes. The six-slot prototype is
+still disconnected from live generation.
 
 Recovery fallback already exists in production: missing/stale measured sleep can
 retain explicitly attributed standing caution, but cannot manufacture a measured

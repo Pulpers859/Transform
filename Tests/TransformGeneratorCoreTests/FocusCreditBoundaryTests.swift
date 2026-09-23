@@ -6,6 +6,12 @@ final class FocusCreditBoundaryTests: XCTestCase {
     private let service = ClaudeService.shared
 
     func testChestCreditRequiresDeclaredChestInvolvementNotNameKeywords() {
+        // Keep selection ranking separate from numerical stimulus accounting. A global
+        // classifier correction regressed four complete beginner weeks at 53f360e.
+        XCTAssertEqual(service.focusStimulusKind(exerciseName: "Reverse Pec Deck",
+            muscleTarget: "Rear Deltoids", focusArea: "Chest"), .support)
+        XCTAssertEqual(service.focusStimulusKind(exerciseName: "Dumbbell Rear Delt Fly",
+            muscleTarget: "Rear Deltoids", focusArea: "Chest"), .support)
         let unrelated = [("Reverse Pec Deck", "Rear Deltoids"),
             ("Dumbbell Rear Delt Fly", "Rear Deltoids"), ("Cable Rear Delt Fly", "Rear Deltoids"),
             ("Chest-Supported Row", "Upper Back"), ("Chest-Supported Rear Delt Row", "Rear Deltoids"),
@@ -14,9 +20,7 @@ final class FocusCreditBoundaryTests: XCTestCase {
         for (name, target) in unrelated {
             let exercise = WorkoutExerciseResponse(exerciseName: name, sets: 3, reps: "8-12",
                 tempo: "", restSeconds: 0, notes: "", muscleTarget: target)
-            for focus in ["Chest", "Pecs", "Upper Chest", "Clavicular"] {
-                XCTAssertEqual(service.focusStimulusKind(exerciseName: name, muscleTarget: target,
-                    focusArea: focus), .none, "\(name), \(focus)")
+            for focus in ["Chest", "Pecs", "Pectoral", "Pectorals", "Pectoralis major", "Upper Chest", "Clavicular"] {
                 let credit = service.stimulusCredit(for: exercise, area: focus)
                 XCTAssertEqual(credit.directSets, 0, "\(name), \(focus)")
                 XCTAssertEqual(credit.weightedStimulus, 0, "\(name), \(focus)")
@@ -39,6 +43,9 @@ final class FocusCreditBoundaryTests: XCTestCase {
         for (name, target) in [("Close-Grip Barbell Bench Press", "Triceps"), ("Landmine Press", "Anterior Deltoids")] {
             XCTAssertEqual(service.focusStimulusKind(exerciseName: name, muscleTarget: target,
                 focusArea: "Chest"), .secondary, name)
+            let exercise = WorkoutExerciseResponse(exerciseName: name, sets: 3, reps: "8-12",
+                tempo: "", restSeconds: 0, notes: "", muscleTarget: target)
+            XCTAssertEqual(service.stimulusCredit(for: exercise, area: "Chest").weightedStimulus, 2.1, accuracy: 0.000001)
         }
     }
 

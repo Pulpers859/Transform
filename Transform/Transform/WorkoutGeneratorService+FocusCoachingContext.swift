@@ -53,10 +53,7 @@ extension ClaudeService {
         // Fold punctuation only for corrective-name recognition; named focus rules below
         // retain their existing spelling behavior and the original touchesFocus gate.
         if containsAny(normalizeExerciseName(combinedText), keywords: ["y raise", "trap 3", "scaption", "external rotation", "pull apart", "wall slide"]) {
-            // Corrective words limit credit; they cannot manufacture involvement
-            // from a name such as "Chest-Supported Cable Y Raise".
-            return !focusAliases.isDisjoint(with: primaryAliases)
-                || !focusAliases.isDisjoint(with: secondaryAliases) ? .support : .none
+            return .support
         }
 
         switch focus {
@@ -78,11 +75,6 @@ extension ClaudeService {
                 return .support
             }
         case let value where value.contains("upper chest") || value.contains("clavicular"):
-            // A name containing "fly", "pec" or "incline" is not evidence of chest
-            // stimulus (rear-delt flys and reverse pec decks are counterexamples).
-            let chestAreas = Set(["chest", "upper chest"])
-            let declaredAreas = Set((metadata.primaryAreas + metadata.secondaryAreas).map(normalizedPriorityText))
-            guard !chestAreas.isDisjoint(with: declaredAreas) else { return .none }
             if containsAny(combinedText, keywords: ["incline press", "incline dumbbell press", "incline barbell press", "low incline", "incline fly", "incline cable fly", "incline machine fly", "reverse grip", "machine incline"]) {
                 return .prime
             }
@@ -136,14 +128,6 @@ extension ClaudeService {
             // Match the requested muscle against declared metadata, as directSetCredit does.
             // Expanding both sides bridges distinct muscles through umbrella labels.
             // FocusCreditBoundaryTests pins primary, secondary and unrelated lower-body cases.
-            let declaredPrimary = Set(metadata.primaryAreas.map(normalizedPriorityText))
-            let declaredSecondary = Set(metadata.secondaryAreas.map(normalizedPriorityText))
-            if !focusAliases.isDisjoint(with: declaredPrimary) { return .prime }
-            if !focusAliases.isDisjoint(with: declaredSecondary) { return .secondary }
-            return .none
-        case let value where value == "chest" || value.contains("pec"):
-            // Keep this after existing named-focus cases: a composite query must
-            // not silently change its established precedence.
             let declaredPrimary = Set(metadata.primaryAreas.map(normalizedPriorityText))
             let declaredSecondary = Set(metadata.secondaryAreas.map(normalizedPriorityText))
             if !focusAliases.isDisjoint(with: declaredPrimary) { return .prime }
