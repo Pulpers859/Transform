@@ -2,7 +2,7 @@ import Foundation
 import XCTest
 @testable import Transform
 
-/// Diagnostic trials only: six-slot reservation is not adopted into live generation.
+/// Compare guarded production capacity planning with independent complete-plan trials.
 @MainActor
 final class SixExerciseCapacityTests: XCTestCase {
     private let service = ClaudeService.shared
@@ -93,7 +93,7 @@ final class SixExerciseCapacityTests: XCTestCase {
     }
 
     func testTraceFiveCompleteWeekOnePlansWithOptionalSixSlotReservation() throws {
-        var report = ["SIX_SLOT_DIAGNOSTIC: five synthetic Week 1 plans; no adoption, no device proof.",
+        var report = ["SIX_SLOT_DIAGNOSTIC: five synthetic Week 1 plans; production capacity comparison, no device proof.",
             "Reservation proves role-floor subset feasibility only; fresh allocation/dose comparison is reported separately."]
         var processed = 0
         var expectedCrowded = 0
@@ -105,10 +105,17 @@ final class SixExerciseCapacityTests: XCTestCase {
             let blueprint = service.programBlueprint(for: intent, weekNumber: 1)
             var phases: [(String, [[ClaudeService.PreSelectedExercise]])] = []
             var baseline: ClaudeService.SubstitutionPlanningBaseline?
+            var capacity: ClaudeService.SessionCapacityFinalization?
+            var rowInput: ClaudeService.SubstitutionPlanningBaseline?
             let delivered = service.preSelectedExercisePlan(for: blueprint, trainingIntent: intent, weekNumber: 1,
                 previousWeekDays: nil, exerciseHistory: nil,
-                menuPlanningTrace: { phases.append(($0, $1)) }, rowPlanningReport: { baseline = $0; _ = $1 })
+                menuPlanningTrace: { phases.append(($0, $1)) }, rowPlanningReport: { rowInput = $0; _ = $1 },
+                capacityPlanningReport: { baseline = $0; capacity = $1 })
             let funded = try XCTUnwrap(baseline)
+            let observedCapacity = try XCTUnwrap(capacity)
+            let observedRowInput = try XCTUnwrap(rowInput)
+            XCTAssertEqual(signature(observedRowInput.menus), signature(observedCapacity.plan.menus))
+            XCTAssertEqual(observedRowInput.roleFloorAdmission, observedCapacity.plan.roleFloorAdmission)
             let effectiveBlueprint = funded.blueprint
             let candidate = try XCTUnwrap(phases.first { $0.0 == "sessionOrder" }).1
             let saved = signature(delivered.menus)
@@ -149,6 +156,8 @@ final class SixExerciseCapacityTests: XCTestCase {
             let finalized = service.finalizeSessionCapacity(funded, trainingIntent: intent,
                 baselineMessages: ["baseline marker"], baselineReceipts: [marker], collectFunding: true)
             report.append("VERIFIED_SUBSET decision=\(finalized.decision)")
+            XCTAssertEqual(finalized.decision, observedCapacity.decision)
+            XCTAssertEqual(signature(finalized.plan.menus), signature(observedCapacity.plan.menus))
             if finalized.decision.hasPrefix("adopted") {
                 verifiedSubsets += 1
                 adoptedPersonas.insert(persona.name)
@@ -248,7 +257,7 @@ final class SixExerciseCapacityTests: XCTestCase {
         XCTAssertTrue(adoptedPersonas.contains("Six-day push/pull/legs, back focus, no injuries"))
         XCTAssertTrue(adoptedPersonas.contains("Compound priority area, small muscles"))
         XCTAssertGreaterThan(postAllocationRefusals, 0, "At least one actual dose refusal must preserve baseline reports")
-        report.append("VERIFIED_SUBSETS count=\(verifiedSubsets); no live adoption")
+        report.append("VERIFIED_SUBSETS count=\(verifiedSubsets); production callback and standalone result agree")
         report.append("SUMMARY processed=\(processed) expectedCrowded=\(expectedCrowded)")
         let output = report.joined(separator: "\n")
         print(output)

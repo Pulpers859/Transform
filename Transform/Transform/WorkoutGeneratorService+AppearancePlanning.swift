@@ -54,8 +54,8 @@ extension ClaudeService {
         for day in menus.indices where !blueprint.dayPlans[day].isRestDay {
             let members = locations.map { $0.0 == day ? 1.0 : 0.0 }
             keep("Day \(day + 1) exercise floor", members, atLeast: 5)
-            // Diagnostic opt-in only. Live allocation retains its existing contract until
-            // complete-plan trials establish how six slots interact with required coverage.
+            // Opt-in subset constraint. Capacity planning separately verifies fresh funding;
+            // ordinary allocation still uses its existing role-floor reservation contract.
             if let maximumExercisesPerDay {
                 upper.append(.init(name: "Day \(day + 1) exercise ceiling", coefficients: members,
                     limit: Double(maximumExercisesPerDay)))

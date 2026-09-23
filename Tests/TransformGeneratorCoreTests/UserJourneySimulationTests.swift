@@ -288,7 +288,7 @@ final class UserJourneySimulationTests: XCTestCase {
         XCTAssertEqual(coreCallbacks, 1)
         XCTAssertEqual(phases.map { $0.0 }, ["initialSelection", "baselineCoverage", "priorityFeasibility",
             "baselineCoverageRecheck", "horizontalPullCoverage", "maintenanceBreadth", "lowerKneeAnchor",
-            "sessionOrder", "allocated", "finalized"], "Phase labels identify operations, not success verdicts")
+            "sessionOrder", "allocated", "sessionCapacity", "finalized"], "Phase labels identify operations, not success verdicts")
         let initial = try XCTUnwrap(phases.first { $0.0 == "initialSelection" })
         XCTAssertLessThanOrEqual(initial.1[lower].count, 6)
         XCTAssertEqual(observed.menus[lower].count, 6)
@@ -1782,6 +1782,11 @@ final class UserJourneySimulationTests: XCTestCase {
             for (index, week) in weeks.enumerated() {
                 let weekNumber = index + 1
                 let days = week.days
+                if weekNumber == 1 && ["Six-day push/pull/legs, back focus, no injuries",
+                    "Compound priority area, small muscles"].contains(persona.name) {
+                    XCTAssertTrue(days.allSatisfy { $0.exercises.count <= 6 },
+                        "The two verified Week 1 subsets must reach production delivery")
+                }
                 if persona.name == "Four-day beginner with a shoulder that hurts overhead" {
                     // Preserve the complete pre-classifier-change pulling prescription.
                     // Green unit tests hid an 8-vertical/2-row regression at 53f360e.

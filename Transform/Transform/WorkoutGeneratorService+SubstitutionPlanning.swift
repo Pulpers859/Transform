@@ -8,7 +8,7 @@ extension ClaudeService {
         let decision: String
     }
 
-    /// Provisional, unused-by-production capacity trial. A reservation is only a proposal;
+    /// Bounded capacity planning. A reservation is only a proposal;
     /// one fresh allocation must preserve complete-plan dose before its result can be returned.
     func finalizeSessionCapacity(_ baseline: SubstitutionPlanningBaseline,
         trainingIntent: TrainingIntentPlan, baselineMessages: [String],

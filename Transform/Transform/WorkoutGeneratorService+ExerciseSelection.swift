@@ -1794,7 +1794,8 @@ extension ClaudeService {
         pressdownPlanningReport: ((SubstitutionPlanningBaseline, PressdownFinalization) -> Void)? = nil,
         menuPlanningTrace: ((String, [[PreSelectedExercise]]) -> Void)? = nil,
         corePlanningReport: ((SubstitutionPlanningBaseline, CoreRelocationFinalization) -> Void)? = nil,
-        rowPlanningReport: ((SubstitutionPlanningBaseline, RowBalanceFinalization) -> Void)? = nil
+        rowPlanningReport: ((SubstitutionPlanningBaseline, RowBalanceFinalization) -> Void)? = nil,
+        capacityPlanningReport: ((SubstitutionPlanningBaseline, SessionCapacityFinalization) -> Void)? = nil
     ) -> SubstitutionPlanningBaseline {
         let previousExercisesByStyle = proceduralPreviousExercisesByStyle(from: previousWeekDays)
         var previousUsageByStyle: [String: Int] = [:]
@@ -2192,8 +2193,12 @@ extension ClaudeService {
                 }))
             }, exerciseHistory: exerciseHistory, selectionFocusIntents: selectionFocusIntents,
             roleFloorAdmission: roleFloorAdmission)
-        let rowFinalized = finalizeRowBalance(baseline, trainingIntent: trainingIntent,
+        let capacityFinalized = finalizeSessionCapacity(baseline, trainingIntent: trainingIntent,
             baselineMessages: allocationMessages, baselineReceipts: allocationReceipts,
+            collectFunding: setFundingReport != nil)
+        menuPlanningTrace?("sessionCapacity", capacityFinalized.plan.menus)
+        let rowFinalized = finalizeRowBalance(capacityFinalized.plan, trainingIntent: trainingIntent,
+            baselineMessages: capacityFinalized.messages, baselineReceipts: capacityFinalized.receipts,
             collectFunding: setFundingReport != nil)
         let finalized = finalizePressdownReduction(rowFinalized.plan, trainingIntent: trainingIntent,
             baselineMessages: rowFinalized.messages, baselineReceipts: rowFinalized.receipts,
@@ -2206,10 +2211,12 @@ extension ClaudeService {
             appearancePlanningReport?(message)
         }
         appearancePlanningReport?("optional pressdown quality: \(finalized.decision)")
+        appearancePlanningReport?("session capacity planning: \(capacityFinalized.decision)")
         appearancePlanningReport?("optional rowing balance: \(rowFinalized.decision)")
         appearancePlanningReport?("optional core placement: \(coreFinalized.decision)")
         setFundingReport?(coreFinalized.receipts)
-        rowPlanningReport?(baseline, rowFinalized)
+        capacityPlanningReport?(baseline, capacityFinalized)
+        rowPlanningReport?(capacityFinalized.plan, rowFinalized)
         pressdownPlanningReport?(rowFinalized.plan, finalized)
         corePlanningReport?(finalized.plan, coreFinalized)
         menuPlanningTrace?("finalized", coreFinalized.plan.menus)

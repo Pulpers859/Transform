@@ -224,10 +224,36 @@ not changed here. Regression tests preserve legacy ranking while requiring zero 
 numerical chest credit, retain true primary/secondary credit, and pin the beginner's
 four-week pulling identities/doses and absence of the new imbalance finding.
 
-The accounting-only replacement still needs full execution and artifact comparison:
-weighted credit also feeds allocation and candidate comparison. No persistence,
-canonical-key, or dose-comparison acceptance rule changes. The six-slot prototype is
-still disconnected from live generation.
+At `b3ac5ac`, run `35822949121` passes all 750 tests and downstream checks; the app
+build `35822949124` also passes. All five persona objects (twenty complete weeks)
+are exactly equal to the pre-regression `09af0c8` evidence, not merely validator-clean.
+The accounting tests independently require zero false chest credit. No persistence,
+canonical-key, or dose-comparison acceptance rule changes were needed.
+
+### Guarded capacity integration (2026-09-23)
+
+The prototype passed at `373d038` and again at `b3ac5ac`: two complete Week 1
+subsets preserve dose and procedural delivery; three are refused for actual
+Shoulders, Lats, or Triceps loss. A separate independent source audit found no
+concrete blocker in the passing-subset path. Claude's second-review route remains
+unavailable because its OAuth session expired; this is not Claude approval.
+
+The capacity boundary now runs after initial allocation and before rowing,
+pressdown, and core finalization. Each downstream step receives the preceding
+plan and its matching messages/receipts. Tests compare production callbacks with
+the independent trial and require the two measured cases to reach delivery within
+six exercises. Full execution and new twenty-week artifact comparison are pending
+for this integration. Windows syntax checks do not prove runtime behavior.
+
+This is not a global hard-six guarantee. Refused plans retain their original dose
+and crowding. Source-backed arithmetic for the beginner baseline rules out a
+simple alternate deletion: three remaining shoulder accessories can fund at most
+nine sets versus the original ten; other removals lose chest, back, triceps, core,
+or exposure requirements. Core relocation is the next candidate to test separately.
+The existing Lower-to-Pull incident path cannot simply be widened: its exact cyclic
+spacing equality and strictly-fewer-findings objective reject the warning-free
+beginner case. Any new capacity objective must preserve the old path's controls,
+explicitly assess spacing, and verify complete allocation and four-week continuity.
 
 Recovery fallback already exists in production: missing/stale measured sleep can
 retain explicitly attributed standing caution, but cannot manufacture a measured
