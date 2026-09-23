@@ -135,6 +135,24 @@ These replace the impossible sparse allocation tests. Independent review identif
 corrected stage-reporting and malformed-context issues. Execution and complete-week artifact
 comparison are pending; this is not a claim that rowing or the roadmap is complete.
 
+### Six-slot reservation diagnostic (2026-09-23, not live adoption)
+
+The preceding twenty-week matrix still contains fifteen over-six sessions: nine
+seven-exercise days and six eight-exercise days, all loading weeks. The owner's
+hard six-exercise ceiling is therefore not yet satisfied globally.
+
+An explicit, default-off reservation ceiling now supports complete-plan trials.
+Five historical Week 1 profiles capture the first planning phase exceeding six,
+then test the shared subset solver with six slots and unchanged other constraints.
+Admitted subsets receive a fresh allocation and full dose comparison; refusal and
+search exhaustion remain distinct. No trial is adopted by production. Protected
+seven-slot and below-five-floor controls prohibit silently discarding requirements.
+The `six-slot-planning-trials.txt` artifact records results; execution is pending.
+
+The owner replay additionally exercises no-row append using a complete five-slot
+Pull day, followed by fresh allocation and funded balance evaluation, and checks
+that an already balanced plan is unchanged. These assertions still require CI.
+
 Recovery fallback already exists in production: missing/stale measured sleep can
 retain explicitly attributed standing caution, but cannot manufacture a measured
 Restricted tier. Added regression cases pin fresh measured precedence and stale

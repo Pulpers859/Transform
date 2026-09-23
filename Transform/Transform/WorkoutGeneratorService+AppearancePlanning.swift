@@ -29,7 +29,8 @@ extension ClaudeService {
         blueprint: ProgramBlueprint,
         weekNumber: Int,
         lockedPrefixCounts: [Int] = [],
-        maximumStates: Int = 512
+        maximumStates: Int = 512,
+        maximumExercisesPerDay: Int? = nil
     ) -> AppearanceReservation {
         guard menus.count == blueprint.dayPlans.count else {
             return AppearanceReservation(menus: menus, outcome: .infeasible(["Menu/day-plan count mismatch"]))
@@ -53,6 +54,12 @@ extension ClaudeService {
         for day in menus.indices where !blueprint.dayPlans[day].isRestDay {
             let members = locations.map { $0.0 == day ? 1.0 : 0.0 }
             keep("Day \(day + 1) exercise floor", members, atLeast: 5)
+            // Diagnostic opt-in only. Live allocation retains its existing contract until
+            // complete-plan trials establish how six slots interact with required coverage.
+            if let maximumExercisesPerDay {
+                upper.append(.init(name: "Day \(day + 1) exercise ceiling", coefficients: members,
+                    limit: Double(maximumExercisesPerDay)))
+            }
             upper.append(.init(name: "Day \(day + 1) fatigue", coefficients: responses.indices.map {
                 locations[$0].0 == day ? Double(estimatedDayFatigue(for: [responses[$0]])) : 0
             }, limit: Double(limits.fatigue[day])))

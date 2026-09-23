@@ -34,6 +34,7 @@ jobs:
       TRANSFORM_CORE_RELOCATION_OUTPUT: ${{ github.workspace }}/core-relocation-trial.txt
       TRANSFORM_CORE_CHAIN_OUTPUT: ${{ github.workspace }}/core-relocation-chain.txt
       TRANSFORM_OWNER_REPLAY_OUTPUT: ${{ github.workspace }}/owner-planning-replay.json
+      TRANSFORM_SIX_SLOT_REPORT_OUTPUT: ${{ github.workspace }}/six-slot-planning-trials.txt
 
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
@@ -209,6 +210,7 @@ jobs:
             rowing-plan-trials.txt
             core-relocation-trial.txt
             core-relocation-chain.txt
+            six-slot-planning-trials.txt
           if-no-files-found: error
           retention-days: 14
 

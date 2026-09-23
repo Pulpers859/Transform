@@ -103,6 +103,45 @@ final class OwnerPlanningReplayTests: XCTestCase {
             return XCTFail("A row improvement must preserve complete-plan dose")
         }
         XCTAssertEqual(service.preflightFixedDoseSubstitution(delivered.menus, plannedBaseline: original), .structurallyEligible)
+        let repeatedRowCheck = service.finalizeRowBalance(delivered, trainingIntent: intent,
+            baselineMessages: [], baselineReceipts: [], collectFunding: false)
+        XCTAssertEqual(repeatedRowCheck.decision, "already balanced")
+        XCTAssertEqual(snapshot(repeatedRowCheck.plan.menus), snapshot(delivered.menus))
+        // Exercise the no-row append path with the same complete week. Removing its row
+        // leaves five Pull exercises, rather than the impossible sparse former fixture.
+        let rowDay = try XCTUnwrap(original.menus.indices.first { day in
+            original.menus[day].contains { $0.exerciseName == "Chest-Supported Row" }
+        })
+        var noRow = original.menus
+        noRow[rowDay].removeAll { $0.exerciseName == "Chest-Supported Row" }
+        XCTAssertEqual(noRow[rowDay].count, 5)
+        let rowCandidates = service.metadataFocusExerciseCatalog(for: "back").filter {
+            service.horizontalPullPatterns.contains(service.exerciseMetadata(forExerciseName: $0.name,
+                muscleTarget: $0.target).movementPattern)
+        }
+        let appended = try XCTUnwrap(service.menusByAppendingBalanceExercise(to: noRow,
+            blueprint: original.blueprint, weekNumber: 1, avoidedExercises: [], candidates: rowCandidates))
+        XCTAssertEqual(appended[rowDay].count, 6)
+        XCTAssertEqual(snapshot([Array(appended[rowDay].prefix(5))]), snapshot([noRow[rowDay]]))
+        let covered = service.enforceHorizontalPullCoverage(noRow, blueprint: original.blueprint,
+            trainingIntent: intent, weekNumber: 1, avoidedExercises: [], lockedPrefixCounts: original.lockedPrefixCounts)
+        XCTAssertEqual(snapshot(covered), snapshot(appended), "This fixture must reach append, not fallback")
+        let orderedCoverage = service.reorderedMenusForSessionFlow(covered, blueprint: original.blueprint,
+            trainingIntent: intent, lockedPrefixCounts: original.lockedPrefixCounts)
+        var coverageAdmission: ClaudeService.RoleFloorAdmission = .unassessed
+        let fundedCoverage = service.allocateWeeklySetPrescription(orderedCoverage, blueprint: original.blueprint,
+            weekNumber: 1, lockedPrefixCounts: original.lockedPrefixCounts,
+            roleFloorAdmissionReport: { coverageAdmission = $0 }, publishConflictLogs: false)
+        XCTAssertEqual(coverageAdmission, .admitted)
+        let appendedBaseline = ClaudeService.SubstitutionPlanningBaseline(menus: fundedCoverage, blueprint: original.blueprint,
+            weekNumber: 1, lockedPrefixCounts: original.lockedPrefixCounts,
+            retainedKeysByDay: original.retainedKeysByDay, exerciseHistory: original.exerciseHistory,
+            selectionFocusIntents: original.selectionFocusIntents, roleFloorAdmission: coverageAdmission)
+        let repairedAppend = service.finalizeRowBalance(appendedBaseline, trainingIntent: intent,
+            baselineMessages: [], baselineReceipts: [], collectFunding: false)
+        XCTAssertEqual(repairedAppend.plan.roleFloorAdmission, .admitted)
+        XCTAssertEqual(repairedAppend.plan.menus.map(\.count), original.menus.map(\.count))
+        XCTAssertTrue(service.plannedBackBalanceFindings(repairedAppend.plan.menus, blueprint: original.blueprint).isEmpty)
         // Retained identities and non-admitted plans must fail closed with the exact baseline.
         var retained = original.retainedKeysByDay
         for day in original.menus.indices {
