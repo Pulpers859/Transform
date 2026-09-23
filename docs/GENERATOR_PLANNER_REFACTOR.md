@@ -37,7 +37,19 @@ An independent source audit found the old journey test assumed only substitution
 could alter a plan; that assertion now explicitly covers consolidation. Regression
 coverage also protects Push's receiver after allocation, donor locks/retention,
 pain/skip history, unsupported weeks, published receipts and repeated application.
-Full integration execution remains pending; this is not an all-profile quality claim.
+Integration `ab97c1b` also protects donor/receivers implicated by reported shoulder
+symptoms. A receiver-specific test proves that the donor remains eligible, avoiding
+a false pass from the broad symptom fallback. Run `35894757805` recorded all 751
+tests with zero failures/errors and exported the intended Arms5/Push3 result with
+no validator findings. All twenty journey weeks are byte-identical to `de186d1`.
+The workflow nevertheless FAILED: it crossed the 18-minute test-step cap by about
+nine seconds. The owner replay took 67.39 seconds (prior diagnostic run 69.85);
+the longest matrix test rose from 389.80 to 471.14 seconds. These are CI timings,
+not isolated app benchmarks or proof of the cause of runtime variation. A bounded
+20-minute step / 24-minute job rerun is pending; no assertions were weakened.
+Swift app-build run `35894757718` passed. Physical-iPhone proof remains outstanding.
+This is not an all-profile quality claim. Claude's separate review could not run
+because its OAuth session expired; independent Codex and main-agent audits were used.
 
 The shoulder guard's preceding run `35885294447` passed 751 tests. Complete comparison
 against `17ce76e` confirms only the expected beginner Weeks 2/3 regional protection:

@@ -39,6 +39,12 @@ or test a simulator runtime; physical-iPhone validation remains required for app
 
 ## Evidence Checkpoint
 
+- September 23 generator run `35894757805` recorded 751 XCTest entries, zero
+  failures/errors and complete workout artifacts, but exceeded its 18-minute step
+  limit by about nine seconds. The workflow still failed; do not call it green.
+  The deterministic step now allows 20 minutes, with a 24-minute job/profile cap.
+  No assertions, workout limits, paid jobs or API-call budgets changed. Verify the
+  replacement run before claiming complete CI success.
 - Repository commit when this handoff was rendered: `1ac5cbaafae3772b2a37a5425b5b07f9d8201f04`
 - Local profile validation: passed.
 - Latest GitHub Actions result, observed HTTP-call count, and physical-device result: not recorded by the installer; verify and update after execution.

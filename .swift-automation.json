@@ -19,7 +19,7 @@
     "requiredLogPatterns": [
       "NutritionGeneratorStressTests"
     ],
-    "timeoutMinutes": 12
+    "timeoutMinutes": 24
   },
   "xcode": {
     "enabled": true,
