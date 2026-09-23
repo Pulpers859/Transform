@@ -1,6 +1,6 @@
 # Generator planner refactor: evidence and acceptance
 
-## Bounded same-region consolidation trial (2026-09-23, test only)
+## Bounded same-region consolidation (2026-09-23, integration verification pending)
 
 The owner-shaped synthetic replay matches the supplied phone menu's exercise names
 and sets, but does not replay private analysis/history or prove AI coaching quality.
@@ -16,9 +16,35 @@ Green tests alone do NOT authorize adoption: these diagnostic outcomes must be r
 Negative controls reject putting four sets on one accessory or combining six lateral
 raise sets into one four-set-capped slot. Existing limits are not relaxed.
 
-No production consolidation has been enabled. No paid API call or new iPhone build
-is required for this experiment. Local syntax checks and independent source review
-are separate from remote execution, which remains pending at this checkpoint.
+Experiment `de186d1` passed Generator run `35891131767` (751 tests, zero failures)
+and Swift run `35891131708`. Both candidates preserved all primary-region totals,
+passed complete dose comparison, and had no new validator findings. Neither kept
+the exact proposed allocation: Push's Rope Pressdown became 3, Arms' remaining
+pressdown became 3, and Cable Kickback stayed 2. Weekly direct triceps work remained
+8; Arms dropped from six exercises to five. The twenty production journey weeks
+were byte-identical to `7f30407`. Six lateral sets into one capped slot were refused.
+
+The integrated candidate now permits that bounded redistribution only for a
+nonpriority region. No surviving prescription may decrease; only existing editable
+same-region exercises may gain sets. Identities, targets, roles, days and ordering
+stay fixed apart from one redundant pressdown deletion. Locked/retained choices,
+pain/skip history, exact weekly primary-region totals, full dose limits and no-new
+validator findings are checked against the original baseline AFTER fresh allocation.
+It is Week 1 only, at most one fresh allocation, after the fixed-slot replacement
+search reports no qualified candidate. Refusal returns the original plan and receipts.
+
+An independent source audit found the old journey test assumed only substitutions
+could alter a plan; that assertion now explicitly covers consolidation. Regression
+coverage also protects Push's receiver after allocation, donor locks/retention,
+pain/skip history, unsupported weeks, published receipts and repeated application.
+Full integration execution remains pending; this is not an all-profile quality claim.
+
+The shoulder guard's preceding run `35885294447` passed 751 tests. Complete comparison
+against `17ce76e` confirms only the expected beginner Weeks 2/3 regional protection:
+rear-delt work stays at four sets rather than exchanging one for lateral-delt work.
+This leaves eleven over-six sessions across four personas. Consolidation of the
+owner-shaped Arms day does not resolve those crowded profiles or finish the roadmap.
+No paid API generation is required for these checks.
 
 ## Owner policy decisions and research interpretation (2026-09-16)
 

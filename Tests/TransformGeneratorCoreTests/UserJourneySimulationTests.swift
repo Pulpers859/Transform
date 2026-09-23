@@ -1396,6 +1396,28 @@ final class UserJourneySimulationTests: XCTestCase {
                         "Final next-set blockers must agree, including kind, subject, projected value and limit")
                     guard case .qualified = service.evaluatePressdownSubstitutionTrial(pressdownPlan.menus,
                         plannedBaseline: planned) else { XCTFail("Live output must requalify against its original baseline"); continue }
+                } else if case .consolidated(let day, let removed) = finalized.decision {
+                    XCTAssertEqual(weekIndex, 0)
+                    XCTAssertEqual(planned.menus[day].count, 6)
+                    XCTAssertEqual(pressdownPlan.menus[day].count, 5)
+                    var expected = planned.menus
+                    let removedSlot = try XCTUnwrap(expected[day].firstIndex { $0.exerciseName == removed })
+                    expected[day].remove(at: removedSlot)
+                    XCTAssertEqual(pressdownPlan.menus.map { $0.map(\.exerciseName) }, expected.map { $0.map(\.exerciseName) })
+                    XCTAssertEqual(pressdownPlan.menus.joined().reduce(0) { $0 + $1.prescribedSets },
+                        planned.menus.joined().reduce(0) { $0 + $1.prescribedSets })
+                    for index in expected.indices {
+                        for slot in expected[index].indices {
+                            XCTAssertGreaterThanOrEqual(pressdownPlan.menus[index][slot].prescribedSets,
+                                expected[index][slot].prescribedSets)
+                        }
+                    }
+                    guard case .dosePreserved = service.compareAllocatedDoseOnly(pressdownPlan.menus,
+                        baseline: planned.menus, blueprint: planned.blueprint, weekNumber: planned.weekNumber) else {
+                        XCTFail("Consolidation must preserve whole-plan dose"); continue
+                    }
+                    XCTAssertEqual(finalized.receipts.map(\.exerciseName), pressdownPlan.menus.flatMap { $0.map(\.exerciseName) })
+                    XCTAssertEqual(finalized.receipts.map(\.prescribedSets), pressdownPlan.menus.flatMap { $0.map(\.prescribedSets) })
                 } else {
                     XCTAssertEqual(signature(pressdownPlan.menus), signature(planned.menus))
                 }

@@ -1,6 +1,144 @@
 import Foundation
 
 extension ClaudeService {
+    /// One Week 1 removal and one fresh allocation. Only existing, editable work for
+    /// the same nonpriority region may gain sets; every surviving prescription is monotonic.
+    func finalizeSameRegionPressdownConsolidation(_ baseline: SubstitutionPlanningBaseline,
+        day: Int, donor: Int, trainingIntent: TrainingIntentPlan,
+        baselineMessages: [String], baselineReceipts: [SetFundingObservation], collectFunding: Bool = false
+    ) -> PressdownFinalization {
+        func refused(_ reason: String) -> PressdownFinalization {
+            .init(plan: baseline, messages: baselineMessages, receipts: baselineReceipts,
+                decision: .consolidationRefused(reason))
+        }
+        let menus = baseline.menus, blueprint = baseline.blueprint
+        guard baseline.roleFloorAdmission == .admitted,
+              baseline.weekNumber == 1,
+              menus.count == 7, blueprint.dayPlans.count == 7,
+              blueprint.dayPlans.filter({ !$0.isRestDay }).count == blueprint.weeklyTrainingDays,
+              baseline.lockedPrefixCounts.count == 7, baseline.retainedKeysByDay.count == 7,
+              baseline.selectionFocusIntents.count == 7,
+              menus.indices.contains(day), menus[day].indices.contains(donor),
+              menus.indices.allSatisfy({ index in
+                  blueprint.dayPlans[index].dayIndex == index + 1
+                      && baseline.lockedPrefixCounts[index] >= 0
+                      && baseline.lockedPrefixCounts[index] <= menus[index].count
+                      && (blueprint.dayPlans[index].isRestDay ? menus[index].isEmpty : (5...6).contains(menus[index].count))
+                      && menus[index].allSatisfy { $0.prescribedSets > 0 }
+              }), menus[day].count == 6 else { return refused("invalid consolidation context") }
+        let removed = menus[day][donor]
+        guard pressdownRedundancyFamily.contains(removed.exerciseName),
+              excessPressdownsByDay(in: menus)[day] > 0 else { return refused("no redundant pressdown") }
+        func editable(_ index: Int, _ slot: Int) -> Bool {
+            let item = menus[index][slot]
+            let key = ExerciseWeightEntry.canonicalLookupKey(item.exerciseName)
+            return !isProtectedAppearance(role: item.role, slot: slot, style: blueprint.dayPlans[index].style,
+                       lockedPrefixCount: baseline.lockedPrefixCounts[index])
+                && !isProtectedAppearance(role: proceduralExerciseRole(for: item.exerciseName, muscleTarget: item.muscleTarget),
+                    slot: slot, style: blueprint.dayPlans[index].style, lockedPrefixCount: baseline.lockedPrefixCounts[index])
+                && !baseline.retainedKeysByDay[index].contains(key)
+                && !(baseline.exerciseHistory?.painExercises.contains(key) ?? false)
+                && !(baseline.exerciseHistory?.equipmentSkipExercises.contains(key) ?? false)
+        }
+        guard editable(day, donor) else { return refused("protected consolidation donor") }
+        func regions(_ item: PreSelectedExercise) -> Set<String> {
+            Set(exerciseMetadata(forExerciseName: item.exerciseName, muscleTarget: item.muscleTarget)
+                .primaryAreas.map(normalizedPriorityText))
+        }
+        let targetRegions = regions(removed)
+        guard !targetRegions.isEmpty else { return refused("unknown donor region") }
+        let receivers = menus[day].indices.filter { $0 != donor && editable(day, $0) && regions(menus[day][$0]) == targetRegions }
+        guard !receivers.isEmpty else { return refused("no same-region receiver") }
+        let accounting = weeklyExerciseAccounting(for: menus, blueprint: blueprint)
+        guard accounting.exercises[day][donor].unitDirect.allSatisfy({ $0 == 0 }) else {
+            return refused("priority-region consolidation is outside this boundary")
+        }
+        func ceiling(_ slot: Int) -> Int {
+            let item = menus[day][slot], cost = accounting.exercises[day][slot]
+            let prime = blueprint.priorityAllocations.indices.contains { cost.unitDirect[$0] > 0 && cost.qualityScore[$0] == 30 }
+            return max(proceduralSets(for: baseline.weekNumber, exerciseName: item.exerciseName,
+                muscleTarget: item.muscleTarget), prime ? 4 : 0)
+        }
+        var proposed = menus
+        var remaining = removed.prescribedSets
+        // Bounded by the removed prescription, never enlarge a per-exercise ceiling.
+        while remaining > 0 {
+            var moved = false
+            for slot in receivers where remaining > 0 && proposed[day][slot].prescribedSets < ceiling(slot) {
+                proposed[day][slot].prescribedSets += 1
+                remaining -= 1
+                moved = true
+            }
+            guard moved else { return refused("same-region receivers lack set capacity") }
+        }
+        proposed[day].remove(at: donor)
+        guard case .dosePreserved = compareAllocatedDoseOnly(proposed, baseline: menus,
+            blueprint: blueprint, weekNumber: baseline.weekNumber) else { return refused("proposed dose refused") }
+        var admission: RoleFloorAdmission = .unassessed
+        var messages: [String] = []
+        var receipts: [SetFundingObservation] = []
+        let observer: (([SetFundingObservation]) -> Void)? = collectFunding ? { receipts = $0 } : nil
+        let allocated = allocateWeeklySetPrescription(proposed, blueprint: blueprint,
+            weekNumber: baseline.weekNumber, lockedPrefixCounts: baseline.lockedPrefixCounts,
+            appearancePlanningReport: { messages.append($0) }, setFundingReport: observer,
+            roleFloorAdmissionReport: { admission = $0 }, publishConflictLogs: false)
+        func signature(_ plan: [[PreSelectedExercise]]) -> [[String]] {
+            plan.map { $0.map { "\($0.exerciseName)|\($0.muscleTarget)|\($0.movementPattern)|\($0.role)|\($0.prescribedSets)" } }
+        }
+        guard admission == .admitted, allocated.count == proposed.count,
+              zip(allocated, proposed).allSatisfy({ actual, expected in
+                  actual.count == expected.count && zip(actual, expected).allSatisfy { lhs, rhs in
+                      lhs.exerciseName == rhs.exerciseName && lhs.muscleTarget == rhs.muscleTarget
+                          && lhs.role == rhs.role && lhs.movementPattern == rhs.movementPattern
+                  }
+              }) else { return refused("fresh allocation changed consolidation identities") }
+        for index in menus.indices {
+            for slot in menus[index].indices where !(index == day && slot == donor) {
+                let old = menus[index][slot]
+                let newSlot = index == day && slot > donor ? slot - 1 : slot
+                let new = allocated[index][newSlot]
+                guard new.prescribedSets >= old.prescribedSets else { return refused("surviving prescription lost sets") }
+                if new.prescribedSets != old.prescribedSets {
+                    guard editable(index, slot), regions(old) == targetRegions,
+                          accounting.exercises[index][slot].unitDirect.allSatisfy({ $0 == 0 }) else {
+                        return refused("allocation changed protected or unrelated work")
+                    }
+                }
+            }
+        }
+        func regionalSets(_ plan: [[PreSelectedExercise]]) -> [String: Int] {
+            var totals: [String: Int] = [:]
+            for item in plan.joined() { for region in regions(item) { totals[region, default: 0] += item.prescribedSets } }
+            return totals
+        }
+        guard regionalSets(allocated) == regionalSets(menus),
+              case .dosePreserved = compareAllocatedDoseOnly(allocated, baseline: menus,
+                blueprint: blueprint, weekNumber: baseline.weekNumber) else {
+            return refused("allocated regional dose refused")
+        }
+        let ordered = reorderedMenusForSessionFlow(allocated, blueprint: blueprint,
+            trainingIntent: trainingIntent, lockedPrefixCounts: baseline.lockedPrefixCounts)
+        guard signature(ordered) == signature(allocated) else { return refused("consolidation order changed") }
+        func findings(_ plan: [[PreSelectedExercise]]) -> [String] {
+            let output = buildProceduralWeek(weekNumber: 1, dayStart: 1, dayEnd: 7,
+                splitType: trainingIntent.splitRecommendation, programName: "Consolidation verification",
+                trainingIntent: trainingIntent, blueprint: blueprint, previousWeekDays: nil, exerciseMenus: plan)
+            return validateWeekResponse(output, dayStart: 1, dayEnd: 7, previousWeekDays: nil,
+                blueprint: blueprint, expectedExerciseMenus: plan)
+        }
+        let oldCounts = Dictionary(grouping: findings(menus), by: { $0 }).mapValues(\.count)
+        let newCounts = Dictionary(grouping: findings(allocated), by: { $0 }).mapValues(\.count)
+        guard newCounts.allSatisfy({ message, count in count <= oldCounts[message, default: 0] }) else {
+            return refused("consolidation introduced validator findings")
+        }
+        let plan = SubstitutionPlanningBaseline(menus: allocated, blueprint: blueprint,
+            weekNumber: baseline.weekNumber, lockedPrefixCounts: baseline.lockedPrefixCounts,
+            retainedKeysByDay: baseline.retainedKeysByDay, exerciseHistory: baseline.exerciseHistory,
+            selectionFocusIntents: baseline.selectionFocusIntents, roleFloorAdmission: admission)
+        return .init(plan: plan, messages: messages, receipts: receipts,
+            decision: .consolidated(day: day, removed: removed.exerciseName))
+    }
+
     struct CapacityShoulderRegionLoss: Equatable {
         let region: String
         let baselineSets: Int
@@ -514,6 +652,8 @@ extension ClaudeService {
     }
 
     enum PressdownAdoptionDecision: Equatable {
+        case consolidationRefused(String)
+        case consolidated(day: Int, removed: String)
         case baselineNotAdmitted(RoleFloorAdmission)
         case search(PressdownSearchOutcome)
         case orderChange
@@ -564,6 +704,24 @@ extension ClaudeService {
             return retained(.baselineNotAdmitted(baseline.roleFloorAdmission))
         }
         let search = searchPressdownReduction(in: baseline)
+        // After the existing fixed-slot search finds no acceptable replacement, try
+        // one removal. No fallback search follows a failed fresh consolidation allocation.
+        if search.outcome == .noQualifiedCandidate, baseline.weekNumber == 1 {
+            for day in baseline.menus.indices where baseline.menus[day].count == 6
+                && excessPressdownsByDay(in: baseline.menus)[day] > 0 {
+                if let donor = baseline.menus[day].indices.reversed().first(where: { slot in
+                    let item = baseline.menus[day][slot]
+                    return pressdownRedundancyFamily.contains(item.exerciseName)
+                        && !isProtectedAppearance(role: item.role, slot: slot,
+                            style: baseline.blueprint.dayPlans[day].style, lockedPrefixCount: baseline.lockedPrefixCounts[day])
+                        && !baseline.retainedKeysByDay[day].contains(ExerciseWeightEntry.canonicalLookupKey(item.exerciseName))
+                }) {
+                    return finalizeSameRegionPressdownConsolidation(baseline, day: day, donor: donor,
+                        trainingIntent: trainingIntent, baselineMessages: baselineMessages,
+                        baselineReceipts: baselineReceipts, collectFunding: collectFunding)
+                }
+            }
+        }
         guard case .proposed = search.outcome else { return retained(.search(search.outcome)) }
         let preliminary = verifyFinalPressdownReplacement(search.proposedMenus, admission: .admitted,
             baseline: baseline, trainingIntent: trainingIntent)

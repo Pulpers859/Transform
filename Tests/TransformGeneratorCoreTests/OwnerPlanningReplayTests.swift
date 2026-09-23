@@ -59,10 +59,12 @@ final class OwnerPlanningReplayTests: XCTestCase {
         var preRow: ClaudeService.SubstitutionPlanningBaseline?
         var rowResult: ClaudeService.RowBalanceFinalization?
         var diagnostics: [String] = []
+        var publishedFunding: [SetFundingObservation] = []
         var callbackCounts = [0, 0]
         let delivered = service.preSelectedExercisePlan(for: initialBlueprint, trainingIntent: intent,
             weekNumber: 1, previousWeekDays: nil, exerciseHistory: nil,
             appearancePlanningReport: { diagnostics.append($0) },
+            setFundingReport: { publishedFunding = $0 },
             pressdownPlanningReport: { baseline = $0; pressdown = $1; callbackCounts[0] += 1 },
             corePlanningReport: { preCore = $0; core = $1; callbackCounts[1] += 1 },
             rowPlanningReport: { preRow = $0; rowResult = $1 })
@@ -88,12 +90,12 @@ final class OwnerPlanningReplayTests: XCTestCase {
         let fundedBack = rowSummary(delivered.menus, blueprint: delivered.blueprint)
         XCTAssertEqual(fundedBack.verticalSets, 3)
         XCTAssertEqual(fundedBack.rowingSets, 5)
-        XCTAssertEqual(delivered.menus.map(\.count), original.menus.map(\.count))
-        XCTAssertEqual(delivered.menus.map { $0.map(\.prescribedSets) }, original.menus.map { $0.map(\.prescribedSets) })
+        XCTAssertEqual(rowFinalization.plan.menus.map(\.count), original.menus.map(\.count))
+        XCTAssertEqual(rowFinalization.plan.menus.map { $0.map(\.prescribedSets) }, original.menus.map { $0.map(\.prescribedSets) })
         XCTAssertTrue(service.plannedBackBalanceFindings(delivered.menus, blueprint: delivered.blueprint).isEmpty)
         let changes = original.menus.indices.flatMap { day in
             original.menus[day].indices.compactMap { slot -> String? in
-                let old = original.menus[day][slot], new = delivered.menus[day][slot]
+                let old = original.menus[day][slot], new = rowFinalization.plan.menus[day][slot]
                 return old.exerciseName == new.exerciseName ? nil : "\(old.exerciseName) -> \(new.exerciseName)"
             }
         }
@@ -102,7 +104,27 @@ final class OwnerPlanningReplayTests: XCTestCase {
             blueprint: original.blueprint, weekNumber: 1) else {
             return XCTFail("A row improvement must preserve complete-plan dose")
         }
-        XCTAssertEqual(service.preflightFixedDoseSubstitution(delivered.menus, plannedBaseline: original), .structurallyEligible)
+        XCTAssertEqual(service.preflightFixedDoseSubstitution(rowFinalization.plan.menus, plannedBaseline: original), .structurallyEligible)
+        XCTAssertEqual(pressdownResult.decision, .consolidated(day: 5, removed: "Rope Triceps Pressdown"))
+        XCTAssertEqual(delivered.menus.map(\.count), [6, 6, 0, 6, 6, 5, 0])
+        let expectedReceipts = delivered.menus.indices.flatMap { day in
+            delivered.menus[day].indices.map { slot in
+                let item = delivered.menus[day][slot]
+                return "\(day)|\(slot)|\(item.exerciseName)|\(item.muscleTarget)|\(item.prescribedSets)"
+            }
+        }
+        XCTAssertEqual(publishedFunding.map { "\($0.dayIndex)|\($0.exerciseIndex)|\($0.exerciseName)|\($0.muscleTarget)|\($0.prescribedSets)" }, expectedReceipts)
+        XCTAssertEqual(publishedFunding, pressdownResult.receipts)
+        XCTAssertEqual(delivered.menus[3].first { $0.exerciseName == "Rope Triceps Pressdown" }?.prescribedSets, 3)
+        XCTAssertEqual(delivered.menus[5].first { $0.exerciseName == "V-Bar Pressdown" }?.prescribedSets, 3)
+        XCTAssertEqual(delivered.menus[5].first { $0.exerciseName == "Cable Kickback" }?.prescribedSets, 2)
+        XCTAssertFalse(delivered.menus[5].contains { $0.exerciseName == "Rope Triceps Pressdown" })
+        let repeatedConsolidation = service.finalizePressdownReduction(pressdownResult.plan, trainingIntent: intent,
+            baselineMessages: ["unchanged marker"], baselineReceipts: [], collectFunding: false)
+        XCTAssertEqual(repeatedConsolidation.decision, .search(.noRedundancy))
+        XCTAssertEqual(snapshot(repeatedConsolidation.plan.menus), snapshot(pressdownResult.plan.menus))
+        XCTAssertEqual(repeatedConsolidation.messages, ["unchanged marker"])
+        try checkConsolidationProtections(baseline: pressdownInput, intent: intent)
         let repeatedRowCheck = service.finalizeRowBalance(delivered, trainingIntent: intent,
             baselineMessages: [], baselineReceipts: [], collectFunding: false)
         XCTAssertEqual(repeatedRowCheck.decision, "already balanced")
@@ -189,7 +211,7 @@ final class OwnerPlanningReplayTests: XCTestCase {
         let rowTrials = rowingTrials(baseline: deliveredBaseline, intent: intent, analysis: analysis)
         XCTAssertLessThanOrEqual(rowTrials.count, 3)
         let rowBaseline = rowSummary(deliveredBaseline.menus, blueprint: deliveredBaseline.blueprint)
-        let consolidationTrials = try pressdownConsolidationTrials(baseline: deliveredBaseline,
+        let consolidationTrials = try pressdownConsolidationTrials(baseline: pressdownInput,
             intent: intent, analysis: analysis)
         if rowBaseline.verticalSets > rowBaseline.rowingSets {
             XCTAssertFalse(rowTrials.isEmpty, "A vertical-heavy back plan must exercise at least one diagnostic proposal, including zero-row plans")
@@ -225,6 +247,48 @@ final class OwnerPlanningReplayTests: XCTestCase {
     private func snapshot(_ menus: [[ClaudeService.PreSelectedExercise]]) -> [[MenuEvidence]] {
         menus.map { $0.map { MenuEvidence(exerciseName: $0.exerciseName, muscleTarget: $0.muscleTarget,
             movementPattern: $0.movementPattern, role: $0.role.rawValue, prescribedSets: $0.prescribedSets) } }
+    }
+
+    private func checkConsolidationProtections(baseline: ClaudeService.SubstitutionPlanningBaseline,
+        intent: ClaudeService.TrainingIntentPlan) throws {
+        let day = 5
+        let donor = try XCTUnwrap(baseline.menus[day].firstIndex { $0.exerciseName == "Rope Triceps Pressdown" })
+        let key = ExerciseWeightEntry.canonicalLookupKey(baseline.menus[day][donor].exerciseName)
+        func context(locks: [Int]? = nil, retained: [Set<String>]? = nil,
+            history: ClaudeService.ExerciseHistoryContext? = nil, week: Int = 1) -> ClaudeService.SubstitutionPlanningBaseline {
+            .init(menus: baseline.menus, blueprint: baseline.blueprint, weekNumber: week,
+                lockedPrefixCounts: locks ?? baseline.lockedPrefixCounts,
+                retainedKeysByDay: retained ?? baseline.retainedKeysByDay, exerciseHistory: history,
+                selectionFocusIntents: baseline.selectionFocusIntents, roleFloorAdmission: baseline.roleFloorAdmission)
+        }
+        var locks = baseline.lockedPrefixCounts
+        locks[day] = donor + 1
+        var retained = baseline.retainedKeysByDay
+        retained[day].insert(key)
+        let pain = ClaudeService.ExerciseHistoryContext(painExercises: [key], equipmentSkipExercises: [],
+            priorMesocycleExercises: [], mesocycleIndex: 0)
+        let skipped = ClaudeService.ExerciseHistoryContext(painExercises: [], equipmentSkipExercises: [key],
+            priorMesocycleExercises: [], mesocycleIndex: 0)
+        let invalid = [context(locks: locks), context(retained: retained), context(history: pain),
+            context(history: skipped), context(week: 2), context(week: 4), context(locks: [])]
+        for fixture in invalid {
+            let result = service.finalizeSameRegionPressdownConsolidation(fixture, day: day, donor: donor,
+                trainingIntent: intent, baselineMessages: ["baseline marker"], baselineReceipts: [])
+            guard case .consolidationRefused = result.decision else { return XCTFail("Protected context was adopted") }
+            XCTAssertEqual(snapshot(result.plan.menus), snapshot(fixture.menus))
+            XCTAssertEqual(result.messages, ["baseline marker"])
+            XCTAssertEqual(result.receipts, [])
+        }
+        // The allocator adds a set to Push's existing pressdown. Protecting that
+        // receiver must refuse the ACTUAL allocation, not just the proposed Arms edit.
+        var receiverRetained = baseline.retainedKeysByDay
+        receiverRetained[3].insert(key)
+        let receiverProtected = context(retained: receiverRetained)
+        let refused = service.finalizeSameRegionPressdownConsolidation(receiverProtected, day: day, donor: donor,
+            trainingIntent: intent, baselineMessages: ["receiver marker"], baselineReceipts: [])
+        XCTAssertEqual(refused.decision, .consolidationRefused("allocation changed protected or unrelated work"))
+        XCTAssertEqual(snapshot(refused.plan.menus), snapshot(baseline.menus))
+        XCTAssertEqual(refused.messages, ["receiver marker"])
     }
 
     /// Diagnostic only. Reuse the one actual delivered baseline; never rerun complete selection,
