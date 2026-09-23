@@ -106,7 +106,7 @@ The bounded trials investigate that gap without weakening eligibility or budgets
 Per-test xUnit timing is also being captured to investigate suite runtime rather than
 assuming more timeout is a performance fix. Remote execution remains required.
 
-### Funded rowing-plan revision (2026-09-23, validation pending)
+### Funded rowing-plan revision (2026-09-23, replay verified; snapshot correction pending)
 
 The bounded owner replay found one viable loading-week candidate: replacing a same-target
 three-set Lat Pulldown with Single-Arm Dumbbell Row preserved direct Lats credit, passed
@@ -132,8 +132,17 @@ The no-row selection fallback retains its continuity-prefix protection.
 through production, with one Lat Pulldown replacement, unchanged appearances and all set
 counts, full dose comparison, and retained/non-admitted/malformed-context refusal controls.
 These replace the impossible sparse allocation tests. Independent review identified and
-corrected stage-reporting and malformed-context issues. Execution and complete-week artifact
-comparison are pending; this is not a claim that rowing or the roadmap is complete.
+corrected stage-reporting and malformed-context issues.
+
+Run `35819116670` at `09af0c8` executed 747 tests with one failing test: the historical
+fixture still expected the old pulldown and imbalance warning. Its exported snapshot
+shows exactly the same-target three-set row substitution and no other prescription
+changes. The owner replay passed. The fixture expectation is updated only to that
+observed result. The app-build workflow passed. Across all twenty journey weeks,
+exercise/set/target signatures and priority totals were unchanged; complete JSON
+objects differ because the new row-decision diagnostic is recorded. Independent
+arithmetic still finds zero prescriptions below two sets. Crowding and the existing
+lumbar-profile deload imbalance remain; this does not complete rowing or the roadmap.
 
 ### Six-slot reservation diagnostic (2026-09-23, not live adoption)
 
