@@ -16,7 +16,41 @@ validator-finding multiplicities and funding receipts. Proposed and allocated da
 exported separately from ordered output; receipts belong to allocated order. Changes to
 surviving prescriptions remain visible. These diagnostics are not a production eligibility
 checker or adoption rule. No candidate feeds the next week, and no app behavior changes.
-Runtime results are pending; inspect `crossDayTrials` before selecting an implementation.
+Experiment `5cf8649`, run `35920787666`, exported all ten `crossDayTrials`:
+
+- All ten proposals and freshly allocated candidates passed complete dose comparison,
+  preserved exact weekly primary-region sets and introduced no validator findings.
+- Beginner: both rear-delt relocations retained their exact proposals in Weeks 1-3.
+  Both report a symptom/protection blocker; Dumbbell Rear Delt Fly additionally lacks
+  Pull-catalog membership. Reverse Pec Deck is the narrower existing-catalog candidate.
+  Source trace, not an isolated helper replay: the fixture says "No pain on rows";
+  `reportedShoulderPainImplicates` matches movement phrases without negation, and the
+  rear-delt family includes `row`. `ShoulderReportCorpusTests` already records this
+  known limitation for a pain-free dip. Do not infer identity/retention protection
+  from the diagnostic's combined OR label, and do not bypass symptom caution to adopt.
+- Small-muscle: both proposals converge to Arms Rope 2->3 and Overhead Extension 2->3,
+  rather than placing both sets on the nominated receiver. This changes protected
+  slot-zero Rope even for the Overhead-only proposal. Primary triceps exposure changes
+  from three days to two; weekly sets remain ten. Keep both candidates refused.
+- Every field in the twenty production workout `days` arrays stayed unchanged from
+  `dcbb455`; eleven over-six sessions remain. No candidate has been adopted.
+
+CI verification is incomplete: Swift `35920787662` logged BUILD SUCCEEDED, but Generator
+`35920787666` timed out at its 20-minute test-step limit. Its XML contains 751 entries
+with zero failures/errors, and the complete experiment artifacts were exported. This
+does not make the workflow green. The modified journey test took 317.98s versus 197.64s
+at `dcbb455`; unchanged repeated-generation and substitution tests also rose from
+328.32->407.80s and 393.27->462.93s. These timings do not isolate the added work's cost.
+Do not automatically increase the timeout again; bounded diagnostics and repeated
+full-mesocycle verification need a runtime audit before more broad tests are added.
+
+Next bounded work: isolate the negated-symptom limitation with positive and ambiguous
+controls, keeping broad caution and saved pain history intact. Split lock, retention
+and symptom diagnostics before considering the Reverse Pec Deck relocation. Separately,
+triceps consolidation needs allocation that preserves the protected receiver's existing
+dose. These are explicit next boundaries, not permission to weaken either guard.
+Independent Codex/main source and artifact audits agree on refusal. Claude review
+was attempted but its OAuth session could not refresh; it supplied no approval.
 
 ## Bounded same-region consolidation (2026-09-23, bounded device check passed)
 

@@ -39,6 +39,12 @@ or test a simulator runtime; physical-iPhone validation remains required for app
 
 ## Evidence Checkpoint
 
+- Diagnostic commit `5cf8649`: Swift `35920787662` built successfully. Generator
+  `35920787666` failed its 20-minute step timeout, despite exporting ten complete
+  cross-day trials and XML with 751 entries, zero failures/errors. All twenty
+  production workout weeks stayed unchanged. Do not call this workflow green
+  or raise its timeout automatically; see the planner roadmap for measured timings
+  and the exact unresolved candidate protections. No production Swift changed.
 - September 23 generator run `35894757805` recorded 751 XCTest entries, zero
   failures/errors and complete workout artifacts, but exceeded its 18-minute step
   limit by about nine seconds. The workflow still failed; do not call it green.
