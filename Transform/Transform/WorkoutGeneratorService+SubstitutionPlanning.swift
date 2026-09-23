@@ -1,6 +1,33 @@
 import Foundation
 
 extension ClaudeService {
+    struct CapacityShoulderRegionLoss: Equatable {
+        let region: String
+        let baselineSets: Int
+        let candidateSets: Int
+    }
+
+    /// Capacity-specific protection: broad shoulder totals cannot replace direct work
+    /// for another deltoid region. Weekly comparison permits across-day redistribution.
+    /// This is a conservative planning rule, not a biological equivalence or safety claim.
+    func capacityShoulderRegionLoss(_ candidate: [[PreSelectedExercise]],
+        baseline: [[PreSelectedExercise]]) -> CapacityShoulderRegionLoss? {
+        for bucket in weeklyVariationBuckets(for: "Shoulders") {
+            func sets(_ menus: [[PreSelectedExercise]]) -> Int {
+                menus.joined().reduce(0) { total, exercise in
+                    total + (exerciseDirectlyTargets(groupAliases: bucket.primaryAreas,
+                        exerciseName: exercise.exerciseName, muscleTarget: exercise.muscleTarget)
+                        ? exercise.prescribedSets : 0)
+                }
+            }
+            let old = sets(baseline), new = sets(candidate)
+            if new < old {
+                return .init(region: bucket.label, baselineSets: old, candidateSets: new)
+            }
+        }
+        return nil
+    }
+
     struct SessionCapacityFinalization {
         let plan: SubstitutionPlanningBaseline
         let messages: [String]
@@ -101,6 +128,9 @@ extension ClaudeService {
         }
         let dose = compareAllocatedDoseOnly(allocated, baseline: menus, blueprint: blueprint, weekNumber: baseline.weekNumber)
         guard case .dosePreserved = dose else { return retained("fresh allocation dose refused: \(dose)") }
+        if let loss = capacityShoulderRegionLoss(allocated, baseline: menus) {
+            return retained("fresh allocation shoulder region refused: \(loss.region) \(loss.baselineSets)->\(loss.candidateSets)")
+        }
         let oldBackFindings = Dictionary(grouping: plannedBackBalanceFindings(menus, blueprint: blueprint), by: { $0 })
             .mapValues(\.count)
         let newBackFindings = Dictionary(grouping: plannedBackBalanceFindings(allocated, blueprint: blueprint), by: { $0 })

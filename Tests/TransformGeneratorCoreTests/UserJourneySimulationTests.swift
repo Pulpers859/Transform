@@ -1596,6 +1596,8 @@ final class UserJourneySimulationTests: XCTestCase {
             var capturedFinalization: ClaudeService.PressdownFinalization?
             var capturedPreCore: ClaudeService.SubstitutionPlanningBaseline?
             var capturedCoreFinalization: ClaudeService.CoreRelocationFinalization?
+            var capturedCapacityBaseline: ClaudeService.SubstitutionPlanningBaseline?
+            var capturedCapacity: ClaudeService.SessionCapacityFinalization?
             var receiptCalls = 0
             var finalizationCalls = 0
             var coreCalls = 0
@@ -1612,8 +1614,24 @@ final class UserJourneySimulationTests: XCTestCase {
                 },
                 corePlanningReport: {
                     capturedPreCore = $0; capturedCoreFinalization = $1; coreCalls += 1
+                },
+                capacityPlanningReport: {
+                    capturedCapacityBaseline = $0; capturedCapacity = $1
                 }
             )
+            let capacityBaseline = try XCTUnwrap(capturedCapacityBaseline)
+            let capacity = try XCTUnwrap(capturedCapacity)
+            XCTAssertNil(service.capacityShoulderRegionLoss(capacity.plan.menus,
+                baseline: capacityBaseline.menus), "Capacity cannot trade deltoid regions: \(persona.name), week \(weekNumber)")
+            if persona.name == "Four-day beginner with a shoulder that hurts overhead", (2...3).contains(weekNumber) {
+                XCTAssertTrue(capacity.decision.hasPrefix("fresh allocation shoulder region refused"), capacity.decision)
+                XCTAssertEqual(capacity.plan.menus.map { $0.map(\.prescribedSets) },
+                    capacityBaseline.menus.map { $0.map(\.prescribedSets) })
+                XCTAssertEqual(capacity.plan.menus.map { $0.map(\.exerciseName) },
+                    capacityBaseline.menus.map { $0.map(\.exerciseName) })
+                XCTAssertEqual(capacity.plan.menus.map { $0.map(\.muscleTarget) },
+                    capacityBaseline.menus.map { $0.map(\.muscleTarget) })
+            }
             let blueprint = delivered.blueprint
             let menus = delivered.menus
             XCTAssertEqual(receiptCalls, 1)

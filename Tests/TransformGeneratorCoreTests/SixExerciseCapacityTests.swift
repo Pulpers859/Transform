@@ -7,6 +7,41 @@ import XCTest
 final class SixExerciseCapacityTests: XCTestCase {
     private let service = ClaudeService.shared
 
+    func testCapacityProtectsShoulderRegionsRatherThanTheirCombinedTotal() {
+        func funded(_ name: String, _ target: String, _ sets: Int) -> ClaudeService.PreSelectedExercise {
+            var exercise = slot(name, target)
+            exercise.prescribedSets = sets
+            return exercise
+        }
+        let baseline = [[funded("Reverse Pec Deck", "Rear Deltoids", 2),
+                         funded("Dumbbell Rear Delt Fly", "Rear Deltoids", 2)],
+                        [funded("Cable Lateral Raise", "Lateral Deltoids", 3),
+                         funded("Leaning Dumbbell Lateral Raise", "Lateral Deltoids", 3)]]
+        let traded = [[funded("Reverse Pec Deck", "Rear Deltoids", 3)],
+                      [funded("Cable Lateral Raise", "Lateral Deltoids", 4),
+                       funded("Leaning Dumbbell Lateral Raise", "Lateral Deltoids", 3)]]
+        XCTAssertEqual(service.capacityShoulderRegionLoss(traded, baseline: baseline),
+            .init(region: "Rear deltoids", baselineSets: 4, candidateSets: 3))
+        XCTAssertEqual(service.capacityShoulderRegionLoss(baseline, baseline: traded),
+            .init(region: "Lateral deltoids", baselineSets: 7, candidateSets: 6))
+        var consolidated = traded
+        consolidated[0][0].prescribedSets = 4
+        consolidated[1][0].prescribedSets = 3
+        // Only regional accounting is tested here; role/fatigue limits still gate adoption.
+        XCTAssertNil(service.capacityShoulderRegionLoss(consolidated, baseline: baseline))
+        XCTAssertNil(service.capacityShoulderRegionLoss(Array(consolidated.reversed()), baseline: baseline))
+        XCTAssertNil(service.capacityShoulderRegionLoss(baseline, baseline: baseline))
+        XCTAssertNil(service.capacityShoulderRegionLoss([], baseline: []))
+        // Display labels cannot hide loss of the exercise's primary metadata region.
+        let press = [[funded("Machine Shoulder Press", "Deltoids", 3)]]
+        let lateral = [[funded("Cable Lateral Raise", "Deltoids", 3)]]
+        XCTAssertEqual(service.capacityShoulderRegionLoss(lateral, baseline: press),
+            .init(region: "Anterior deltoids", baselineSets: 3, candidateSets: 0))
+        XCTAssertNil(service.capacityShoulderRegionLoss(
+            [[funded("Incline Barbell Press", "Upper Chest", 3), funded("Cable Fly", "Chest", 3)]],
+            baseline: [[funded("Incline Barbell Press", "Upper Chest", 4), funded("Cable Fly", "Chest", 2)]]))
+    }
+
     private func slot(_ name: String, _ target: String) -> ClaudeService.PreSelectedExercise {
         .init(exerciseName: name, muscleTarget: target,
             movementPattern: service.exerciseMetadata(forExerciseName: name, muscleTarget: target).movementPattern,

@@ -264,6 +264,35 @@ this artifact review; acceptability of those regional trade-offs is not proved
 by the aggregate checks. Owner clarification is requested before extending this
 approach. Do not describe the accepted subsets as preserving every region.
 
+### Shoulder-region capacity safeguard (2026-09-23, execution pending)
+
+The owner accepted the evidence-review recommendation: same-region consolidation
+first, suitable across-day redistribution second, and no automatic rear-to-lateral
+exchange justified by the broad shoulder total. Chest redistribution remains a
+provisional programming compromise, not proven regional equivalence. Primary
+research on regional specificity: https://pubmed.ncbi.nlm.nih.gov/32922646/;
+maintenance evidence does not establish a universal three-set regional minimum:
+https://pubmed.ncbi.nlm.nih.gov/21131862/.
+
+The capacity adoption boundary now independently preserves weekly primary-metadata
+shoulder buckets (anterior, lateral, rear, general). It reuses existing metadata
+without changing selection rankings, canonical names, allocation budgets, or
+other substitution callers. Refusal returns the original plan/messages/receipts.
+This conservative guard does not prove equivalent exercise quality or frequency,
+and it does not repair crowding. It may retain more over-six plans than `17ce76e`.
+
+Regression coverage includes same-region consolidation, across-day redistribution,
+rear/lateral trades, misleading display labels, and the unchanged chest exception.
+The existing twenty-week journey now checks the capacity boundary in every week;
+beginner Weeks 2/3 must refuse the measured regional loss and retain identities,
+targets and sets. Baseline failure was reproduced in downloaded `17ce76e` evidence
+(Rear Deltoids 4->3), not by locally executing Swift XCTest on Windows.
+
+Windows smoke and edited-file syntax checks passed; independent source review
+found no concrete blocker. Claude's staged review failed due to expired OAuth,
+so it supplied no approval. Full GitHub execution and before/after artifacts are
+still required. Do not count this guard as completion of the six-exercise goal.
+
 ### Fixed completion boundary agreed with owner (2026-09-23)
 
 - Freeze nonblocking enhancements; keep them out of this repair cycle.
