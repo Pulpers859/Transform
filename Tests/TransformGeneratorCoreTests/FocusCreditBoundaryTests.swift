@@ -5,6 +5,43 @@ import XCTest
 final class FocusCreditBoundaryTests: XCTestCase {
     private let service = ClaudeService.shared
 
+    func testChestCreditRequiresDeclaredChestInvolvementNotNameKeywords() {
+        let unrelated = [("Reverse Pec Deck", "Rear Deltoids"),
+            ("Dumbbell Rear Delt Fly", "Rear Deltoids"), ("Cable Rear Delt Fly", "Rear Deltoids"),
+            ("Chest-Supported Row", "Upper Back"), ("Chest-Supported Rear Delt Row", "Rear Deltoids"),
+            ("Prone Incline Dumbbell Rear Delt Raise", "Rear Deltoids"),
+            ("Chest-Supported Cable Y Raise", "Shoulders"), ("Low Incline Cable Y Raise", "Shoulders")]
+        for (name, target) in unrelated {
+            let exercise = WorkoutExerciseResponse(exerciseName: name, sets: 3, reps: "8-12",
+                tempo: "", restSeconds: 0, notes: "", muscleTarget: target)
+            for focus in ["Chest", "Pecs", "Upper Chest", "Clavicular"] {
+                XCTAssertEqual(service.focusStimulusKind(exerciseName: name, muscleTarget: target,
+                    focusArea: focus), .none, "\(name), \(focus)")
+                let credit = service.stimulusCredit(for: exercise, area: focus)
+                XCTAssertEqual(credit.directSets, 0, "\(name), \(focus)")
+                XCTAssertEqual(credit.weightedStimulus, 0, "\(name), \(focus)")
+            }
+        }
+        for (name, target) in [("Cable Fly", "Chest"), ("Machine Chest Press", "Chest"),
+                               ("Incline Dumbbell Press", "Upper Chest"), ("Pec Deck", "Chest")] {
+            let exercise = WorkoutExerciseResponse(exerciseName: name, sets: 3, reps: "8-12",
+                tempo: "", restSeconds: 0, notes: "", muscleTarget: target)
+            XCTAssertEqual(service.focusStimulusKind(exerciseName: name, muscleTarget: target,
+                focusArea: "Chest"), .prime)
+            XCTAssertEqual(service.stimulusCredit(for: exercise, area: "Chest").weightedStimulus, 3)
+        }
+        XCTAssertEqual(service.focusStimulusKind(exerciseName: "Cable Fly", muscleTarget: "Chest",
+            focusArea: "Upper Chest"), .secondary)
+        XCTAssertEqual(service.focusStimulusKind(exerciseName: "Incline Dumbbell Press", muscleTarget: "Upper Chest",
+            focusArea: "Upper Chest"), .prime)
+        XCTAssertEqual(service.focusStimulusKind(exerciseName: "Dumbbell Rear Delt Fly", muscleTarget: "Rear Deltoids",
+            focusArea: "Rear Deltoids"), .prime)
+        for (name, target) in [("Close-Grip Barbell Bench Press", "Triceps"), ("Landmine Press", "Anterior Deltoids")] {
+            XCTAssertEqual(service.focusStimulusKind(exerciseName: name, muscleTarget: target,
+                focusArea: "Chest"), .secondary, name)
+        }
+    }
+
     func testStableBroadAndNamedFocusControls() {
         let cases: [(String, String, String, ClaudeService.FocusStimulusKind)] = [
             ("Chest-Supported Row", "Upper Back", "Back", .prime),
@@ -106,6 +143,10 @@ final class FocusCreditBoundaryTests: XCTestCase {
     }
 
     func testRegionalCorrectionPreservesExistingNamedCompositePrecedence() {
+        XCTAssertEqual(service.focusStimulusKind(exerciseName: "Single-Arm Dumbbell Row",
+            muscleTarget: "Lats", focusArea: "Lats specialization"), .secondary)
+        XCTAssertEqual(service.focusStimulusKind(exerciseName: "Lat Pulldown",
+            muscleTarget: "Lats", focusArea: "Pecs / Lats"), .prime)
         XCTAssertEqual(service.focusStimulusKind(exerciseName: "Incline Dumbbell Press",
             muscleTarget: "Upper Chest", focusArea: "Upper Chest / Front Deltoids"), .prime)
         XCTAssertEqual(service.focusStimulusKind(exerciseName: "Cable Face Pull",

@@ -156,11 +156,38 @@ then test the shared subset solver with six slots and unchanged other constraint
 Admitted subsets receive a fresh allocation and full dose comparison; refusal and
 search exhaustion remain distinct. No trial is adopted by production. Protected
 seven-slot and below-five-floor controls prohibit silently discarding requirements.
-The `six-slot-planning-trials.txt` artifact records results; execution is pending.
+Run `35819959489` executed both diagnostic tests and the complete no-row control.
+All five Week 1 profiles first cross six during `maintenanceBreadth`. All five
+six-slot reservations and fresh allocations are admitted, but only the back-focus
+and small-muscle profiles preserve complete baseline dose. The beginner, lumbar,
+and arms profiles fail the first priority comparison (Chest, Lats, Triceps).
+Thus role-floor feasibility alone is insufficient for live adoption. The run's
+only failing test was the already corrected historical rowing snapshot. At
+`abc4157`, run `35820133180` passes all 749 tests and downstream checks; the app
+build also passes. The global six-exercise ceiling is still unresolved.
 
 The owner replay additionally exercises no-row append using a complete five-slot
 Pull day, followed by fresh allocation and funded balance evaluation, and checks
-that an already balanced plan is unchanged. These assertions still require CI.
+that an already balanced plan is unchanged. Both passed at this checkpoint.
+
+### False chest support-credit boundary (candidate, 2026-09-23)
+
+The beginner six-slot candidate only removes two Dumbbell Rear Delt Fly sets and
+increases Reverse Pec Deck from two to three. Actual chest prescriptions are
+unchanged, yet the comparator reports lost Chest stimulus. Both rear-delt exercises
+have explicit Rear Deltoids/Upper Back metadata, but generic `pec`/`fly` name matches
+fall through to support credit (0.35 per set). The candidate therefore loses 0.35
+of fictitious Chest credit. This is an accounting defect, not permission to weaken
+the conservative dose comparator or adopt the candidate; other losses may remain.
+
+The candidate makes broad Chest classification depend on declared metadata and
+guards upper-chest name rules against unrelated anatomy. Corrective-name support
+also requires related metadata. Independent review caught named/composite precedence
+and corrective-return bypasses in the first patch. Regression controls cover genuine
+primary/secondary chest work, rear-delt/row counterexamples, corrective history names,
+and existing named-focus precedence. Complete-week execution/comparison is pending;
+the earlier global focus-credit rollback remains a reason not to infer safety from
+these unit tests alone. No exercise identity, persistence, or dose-comparison rule changes.
 
 Recovery fallback already exists in production: missing/stale measured sleep can
 retain explicitly attributed standing caution, but cannot manufacture a measured
