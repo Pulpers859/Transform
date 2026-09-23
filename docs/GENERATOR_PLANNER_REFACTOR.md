@@ -242,8 +242,55 @@ The capacity boundary now runs after initial allocation and before rowing,
 pressdown, and core finalization. Each downstream step receives the preceding
 plan and its matching messages/receipts. Tests compare production callbacks with
 the independent trial and require the two measured cases to reach delivery within
-six exercises. Full execution and new twenty-week artifact comparison are pending
-for this integration. Windows syntax checks do not prove runtime behavior.
+six exercises. Integration `17ce76e` is now verified by generator run
+`35824198099` (750 test cases, zero failures/errors) and app build `35824198095`
+(`BUILD SUCCEEDED`). Windows syntax checks alone do not prove runtime behavior.
+
+The downloaded twenty-week evidence compared with `b3ac5ac` has nine changed
+day prescriptions. Sessions exceeding six exercises fall from 15 to 9. All twenty
+weeks retain identical exported priority summaries and validator findings; that
+does not prove every regional stimulus distribution is identical. Remaining
+crowding is beginner Week 1; lumbar Weeks 1-3; small-muscle Weeks 2-3; arms
+Weeks 1-3. Back-focus Weeks 1-3, beginner Weeks 2-3 and small-muscle Week 1 now
+fit six. All five deload exercise/set/target signatures remain unchanged.
+
+Independent artifact review, then primary-agent arithmetic, found nonpriority
+regional redistribution that broad-group preservation does not prevent:
+back-focus Weeks 1-3 display Upper Chest 8->7 and Chest 2->3 weekly sets;
+beginner Weeks 2-3 display Rear Deltoids 4->3 and Lateral Deltoids 6->7.
+These are target-label prescription sums, not a biological stimulus estimate.
+Pulling prescriptions are unchanged. No new safety defect was demonstrated by
+this artifact review; acceptability of those regional trade-offs is not proved
+by the aggregate checks. Owner clarification is requested before extending this
+approach. Do not describe the accepted subsets as preserving every region.
+
+### Fixed completion boundary agreed with owner (2026-09-23)
+
+- Freeze nonblocking enhancements; keep them out of this repair cycle.
+- Resolve the remaining oversized sessions across the existing twenty-week
+  matrix, not just the five Week 1 probes, or present a measured requirement
+  conflict for the owner's decision. A refusal that leaves seven/eight exercises
+  is not completion of the hard-six requirement.
+- Preserve required priority work, maintenance coverage, protected exercises,
+  recovery constraints, pulling balance and whole-set budget rules. Do not
+  silently weaken those rules to achieve six.
+- Recompare complete delivered plans, obtain independent review, and verify a
+  real generation on the owner's physical iPhone. Tests alone are insufficient.
+- If bounded subset/relocation attempts cannot meet these criteria, reassess the
+  upstream planning contract instead of indefinitely adding downstream repairs.
+
+Sideloading was assessed separately and explicitly deferred by the owner. Do not
+add or trigger an IPA/release workflow as part of this generator work.
+
+Every device handoff must state the exact screen/action, expected result, failure
+sign, and screenshot/log to return. For `17ce76e`, test a NEW generation rather than
+expecting saved workouts to change: count each training day's exercises (maximum
+six is the goal, still not guaranteed), check names/sets and retained choices,
+and reopen the saved week to check persistence. In Workouts, press and hold the
+program header for about two seconds to open Generator Lab; choose Last Generation,
+tap Load Last Generation, then Copy Bundle. This retrieves the production report
+without another paid generation. Never ask the owner to delete a current program
+just to test the planner.
 
 This is not a global hard-six guarantee. Refused plans retain their original dose
 and crowding. Source-backed arithmetic for the beginner baseline rules out a
