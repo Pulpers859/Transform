@@ -1,6 +1,89 @@
 import Foundation
 
 extension ClaudeService {
+    struct RowBalanceFinalization {
+        let plan: SubstitutionPlanningBaseline
+        let messages: [String]
+        let receipts: [SetFundingObservation]
+        let decision: String
+    }
+
+    func plannedBackBalanceFindings(_ menus: [[PreSelectedExercise]], blueprint: ProgramBlueprint) -> [String] {
+        guard menus.count == blueprint.dayPlans.count else { return ["Menu/day-plan count mismatch"] }
+        return validateBackPatternBalance(days: menus.indices.map { day in
+            WorkoutDayResponse(dayNumber: day + 1, dayName: blueprint.dayPlans[day].style,
+                muscleGroups: "", isRestDay: blueprint.dayPlans[day].isRestDay, notes: "",
+                exercises: menus[day].map {
+                    WorkoutExerciseResponse(exerciseName: $0.exerciseName, sets: $0.prescribedSets,
+                        reps: "", tempo: "", restSeconds: 0, notes: "", muscleTarget: $0.muscleTarget)
+                })
+        })
+    }
+
+    /// Evaluate actual funded dose before locking the menu for generation. Reuse the complete
+    /// substitution contract; at most one eligible proposal receives a fresh allocation.
+    func finalizeRowBalance(_ baseline: SubstitutionPlanningBaseline,
+        trainingIntent: TrainingIntentPlan, baselineMessages: [String],
+        baselineReceipts: [SetFundingObservation], collectFunding: Bool) -> RowBalanceFinalization {
+        func retained(_ reason: String) -> RowBalanceFinalization {
+            .init(plan: baseline, messages: baselineMessages, receipts: baselineReceipts, decision: reason)
+        }
+        guard baseline.roleFloorAdmission == .admitted else { return retained("baseline not admitted") }
+        guard baseline.menus.count == baseline.blueprint.dayPlans.count,
+              baseline.lockedPrefixCounts.count == baseline.menus.count,
+              baseline.retainedKeysByDay.count == baseline.menus.count,
+              baseline.selectionFocusIntents.count == baseline.menus.count else {
+            return retained("invalid planning context")
+        }
+        guard !plannedBackBalanceFindings(baseline.menus, blueprint: baseline.blueprint).isEmpty else {
+            return retained("already balanced")
+        }
+        func signature(_ menus: [[PreSelectedExercise]]) -> [[String]] {
+            menus.map { $0.map { "\($0.exerciseName)|\($0.muscleTarget)|\($0.movementPattern)|\($0.role.rawValue)|\($0.prescribedSets)" } }
+        }
+        for day in baseline.menus.indices {
+            for slot in baseline.menus[day].indices {
+                let old = baseline.menus[day][slot]
+                guard verticalPullPatterns.contains(old.movementPattern) else { continue }
+                for alternative in exerciseCatalog(for: baseline.blueprint.dayPlans[day].style) {
+                    let metadata = exerciseMetadata(forExerciseName: alternative.name, muscleTarget: alternative.target)
+                    guard alternative.target == old.muscleTarget,
+                          horizontalPullPatterns.contains(metadata.movementPattern) else { continue }
+                    var proposed = baseline.menus
+                    proposed[day][slot] = .init(exerciseName: alternative.name, muscleTarget: alternative.target,
+                        movementPattern: metadata.movementPattern,
+                        role: proceduralExerciseRole(for: alternative.name, muscleTarget: alternative.target),
+                        prescribedSets: old.prescribedSets)
+                    guard preflightFixedDoseSubstitution(proposed, plannedBaseline: baseline) == .structurallyEligible,
+                          plannedBackBalanceFindings(proposed, blueprint: baseline.blueprint).isEmpty else { continue }
+                    guard case .dosePreserved = compareAllocatedDoseOnly(proposed, baseline: baseline.menus,
+                        blueprint: baseline.blueprint, weekNumber: baseline.weekNumber) else { continue }
+                    let ordered = reorderedMenusForSessionFlow(proposed, blueprint: baseline.blueprint,
+                        trainingIntent: trainingIntent, lockedPrefixCounts: baseline.lockedPrefixCounts)
+                    guard signature(ordered) == signature(proposed) else { continue }
+                    var admission: RoleFloorAdmission = .unassessed
+                    var messages: [String] = []
+                    var receipts: [SetFundingObservation] = []
+                    let observer: (([SetFundingObservation]) -> Void)? = collectFunding ? { receipts = $0 } : nil
+                    let allocated = allocateWeeklySetPrescription(proposed, blueprint: baseline.blueprint,
+                        weekNumber: baseline.weekNumber, lockedPrefixCounts: baseline.lockedPrefixCounts,
+                        appearancePlanningReport: { messages.append($0) }, setFundingReport: observer,
+                        roleFloorAdmissionReport: { admission = $0 }, publishConflictLogs: false)
+                    guard admission == .admitted, signature(allocated) == signature(proposed) else {
+                        return retained("first eligible proposal changed during allocation; alternatives unassessed")
+                    }
+                    let plan = SubstitutionPlanningBaseline(menus: allocated, blueprint: baseline.blueprint,
+                        weekNumber: baseline.weekNumber, lockedPrefixCounts: baseline.lockedPrefixCounts,
+                        retainedKeysByDay: baseline.retainedKeysByDay, exerciseHistory: baseline.exerciseHistory,
+                        selectionFocusIntents: baseline.selectionFocusIntents, roleFloorAdmission: admission)
+                    return .init(plan: plan, messages: messages, receipts: receipts,
+                        decision: "adopted day \(day + 1): \(old.exerciseName) -> \(alternative.name)")
+                }
+            }
+        }
+        return retained("no eligible fixed-dose row substitution")
+    }
+
     enum CoreRelocationDecision: Equatable {
         case noEligiblePlacement, unsupportedWeek
         case proposal(CoreRelocationRefusal)

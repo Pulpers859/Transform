@@ -106,7 +106,7 @@ The bounded trials investigate that gap without weakening eligibility or budgets
 Per-test xUnit timing is also being captured to investigate suite runtime rather than
 assuming more timeout is a performance fix. Remote execution remains required.
 
-### Upstream row-balance experiment (candidate)
+### Funded rowing-plan revision (2026-09-23, validation pending)
 
 The bounded owner replay found one viable loading-week candidate: replacing a same-target
 three-set Lat Pulldown with Single-Arm Dumbbell Row preserved direct Lats credit, passed
@@ -114,15 +114,26 @@ structural preflight, delivered without menu drift, and moved the observed 6:2 b
 3:5. A one-set transfer was reallocated away, and deload additions exceeded the independent
 appearance ceiling. This does not establish a required ratio.
 
-The candidate planner change is deliberately narrower than the warning: it runs only when
-the existing funded menu is above the same >2:1 directional warning, replaces a non-anchor
-vertical pull with a same-target row in the day style, preserves direct credit, avoids pain
-and continuity-locked identities, respects day pattern caps and maintenance budgets, keeps
-weekly variation unchanged, and refuses focus-priority downgrades. If an appended row still
-leaves the warning, the same bounded trade is reconsidered; otherwise the original menu is
-retained. The no-row fallback also now skips locked prefixes. Full multi-week artifacts and
-macOS CI are required before calling this production experiment accepted; physical-iPhone
-generation remains a separate proof boundary.
+The `52bffb3` experiment did not repair that owner replay: its ratio check ran before
+allocation, where selection slots have one seed set. The four-vertical-set trigger missed
+the later 6:2 prescription. All twenty exported journey weeks were identical to `3b76b15`.
+Generator runs `35357497244` and `35359679480` failed the new sparse-menu tests. Clearing
+priority requirements in `63f4d2d` did not make those fixtures admissible: every training day
+still requires five appearances. The no-row test also exercised fallback, not append.
+
+The replacement removes that premature ratio check and evaluates the admitted allocation
+before pressdown/core finalization and before generation locks the menu. It uses the shared
+fixed-dose substitution preflight and complete-plan dose comparison, requires unchanged
+ordering, and permits one fresh allocation. Adoption requires admitted status and exact
+preservation of the proposed identities and doses. Otherwise the complete baseline survives.
+The no-row selection fallback retains its continuity-prefix protection.
+
+`OwnerPlanningReplayTests` now requires the complete admitted 6:2 baseline to deliver 3:5
+through production, with one Lat Pulldown replacement, unchanged appearances and all set
+counts, full dose comparison, and retained/non-admitted/malformed-context refusal controls.
+These replace the impossible sparse allocation tests. Independent review identified and
+corrected stage-reporting and malformed-context issues. Execution and complete-week artifact
+comparison are pending; this is not a claim that rowing or the roadmap is complete.
 
 Recovery fallback already exists in production: missing/stale measured sleep can
 retain explicitly attributed standing caution, but cannot manufacture a measured

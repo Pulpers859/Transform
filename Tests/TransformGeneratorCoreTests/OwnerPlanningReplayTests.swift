@@ -56,21 +56,82 @@ final class OwnerPlanningReplayTests: XCTestCase {
         var pressdown: ClaudeService.PressdownFinalization?
         var preCore: ClaudeService.SubstitutionPlanningBaseline?
         var core: ClaudeService.CoreRelocationFinalization?
+        var preRow: ClaudeService.SubstitutionPlanningBaseline?
+        var rowResult: ClaudeService.RowBalanceFinalization?
         var diagnostics: [String] = []
         var callbackCounts = [0, 0]
         let delivered = service.preSelectedExercisePlan(for: initialBlueprint, trainingIntent: intent,
             weekNumber: 1, previousWeekDays: nil, exerciseHistory: nil,
             appearancePlanningReport: { diagnostics.append($0) },
             pressdownPlanningReport: { baseline = $0; pressdown = $1; callbackCounts[0] += 1 },
-            corePlanningReport: { preCore = $0; core = $1; callbackCounts[1] += 1 })
+            corePlanningReport: { preCore = $0; core = $1; callbackCounts[1] += 1 },
+            rowPlanningReport: { preRow = $0; rowResult = $1 })
         XCTAssertEqual(callbackCounts, [1, 1])
-        let original = try XCTUnwrap(baseline)
+        let original = try XCTUnwrap(preRow)
+        let pressdownInput = try XCTUnwrap(baseline)
+        let rowFinalization = try XCTUnwrap(rowResult)
         let pressdownResult = try XCTUnwrap(pressdown)
         let coreInput = try XCTUnwrap(preCore)
         let coreResult = try XCTUnwrap(core)
         XCTAssertEqual(snapshot(coreInput.menus), snapshot(pressdownResult.plan.menus))
         XCTAssertEqual(snapshot(delivered.menus), snapshot(coreResult.plan.menus))
         XCTAssertEqual(delivered.blueprint, coreResult.plan.blueprint)
+        XCTAssertEqual(snapshot(pressdownInput.menus), snapshot(rowFinalization.plan.menus))
+        // This complete, admitted week reproduced the missed repair: selection used one-set
+        // seeds, while allocation produced 6 vertical / 2 rowing sets. Exercise the production
+        // finalizer, not an invented sparse menu that cannot satisfy appearance reservation.
+        XCTAssertEqual(original.roleFloorAdmission, .admitted)
+        let originalBack = rowSummary(original.menus, blueprint: original.blueprint)
+        XCTAssertEqual(originalBack.verticalSets, 6)
+        XCTAssertEqual(originalBack.rowingSets, 2)
+        XCTAssertEqual(delivered.roleFloorAdmission, .admitted)
+        let fundedBack = rowSummary(delivered.menus, blueprint: delivered.blueprint)
+        XCTAssertEqual(fundedBack.verticalSets, 3)
+        XCTAssertEqual(fundedBack.rowingSets, 5)
+        XCTAssertEqual(delivered.menus.map(\.count), original.menus.map(\.count))
+        XCTAssertEqual(delivered.menus.map { $0.map(\.prescribedSets) }, original.menus.map { $0.map(\.prescribedSets) })
+        XCTAssertTrue(service.plannedBackBalanceFindings(delivered.menus, blueprint: delivered.blueprint).isEmpty)
+        let changes = original.menus.indices.flatMap { day in
+            original.menus[day].indices.compactMap { slot -> String? in
+                let old = original.menus[day][slot], new = delivered.menus[day][slot]
+                return old.exerciseName == new.exerciseName ? nil : "\(old.exerciseName) -> \(new.exerciseName)"
+            }
+        }
+        XCTAssertEqual(changes, ["Lat Pulldown -> Single-Arm Dumbbell Row"])
+        guard case .dosePreserved = service.compareAllocatedDoseOnly(delivered.menus, baseline: original.menus,
+            blueprint: original.blueprint, weekNumber: 1) else {
+            return XCTFail("A row improvement must preserve complete-plan dose")
+        }
+        XCTAssertEqual(service.preflightFixedDoseSubstitution(delivered.menus, plannedBaseline: original), .structurallyEligible)
+        // Retained identities and non-admitted plans must fail closed with the exact baseline.
+        var retained = original.retainedKeysByDay
+        for day in original.menus.indices {
+            retained[day].formUnion(original.menus[day].map { ExerciseWeightEntry.canonicalLookupKey($0.exerciseName) })
+        }
+        let protected = ClaudeService.SubstitutionPlanningBaseline(menus: original.menus, blueprint: original.blueprint,
+            weekNumber: original.weekNumber, lockedPrefixCounts: original.lockedPrefixCounts,
+            retainedKeysByDay: retained, exerciseHistory: original.exerciseHistory,
+            selectionFocusIntents: original.selectionFocusIntents, roleFloorAdmission: original.roleFloorAdmission)
+        let protectedResult = service.finalizeRowBalance(protected, trainingIntent: intent,
+            baselineMessages: ["retained marker"], baselineReceipts: [], collectFunding: false)
+        XCTAssertEqual(snapshot(protectedResult.plan.menus), snapshot(original.menus))
+        XCTAssertEqual(protectedResult.messages, ["retained marker"])
+        let malformed = ClaudeService.SubstitutionPlanningBaseline(menus: original.menus + [[]], blueprint: original.blueprint,
+            weekNumber: original.weekNumber, lockedPrefixCounts: original.lockedPrefixCounts,
+            retainedKeysByDay: original.retainedKeysByDay, exerciseHistory: original.exerciseHistory,
+            selectionFocusIntents: original.selectionFocusIntents, roleFloorAdmission: .admitted)
+        let malformedResult = service.finalizeRowBalance(malformed, trainingIntent: intent,
+            baselineMessages: [], baselineReceipts: [], collectFunding: false)
+        XCTAssertEqual(malformedResult.decision, "invalid planning context")
+        XCTAssertEqual(snapshot(malformedResult.plan.menus), snapshot(malformed.menus))
+        for status: ClaudeService.RoleFloorAdmission in [.unassessed, .deloadPolicy, .infeasible(["fixture"]), .searchLimit(["fixture"])] {
+            var refused = original
+            refused.roleFloorAdmission = status
+            let result = service.finalizeRowBalance(refused, trainingIntent: intent,
+                baselineMessages: [], baselineReceipts: [], collectFunding: false)
+            XCTAssertEqual(snapshot(result.plan.menus), snapshot(original.menus))
+            XCTAssertEqual(result.plan.roleFloorAdmission, status)
+        }
         let program = try service.validatedProceduralWeekOneProgram(from: analysis, trainingIntent: intent,
             blueprint: delivered.blueprint, exerciseMenus: delivered.menus)
         let findings = service.validateProgramResponse(program, blueprint: delivered.blueprint,
