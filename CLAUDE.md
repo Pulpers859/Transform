@@ -238,6 +238,11 @@ waste. The one thing that must never happen is the same overstatement shipped tw
   end-of-task summaries. He has had to ask for it more than once; asking again is a failure.
 
 ## Never Hand Him A Task Without The Answer
+- At every handoff, give the owner's exact next steps in concise plain language.
+  If no owner action is needed and authorized work remains, continue working;
+  "nothing needed from you" is not a stopping point. Stop only for a real owner
+  decision/action, a safety/authority blocker, or completed agreed work. Never
+  invent a device check just to hand work back.
 - Do not tell him to "go check" something (CI, a dashboard, a log, a screen) and stop there.
   Go look yourself first with the tools available, then tell him what it says.
 - The GitHub Actions results are readable from here via the `mcp__github__*` tools: list the

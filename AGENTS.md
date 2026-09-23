@@ -43,6 +43,11 @@
 - After pushing, confirm it was a fast-forward (`old..new`), not a forced replacement, and that the prior `origin/main` commits are still ancestors.
 
 ## Minimal Working Rules
+- At every handoff, state the owner's exact next steps in concise plain language.
+  If no owner action is needed and authorized work remains, keep working instead
+  of ending the turn with "nothing needed from you." Stop only for a real owner
+  decision/action, a safety/authority blocker, or completed agreed work. Do not
+  invent a device check just to create a stopping point.
 - Work from this repo, not the stale copies.
 - Use the shared authenticated GitHub route in `C:\Dev\_Workflow\GITHUB_SYNC_RUNBOOK.md` for every fetch, pull, push, and remote verification. Codex is authorized to run these network Git commands directly from its ordinary terminal, the same as an authenticated Claude Code desktop session.
 - GitHub Desktop remains available as an alternative. Whichever route is used, it may run the exact `git fetch --prune`, `git pull --ff-only`, and `git push origin main` commands. Do not treat a GitHub Desktop UI-capture failure as a reason to leave a completed commit unpublished.

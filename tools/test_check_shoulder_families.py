@@ -107,6 +107,24 @@ def check(label, selection, metadata, must_fail, expect_phrase=None):
 # ---- The baseline holds -------------------------------------------------------------------
 check("baseline: the synthetic source is clean", SELECTION, METADATA, must_fail=False)
 
+SHARED_SELECTION = SELECTION.replace(
+    'func reportNamesAnyMovement(_ normalizedReport: String) -> Bool {',
+    '''func reportNamesAnyMovement(_ normalizedReport: String) -> Bool {
+        return containsPluralTolerantPriorityPhrase(in: normalizedReport, keywords: shoulderSpecificMovementPhrases())
+    }
+    private func shoulderSpecificMovementPhrases() -> [String] {''',
+).replace(
+    'return containsPluralTolerantPriorityPhrase(in: normalizedReport, keywords: movementPhrases)',
+    'return movementPhrases',
+)
+check("shared union: explicit matcher call reaches the same list", SHARED_SELECTION, METADATA, must_fail=False)
+check("shared union: an unused declaration cannot pass", SHARED_SELECTION.replace(
+    'keywords: shoulderSpecificMovementPhrases()', 'keywords: []'), METADATA, must_fail=True)
+check("shared union: empty returned words cannot pass", SHARED_SELECTION.replace(
+    'return movementPhrases', 'return []'), METADATA, must_fail=True)
+check("shared union: missing family remains visible", SHARED_SELECTION.replace(
+    '"Rear Delt", "Row", "Shoulder"', '"Rear Delt", "Shoulder"'), METADATA, must_fail=True)
+
 # ---- Attacks ------------------------------------------------------------------------------
 check(
     "attack: a family exists but nothing in the specificity union reaches it",

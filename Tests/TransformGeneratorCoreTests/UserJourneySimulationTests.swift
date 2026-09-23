@@ -234,16 +234,25 @@ final class UserJourneySimulationTests: XCTestCase {
             }
             return result
         }
-        func protected(_ day: Int, _ slot: Int) -> Bool {
+        func protectionReasons(_ day: Int, _ slot: Int) -> [String] {
             let item = menus[day][slot]
-            return service.isProtectedAppearance(role: item.role, slot: slot,
+            var reasons: [String] = []
+            if service.isProtectedAppearance(role: item.role, slot: slot,
                 style: blueprint.dayPlans[day].style, lockedPrefixCount: plan.lockedPrefixCounts[day])
                 || service.isProtectedAppearance(role: service.proceduralExerciseRole(for: item.exerciseName,
                     muscleTarget: item.muscleTarget), slot: slot, style: blueprint.dayPlans[day].style,
-                    lockedPrefixCount: plan.lockedPrefixCounts[day])
-                || plan.retainedKeysByDay[day].contains(ExerciseWeightEntry.canonicalLookupKey(item.exerciseName))
-                || service.reportedShoulderPainImplicates(exerciseName: item.exerciseName,
-                    muscleTarget: item.muscleTarget, injuryRiskFocus: blueprint.injuryRiskFocus)
+                    lockedPrefixCount: plan.lockedPrefixCounts[day]) { reasons.append("role or prefix protected") }
+            if plan.retainedKeysByDay[day].contains(ExerciseWeightEntry.canonicalLookupKey(item.exerciseName)) {
+                reasons.append("retained identity")
+            }
+            if service.reportedShoulderPainImplicates(exerciseName: item.exerciseName,
+                muscleTarget: item.muscleTarget, injuryRiskFocus: blueprint.injuryRiskFocus) {
+                reasons.append("reported shoulder symptoms")
+            }
+            return reasons
+        }
+        func protected(_ day: Int, _ slot: Int) -> Bool {
+            !protectionReasons(day, slot).isEmpty
         }
         func response(_ value: [[ClaudeService.PreSelectedExercise]]) -> WorkoutWeekResponse {
             service.buildProceduralWeek(weekNumber: index + 1, dayStart: index * 7 + 1, dayEnd: index * 7 + 7,
@@ -261,7 +270,7 @@ final class UserJourneySimulationTests: XCTestCase {
             let donor = try XCTUnwrap(menus[source].firstIndex { $0.exerciseName == donorName })
             let removed = menus[source][donor]
             var blockers: [String] = []
-            if protected(source, donor) { blockers.append("source protected or symptom-implicated") }
+            blockers += protectionReasons(source, donor).map { "source: \($0)" }
             var proposed = menus
             proposed[source].remove(at: donor)
             if beginner {
@@ -278,7 +287,7 @@ final class UserJourneySimulationTests: XCTestCase {
             } else {
                 let slot = try XCTUnwrap(menus[receiver].firstIndex { $0.exerciseName == hypothesis })
                 XCTAssertEqual(regions(menus[receiver][slot]), regions(removed))
-                if protected(receiver, slot) { blockers.append("receiver protected or symptom-implicated") }
+                blockers += protectionReasons(receiver, slot).map { "receiver: \($0)" }
                 if hypothesis == "Rope Triceps Pressdown" {
                     XCTAssertEqual(slot, 0)
                     XCTAssertTrue(protected(receiver, slot), "Negative control must expose the protected receiver")

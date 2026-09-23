@@ -152,6 +152,12 @@ def parse_specificity_union(source):
         "func reportNamesAnyMovement(",
         "reportNamesAnyMovement",
     )
+    # The union can be shared with conservative report preprocessing. Follow only
+    # the explicit matcher keyword argument, not an unrelated helper declaration.
+    if re.search(r'keywords:\s*shoulderSpecificMovementPhrases\(\)', body):
+        body = function_body(source, "func shoulderSpecificMovementPhrases(", "shoulderSpecificMovementPhrases")
+        if not re.search(r'return\s+movementPhrases\b', body):
+            raise CheckFailed("shared shoulder union does not return movementPhrases")
     filtered = re.search(r'jointAndMuscleWords:\s*Set<String>\s*=\s*\[(.*?)\]', body, re.S)
     if not filtered:
         raise CheckFailed("reportNamesAnyMovement declares no jointAndMuscleWords set")

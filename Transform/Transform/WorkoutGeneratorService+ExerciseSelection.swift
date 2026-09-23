@@ -1243,7 +1243,7 @@ extension ClaudeService {
     ) -> Bool {
         guard hasShoulderRisk(injuryRiskFocus: injuryRiskFocus) else { return false }
 
-        let reported = normalizedPriorityText(injuryRiskFocus)
+        let reported = normalizedPriorityText(shoulderMovementMatchingText(injuryRiskFocus))
         let metadata = exerciseMetadata(forExerciseName: exerciseName, muscleTarget: muscleTarget)
 
         // Named outright ("dips hurt", "the overhead press bothers my shoulder").
@@ -1373,6 +1373,16 @@ extension ClaudeService {
     /// irritation". The first is specific and caution should follow it; the second names no
     /// movement, so there is nothing to narrow to.
     func reportNamesAnyMovement(_ normalizedReport: String) -> Bool {
+        let report = shoulderMovementMatchingText(normalizedReport)
+        return containsPluralTolerantPriorityPhrase(in: report, keywords: shoulderSpecificMovementPhrases())
+    }
+
+    private func shoulderMovementMatchingText(_ report: String) -> String {
+        guard report.range(of: "no pain on ", options: .caseInsensitive) != nil else { return report }
+        return ShoulderSymptomText.movementMatchingText(report, movementPhrases: shoulderSpecificMovementPhrases())
+    }
+
+    private func shoulderSpecificMovementPhrases() -> [String] {
         // Joint and muscle words are stripped out, and getting this wrong silently undoes the
         // fallback it exists to trigger. `shoulderFamilyPhrases` gives the "Shoulder" catch-all
         // pattern the phrases "shoulder" and "delt" — correct there, because a movement whose
@@ -1408,7 +1418,7 @@ extension ClaudeService {
         ]
         .flatMap { shoulderFamilyPhrases(forMovementPattern: normalizedPriorityText($0)) }
         .filter { !jointAndMuscleWords.contains($0) }
-        return containsPluralTolerantPriorityPhrase(in: normalizedReport, keywords: movementPhrases)
+        return movementPhrases
     }
 
     /// Whether the analysis's injury field describes a shoulder the week must work around.

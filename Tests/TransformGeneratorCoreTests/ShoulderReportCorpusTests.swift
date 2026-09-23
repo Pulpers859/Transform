@@ -327,15 +327,47 @@ final class ShoulderReportCorpusTests: XCTestCase {
             ])
         ),
 
-        // ---- A known limitation, pinned so it stays visible --------------------------------
+        // Complete, unqualified "No pain on <movement>" clauses can be excluded from
+        // matching when every other clause is a recognized affirmative shoulder complaint.
+        // These rows exercise the shared helper through the actual generator entry point.
+        Row(
+            report: "Right shoulder pain with overhead pressing. No pain on rows.",
+            shape: "standalone row clearance must not implicate rows or rear-delt flies",
+            reach: .only(["Seated Dumbbell Shoulder Press"])
+        ),
+        Row(
+            report: "No pain on rows. Right shoulder pain with overhead pressing.",
+            shape: "clearance order does not change the remaining complaint",
+            reach: .only(["Seated Dumbbell Shoulder Press"])
+        ),
+        Row(
+            report: "Shoulder pain during rows. No pain on overhead pressing.",
+            shape: "affirmative row complaint remains, not the cleared press",
+            reach: .only(["Cable Rear Delt Fly", "Chest-Supported Rear Delt Row", "Chest-Supported Row"])
+        ),
+        Row(
+            report: "Shoulder pain during rows. No pain on rows.",
+            shape: "contradictory positive complaint wins over clearance",
+            reach: .only(["Cable Rear Delt Fly", "Chest-Supported Rear Delt Row", "Chest-Supported Row"])
+        ),
+        Row(
+            report: "Shoulder pain with overhead pressing. No pain on rows, but heavy rows hurt.",
+            shape: "qualified reassurance cannot hide an affirmative row complaint",
+            reach: .only(["Seated Dumbbell Shoulder Press", "Cable Rear Delt Fly",
+                "Chest-Supported Rear Delt Row", "Chest-Supported Row"])
+        ),
+        Row(
+            report: "Shoulder pain with overhead pressing. No pain on rows?",
+            shape: "a question is not movement clearance",
+            reach: .only(["Seated Dumbbell Shoulder Press", "Cable Rear Delt Fly",
+                "Chest-Supported Rear Delt Row", "Chest-Supported Row"])
+        ),
+
+        // ---- A remaining limitation, pinned so it stays visible ----------------------------
         //
-        // The matching reads WHICH movements a report mentions. It has no idea whether the
-        // sentence said they hurt or said they were fine, so a note clearing a movement still
-        // implicates it. This is the owner's own sentence — "dips don't bother it" — turned
-        // against him if it ever reaches the analysis notes. Fixing it means guessing at negation,
-        // which fails in both directions, so it is recorded rather than papered over. If this row
-        // ever starts passing with the dip absent, someone has taught the app about negation and
-        // this comment should become a description of how.
+        // The narrow complete-clause grammar above does not interpret general negation.
+        // "Pain free" and "dips don't bother it" remain outside that grammar; do not claim
+        // the broad language problem solved or silently expand clearance to ambiguous prose.
 
         Row(
             report: "Left shoulder pain with overhead pressing; dips are pain free.",

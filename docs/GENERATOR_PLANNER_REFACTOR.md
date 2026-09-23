@@ -1,5 +1,32 @@
 # Generator planner refactor: evidence and acceptance
 
+## Bounded symptom-text interpretation (2026-09-23, integration pending)
+
+The prior cross-day experiment exposed the existing text limitation, not a reason
+to weaken relocation eligibility. A Foundation-only preprocessor now recognizes
+reports composed entirely of affirmative `[side] shoulder pain with/during/on
+<known movement phrase>` clauses and standalone `No pain on <known movement phrase>`
+clauses. At least one affirmative complaint must remain. Unknown clauses, questions,
+qualifiers, general diagnoses and broader pain-free wording leave the report unchanged.
+Contradictory positive complaints survive. This is a narrow grammar, not general
+negation understanding or a judgment that a movement is safe.
+
+The shared 28-case helper table was run as a Windows executable: eight failures with
+pass-through behavior, zero after implementation. The actual generator corpus adds
+six mixed-report rows across its existing movement grid. Syntax and 19 shoulder
+checker self-tests passed locally; full generator/build verification is pending.
+Independent Codex review found no source blocker. The phrase union is shared with
+specificity checking; its source checker now follows that explicit helper call and
+rejects unused/empty helper attacks. Original shoulder-risk detection, saved pain
+history, and all dose/relocation protections stay in place.
+
+Cross-day diagnostics now distinguish role/prefix protection, retained identity, and
+reported symptoms. No relocation or triceps candidate is adopted in this change.
+Before adoption, inspect complete generated weeks for selection changes; INC-9's
+whole-plan warning still applies. The prior unchanged-code rerun at `8888e9b` passed
+Generator `35923491968` with 751 entries and zero failures/errors, and Swift
+`35923491964`; no timeout configuration was changed for that rerun.
+
 ## Bounded cross-day crowding experiments (2026-09-23, diagnostic only)
 
 The next trial reuses the complete sequential user-journey baselines, not a hand-built
