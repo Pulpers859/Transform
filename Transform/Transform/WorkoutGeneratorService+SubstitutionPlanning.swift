@@ -1,6 +1,126 @@
 import Foundation
 
 extension ClaudeService {
+    struct SessionCapacityFinalization {
+        let plan: SubstitutionPlanningBaseline
+        let messages: [String]
+        let receipts: [SetFundingObservation]
+        let decision: String
+    }
+
+    /// Provisional, unused-by-production capacity trial. A reservation is only a proposal;
+    /// one fresh allocation must preserve complete-plan dose before its result can be returned.
+    func finalizeSessionCapacity(_ baseline: SubstitutionPlanningBaseline,
+        trainingIntent: TrainingIntentPlan, baselineMessages: [String],
+        baselineReceipts: [SetFundingObservation], collectFunding: Bool) -> SessionCapacityFinalization {
+        func retained(_ reason: String) -> SessionCapacityFinalization {
+            .init(plan: baseline, messages: baselineMessages, receipts: baselineReceipts, decision: reason)
+        }
+        guard baseline.roleFloorAdmission == .admitted else { return retained("baseline not admitted") }
+        let menus = baseline.menus, blueprint = baseline.blueprint
+        guard menus.count == 7, blueprint.dayPlans.count == 7,
+              baseline.lockedPrefixCounts.count == 7, baseline.retainedKeysByDay.count == 7,
+              baseline.selectionFocusIntents.count == 7, baseline.weekNumber > 0,
+              blueprint.dayPlans.filter({ !$0.isRestDay }).count == blueprint.weeklyTrainingDays,
+              menus.indices.allSatisfy({ day in
+                  blueprint.dayPlans[day].dayIndex == day + 1
+                      && baseline.lockedPrefixCounts[day] >= 0
+                      && baseline.lockedPrefixCounts[day] <= menus[day].count
+                      && (blueprint.dayPlans[day].isRestDay ? menus[day].isEmpty : menus[day].count >= 5)
+                      && menus[day].allSatisfy { $0.prescribedSets > 0 }
+              }) else { return retained("invalid planning context") }
+        guard menus.contains(where: { $0.count > 6 }) else { return retained("already within six exercises") }
+
+        func sameIdentity(_ lhs: PreSelectedExercise, _ rhs: PreSelectedExercise) -> Bool {
+            lhs.exerciseName == rhs.exerciseName && lhs.muscleTarget == rhs.muscleTarget
+                && lhs.movementPattern == rhs.movementPattern && lhs.role == rhs.role
+        }
+        func sameIdentities(_ lhs: [[PreSelectedExercise]], _ rhs: [[PreSelectedExercise]]) -> Bool {
+            lhs.count == rhs.count && zip(lhs, rhs).allSatisfy { left, right in
+                left.count == right.count && zip(left, right).allSatisfy { sameIdentity($0, $1) }
+            }
+        }
+        func fitsCapacity(_ candidate: [[PreSelectedExercise]]) -> Bool {
+            candidate.count == menus.count && candidate.indices.allSatisfy { day in
+                blueprint.dayPlans[day].isRestDay ? candidate[day].isEmpty : (5...6).contains(candidate[day].count)
+            }
+        }
+        let reservation = reserveWeeklyAppearanceFloors(menus, blueprint: blueprint,
+            weekNumber: baseline.weekNumber, lockedPrefixCounts: baseline.lockedPrefixCounts,
+            maximumExercisesPerDay: 6)
+        switch reservation.outcome {
+        case .infeasible(let conflicts): return retained("six-slot reservation infeasible: \(conflicts)")
+        case .searchLimit(let conflicts): return retained("six-slot reservation search limit: \(conflicts)")
+        case .admitted: break
+        }
+        let proposed = reservation.menus
+        guard fitsCapacity(proposed) else { return retained("reservation did not satisfy six-slot capacity") }
+        for day in menus.indices {
+            // Match the subset in its original order; names alone cannot conceal relabeled
+            // targets, movement patterns or roles. Removed historic identities are inert.
+            var cursor = 0
+            for slot in menus[day].indices {
+                let old = menus[day][slot]
+                if cursor < proposed[day].count, sameIdentity(old, proposed[day][cursor]) {
+                    cursor += 1
+                } else {
+                    let actualRole = proceduralExerciseRole(for: old.exerciseName, muscleTarget: old.muscleTarget)
+                    guard !isProtectedAppearance(role: old.role, slot: slot, style: blueprint.dayPlans[day].style,
+                              lockedPrefixCount: baseline.lockedPrefixCounts[day]),
+                          !isProtectedAppearance(role: actualRole, slot: slot, style: blueprint.dayPlans[day].style,
+                              lockedPrefixCount: baseline.lockedPrefixCounts[day]),
+                          !baseline.retainedKeysByDay[day].contains(ExerciseWeightEntry.canonicalLookupKey(old.exerciseName)) else {
+                        return retained("reservation removed protected or retained appearance")
+                    }
+                }
+            }
+            guard cursor == proposed[day].count else { return retained("reservation changed identity or order") }
+            let locked = baseline.lockedPrefixCounts[day]
+            guard proposed[day].count >= locked,
+                  (0..<locked).allSatisfy({ sameIdentity(menus[day][$0], proposed[day][$0]) }) else {
+                return retained("reservation changed locked prefix")
+            }
+        }
+
+        var admission: RoleFloorAdmission = .unassessed
+        var messages: [String] = []
+        var receipts: [SetFundingObservation] = []
+        let observer: (([SetFundingObservation]) -> Void)? = collectFunding ? { receipts = $0 } : nil
+        let allocated = allocateWeeklySetPrescription(proposed, blueprint: blueprint,
+            weekNumber: baseline.weekNumber, lockedPrefixCounts: baseline.lockedPrefixCounts,
+            appearancePlanningReport: { messages.append($0) }, setFundingReport: observer,
+            roleFloorAdmissionReport: { admission = $0 }, publishConflictLogs: false)
+        guard admission == .admitted else { return retained("fresh allocation not admitted: \(admission)") }
+        guard fitsCapacity(allocated), sameIdentities(allocated, proposed) else {
+            return retained("fresh allocation changed candidate identity, order or capacity")
+        }
+        for day in menus.indices {
+            guard (0..<baseline.lockedPrefixCounts[day]).allSatisfy({
+                allocated[day][$0].prescribedSets == menus[day][$0].prescribedSets
+            }) else { return retained("fresh allocation changed locked prefix dose") }
+        }
+        let dose = compareAllocatedDoseOnly(allocated, baseline: menus, blueprint: blueprint, weekNumber: baseline.weekNumber)
+        guard case .dosePreserved = dose else { return retained("fresh allocation dose refused: \(dose)") }
+        let oldBackFindings = Dictionary(grouping: plannedBackBalanceFindings(menus, blueprint: blueprint), by: { $0 })
+            .mapValues(\.count)
+        let newBackFindings = Dictionary(grouping: plannedBackBalanceFindings(allocated, blueprint: blueprint), by: { $0 })
+            .mapValues(\.count)
+        guard newBackFindings.allSatisfy({ message, count in count <= oldBackFindings[message, default: 0] }) else {
+            return retained("fresh allocation introduced a back-balance finding")
+        }
+        let ordered = reorderedMenusForSessionFlow(allocated, blueprint: blueprint,
+            trainingIntent: trainingIntent, lockedPrefixCounts: baseline.lockedPrefixCounts)
+        guard sameIdentities(ordered, allocated), zip(ordered, allocated).allSatisfy({ left, right in
+            zip(left, right).allSatisfy { $0.prescribedSets == $1.prescribedSets }
+        }) else { return retained("session ordering changed the funded candidate") }
+        let plan = SubstitutionPlanningBaseline(menus: allocated, blueprint: blueprint,
+            weekNumber: baseline.weekNumber, lockedPrefixCounts: baseline.lockedPrefixCounts,
+            retainedKeysByDay: baseline.retainedKeysByDay, exerciseHistory: baseline.exerciseHistory,
+            selectionFocusIntents: baseline.selectionFocusIntents, roleFloorAdmission: admission)
+        return .init(plan: plan, messages: messages, receipts: receipts,
+            decision: "adopted six-slot subset with complete-plan dose preserved")
+    }
+
     struct RowBalanceFinalization {
         let plan: SubstitutionPlanningBaseline
         let messages: [String]

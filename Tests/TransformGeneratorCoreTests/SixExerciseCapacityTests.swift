@@ -97,6 +97,9 @@ final class SixExerciseCapacityTests: XCTestCase {
             "Reservation proves role-floor subset feasibility only; fresh allocation/dose comparison is reported separately."]
         var processed = 0
         var expectedCrowded = 0
+        var verifiedSubsets = 0
+        var adoptedPersonas = Set<String>()
+        var postAllocationRefusals = 0
         for persona in personas {
             let intent = service.trainingIntentPlan(from: analysis(for: persona))
             let blueprint = service.programBlueprint(for: intent, weekNumber: 1)
@@ -141,9 +144,111 @@ final class SixExerciseCapacityTests: XCTestCase {
                 XCTAssertEqual(signature(result.menus), signature(candidate), "Refused reservation must retain the candidate")
             }
             XCTAssertEqual(signature(delivered.menus), saved, "Diagnostics never mutate the actual delivered plan")
+            let marker = SetFundingObservation(dayIndex: 0, exerciseIndex: 0, exerciseName: "baseline marker",
+                muscleTarget: "marker", prescribedSets: 2, rejection: nil)
+            let finalized = service.finalizeSessionCapacity(funded, trainingIntent: intent,
+                baselineMessages: ["baseline marker"], baselineReceipts: [marker], collectFunding: true)
+            report.append("VERIFIED_SUBSET decision=\(finalized.decision)")
+            if finalized.decision.hasPrefix("adopted") {
+                verifiedSubsets += 1
+                adoptedPersonas.insert(persona.name)
+                XCTAssertEqual(finalized.plan.roleFloorAdmission, .admitted)
+                XCTAssertTrue(finalized.plan.menus.allSatisfy { $0.count <= 6 })
+                guard case .dosePreserved = service.compareAllocatedDoseOnly(finalized.plan.menus,
+                    baseline: funded.menus, blueprint: effectiveBlueprint, weekNumber: 1) else {
+                    return XCTFail("A verified subset cannot lose baseline dose")
+                }
+                let originalProgram = try service.validatedProceduralWeekOneProgram(from: analysis(for: persona),
+                    trainingIntent: intent, blueprint: effectiveBlueprint, exerciseMenus: funded.menus)
+                let subsetProgram = try service.validatedProceduralWeekOneProgram(from: analysis(for: persona),
+                    trainingIntent: intent, blueprint: effectiveBlueprint, exerciseMenus: finalized.plan.menus)
+                XCTAssertEqual(subsetProgram.days.count, finalized.plan.menus.count)
+                for (day, menu) in zip(subsetProgram.days, finalized.plan.menus) {
+                    XCTAssertEqual(day.exercises.map(\.exerciseName), menu.map(\.exerciseName))
+                    XCTAssertEqual(day.exercises.map(\.muscleTarget), menu.map(\.muscleTarget))
+                    XCTAssertEqual(day.exercises.map(\.sets), menu.map(\.prescribedSets))
+                }
+                let oldFindings = service.validateProgramResponse(originalProgram, blueprint: effectiveBlueprint,
+                    expectedExerciseMenus: funded.menus)
+                let newFindings = service.validateProgramResponse(subsetProgram, blueprint: effectiveBlueprint,
+                    expectedExerciseMenus: finalized.plan.menus)
+                let oldCounts = Dictionary(grouping: oldFindings, by: { $0 }).mapValues(\.count)
+                let newCounts = Dictionary(grouping: newFindings, by: { $0 }).mapValues(\.count)
+                XCTAssertTrue(newCounts.allSatisfy { message, count in count <= oldCounts[message, default: 0] },
+                    "New findings: \(newFindings)")
+                report.append("VERIFIED_SUBSET menus=\(signature(finalized.plan.menus)) findings=\(newFindings)")
+                XCTAssertFalse(finalized.receipts.isEmpty)
+                XCTAssertFalse(finalized.receipts.contains(marker))
+                let coordinates = finalized.plan.menus.indices.flatMap { day in
+                    finalized.plan.menus[day].indices.map { "\(day):\($0)" }
+                }
+                XCTAssertEqual(finalized.receipts.map { "\($0.dayIndex):\($0.exerciseIndex)" }, coordinates)
+                for receipt in finalized.receipts {
+                    guard finalized.plan.menus.indices.contains(receipt.dayIndex),
+                          finalized.plan.menus[receipt.dayIndex].indices.contains(receipt.exerciseIndex) else {
+                        return XCTFail("Receipt points outside its returned plan")
+                    }
+                    let actual = finalized.plan.menus[receipt.dayIndex][receipt.exerciseIndex]
+                    XCTAssertEqual(receipt.exerciseName, actual.exerciseName)
+                    XCTAssertEqual(receipt.muscleTarget, actual.muscleTarget)
+                    XCTAssertEqual(receipt.prescribedSets, actual.prescribedSets)
+                }
+                let repeated = service.finalizeSessionCapacity(finalized.plan, trainingIntent: intent,
+                    baselineMessages: finalized.messages, baselineReceipts: finalized.receipts, collectFunding: true)
+                XCTAssertEqual(repeated.decision, "already within six exercises")
+                XCTAssertEqual(signature(repeated.plan.menus), signature(finalized.plan.menus))
+                XCTAssertEqual(repeated.receipts, finalized.receipts)
+                XCTAssertEqual(repeated.messages, finalized.messages)
+            } else {
+                if finalized.decision.hasPrefix("fresh allocation dose refused") { postAllocationRefusals += 1 }
+                XCTAssertEqual(signature(finalized.plan.menus), signature(funded.menus))
+                XCTAssertEqual(finalized.messages, ["baseline marker"])
+                XCTAssertEqual(finalized.receipts, [marker])
+            }
+            let retainedPlan = ClaudeService.SubstitutionPlanningBaseline(menus: funded.menus,
+                blueprint: effectiveBlueprint, weekNumber: 1, lockedPrefixCounts: funded.lockedPrefixCounts,
+                retainedKeysByDay: funded.menus.map { Set($0.map { ExerciseWeightEntry.canonicalLookupKey($0.exerciseName) }) },
+                exerciseHistory: funded.exerciseHistory, selectionFocusIntents: funded.selectionFocusIntents,
+                roleFloorAdmission: .admitted)
+            let protectedResult = service.finalizeSessionCapacity(retainedPlan, trainingIntent: intent,
+                baselineMessages: ["protected marker"], baselineReceipts: [marker], collectFunding: true)
+            XCTAssertFalse(protectedResult.decision.hasPrefix("adopted"))
+            if finalized.decision.hasPrefix("adopted") {
+                XCTAssertEqual(protectedResult.decision, "reservation removed protected or retained appearance")
+            }
+            XCTAssertEqual(signature(protectedResult.plan.menus), signature(funded.menus))
+            XCTAssertEqual(protectedResult.messages, ["protected marker"])
+            XCTAssertEqual(protectedResult.receipts, [marker])
+            for status in [ClaudeService.RoleFloorAdmission.unassessed, .deloadPolicy,
+                           .infeasible(["fixture"]), .searchLimit(["fixture"])] {
+                var nonAdmitted = funded
+                nonAdmitted.roleFloorAdmission = status
+                let refusal = service.finalizeSessionCapacity(nonAdmitted, trainingIntent: intent,
+                    baselineMessages: ["admission marker"], baselineReceipts: [marker], collectFunding: true)
+                XCTAssertEqual(refusal.decision, "baseline not admitted")
+                XCTAssertEqual(refusal.plan.roleFloorAdmission, status)
+                XCTAssertEqual(signature(refusal.plan.menus), signature(funded.menus))
+                XCTAssertEqual(refusal.messages, ["admission marker"])
+                XCTAssertEqual(refusal.receipts, [marker])
+            }
+            let malformed = ClaudeService.SubstitutionPlanningBaseline(menus: funded.menus,
+                blueprint: effectiveBlueprint, weekNumber: 1, lockedPrefixCounts: [],
+                retainedKeysByDay: funded.retainedKeysByDay, exerciseHistory: funded.exerciseHistory,
+                selectionFocusIntents: funded.selectionFocusIntents, roleFloorAdmission: .admitted)
+            let invalidResult = service.finalizeSessionCapacity(malformed, trainingIntent: intent,
+                baselineMessages: ["context marker"], baselineReceipts: [marker], collectFunding: true)
+            XCTAssertEqual(invalidResult.decision, "invalid planning context")
+            XCTAssertEqual(signature(invalidResult.plan.menus), signature(funded.menus))
+            XCTAssertEqual(invalidResult.messages, ["context marker"])
+            XCTAssertEqual(invalidResult.receipts, [marker])
         }
         XCTAssertEqual(processed, 5)
         XCTAssertEqual(expectedCrowded, 5, "All five historical Week 1 profiles must exercise the capacity problem")
+        XCTAssertGreaterThanOrEqual(verifiedSubsets, 2, "The two previously dose-preserving profiles must exercise verification")
+        XCTAssertTrue(adoptedPersonas.contains("Six-day push/pull/legs, back focus, no injuries"))
+        XCTAssertTrue(adoptedPersonas.contains("Compound priority area, small muscles"))
+        XCTAssertGreaterThan(postAllocationRefusals, 0, "At least one actual dose refusal must preserve baseline reports")
+        report.append("VERIFIED_SUBSETS count=\(verifiedSubsets); no live adoption")
         report.append("SUMMARY processed=\(processed) expectedCrowded=\(expectedCrowded)")
         let output = report.joined(separator: "\n")
         print(output)

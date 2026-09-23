@@ -170,6 +170,24 @@ The owner replay additionally exercises no-row append using a complete five-slot
 Pull day, followed by fresh allocation and funded balance evaluation, and checks
 that an already balanced plan is unchanged. Both passed at this checkpoint.
 
+### Six-slot verified-subset prototype (not live, 2026-09-23)
+
+`finalizeSessionCapacity` is an unused production-layer verification seam exercised
+by the five-profile diagnostic. It considers one shared six-slot reservation and
+one fresh allocation of a complete admitted baseline. Returned candidates must be
+ordered subsets, preserve protected/retained appearances and locked-prefix doses,
+pass the unchanged strict dose comparator, introduce no back-balance finding, and
+remain stable under session ordering. Any refusal returns the exact baseline and
+its original diagnostics/receipts. Search exhaustion is not reported as infeasibility.
+
+Tests additionally require locked-menu procedural delivery, no new full-validator
+findings, exact receipt coverage/coordinates, idempotence, all-retained refusal,
+all non-admitted statuses, malformed context, and at least one post-allocation dose
+refusal. The two prior dose-preserving persona names must actually exercise success.
+These are execution hypotheses, not adopted fixes; reserving the funded baseline
+is a different boundary from the earlier pre-allocation diagnostic. No live caller
+uses the prototype, and global capacity remains open until those results are reviewed.
+
 ### False chest support-credit boundary (candidate, 2026-09-23)
 
 The beginner six-slot candidate only removes two Dumbbell Rear Delt Fly sets and
