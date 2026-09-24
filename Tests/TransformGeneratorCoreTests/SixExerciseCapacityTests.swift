@@ -207,12 +207,8 @@ final class SixExerciseCapacityTests: XCTestCase {
                     trial[0][try index("Overhead Cable Triceps Extension", day: 0)].prescribedSets += 1
                     let lateral = trial[3].remove(at: try index("Machine Lateral Raise", day: 3))
                     trial[0].append(lateral)
-                    var curl = trial[1].remove(at: try index("Bayesian Cable Curl", day: 1))
-                    curl.prescribedSets = 2
-                    trial[0].insert(curl, at: 2)
-                    trial[1][try index("Dumbbell Spider Curl", day: 1)].prescribedSets = 4
                     let core = trial[3].remove(at: try index("Cable Pallof Press", day: 3))
-                    trial[1].append(core)
+                    trial[0].append(core)
                 }
                 func summarize(_ label: String, _ menus: [[ClaudeService.PreSelectedExercise]]) {
                     let dose = service.compareAllocatedDoseOnly(menus, baseline: funded.menus,
@@ -252,6 +248,22 @@ final class SixExerciseCapacityTests: XCTestCase {
                     report.append("JOINT_HYPOTHESIS \(label) menus=\(signature(menus)) back=\(service.plannedBackBalanceFindings(menus, blueprint: effectiveBlueprint))")
                 }
                 summarize("proposed", trial)
+                if persona.name == "Arms specialisation on four days" {
+                    // Preserve the actual daily priority dose, not just weekly arm totals.
+                    for area in ["Biceps", "Triceps"] {
+                        func dailyDose(_ menus: [[ClaudeService.PreSelectedExercise]]) -> [Double] {
+                            menus.map { menu in
+                                menu.reduce(0) { sum, item in
+                                    sum + Double(item.prescribedSets) * service.focusDirectSetCredit(
+                                        for: service.focusStimulusKind(exerciseName: item.exerciseName,
+                                            muscleTarget: item.muscleTarget, focusArea: area))
+                                }
+                            }
+                        }
+                        XCTAssertEqual(dailyDose(trial), dailyDose(funded.menus), area)
+                        report.append("JOINT_HYPOTHESIS simplerArms \(area) baseline=\(dailyDose(funded.menus)) proposed=\(dailyDose(trial))")
+                    }
+                }
                 var trialAdmission: ClaudeService.RoleFloorAdmission = .unassessed
                 let trialAllocated = service.allocateWeeklySetPrescription(trial, blueprint: effectiveBlueprint,
                     weekNumber: 1, lockedPrefixCounts: funded.lockedPrefixCounts,

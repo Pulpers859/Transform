@@ -24,6 +24,7 @@ PLANNING_SUITES = (
     "CrossDayTricepsTests",
     "PlanningAdmissionOutcomeTests",
     "BackBalanceAndStyleCanonicalTests",
+    "CoreAdjunctStyleTests",
     "PriorityStyleAndSlotCapacityTests",
     "InjuryTimeAndSessionBudgetTests",
     "SessionOrderingPolicyTests",
