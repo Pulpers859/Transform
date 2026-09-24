@@ -196,7 +196,8 @@ final class SixExerciseCapacityTests: XCTestCase {
                 preservingBaseline: Bool = false, limitOriginalAppearances: Bool = false) throws {
                 let raw = try XCTUnwrap(service.jointDoseProjection(for: pool,
                     blueprint: effectiveBlueprint, weekNumber: 1, requiredKeysByDay: funded.retainedKeysByDay,
-                    preservingDoseOf: preservingBaseline ? funded.menus : nil))
+                    preservingDoseOf: preservingBaseline ? funded.menus : nil,
+                    groupSingleAppearanceAlternatives: limitOriginalAppearances))
                 var identityLimits: [WorkoutAppearancePlanner.Constraint] = []
                 if limitOriginalAppearances {
                     let originalCounts = Dictionary(grouping: funded.menus.joined(), by: {

@@ -27,7 +27,8 @@ extension ClaudeService {
     /// from provisional candidate placeholders. This still is NOT adoption.
     func jointDoseProjection(for menus: [[PreSelectedExercise]], blueprint: ProgramBlueprint,
         weekNumber: Int, requiredKeysByDay: [Set<String>],
-        preservingDoseOf baseline: [[PreSelectedExercise]]? = nil) -> JointDoseProjection? {
+        preservingDoseOf baseline: [[PreSelectedExercise]]? = nil,
+        groupSingleAppearanceAlternatives: Bool = false) -> JointDoseProjection? {
         guard (1...3).contains(weekNumber), menus.count == 7, blueprint.dayPlans.count == 7,
               requiredKeysByDay.count == 7,
               blueprint.dayPlans.filter({ !$0.isRestDay }).count == blueprint.weeklyTrainingDays,
@@ -62,27 +63,59 @@ extension ClaudeService {
         let accounting = weeklyExerciseAccounting(for: menus, blueprint: blueprint)
         let baselineAccounting = baseline.map { weeklyExerciseAccounting(for: $0, blueprint: blueprint) }
         let limits = setBudgetLimits(for: blueprint)
+        // One baseline appearance offered on several days is one decision with
+        // location-and-dose options. Never group repeated weekly appearances or
+        // actual retained-history identities; they are separate commitments.
+        let baselineByKey = Dictionary(grouping: (baseline ?? []).flatMap { $0 }, by: {
+            ExerciseWeightEntry.canonicalLookupKey($0.exerciseName)
+        })
+        let candidatesByKey = Dictionary(grouping: menus.flatMap { $0 }, by: {
+            ExerciseWeightEntry.canonicalLookupKey($0.exerciseName)
+        })
+        let alternativeKeys = Set(candidatesByKey.keys.filter { key in
+            guard groupSingleAppearanceAlternatives, let original = baselineByKey[key],
+                  original.count == 1, let candidates = candidatesByKey[key], candidates.count > 1,
+                  !requiredKeysByDay.contains(where: { $0.contains(key) }) else { return false }
+            let item = original[0]
+            return candidates.allSatisfy {
+                $0.exerciseName == item.exerciseName && $0.muscleTarget == item.muscleTarget
+                    && $0.movementPattern == item.movementPattern && $0.role == item.role
+            }
+        })
         var options: [JointDoseOption] = [], domains: [[Int]] = []
+        var alternativeDomains: [String: Int] = [:]
         for day in menus.indices {
             for slot in menus[day].indices {
                 let item = menus[day][slot], cost = accounting.exercises[day][slot]
+                let key = ExerciseWeightEntry.canonicalLookupKey(item.exerciseName)
+                let isAlternative = alternativeKeys.contains(key)
+                let domainIndex: Int
+                if isAlternative, let existing = alternativeDomains[key] {
+                    domainIndex = existing
+                } else {
+                    domainIndex = domains.count
+                    domains.append([])
+                    if isAlternative { alternativeDomains[key] = domainIndex }
+                }
                 let prime = blueprint.priorityAllocations.indices.contains {
                     cost.unitDirect[$0] > 0 && cost.qualityScore[$0] == 30
                 }
                 let ceiling = max(proceduralSets(for: weekNumber, exerciseName: item.exerciseName,
                     muscleTarget: item.muscleTarget), prime ? 4 : 0)
                 guard cost.setFloor > 0, cost.setFloor <= ceiling else { return nil }
-                let start = options.count
                 // Within one identity, prefer the legal phase/priority ceiling, then lower
                 // meaningful doses, then omission. This is deterministic search
                 // ordering only, not a claim of optimal training quality.
                 for sets in stride(from: ceiling, through: cost.setFloor, by: -1) {
                     options.append(.init(day: day, slot: slot, sets: sets))
+                    domains[domainIndex].append(options.count - 1)
                 }
-                if !requiredKeysByDay[day].contains(ExerciseWeightEntry.canonicalLookupKey(item.exerciseName)) {
+                if !requiredKeysByDay[day].contains(key) && (!isAlternative || domains[domainIndex].allSatisfy {
+                    options[$0].sets > 0
+                }) {
                     options.append(.init(day: day, slot: slot, sets: 0))
+                    domains[domainIndex].append(options.count - 1)
                 }
-                domains.append(Array(start..<options.count))
             }
         }
         var upper: [WorkoutAppearancePlanner.Constraint] = []

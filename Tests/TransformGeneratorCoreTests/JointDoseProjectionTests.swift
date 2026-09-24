@@ -246,6 +246,51 @@ final class JointDoseProjectionTests: XCTestCase {
         }
     }
 
+    func testSingleBaselineAppearanceTreatsCopiesAsAlternateLocations() throws {
+        var baseline = menus
+        for day in [0, 3] { for slot in baseline[day].indices { baseline[day][slot].prescribedSets = 3 } }
+        baseline[3][4] = item("Seated Calf Raise", "Calves", sets: 3)
+        var pool = baseline
+        pool[0].append(item("Seated Calf Raise", "Calves"))
+        let separate = try XCTUnwrap(service.jointDoseProjection(for: pool, blueprint: blueprint(),
+            weekNumber: 1, requiredKeysByDay: required, preservingDoseOf: baseline))
+        let grouped = try XCTUnwrap(service.jointDoseProjection(for: pool, blueprint: blueprint(),
+            weekNumber: 1, requiredKeysByDay: required, preservingDoseOf: baseline,
+            groupSingleAppearanceAlternatives: true))
+        XCTAssertEqual(grouped.problem.domains.count, separate.problem.domains.count - 1)
+        let calfDomains = grouped.problem.domains.filter { domain in
+            let first = grouped.options[domain[0]]
+            return pool[first.day][first.slot].exerciseName == "Seated Calf Raise"
+        }
+        let domain = try XCTUnwrap(calfDomains.first)
+        XCTAssertEqual(calfDomains.count, 1)
+        XCTAssertEqual(Set(domain.filter { grouped.options[$0].sets > 0 }.map { grouped.options[$0].day }), Set([0, 3]))
+        XCTAssertEqual(domain.filter { grouped.options[$0].sets == 0 }.count, 1)
+        let calfCoverage = try XCTUnwrap(grouped.problem.coverage.first { $0.name == "Calves baseline days" })
+        XCTAssertEqual(calfCoverage.minimumGroups, 1)
+
+        let remap = Dictionary(uniqueKeysWithValues: domain.enumerated().map { ($0.element, $0.offset) })
+        let locations = calfCoverage.groups.map { $0.compactMap { remap[$0] } }
+        for wantedDay in [0, 3] {
+            let coefficients = domain.map { grouped.options[$0].day == wantedDay && grouped.options[$0].sets > 0 ? 1.0 : 0.0 }
+            let sliced = WorkoutAppearancePlanner.ChoiceProblem(domains: [Array(domain.indices)],
+                upperBounds: [], lowerBounds: [.init(name: "chosen location", coefficients: coefficients, limit: 1)],
+                coverage: [.init(name: calfCoverage.name, groups: locations, minimumGroups: 1)])
+            guard case .admitted(let picks) = WorkoutAppearancePlanner.solveChoices(sliced) else {
+                return XCTFail("Either single-appearance location must remain selectable")
+            }
+            XCTAssertEqual(picks.reduce(0.0) { $0 + coefficients[$1] }, 1)
+        }
+
+        var retained = required
+        retained[3].insert(ExerciseWeightEntry.canonicalLookupKey("Seated Calf Raise"))
+        let protected = try XCTUnwrap(service.jointDoseProjection(for: pool, blueprint: blueprint(),
+            weekNumber: 1, requiredKeysByDay: retained, preservingDoseOf: baseline,
+            groupSingleAppearanceAlternatives: true))
+        XCTAssertEqual(protected.problem.domains.count, separate.problem.domains.count,
+            "Actual retained work cannot become a relocatable choice")
+    }
+
     func testUnfundableRawSlotRequestStaysVisibleWithoutReducingDoseOrFrequency() throws {
         let plan = blueprint(["Triceps"], slots: 8)
         let allocation = plan.priorityAllocations[0]

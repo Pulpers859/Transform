@@ -9,6 +9,24 @@ and delegate only when it materially advances that step. The owner requested
 publishing this pending checkpoint and stopping to conserve weekly usage.
 This checkpoint is diagnostic infrastructure, not a shipped six-exercise fix.
 
+## One appearance, alternate day and dose choices (verification pending)
+
+The automatic five-profile placement experiment in commit `a07949e` passed 181
+focused tests in run `35993217963`, zero failures/errors/skips; Swift
+`35993217854` logged BUILD SUCCEEDED. Each expanded pool still reached the
+512-state search limit. This does not establish that no six-exercise plan exists.
+
+The next bounded correction represents one original exercise appearance offered
+on several days as ONE choice among locations and legal set counts. It applies
+only with an explicit original baseline, a single original weekly appearance,
+identical canonical exercise metadata, and no actual retained-history identity.
+Exercises that appeared twice in the original week remain separate appearances.
+The test-only search still caps original weekly appearance counts and runs the
+independent exact-dose check on any admission. No production caller or new
+workout adoption is introduced. XCTest/runtime evidence for this iteration is
+pending; the correction may improve search efficiency but cannot prove full
+placement eligibility or optimality.
+
 ## Automatic alternate-location diagnostic (2026-09-24, runtime proof pending)
 
 `25f27c3` passed 180 focused cases in run `35991416811`, with zero failures,
