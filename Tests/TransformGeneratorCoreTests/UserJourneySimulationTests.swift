@@ -207,7 +207,7 @@ final class UserJourneySimulationTests: XCTestCase {
         let receiver = try XCTUnwrap(blueprint.dayPlans.indices.first {
             service.canonicalTrainingStyle(blueprint.dayPlans[$0].style) == (beginner ? "Pull" : "Arms")
         })
-        if beginner, menus[source].count <= 6 {
+        if menus[source].count <= 6 {
             // Production has resolved this shape. Do not pretend its old 7/5
             // trial still describes the current sequential baseline.
             XCTAssertTrue(menus.allSatisfy { $0.count <= 6 })
@@ -1842,6 +1842,34 @@ final class UserJourneySimulationTests: XCTestCase {
                     XCTAssertEqual(identitiesAndSets(capacity.plan.menus), identitiesAndSets(capacityBaseline.menus))
                 }
             }
+            if persona.name == "Compound priority area, small muscles", weekNumber < 4 {
+                XCTAssertTrue(capacity.plan.menus.allSatisfy { $0.count <= 6 }, capacity.decision)
+                if capacity.decision.contains("cross-day triceps consolidation") {
+                    var removed: [ClaudeService.PreSelectedExercise] = []
+                    var increments: [Int] = []
+                    for day in capacityBaseline.menus.indices {
+                        let old = capacityBaseline.menus[day], new = capacity.plan.menus[day]
+                        for item in old {
+                            if let current = new.first(where: { $0.exerciseName == item.exerciseName }) {
+                                XCTAssertEqual(current.muscleTarget, item.muscleTarget)
+                                XCTAssertEqual(current.role, item.role)
+                                XCTAssertEqual(current.movementPattern, item.movementPattern)
+                                if current.prescribedSets != item.prescribedSets {
+                                    increments.append(current.prescribedSets - item.prescribedSets)
+                                }
+                            } else { removed.append(item) }
+                        }
+                        XCTAssertEqual(new.map(\.exerciseName), old.filter { item in
+                            new.contains { $0.exerciseName == item.exerciseName }
+                        }.map(\.exerciseName), "All survivor positions must stay fixed")
+                    }
+                    XCTAssertEqual(removed.count, 1)
+                    XCTAssertEqual(removed.first?.prescribedSets, 2)
+                    XCTAssertEqual(increments.sorted(), [1, 1])
+                    XCTAssertEqual(capacity.plan.retainedKeysByDay, capacityBaseline.retainedKeysByDay)
+                    XCTAssertEqual(capacity.plan.lockedPrefixCounts, capacityBaseline.lockedPrefixCounts)
+                }
+            }
             let blueprint = delivered.blueprint
             let menus = delivered.menus
             XCTAssertEqual(receiptCalls, 1)
@@ -2029,6 +2057,38 @@ final class UserJourneySimulationTests: XCTestCase {
                     XCTAssertFalse(week.findings.contains { $0.contains("The week's back work") })
                 }
                 let dayStart = ((weekNumber - 1) * 7) + 1
+                if persona.name == "Compound priority area, small muscles", (2...3).contains(weekNumber) {
+                    func directTriceps(_ day: WorkoutDayResponse) -> Int {
+                        day.exercises.reduce(0) { total, item in
+                            total + (service.exerciseMetadata(for: item).primaryAreas
+                                .map(service.normalizedPriorityText).contains("triceps") ? item.sets : 0)
+                        }
+                    }
+                    func loading(_ value: [WorkoutDayResponse]) -> [Int] {
+                        value.filter { day in day.exercises.contains { item in
+                            let info = service.exerciseMetadata(for: item)
+                            return item.sets > 0 && (info.primaryAreas + info.secondaryAreas)
+                                .map(service.normalizedPriorityText).contains("triceps")
+                        } }.map(\.dayNumber)
+                    }
+                    XCTAssertTrue(days.allSatisfy { $0.exercises.count <= 6 })
+                    XCTAssertEqual(days.map(directTriceps).reduce(0, +), 10)
+                    XCTAssertEqual(days.filter { directTriceps($0) >= 2 }.count, 2)
+                    let armsIndex = try XCTUnwrap(week.blueprint.dayPlans.firstIndex {
+                        service.canonicalTrainingStyle($0.style) == "Arms"
+                    })
+                    XCTAssertEqual(directTriceps(days[armsIndex]), 8, "Include the two Dip sets, not just the six isolation sets")
+                    let current = loading(days)
+                    XCTAssertTrue(zip(current, current.dropFirst()).allSatisfy { $1 - $0 >= 2 })
+                    if let before = loading(weeks[index - 1].days).last, let first = current.first {
+                        XCTAssertGreaterThanOrEqual(first - before, 2)
+                    }
+                    // The complete sequential test can check the real following
+                    // week (including deload), which the live planner cannot see yet.
+                    if let last = current.last, let after = loading(weeks[index + 1].days).first {
+                        XCTAssertGreaterThanOrEqual(after - last, 2)
+                    }
+                }
                 let trainingDays = days.filter { !$0.isRestDay }
                 let totalSets = trainingDays.flatMap(\.exercises).reduce(0) { $0 + $1.sets }
                 let exerciseCount = trainingDays.reduce(0) { $0 + $1.exercises.count }

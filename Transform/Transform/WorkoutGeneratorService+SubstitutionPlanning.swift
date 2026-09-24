@@ -175,8 +175,8 @@ extension ClaudeService {
         let decision: String
     }
 
-    /// Bounded capacity planning. The subset and optional relocation stages each
-    /// permit at most one fresh allocation; neither may lose complete-plan dose.
+    /// Bounded capacity planning. Subset, relocation and triceps consolidation
+    /// each permit at most one fresh allocation; none may lose complete-plan dose.
     func finalizeSessionCapacity(_ baseline: SubstitutionPlanningBaseline,
         trainingIntent: TrainingIntentPlan, baselineMessages: [String],
         baselineReceipts: [SetFundingObservation], collectFunding: Bool,
@@ -189,8 +189,12 @@ extension ClaudeService {
         let placement = finalizeFirstAccessoryRelocation(baseline, trainingIntent: trainingIntent,
             previousWeekDays: previousWeekDays, baselineMessages: baselineMessages,
             baselineReceipts: baselineReceipts, collectFunding: collectFunding)
-        // Keep the existing refusal and its reports unless the whole placement passes.
-        return placement.decision.hasPrefix("adopted") ? placement : subset
+        if placement.decision.hasPrefix("adopted") { return placement }
+        let consolidation = finalizeFirstCrossDayTricepsConsolidation(baseline, trainingIntent: trainingIntent,
+            previousWeekDays: previousWeekDays, baselineMessages: baselineMessages,
+            baselineReceipts: baselineReceipts, collectFunding: collectFunding)
+        // Keep the original subset refusal/reports unless an entire alternative passes.
+        return consolidation.decision.hasPrefix("adopted") ? consolidation : subset
     }
 
     private func finalizeSessionCapacitySubset(_ baseline: SubstitutionPlanningBaseline,

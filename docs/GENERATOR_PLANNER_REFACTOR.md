@@ -1,6 +1,51 @@
 # Generator planner refactor: evidence and acceptance
 
-## Bounded accessory placement (2026-09-23, output verified; CI timeout unresolved)
+## Cross-day triceps consolidation (2026-09-23, draft awaiting integration proof)
+
+The owner delegates exercise-programming choices to the evidence expert/main-agent
+review, rather than routine approval questions. The expert preferred the smaller
+exercise-specific redistribution: remove Upper's two-set pressdown, increase Arms'
+existing pressdown and extension from two to three sets each. Dips stay unchanged.
+This changes Arms from six to eight direct triceps sets (Dips count), preserves ten
+weekly direct sets in the observed case, and reduces direct-training days from three
+to two. Upper's shoulder pressing remains indirect triceps loading.
+
+[Lasevicius 2019](https://pubmed.ncbi.nlm.nih.gov/31531139/) supports flexibility between
+volume-equated two- and three-day frequency, not proof of equivalence for this program.
+[Maeo 2023](https://pubmed.ncbi.nlm.nih.gov/35819335/) supports retaining overhead extension
+work but does not compare this 3/3 distribution against 2/4. The recommendation is
+a bounded coaching judgment, not a claim of superior hypertrophy or personal safety.
+
+Source archaeology separates two contracts: normal allocation changes set counts
+after retaining exercise identities/order; optional substitution has a stricter exact-dose
+contract. The latter remains unchanged. A separately named capacity operation permits
+only two explicit +1 receiver increments, including a retained/prefix-locked receiver.
+The donor must still be unprotected and unretained. No other survivor may change
+identity, order, target, role, pattern, sets, reps, tempo, rest or RIR. Existing operation
+guards are not bypassed by a general “ignore protection” flag.
+
+Eligibility is restricted to admitted, unconstrained Weeks 2/3, one Upper7->6 deletion,
+Arms5 unchanged, a two-set pure-triceps pressdown donor, and two existing two-set pure
+triceps accessories with complementary Pressdown/Extension patterns. Neither donor nor
+receivers may contribute direct or weighted priority credit or be excluded by saved
+pain/equipment history or reported joint symptoms. All existing allocation limits apply.
+The eight-direct-set Arms ceiling includes compounds. Current primary AND secondary
+triceps-loading days must remain unchanged, with two-calendar-day cyclic gaps and an
+actual previous-week gap check. Unchanged first/last loading days cannot shorten the
+original plan's boundaries, but the future week's real plan is not yet known. These are
+engineering screens, not biological thresholds, proof of 48 elapsed hours, or recovery
+clearance. Full sequential outputs must check the next week's actual boundary too.
+
+The subset, accessory-relocation and new consolidation stages each allow at most one
+fresh allocation. Refused trials preserve original reports. Exact fresh-allocation and
+delivery checks must pass, with no additional validator findings. Independent source
+review found no concrete blocker; focused negative controls and the full sequential
+twenty-week artifact comparison remain required before any success claim.
+Windows smoke and syntax checks passed. The staged Claude review was attempted
+but failed on expired OAuth; it supplied no approval. A separate Codex adversarial
+source review is used, and CI/output evidence remains mandatory.
+
+## Bounded accessory placement (2026-09-23, output and follow-up CI verified)
 
 The owner reaffirmed that exercise-programming policy is delegated to an exercise-evidence
 expert agent, not a routine approval question to return to him. The consulted reviewer
@@ -57,7 +102,13 @@ measured. It does not preserve incidental cross-persona process ordering; the ex
 all-persona journey still executes the complete sequential matrix. No app code changes
 in this scheduling follow-up. Four additional XCTest entries should be discovered.
 Its staged Claude review also failed on expired OAuth; no Claude approval is claimed.
-Independent Codex/main review is separate from the pending runtime evidence.
+Independent Codex/main review is separate from the runtime evidence.
+
+Follow-up `9ae87ce`: Generator run `35936808903` succeeded with 763 tests and zero
+failures/errors; the test step took 13m55s under the unchanged 20-minute limit.
+All twenty exported workout `days` arrays are identical to `6bb462c`. Swift run
+`35936809012` logged BUILD SUCCEEDED. This verifies this run's scheduling fix,
+not a guarantee about all future runner timings or physical-device behavior.
 
 ## Bounded symptom-text interpretation (2026-09-23, integration verified)
 
