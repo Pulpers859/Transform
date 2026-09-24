@@ -1,6 +1,30 @@
 # Generator planner refactor: evidence and acceptance
 
-## Exact funded-dose contract (2026-09-24, runtime verification pending)
+## Exact funded-dose contract (2026-09-24, focused checkpoint verified)
+
+Focused planning run `35952575156` on `257c455` passed 149 cases across 16
+suites, including all 13 new exact-dose cases, with zero failures/errors/skips.
+The job took 3m45s; this is partial coverage, not the full journey matrix. Swift
+run `35952575022` logged BUILD SUCCEEDED. The two proposed quantities verified;
+the reallocated lumbar plan was refused for Upper Chest 8->7, and the Arms plan
+for loss of day-one Triceps work. No production menu changed. A separate Claude
+review attempt remained blocked by expired OAuth; independent Codex review
+found and rechecked the extreme-count fix before the run.
+
+The next adversarial check exposes a separate placement-policy conflict. The
+Arms report names elbow discomfort on skull crushers; the existing symptom
+matcher reaches both increased triceps receivers through the extension family.
+The lumbar report names a joint action, not a lift, so the current broad-caution
+fallback reaches the two increased incline presses and moved shoulder press.
+The diagnostic now pins these calls (runtime proof pending for these assertions).
+Neither hypothesis may bypass that protection just because its quantities fit.
+This finding concerns existing policy, not whether any particular lift is painful.
+
+Expert review recommends retaining explicit unresolved capacity now, investigating
+joint appearance/dose feasibility next, and not loosening symptom guards. Moving
+planning upstream must not covertly permit a change that downstream protection
+forbids. Specify selection, dose, coaching/stress and optional-change constraints
+before production adoption. A bounded search refusal is not global infeasibility.
 
 The next bounded check evaluates a proposed menu's existing sets without calling
 the allocator. It reuses the dose comparator for role, fatigue, maintenance and

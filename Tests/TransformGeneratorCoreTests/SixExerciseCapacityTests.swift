@@ -251,6 +251,21 @@ final class SixExerciseCapacityTests: XCTestCase {
                 let exactProposedDose = service.verifyExactFundedDose(trial, baseline: funded)
                 report.append("EXACT_FUNDED_DOSE proposed=\(exactProposedDose); quantitative only, no placement authorization")
                 XCTAssertEqual(exactProposedDose, .verified, persona.name)
+                // Quantities cannot authorize these optional changes: reproduce the
+                // same reported-symptom screen used by existing placement operations.
+                // This is a policy finding, not proof these exercises cause pain.
+                let changedReceivers: [(Int, String)] = persona.name == "Arms specialisation on four days"
+                    ? [(0, "Rope Triceps Pressdown"), (0, "Overhead Cable Triceps Extension")]
+                    : [(4, "Incline Barbell Press"), (5, "Incline Dumbbell Press"), (5, "Machine Shoulder Press")]
+                let joint: ClaudeService.ReportedJointStressArea = persona.name == "Arms specialisation on four days"
+                    ? .elbow : .lowerBack
+                for (day, name) in changedReceivers {
+                    let item = try XCTUnwrap(trial[day].first { $0.exerciseName == name })
+                    let implicated = service.reportedJointPainImplicates(joint, exerciseName: item.exerciseName,
+                        muscleTarget: item.muscleTarget, injuryRiskFocus: effectiveBlueprint.injuryRiskFocus)
+                    XCTAssertTrue(implicated, "The current optional-change symptom policy must not be bypassed: \(name)")
+                    report.append("PLACEMENT_SYMPTOM_CONFLICT day=\(day + 1) exercise=\(name) joint=\(joint) implicated=\(implicated); exact dose verification is not adoption permission")
+                }
                 if persona.name == "Arms specialisation on four days" {
                     // Preserve the actual daily priority dose, not just weekly arm totals.
                     for area in ["Biceps", "Triceps"] {
@@ -280,7 +295,7 @@ final class SixExerciseCapacityTests: XCTestCase {
                     XCTAssertEqual(exactReallocatedDose,
                         .refused(.primaryRegionLoss(region: "upper chest", baselineSets: 8, candidateSets: 7)))
                 }
-                report.append("JOINT_HYPOTHESIS admission=\(trialAdmission); not authorized for adoption; catalog/history/symptom eligibility, full prescriptions and neighboring weeks remain unverified")
+                report.append("JOINT_HYPOTHESIS admission=\(trialAdmission); not authorized for adoption: reported-symptom conflict reproduced; complete catalog/history eligibility, full prescriptions and neighboring weeks remain unverified")
             }
             let result = service.reserveWeeklyAppearanceFloors(candidate, blueprint: effectiveBlueprint, weekNumber: 1,
                 lockedPrefixCounts: funded.lockedPrefixCounts, maximumExercisesPerDay: 6)
