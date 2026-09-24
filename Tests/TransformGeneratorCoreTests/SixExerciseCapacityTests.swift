@@ -165,6 +165,27 @@ final class SixExerciseCapacityTests: XCTestCase {
                 let first = phases.indices.first { phases[$0].1[day].count > 6 }
                 let transition = first.map { $0 == 0 ? phases[$0].0 : "\(phases[$0 - 1].0)->\(phases[$0].0)" } ?? "none"
                 report.append("DAY \(day + 1) style=\(effectiveBlueprint.dayPlans[day].style) firstOverSix=\(transition) phaseCounts=\(phases.map { "\($0.0):\($0.1[day].count)" }.joined(separator: ","))")
+                if ["Five-day lifter reporting lumbar-extension pain", "Arms specialisation on four days"].contains(persona.name),
+                   let first, first > 0 {
+                    // Reuse captured menus: no extra generation. Multiset subtraction preserves
+                    // repeated appearances; a dose/role change appears as removal plus insertion.
+                    func records(_ menu: [ClaudeService.PreSelectedExercise]) -> [String] {
+                        menu.map { "\($0.exerciseName)|\($0.muscleTarget)|\($0.role)|\($0.prescribedSets)" }
+                    }
+                    func subtract(_ values: [String], _ other: [String]) -> [String] {
+                        var remaining = other
+                        return values.filter { value in
+                            if let index = remaining.firstIndex(of: value) {
+                                remaining.remove(at: index)
+                                return false
+                            }
+                            return true
+                        }
+                    }
+                    let before = records(phases[first - 1].1[day])
+                    let after = records(phases[first].1[day])
+                    report.append("FIRST_OVER_SIX_DELTA week=1 day=\(day + 1) transition=\(transition) fields=name|target|role|sets before=\(before) after=\(after) inserted=\(subtract(after, before)) removed=\(subtract(before, after))")
+                }
             }
             report.append("CANDIDATE \(signature(candidate))")
             let result = service.reserveWeeklyAppearanceFloors(candidate, blueprint: effectiveBlueprint, weekNumber: 1,

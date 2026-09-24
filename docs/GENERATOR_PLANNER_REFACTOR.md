@@ -1,5 +1,27 @@
 # Generator planner refactor: evidence and acceptance
 
+## Remaining capacity cause (2026-09-23, trace refinement pending)
+
+The verified `9ae87ce` five-persona Week 1 diagnostic records both remaining
+eight-slot shapes growing from six at `horizontalPullCoverage` to eight at
+`maintenanceBreadth`: lumbar-caution Upper and arms-specialization Push.
+This identifies the offending phase, not yet the two exact inserted identities.
+The existing test now exports that phase's before/after records and multiset
+differences without another generation or any production behavior change.
+
+The maintenance pass currently adds a second distinct movement slot for already
+covered nonpriority groups. It can append after the initial six slots have been
+filled. Removing the pass or imposing six only at append time would risk losing
+the required work (INC-8/INC-9); that is not an accepted fix. Next investigate
+reserving coverage, legal placement and set capacity together before discretionary
+selection fills the day. Do not add another persona-specific production repair.
+
+An earlier lumbar relocation idea was based on an incorrect receiver label: the
+actual receiver is Push, not Arms. Barbell Curl fails its exercise-style rules,
+and the existing row plus a curl would exceed the Push day's pulling allowance.
+The exercise-evidence reviewer withdrew that proposal. No such change shipped.
+Other consolidation/placement ideas remain untested hypotheses, not accepted plans.
+
 ## Cross-day triceps consolidation (2026-09-23, draft awaiting integration proof)
 
 The owner delegates exercise-programming choices to the evidence expert/main-agent
