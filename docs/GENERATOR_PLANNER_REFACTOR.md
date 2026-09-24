@@ -22,6 +22,18 @@ and the existing row plus a curl would exceed the Push day's pulling allowance.
 The exercise-evidence reviewer withdrew that proposal. No such change shipped.
 Other consolidation/placement ideas remain untested hypotheses, not accepted plans.
 
+Two expert-reviewed Week 1 hypotheses are now evaluated ONLY in that test:
+lumbar incline consolidation plus moving the shoulder press to Push; and arms
+triceps consolidation plus joint curl/lateral/core placement. The latter proposes
+Biceps 8/4 across adjacent Arms/Pull days rather than 6/6, so unchanged weekly volume
+is not a claim of equal recovery or performance. Both must preserve regional work;
+neither may bypass required protections. The diagnostic reports proposed and freshly
+allocated counts, dose-contract result, region changes, fatigue, whole-day style and
+ordering. It adds one allocation per hypothesis, not a production generation path.
+It does NOT authorize adoption, prove catalog/history/prefix protection, or assess
+full prescriptions and all four weeks. Existing comparators are unchanged. These
+are feasibility probes for an upstream design, not another production repair stage.
+
 ## Cross-day triceps consolidation (2026-09-23, draft awaiting integration proof)
 
 The owner delegates exercise-programming choices to the evidence expert/main-agent

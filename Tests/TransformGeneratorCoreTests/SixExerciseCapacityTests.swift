@@ -188,6 +188,77 @@ final class SixExerciseCapacityTests: XCTestCase {
                 }
             }
             report.append("CANDIDATE \(signature(candidate))")
+            if ["Five-day lifter reporting lumbar-extension pain", "Arms specialisation on four days"].contains(persona.name) {
+                // Named diagnostic hypotheses, NOT a production search or an adoption path.
+                // They distinguish whole-plan feasibility from the current operation contract.
+                var trial = funded.menus
+                func index(_ name: String, day: Int) throws -> Int {
+                    try XCTUnwrap(trial[day].firstIndex { $0.exerciseName == name }, name)
+                }
+                if persona.name == "Five-day lifter reporting lumbar-extension pain" {
+                    trial[4].remove(at: try index("Machine Incline Press", day: 4))
+                    trial[4][try index("Incline Barbell Press", day: 4)].prescribedSets += 1
+                    trial[5][try index("Incline Dumbbell Press", day: 5)].prescribedSets += 1
+                    let moved = trial[4].remove(at: try index("Machine Shoulder Press", day: 4))
+                    trial[5].insert(moved, at: 1)
+                } else {
+                    trial[0].remove(at: try index("EZ-Bar Skull Crusher", day: 0))
+                    trial[0][try index("Rope Triceps Pressdown", day: 0)].prescribedSets += 1
+                    trial[0][try index("Overhead Cable Triceps Extension", day: 0)].prescribedSets += 1
+                    let lateral = trial[3].remove(at: try index("Machine Lateral Raise", day: 3))
+                    trial[0].append(lateral)
+                    var curl = trial[1].remove(at: try index("Bayesian Cable Curl", day: 1))
+                    curl.prescribedSets = 2
+                    trial[0].insert(curl, at: 2)
+                    trial[1][try index("Dumbbell Spider Curl", day: 1)].prescribedSets = 4
+                    let core = trial[3].remove(at: try index("Cable Pallof Press", day: 3))
+                    trial[1].append(core)
+                }
+                func summarize(_ label: String, _ menus: [[ClaudeService.PreSelectedExercise]]) {
+                    let dose = service.compareAllocatedDoseOnly(menus, baseline: funded.menus,
+                        blueprint: effectiveBlueprint, weekNumber: 1)
+                    let shoulderLoss = service.capacityShoulderRegionLoss(menus, baseline: funded.menus)
+                    let days = menus.indices.map { day in
+                        WorkoutDayResponse(dayNumber: day + 1, dayName: effectiveBlueprint.dayPlans[day].style,
+                            muscleGroups: "", isRestDay: effectiveBlueprint.dayPlans[day].isRestDay, notes: "",
+                            exercises: menus[day].map { item in
+                                WorkoutExerciseResponse(exerciseName: item.exerciseName, sets: item.prescribedSets,
+                                    reps: "", tempo: "", restSeconds: 0, notes: "", muscleTarget: item.muscleTarget)
+                            })
+                    }
+                    let style = days.indices.filter { !days[$0].isRestDay }.map { day in
+                        service.dayClearlySupportsExpectedStyle(effectiveBlueprint.dayPlans[day].style, day: days[day])
+                    }
+                    let reordered = service.reorderedMenusForSessionFlow(menus, blueprint: effectiveBlueprint,
+                        trainingIntent: intent, lockedPrefixCounts: funded.lockedPrefixCounts)
+                    func regionalSets(_ value: [[ClaudeService.PreSelectedExercise]]) -> [String: Int] {
+                        var totals: [String: Int] = [:]
+                        for item in value.joined() {
+                            let areas = service.exerciseMetadata(forExerciseName: item.exerciseName,
+                                muscleTarget: item.muscleTarget).primaryAreas
+                            for area in Set(areas.map(service.normalizedPriorityText)) {
+                                totals[area, default: 0] += item.prescribedSets
+                            }
+                        }
+                        return totals
+                    }
+                    let oldRegions = regionalSets(funded.menus), newRegions = regionalSets(menus)
+                    let changes = Set(oldRegions.keys).union(newRegions.keys).sorted().compactMap { area -> String? in
+                        let old = oldRegions[area, default: 0], new = newRegions[area, default: 0]
+                        return old == new ? nil : "\(area):\(old)->\(new)"
+                    }
+                    report.append("JOINT_HYPOTHESIS \(label) counts=\(menus.map(\.count)) dose=\(dose) shoulderLoss=\(String(describing: shoulderLoss)) wholeDayStyle=\(style) fatigue=\(days.map { service.estimatedDayFatigue(for: $0.exercises) }) limits=\(effectiveBlueprint.dayPlans.map(\.targetFatigueCap)) orderingUnchanged=\(signature(reordered) == signature(menus))")
+                    report.append("JOINT_HYPOTHESIS \(label) primaryRegionChanges=\(changes) originalLocks=\(funded.lockedPrefixCounts); ordering comparison is not retained-identity authorization")
+                    report.append("JOINT_HYPOTHESIS \(label) menus=\(signature(menus)) back=\(service.plannedBackBalanceFindings(menus, blueprint: effectiveBlueprint))")
+                }
+                summarize("proposed", trial)
+                var trialAdmission: ClaudeService.RoleFloorAdmission = .unassessed
+                let trialAllocated = service.allocateWeeklySetPrescription(trial, blueprint: effectiveBlueprint,
+                    weekNumber: 1, lockedPrefixCounts: funded.lockedPrefixCounts,
+                    roleFloorAdmissionReport: { trialAdmission = $0 }, publishConflictLogs: false)
+                summarize("reallocated", trialAllocated)
+                report.append("JOINT_HYPOTHESIS admission=\(trialAdmission); not authorized for adoption; catalog/history/symptom eligibility, full prescriptions and neighboring weeks remain unverified")
+            }
             let result = service.reserveWeeklyAppearanceFloors(candidate, blueprint: effectiveBlueprint, weekNumber: 1,
                 lockedPrefixCounts: funded.lockedPrefixCounts, maximumExercisesPerDay: 6)
             report.append("RESERVATION outcome=\(result.outcome) counts=\(result.menus.map(\.count))")
