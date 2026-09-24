@@ -1,5 +1,31 @@
 # Generator planner refactor: evidence and acceptance
 
+## Weighted-goal contract correction (2026-09-24, focused proof pending)
+
+`8b16c60` passed 179 focused cases in run `35990473538`, zero failures/errors/
+skips; Swift `35990473723` logged BUILD SUCCEEDED. Both named hypothesis pools
+now admit quantities independently verified against the complete funded baseline:
+lumbar 272 search states, Arms 176. Every training day has at most six exercises.
+These remain diagnostic hypotheses, NOT authorized placement or production fixes.
+Existing-location preserved searches still exhaust 512 states on four profiles;
+the fifth fails the draft's unconditional Calves weighted-target requirement.
+
+Independent policy/code review identified that last failure as an overstrict NEW
+projection constraint, not a catalog shortage: the existing allocator pursues
+weighted bonuses only while dose budgets allow, and validation conditions weighted
+shortfall on direct-dose deficiency. Calf raises supply weighted=direct, so a
+bonus above an enforced direct ceiling can be unreachable. `VOL-002` calls this
+approximate accounting, not an independent mandatory admission threshold.
+
+Requested weighted targets now remain unchanged in explicit `weightedGoals`,
+outside hard admission bounds. Diagnostic admissions report achieved/requested
+weighted scores; no optimality claim. Baseline weighted non-loss stays mandatory,
+as do original direct targets and all session/weekly/role/fatigue constraints.
+A new all-major-groups fixture checks that three direct calf sets can be legal
+while the untouched weighted goal is 4.5, and that imposing that goal as a hard
+bound falsely makes the same pool infeasible. This changes only the diagnostic
+projection, not shipping workout generation or its validator.
+
 ## Preserved-dose search iteration (2026-09-24, verification pending)
 
 Projection checkpoint `467daa4`: focused `35989541813` passed 175 cases with

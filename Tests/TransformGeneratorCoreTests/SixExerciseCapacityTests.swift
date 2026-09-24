@@ -210,6 +210,7 @@ final class SixExerciseCapacityTests: XCTestCase {
                     "domains": projection.problem.domains,
                     "upperBounds": projection.problem.upperBounds.map(constraintJSON),
                     "lowerBounds": projection.problem.lowerBounds.map(constraintJSON),
+                    "weightedGoals": projection.weightedGoals.map(constraintJSON),
                     "coverage": projection.problem.coverage.map {
                         ["name": $0.name, "groups": $0.groups, "minimumGroups": $0.minimumGroups] as [String: Any]
                     },
@@ -225,6 +226,11 @@ final class SixExerciseCapacityTests: XCTestCase {
                 report.append("JOINT_SEARCH \(label) domains=\(projection.problem.domains.count) options=\(projection.options.count) states=\(observed.visitedStates) complete=\(observed.completeAssignments) outcome=\(outcome); supplied pool only, not exhaustive catalog search or workout approval")
                 report.append("JOINT_SEARCH \(label) slotCapacityShortfalls=\(projection.slotCapacityShortfalls)")
                 if case .admitted(let picks) = outcome {
+                    let goals = projection.weightedGoals.map { goal in
+                        let achieved = picks.reduce(0.0) { $0 + goal.coefficients[$1] }
+                        return "\(goal.name): \(achieved)/\(goal.limit)"
+                    }
+                    report.append("JOINT_SEARCH \(label) weightedGoals=\(goals); secondary objectives, not hidden target reductions or an optimality claim")
                     var proposed = Array(repeating: [ClaudeService.PreSelectedExercise](), count: 7)
                     for pick in picks {
                         let option = projection.options[pick]

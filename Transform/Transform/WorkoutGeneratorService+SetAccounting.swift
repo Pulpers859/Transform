@@ -11,6 +11,10 @@ extension ClaudeService {
         let problem: WorkoutAppearancePlanner.ChoiceProblem
         let options: [JointDoseOption]
         let slotCapacityShortfalls: [String]
+        // Existing allocator pursues these only while hard budgets allow. A
+        // weighted bonus must not make adequate direct work mathematically illegal.
+        // Keep raw demand visible; these are NOT silently recut admission bounds.
+        let weightedGoals: [WorkoutAppearancePlanner.Constraint]
     }
 
     /// Diagnostic quantitative projection of a supplied candidate pool, NOT a
@@ -85,6 +89,7 @@ extension ClaudeService {
         var coverage: [WorkoutAppearancePlanner.Coverage] = []
         var thresholdCoverage: [WorkoutAppearancePlanner.ThresholdCoverage] = []
         var slotCapacityShortfalls: [String] = []
+        var weightedGoals: [WorkoutAppearancePlanner.Constraint] = []
         func vector(_ value: (JointDoseOption) -> Double) -> [Double] { options.map(value) }
         for day in menus.indices where !blueprint.dayPlans[day].isRestDay {
             let slots = vector { $0.day == day && $0.sets > 0 ? 1 : 0 }
@@ -104,8 +109,8 @@ extension ClaudeService {
             let weighted = vector { Double($0.sets) * accounting.exercises[$0.day][$0.slot].unitWeighted[index] }
             lower.append(.init(name: "\(allocation.area) direct target", coefficients: direct,
                 limit: allocation.directSetTarget - WorkoutSetBudgetPolicy.fundingTolerance))
-            lower.append(.init(name: "\(allocation.area) weighted target", coefficients: weighted,
-                limit: allocation.weightedStimulusTarget - WorkoutSetBudgetPolicy.fundingTolerance))
+            weightedGoals.append(.init(name: "\(allocation.area) weighted target", coefficients: weighted,
+                limit: allocation.weightedStimulusTarget))
             upper.append(.init(name: "\(allocation.area) weekly ceiling", coefficients: direct,
                 limit: limits.normalWeeklyPriority[index]))
             let prime = options.map { $0.sets > 0 && accounting.exercises[$0.day][$0.slot].qualityScore[index] == 30 }
@@ -221,7 +226,7 @@ extension ClaudeService {
         }
         return .init(problem: .init(domains: domains, upperBounds: upper, lowerBounds: lower, coverage: coverage,
             thresholdCoverage: thresholdCoverage),
-            options: options, slotCapacityShortfalls: slotCapacityShortfalls)
+            options: options, slotCapacityShortfalls: slotCapacityShortfalls, weightedGoals: weightedGoals)
     }
 
     struct SetBudgetLimits {

@@ -16,16 +16,18 @@ final class JointDoseProjectionTests: XCTestCase {
         return [day, [], [], day, [], [], []]
     }
     private var required: [Set<String>] { Array(repeating: Set<String>(), count: 7) }
-    private func blueprint(_ areas: [String] = [], slots: Int = 2) -> ClaudeService.ProgramBlueprint {
+    private func blueprint(_ areas: [String] = [], slots: Int = 2, frequency: Int = 2,
+        directTarget: Double = 8, weightedTarget: Double = 10, focusCap: Double = 6,
+        focusDay: Int = 0) -> ClaudeService.ProgramBlueprint {
         .init(evidenceVersion: "projection-test", splitRecommendation: "Upper / Lower", weeklyTrainingDays: 2,
             priorityAllocations: areas.map { area in
-                .init(area: area, priorityLevel: "High", rationale: "", targetFrequency: 2,
-                    targetExerciseSlots: slots, directSetTarget: 8, weightedStimulusTarget: 10,
-                    maxPerSessionDirectSets: 4, maxFocusSessionDirectSets: 6,
+                .init(area: area, priorityLevel: "High", rationale: "", targetFrequency: frequency,
+                    targetExerciseSlots: slots, directSetTarget: directTarget, weightedStimulusTarget: weightedTarget,
+                    maxPerSessionDirectSets: 4, maxFocusSessionDirectSets: focusCap,
                     preferredStyles: [], preferredMovementPatterns: [], volumeBias: "High", directWorkBias: "High")
             }, dayPlans: (0..<7).map { day in
                 .init(dayIndex: day + 1, style: day == 0 || day == 3 ? "Upper" : "Rest",
-                    focusArea: day == 0 ? areas.first : nil, supportAreas: [],
+                    focusArea: day == focusDay ? areas.first : nil, supportAreas: [],
                     targetFatigueCap: day == 0 || day == 3 ? 48 : 0,
                     targetSessionMinutes: 60, targetPrioritySlots: 0, emphasisPatterns: [],
                     isRestDay: day != 0 && day != 3)
@@ -41,6 +43,7 @@ final class JointDoseProjectionTests: XCTestCase {
             + value.problem.domains.map { "domain:\($0)" }
             + value.problem.upperBounds.map { "upper:\($0.name)|\($0.coefficients)|\($0.limit)" }
             + value.problem.lowerBounds.map { "lower:\($0.name)|\($0.coefficients)|\($0.limit)" }
+            + value.weightedGoals.map { "goal:\($0.name)|\($0.coefficients)|\($0.limit)" }
             + value.problem.coverage.map { "coverage:\($0.name)|\($0.groups)|\($0.minimumGroups)" }
             + value.problem.thresholdCoverage.flatMap { requirement in
                 ["threshold:\(requirement.name)|\(requirement.minimumGroups)"]
@@ -110,7 +113,10 @@ final class JointDoseProjectionTests: XCTestCase {
             for allocation in plan.priorityAllocations {
                 let credit = service.stimulusCredit(for: output, area: allocation.area)
                 XCTAssertEqual(try bound("\(allocation.area) direct target", upper: false).coefficients[index], credit.directSets, accuracy: 0.000001)
-                XCTAssertEqual(try bound("\(allocation.area) weighted target", upper: false).coefficients[index], credit.weightedStimulus, accuracy: 0.000001)
+                let goal = try XCTUnwrap(projected.weightedGoals.first { $0.name == "\(allocation.area) weighted target" })
+                XCTAssertEqual(goal.coefficients[index], credit.weightedStimulus, accuracy: 0.000001)
+                XCTAssertEqual(goal.limit, allocation.weightedStimulusTarget)
+                XCTAssertFalse(projected.problem.lowerBounds.contains { $0.name == goal.name })
                 XCTAssertEqual(try bound("\(allocation.area) weekly ceiling", upper: true).coefficients[index], credit.directSets, accuracy: 0.000001)
                 for day in [0, 3] {
                     let session = try bound("Day \(day + 1) \(allocation.area) ceiling", upper: true)
@@ -207,10 +213,11 @@ final class JointDoseProjectionTests: XCTestCase {
         XCTAssertEqual(projection.slotCapacityShortfalls,
             ["Triceps: requested 8 prime slots; existing placement capacity \(capacity)"])
         let direct = try XCTUnwrap(projection.problem.lowerBounds.first { $0.name == "Triceps direct target" })
-        let weighted = try XCTUnwrap(projection.problem.lowerBounds.first { $0.name == "Triceps weighted target" })
+        let weighted = try XCTUnwrap(projection.weightedGoals.first { $0.name == "Triceps weighted target" })
         let frequency = try XCTUnwrap(projection.problem.thresholdCoverage.first { $0.name == "Triceps meaningful days" })
         XCTAssertEqual(direct.limit, allocation.directSetTarget - WorkoutSetBudgetPolicy.fundingTolerance)
-        XCTAssertEqual(weighted.limit, allocation.weightedStimulusTarget - WorkoutSetBudgetPolicy.fundingTolerance)
+        XCTAssertEqual(weighted.limit, allocation.weightedStimulusTarget)
+        XCTAssertFalse(projection.problem.lowerBounds.contains { $0.name == weighted.name })
         XCTAssertEqual(frequency.minimumGroups, allocation.targetFrequency)
     }
 
@@ -352,6 +359,42 @@ final class JointDoseProjectionTests: XCTestCase {
         for baseline in invalid {
             XCTAssertNil(service.jointDoseProjection(for: menus, blueprint: blueprint(),
                 weekNumber: 1, requiredKeysByDay: required, preservingDoseOf: baseline))
+        }
+    }
+
+    func testUnattainableCalfWeightedGoalDoesNotInvalidateHardDoseFeasibility() throws {
+        let upper = [item("Incline Barbell Press", "Upper Chest"), item("Chest-Supported Row", "Upper Back"),
+            item("Machine Shoulder Press", "Deltoids"), item("Rope Triceps Pressdown", "Triceps"),
+            item("EZ-Bar Curl", "Biceps"), item("Cable Crunch", "Abs")]
+        let lower = [item("Back Squat", "Quads"), item("Barbell Romanian Deadlift", "Hamstrings"),
+            item("Barbell Hip Thrust", "Glutes"), item("Machine Leg Curl", "Hamstrings"),
+            item("Seated Calf Raise", "Calves"), item("Cable Crunch", "Abs")]
+        let pool = [upper, [], [], lower, [], [], []]
+        let keys = pool.map { Set($0.map { ExerciseWeightEntry.canonicalLookupKey($0.exerciseName) }) }
+        let plan = blueprint(["Calves"], slots: 1, frequency: 1, directTarget: 3, weightedTarget: 4.5, focusCap: 4, focusDay: 3)
+        for group in service.majorMuscleGroups {
+            XCTAssertTrue(pool.joined().contains {
+                service.exerciseDirectlyTargets(groupAliases: service.normalizedGroupAliases(forSeed: group.seed),
+                    exerciseName: $0.exerciseName, muscleTarget: $0.muscleTarget)
+            }, "Fixture must actually cover \(group.label) directly")
+        }
+        let projection = try XCTUnwrap(service.jointDoseProjection(for: pool, blueprint: plan,
+            weekNumber: 1, requiredKeysByDay: keys))
+        let goal = try XCTUnwrap(projection.weightedGoals.first { $0.name == "Calves weighted target" })
+        XCTAssertEqual(goal.limit, 4.5)
+        XCTAssertEqual(plan.priorityAllocations[0].directSetTarget, 3)
+        XCTAssertFalse(projection.problem.lowerBounds.contains { $0.name == goal.name })
+        guard case .admitted(let choices) = WorkoutAppearancePlanner.solveChoices(projection.problem, maximumStates: 4096) else {
+            return XCTFail("This fixed-identity pool should fund hard constraints without the bonus goal")
+        }
+        let direct = try XCTUnwrap(projection.problem.lowerBounds.first { $0.name == "Calves direct target" })
+        XCTAssertEqual(choices.reduce(0.0) { $0 + direct.coefficients[$1] }, 3)
+        XCTAssertEqual(choices.reduce(0.0) { $0 + goal.coefficients[$1] }, 3)
+        let overconstrained = WorkoutAppearancePlanner.ChoiceProblem(domains: projection.problem.domains,
+            upperBounds: projection.problem.upperBounds, lowerBounds: projection.problem.lowerBounds + [goal],
+            coverage: projection.problem.coverage, thresholdCoverage: projection.problem.thresholdCoverage)
+        guard case .infeasible = WorkoutAppearancePlanner.solveChoices(overconstrained, maximumStates: 4096) else {
+            return XCTFail("The calf-only credit source cannot reach 4.5 without exceeding its three-set weekly budget")
         }
     }
 }
