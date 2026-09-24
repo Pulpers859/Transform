@@ -1,13 +1,16 @@
 # Generator planner refactor: evidence and acceptance
 
-## Remaining capacity cause (2026-09-23, trace refinement pending)
+## Remaining capacity cause (2026-09-23, exact additions verified)
 
 The verified `9ae87ce` five-persona Week 1 diagnostic records both remaining
 eight-slot shapes growing from six at `horizontalPullCoverage` to eight at
 `maintenanceBreadth`: lumbar-caution Upper and arms-specialization Push.
-This identifies the offending phase, not yet the two exact inserted identities.
-The existing test now exports that phase's before/after records and multiset
-differences without another generation or any production behavior change.
+The `89e37c1` export identifies the exact additions: lumbar Upper receives Barbell
+Curl and Hanging Knee Raise; arms Push receives Machine Lateral Raise and Cable
+Pallof Press. No existing identity is removed at this phase. The recorded one-set
+values are pre-allocation placeholders, not delivered prescriptions. Generator run
+`35938858458` passed; all twenty final workout `days` arrays match `0546e2d` exactly.
+The test reuses captured menus without another generation or production change.
 
 The maintenance pass currently adds a second distinct movement slot for already
 covered nonpriority groups. It can append after the initial six slots have been
@@ -34,7 +37,7 @@ It does NOT authorize adoption, prove catalog/history/prefix protection, or asse
 full prescriptions and all four weeks. Existing comparators are unchanged. These
 are feasibility probes for an upstream design, not another production repair stage.
 
-## Cross-day triceps consolidation (2026-09-23, draft awaiting integration proof)
+## Cross-day triceps consolidation (2026-09-23, integration output verified)
 
 The owner delegates exercise-programming choices to the evidence expert/main-agent
 review, rather than routine approval questions. The expert preferred the smaller
@@ -78,6 +81,22 @@ twenty-week artifact comparison remain required before any success claim.
 Windows smoke and syntax checks passed. The staged Claude review was attempted
 but failed on expired OAuth; it supplied no approval. A separate Codex adversarial
 source review is used, and CI/output evidence remains mandatory.
+
+At `0546e2d`, Generator run `35938476228` succeeded with 772 tests and zero
+failures/errors; Swift run `35938476174` logged BUILD SUCCEEDED. Comparing all
+twenty exported weeks against `9ae87ce`, only the small-muscle persona's Weeks 2/3
+changed: Upper's two-set Cable Triceps Pressdown is removed and Arms' existing
+Rope Pressdown/Overhead Extension each rise from two to three sets. All other
+eighteen `days` arrays, including every deload, are exactly unchanged. Priority
+evidence is unchanged and those two weeks have no validator findings. Weekly direct
+triceps remains ten; Arms carries eight including Dips. Over-six sessions fall
+from eight to six. This verifies this bounded integration, NOT completion of the
+global six-exercise requirement or physical-iPhone behavior.
+Independent artifact review confirmed those differences and unchanged survivor
+prescriptions. Primary/secondary triceps loading stays on days 8/11/13 and
+15/18/20; actual boundaries 6->8, 13->15 and 20->22 each span two calendar days.
+Unchanged Dip coaching still emphasizes chest despite its Triceps target; that
+preexisting coaching issue is not a new failure or proof of overall coaching quality.
 
 ## Bounded accessory placement (2026-09-23, output and follow-up CI verified)
 

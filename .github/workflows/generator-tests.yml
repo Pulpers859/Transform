@@ -1,4 +1,5 @@
 name: Generator Tests
+run-name: "Generator ${{ inputs.test_scope || (github.event_name == 'push' && startsWith(github.event.head_commit.message, '[ci:planning] ') && 'planning') || 'full' }} — ${{ github.sha }}"
 
 # Headless regression tests for the deterministic workout-generation core.
 # Runs the pure planning logic (menu-lock -> allocation -> validation -> procedural
@@ -10,12 +11,29 @@ on:
     branches: ["main"]
   pull_request:
     branches: ["main"]
+  workflow_dispatch:
+    inputs:
+      test_scope:
+        description: "planning = partial feedback only; full required for completion"
+        type: choice
+        options: [full, planning]
+        default: full
+        required: true
 
 permissions:
   contents: read
 
+# Explicit opt-in only. A planning experiment must not cancel a full checkpoint.
+concurrency:
+  group: generator-${{ github.ref }}-${{ inputs.test_scope || (github.event_name == 'push' && startsWith(github.event.head_commit.message, '[ci:planning] ') && 'planning') || 'full' }}
+  cancel-in-progress: true
+
+env:
+  TEST_SCOPE: ${{ inputs.test_scope || (github.event_name == 'push' && startsWith(github.event.head_commit.message, '[ci:planning] ') && 'planning') || 'full' }}
+
 jobs:
   generator-tests:
+    name: "Generator ${{ (inputs.test_scope == 'planning' || (github.event_name == 'push' && startsWith(github.event.head_commit.message, '[ci:planning] '))) && 'planning — PARTIAL ONLY' || 'full' }}"
     runs-on: macos-latest
     # Run 35894757805 completed 751 XCTest entries with zero failures but crossed
     # the 18-minute step cap by nine seconds. Keep bounded cleanup/audit headroom;
@@ -39,12 +57,27 @@ jobs:
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
 
+      - name: Validate test scope and record evidence boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$TEST_SCOPE" in
+            full|planning) ;;
+            *) echo "Unknown test scope: $TEST_SCOPE"; exit 1 ;;
+          esac
+          printf 'Mode: %s\nCommit: %s\n' "$TEST_SCOPE" "$GITHUB_SHA" | tee "$RUNNER_TEMP/generator-test-scope.txt" >> "$GITHUB_STEP_SUMMARY"
+          if [[ "$TEST_SCOPE" == planning ]]; then
+            echo 'PARTIAL VERIFICATION ONLY. Full generator tests and the app build are still required at completion.' | tee -a "$RUNNER_TEMP/generator-test-scope.txt" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          python3 tools/test_focused_generator_tests.py
+
       - name: Show toolchain
         run: |
           swift --version
           xcodebuild -version
 
       - name: Run headless generator tests
+        if: env.TEST_SCOPE == 'full'
         # Bounded headroom for the expanded suite, distinct from per-generation
         # performance. The job also needs independent audits and report cleanup.
         timeout-minutes: 20
@@ -61,6 +94,40 @@ jobs:
             echo "NutritionGeneratorStressTests was not discovered by swift test."
             exit 1
           fi
+
+      - name: Run focused planning tests — NOT full verification
+        if: env.TEST_SCOPE == 'planning'
+        timeout-minutes: 20
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/run_focused_generator_tests.py --output-dir "$RUNNER_TEMP"
+          test -s six-slot-planning-trials.txt
+          test -s owner-planning-replay.json
+
+      - name: Upload focused planning evidence
+        if: always() && env.TEST_SCOPE == 'planning'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: focused-planning-evidence
+          path: |
+            ${{ runner.temp }}/planning-tests.xml
+            ${{ runner.temp }}/planning-tests.log
+            ${{ runner.temp }}/planning-scope.json
+            ${{ runner.temp }}/generator-test-scope.txt
+            six-slot-planning-trials.txt
+            owner-planning-replay.json
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload test scope
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: generator-test-scope
+          path: ${{ runner.temp }}/generator-test-scope.txt
+          if-no-files-found: error
+          retention-days: 14
 
       # Catches a defect the Swift suite structurally cannot: validator findings are
       # classified by substring against hand-maintained pattern lists, so a pattern that
@@ -131,7 +198,7 @@ jobs:
       # the known one-set prescriptions are fixed. The explicit acceptance command is documented
       # in docs/GENERATOR_PLANNER_REFACTOR.md and must go red on the current baseline.
       - name: Audit generated workout evidence
-        if: always()
+        if: always() && env.TEST_SCOPE == 'full'
         run: |
           set -euo pipefail
           python3 tools/test_audit_workout_evidence.py
@@ -142,7 +209,7 @@ jobs:
       # Uploaded rather than printed because `swift test --parallel` swallows test stdout, so
       # the report was invisible in the log on the run that introduced it.
       - name: Upload user journey report
-        if: always()
+        if: always() && env.TEST_SCOPE == 'full'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: user-journey-report
@@ -151,7 +218,7 @@ jobs:
           retention-days: 14
 
       - name: Upload complete synthetic workout evidence
-        if: always()
+        if: always() && env.TEST_SCOPE == 'full'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: user-journey-evidence
@@ -162,7 +229,7 @@ jobs:
           retention-days: 14
 
       - name: Upload generator test log
-        if: failure()
+        if: failure() && env.TEST_SCOPE == 'full'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: generator-test-log
@@ -171,7 +238,7 @@ jobs:
           retention-days: 14
 
       - name: Upload synthetic owner-shaped planning replay
-        if: always()
+        if: always() && env.TEST_SCOPE == 'full'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: owner-planning-replay
@@ -180,7 +247,7 @@ jobs:
           retention-days: 14
 
       - name: Upload per-test timing and result evidence
-        if: always()
+        if: always() && env.TEST_SCOPE == 'full'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: generator-test-results
@@ -192,7 +259,7 @@ jobs:
 
       - name: Upload bounded substitution trials
         # Separate artifact: parallel Swift test output is not a reliable evidence channel.
-        if: always()
+        if: always() && env.TEST_SCOPE == 'full'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: bounded-substitution-trials
@@ -201,7 +268,7 @@ jobs:
           retention-days: 14
 
       - name: Upload planning diagnostic probes
-        if: always()
+        if: always() && env.TEST_SCOPE == 'full'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: planning-diagnostic-probes
@@ -215,7 +282,7 @@ jobs:
           retention-days: 14
 
       - name: Upload generator fixture snapshot
-        if: always()
+        if: always() && env.TEST_SCOPE == 'full'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: generator-fixture-snapshot

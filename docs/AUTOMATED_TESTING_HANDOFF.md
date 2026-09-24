@@ -17,6 +17,46 @@ This repository is configured by `.swift-automation.json` using schema version 1
 - `.github/workflows/swift.yml`
 - `.github/workflows/generator-troubleshooting.yml`
 
+## Focused planning feedback (not completion proof)
+
+The Generator Tests workflow supports two explicit modes. Unmarked pushes and
+pull requests still run **full**. During a bounded planning experiment, start the
+commit subject with `[ci:planning] ` (including the trailing space) to run only
+the curated planning suites on that push. A marker quoted later in a message
+does not opt in. The independent Swift app-build workflow is unchanged.
+
+Alternatively dispatch an already-pushed commit on `main`:
+
+```powershell
+& 'C:/Users/Public/gh-cli/gh.exe' workflow run generator-tests.yml --ref main -f test_scope=planning
+# Required completion checkpoint, even if the commit carries the planning marker:
+& 'C:/Users/Public/gh-cli/gh.exe' workflow run generator-tests.yml --ref main -f test_scope=full
+```
+
+Verify the resulting run's `headSha` matches the intended commit; `main` can move.
+Manual full selection overrides a planning commit marker. Unknown scopes fail.
+Do not dispatch an extra focused run after a marked push; that push already runs it.
+Cancellation is separated by scope/ref, so a focused push cannot cancel a full
+checkpoint. Superseded runs of the same scope/ref may be canceled, never called passing.
+
+`tools/run_focused_generator_tests.py` owns the fixed suite list: capacity,
+appearance/allocation, dose budgets/accounting, substitutions/relocation/triceps,
+style/pulling balance, session ordering/injury budgets, and the synthetic owner
+replay. It requires passing, non-skipped cases from every selected suite and the
+specific complete Week 1 capacity/owner probes. No free-form shell/filter input
+or paid AI credentials are accepted. Fast Python wiring audits still run in both modes.
+The focused artifact includes selected suites, commit, log, xUnit results and
+planning probes; missing required evidence fails the run.
+
+This mode omits the full sequential twenty-week journey and unrelated regression
+suites. Add any new relevant test class to the allowlist or use full mode. A
+focused green result means **partial feedback only**. Before declaring a code
+fix complete or requesting device validation, require full Generator Tests and
+the Swift build on the final SHA, then inspect generated-workout evidence when
+programming changed. Do not use `[skip ci]`, weaken test assertions, or increase
+timeouts to bypass failures. Filtering reduces executed tests, not necessarily
+compilation; measure actual run times instead of promising a speedup.
+
 ## Live AI Surfaces
 
 - `workout-generation`: input `run_live_workout`, job `live-workout-contract`, declared maximum 1 HTTP call(s); enforcement evidence: The live workout contract calls AnthropicClient.sendStructuredRequest with attemptLimit 1.
