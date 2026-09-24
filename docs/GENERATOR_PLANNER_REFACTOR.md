@@ -1,5 +1,41 @@
 # Generator planner refactor: evidence and acceptance
 
+## Core adjunct theme correction (2026-09-24, verification pending)
+
+The bounded `247711d` planning run `35949637987` reproduced exactly three
+failures in `CoreAdjunctStyleTests`: valid Upper plus Hanging Knee Raise,
+Pull plus Pallof, and four arm exercises plus lateral raise plus Pallof were
+rejected by the whole-day style predicate. All other selected cases passed.
+The first cause is counting direct core in theme keyword tallies: Lower Abs
+counts as lower-body work; Pallof counts as pressing; core increases the Arms
+denominator without being an arm movement. This is a labeling defect, not proof
+that the allocator or every exercise-eligibility screen is correct.
+
+The correction filters trusted catalog direct-core movements from only the
+Upper/Pull/Arms theme view. Exact existing aliases are recognized; inferred
+metadata and self-reported Abs targets cannot earn the exemption, and carries
+remain counted. The actual day, slot count, dose, fatigue and underlying
+exercise-style matcher are untouched. The existing substantive-work minimums
+and off-theme allowances remain unchanged. Push/Lower classification stays
+outside this bounded change; Lower deliberately includes core in its current
+style definition. Tests cover this boundary, aliases, spoofed targets, genuine
+off-theme lifts, insufficient/core-only sessions and unchanged day data.
+
+The same run tested the revised Arms hypothesis: remove Skull Crusher, add one
+set each to its existing Pressdown and Overhead Extension, and move Machine
+Lateral Raise plus Pallof from Push to Arms. Unlike the previous curl-transfer
+hypothesis, the proposal preserves each day's arm work and all weekly primary
+region totals at six exercises per training day. It is STILL NOT ADOPTED:
+fresh allocation reduces Arms' two triceps exercises from three to two sets
+each and raises Push's from three to four each, triggering the existing
+session-priority rejection. The lumbar trial still moves one Upper Chest set
+to Chest after fresh allocation. Neither diagnostic changes production menus.
+
+Next architectural work is a joint placement-and-dose contract that preserves
+the intended daily and regional work through allocation, not another
+persona-specific repair or permission to accept those losses. This labeling
+fix alone does not resolve the remaining six oversized synthetic sessions.
+
 ## Remaining capacity cause (2026-09-23, exact additions verified)
 
 The verified `9ae87ce` five-persona Week 1 diagnostic records both remaining

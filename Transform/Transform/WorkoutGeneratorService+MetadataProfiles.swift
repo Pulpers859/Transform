@@ -391,13 +391,26 @@ extension ClaudeService {
 
     func dayClearlySupportsExpectedStyle(_ expectedStyle: String, day: WorkoutDayResponse) -> Bool {
         let expectedCanonical = canonicalTrainingStyle(expectedStyle)
-        let totalExercises = day.exercises.count
+        // CoreAdjunctStyleTests pins core-neutral Upper/Pull/Arms labeling. This
+        // filtered view does not remove slots, sets or fatigue from the actual day.
+        // Keep the existing Push/Lower interpretation outside this correction.
+        let themeExercises = day.exercises.filter { exercise in
+            guard ["Upper", "Pull", "Arms"].contains(expectedCanonical) else { return true }
+            let key = normalizeExerciseName(exercise.exerciseName)
+            let catalogKey = Self.exerciseNameAliasCache[key].map(normalizeExerciseName) ?? key
+            guard let metadata = exerciseMetadataCatalog[catalogKey] else { return true }
+            // Never exempt an unknown movement using its self-reported target or
+            // inferred metadata. Existing catalog aliases are read, never changed.
+            return !isDirectCoreHypertrophyMovement(exerciseName: metadata.canonicalName,
+                muscleTarget: metadata.primaryAreas.joined(separator: ", "), reps: exercise.reps)
+        }
+        let totalExercises = themeExercises.count
         guard totalExercises > 0 else { return false }
 
-        let expectedMatches = day.exercises.filter { exerciseMatchesDayStyle($0, style: expectedCanonical) }.count
-        let pushMatches = day.exercises.filter { exerciseMatchesDayStyle($0, style: "Push") }.count
-        let pullMatches = day.exercises.filter { exerciseMatchesDayStyle($0, style: "Pull") }.count
-        let lowerMatches = day.exercises.filter { exerciseMatchesDayStyle($0, style: "Lower") }.count
+        let expectedMatches = themeExercises.filter { exerciseMatchesDayStyle($0, style: expectedCanonical) }.count
+        let pushMatches = themeExercises.filter { exerciseMatchesDayStyle($0, style: "Push") }.count
+        let pullMatches = themeExercises.filter { exerciseMatchesDayStyle($0, style: "Pull") }.count
+        let lowerMatches = themeExercises.filter { exerciseMatchesDayStyle($0, style: "Lower") }.count
 
         switch expectedCanonical {
         case "Push":
