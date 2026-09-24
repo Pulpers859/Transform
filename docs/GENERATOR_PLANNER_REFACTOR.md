@@ -1,6 +1,6 @@
 # Generator planner refactor: evidence and acceptance
 
-## Bounded accessory placement (2026-09-23, integration verification pending)
+## Bounded accessory placement (2026-09-23, output verified; CI timeout unresolved)
 
 The owner reaffirmed that exercise-programming policy is delegated to an exercise-evidence
 expert agent, not a routine approval question to return to him. The consulted reviewer
@@ -38,6 +38,26 @@ Before calling this integrated, inspect all generated weeks, not just test resul
 The independent Codex source review found no concrete blocker; the main review added
 execution-prescription equality and a RIR-tampering control. The staged Claude review
 was attempted but failed because its OAuth session expired, so it supplied no approval.
+
+Commit `6bb462c`: Swift run `35934613264` logged BUILD SUCCEEDED. Generator run
+`35934613430` exceeded the 20-minute test-step limit; its XML contains 759 entries
+with zero recorded failures/errors. This is a failed workflow, not CI approval.
+The full evidence export shows all three beginner loading weeks now have 6/6/6/6
+training-day counts. Reverse Pec Deck moves from Upper to Pull, with an identical
+weekly execution-prescription multiset (names, targets, sets, reps, tempo, rest, RIR)
+and unchanged priority evidence. No findings are added. All other seventeen week
+`days` arrays, including every deload, are exactly unchanged. Over-six sessions
+fall from eleven to eight in this synthetic matrix; the global ceiling is not complete.
+
+Runtime follow-up preserves the timeout and test workload: split the five-persona
+paired-regeneration testcase into five independently schedulable cases, keeping
+both full mesocycles and identical comparisons together per persona (forty generated
+weeks). This should reduce an indivisible scheduling tail, but the speedup must be
+measured. It does not preserve incidental cross-persona process ordering; the existing
+all-persona journey still executes the complete sequential matrix. No app code changes
+in this scheduling follow-up. Four additional XCTest entries should be discovered.
+Its staged Claude review also failed on expired OAuth; no Claude approval is claimed.
+Independent Codex/main review is separate from the pending runtime evidence.
 
 ## Bounded symptom-text interpretation (2026-09-23, integration verified)
 

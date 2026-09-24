@@ -2250,29 +2250,49 @@ final class UserJourneySimulationTests: XCTestCase {
     /// sites that feed output (`peakDirectSession`, the pattern-stacking loop,
     /// `priorityProfileSpecificitySort`, candidate scoring), and those are what to re-check
     /// when this area changes. A cross-process version would need the suite to re-exec itself.
-    func testTheSameAnalysisProducesTheSameProgramTwice() throws {
-        for persona in personas {
-            let first = try fullMesocycle(for: persona)
-            let second = try fullMesocycle(for: persona)
+    // One independently schedulable case per persona avoids a single long tail
+    // under swift test --parallel. Each pair still runs together, without caching
+    // or dropping any of the forty generated weeks. Incidental cross-persona
+    // singleton/process ordering is not guaranteed by these separate cases.
+    private func assertRepeatedGeneration(personaNamed name: String) throws {
+        XCTAssertEqual(personas.count, 5, "Add a repeatability case when expanding the persona matrix")
+        let persona = try XCTUnwrap(personas.first { $0.name == name })
+        let first = try fullMesocycle(for: persona)
+        let second = try fullMesocycle(for: persona)
 
-            for (index, weeks) in zip(first, second).enumerated() {
-                let lhs = weeks.0.days.map { day in
-                    "\(day.dayNumber)|\(day.isRestDay)|"
-                        + day.exercises.map { "\($0.exerciseName):\($0.sets):\($0.reps)" }
-                            .joined(separator: ",")
-                }
-                let rhs = weeks.1.days.map { day in
-                    "\(day.dayNumber)|\(day.isRestDay)|"
-                        + day.exercises.map { "\($0.exerciseName):\($0.sets):\($0.reps)" }
-                            .joined(separator: ",")
-                }
-                XCTAssertEqual(
-                    lhs,
-                    rhs,
-                    "\(persona.name) week \(index + 1) differed between two identical runs"
-                )
+        for (index, weeks) in zip(first, second).enumerated() {
+            let lhs = weeks.0.days.map { day in
+                "\(day.dayNumber)|\(day.isRestDay)|"
+                    + day.exercises.map { "\($0.exerciseName):\($0.sets):\($0.reps)" }
+                        .joined(separator: ",")
             }
+            let rhs = weeks.1.days.map { day in
+                "\(day.dayNumber)|\(day.isRestDay)|"
+                    + day.exercises.map { "\($0.exerciseName):\($0.sets):\($0.reps)" }
+                        .joined(separator: ",")
+            }
+            XCTAssertEqual(lhs, rhs, "\(persona.name) week \(index + 1) differed between two identical runs")
         }
+    }
+
+    func testRepeatedGenerationBackFocus() throws {
+        try assertRepeatedGeneration(personaNamed: "Six-day push/pull/legs, back focus, no injuries")
+    }
+
+    func testRepeatedGenerationBeginner() throws {
+        try assertRepeatedGeneration(personaNamed: "Four-day beginner with a shoulder that hurts overhead")
+    }
+
+    func testRepeatedGenerationLumbarCaution() throws {
+        try assertRepeatedGeneration(personaNamed: "Five-day lifter reporting lumbar-extension pain")
+    }
+
+    func testRepeatedGenerationSmallMuscles() throws {
+        try assertRepeatedGeneration(personaNamed: "Compound priority area, small muscles")
+    }
+
+    func testRepeatedGenerationArmsFocus() throws {
+        try assertRepeatedGeneration(personaNamed: "Arms specialisation on four days")
     }
 
     /// The blueprint and the week it produced must agree about how many sessions there are.
