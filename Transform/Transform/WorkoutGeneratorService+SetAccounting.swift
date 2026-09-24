@@ -1,6 +1,151 @@
 import Foundation
 
 extension ClaudeService {
+    struct JointDoseOption {
+        let day: Int
+        let slot: Int
+        let sets: Int
+    }
+
+    struct JointDoseProjection {
+        let problem: WorkoutAppearancePlanner.ChoiceProblem
+        let options: [JointDoseOption]
+        let slotCapacityShortfalls: [String]
+    }
+
+    /// Diagnostic quantitative projection of a supplied candidate pool, NOT a
+    /// workout-adoption gate. Caller supplies eligible identities and actual
+    /// history commitments. Input placeholder sets do not become requirements.
+    /// Does not encode style, symptoms, spacing, variation, ordering or full
+    /// regional quality. Those must be verified before any production use.
+    func jointDoseProjection(for menus: [[PreSelectedExercise]], blueprint: ProgramBlueprint,
+        weekNumber: Int, requiredKeysByDay: [Set<String>]) -> JointDoseProjection? {
+        guard (1...3).contains(weekNumber), menus.count == 7, blueprint.dayPlans.count == 7,
+              requiredKeysByDay.count == 7,
+              blueprint.dayPlans.filter({ !$0.isRestDay }).count == blueprint.weeklyTrainingDays,
+              menus.indices.allSatisfy({ day in
+                  let keys = menus[day].map { ExerciseWeightEntry.canonicalLookupKey($0.exerciseName) }
+                  return blueprint.dayPlans[day].dayIndex == day + 1
+                      && (!blueprint.dayPlans[day].isRestDay || menus[day].isEmpty)
+                      && Set(keys).count == keys.count
+                      && requiredKeysByDay[day].isSubset(of: Set(keys))
+              }) else { return nil }
+        for item in menus.joined() {
+            guard let known = exerciseMetadataCatalog[normalizeExerciseName(item.exerciseName)],
+                  known.canonicalName == item.exerciseName,
+                  item.movementPattern == known.movementPattern,
+                  item.role == proceduralExerciseRole(for: item.exerciseName, muscleTarget: item.muscleTarget) else {
+                return nil
+            }
+        }
+        let accounting = weeklyExerciseAccounting(for: menus, blueprint: blueprint)
+        let limits = setBudgetLimits(for: blueprint)
+        var options: [JointDoseOption] = [], domains: [[Int]] = []
+        for day in menus.indices {
+            for slot in menus[day].indices {
+                let item = menus[day][slot], cost = accounting.exercises[day][slot]
+                let prime = blueprint.priorityAllocations.indices.contains {
+                    cost.unitDirect[$0] > 0 && cost.qualityScore[$0] == 30
+                }
+                let ceiling = max(proceduralSets(for: weekNumber, exerciseName: item.exerciseName,
+                    muscleTarget: item.muscleTarget), prime ? 4 : 0)
+                guard cost.setFloor > 0, cost.setFloor <= ceiling else { return nil }
+                let start = options.count
+                // Within one identity, prefer the legal phase/priority ceiling, then lower
+                // meaningful doses, then omission. This is deterministic search
+                // ordering only, not a claim of optimal training quality.
+                for sets in stride(from: ceiling, through: cost.setFloor, by: -1) {
+                    options.append(.init(day: day, slot: slot, sets: sets))
+                }
+                if !requiredKeysByDay[day].contains(ExerciseWeightEntry.canonicalLookupKey(item.exerciseName)) {
+                    options.append(.init(day: day, slot: slot, sets: 0))
+                }
+                domains.append(Array(start..<options.count))
+            }
+        }
+        var upper: [WorkoutAppearancePlanner.Constraint] = []
+        var lower: [WorkoutAppearancePlanner.Constraint] = []
+        var coverage: [WorkoutAppearancePlanner.Coverage] = []
+        var thresholdCoverage: [WorkoutAppearancePlanner.ThresholdCoverage] = []
+        var slotCapacityShortfalls: [String] = []
+        func vector(_ value: (JointDoseOption) -> Double) -> [Double] { options.map(value) }
+        for day in menus.indices where !blueprint.dayPlans[day].isRestDay {
+            let slots = vector { $0.day == day && $0.sets > 0 ? 1 : 0 }
+            lower.append(.init(name: "Day \(day + 1) exercise floor", coefficients: slots, limit: 5))
+            upper.append(.init(name: "Day \(day + 1) exercise ceiling", coefficients: slots, limit: 6))
+            upper.append(.init(name: "Day \(day + 1) fatigue", coefficients: vector { option in
+                guard option.day == day, option.sets > 0 else { return 0 }
+                let item = menus[day][option.slot]
+                let response = WorkoutExerciseResponse(exerciseName: item.exerciseName, sets: option.sets,
+                    reps: "", tempo: "", restSeconds: 0, notes: "", muscleTarget: item.muscleTarget)
+                return Double(estimatedDayFatigue(for: [response]))
+            }, limit: Double(limits.fatigue[day])))
+        }
+        for index in blueprint.priorityAllocations.indices {
+            let allocation = blueprint.priorityAllocations[index]
+            let direct = vector { Double($0.sets) * accounting.exercises[$0.day][$0.slot].unitDirect[index] }
+            let weighted = vector { Double($0.sets) * accounting.exercises[$0.day][$0.slot].unitWeighted[index] }
+            lower.append(.init(name: "\(allocation.area) direct target", coefficients: direct,
+                limit: allocation.directSetTarget - WorkoutSetBudgetPolicy.fundingTolerance))
+            lower.append(.init(name: "\(allocation.area) weighted target", coefficients: weighted,
+                limit: allocation.weightedStimulusTarget - WorkoutSetBudgetPolicy.fundingTolerance))
+            upper.append(.init(name: "\(allocation.area) weekly ceiling", coefficients: direct,
+                limit: limits.normalWeeklyPriority[index]))
+            let prime = options.map { $0.sets > 0 && accounting.exercises[$0.day][$0.slot].qualityScore[index] == 30 }
+            // Match the existing placement policy, not a stricter raw-slot demand.
+            // The requested figure remains visible; direct/weighted dose and meaningful
+            // frequency targets below are NOT reduced to excuse an unfundable slot.
+            let trainingDays = menus.indices.filter { !blueprint.dayPlans[$0].isRestDay && !menus[$0].isEmpty }
+            let preferredDays = trainingDays.filter { allocationPrefersStyle(allocation, blueprint.dayPlans[$0].style) }
+            let candidateDays = preferredDays.isEmpty ? trainingDays : preferredDays
+            let capacity = candidateDays.reduce(0) { total, day in
+                total + fundablePrioritySlotsPerSession(for: allocation, isFocusDay: limits.focusMatch[day][index])
+            }
+            let requiredSlots = min(allocation.targetExerciseSlots, capacity)
+            if requiredSlots < allocation.targetExerciseSlots {
+                slotCapacityShortfalls.append("\(allocation.area): requested \(allocation.targetExerciseSlots) prime slots; existing placement capacity \(capacity)")
+            }
+            lower.append(.init(name: "\(allocation.area) prime slots", coefficients: prime.map { $0 ? 1 : 0 },
+                limit: Double(requiredSlots)))
+            thresholdCoverage.append(.init(name: "\(allocation.area) meaningful days", groups: menus.indices.map { day in
+                .init(name: "Day \(day + 1) \(allocation.area) meaningful dose",
+                    coefficients: options.indices.map { options[$0].day == day ? direct[$0] : 0 },
+                    limit: minimumMeaningfulPriorityExposureSets(for: allocation.area) - 0.01)
+            }, minimumGroups: allocation.targetFrequency))
+            for day in menus.indices where !blueprint.dayPlans[day].isRestDay {
+                upper.append(.init(name: "Day \(day + 1) \(allocation.area) ceiling",
+                    coefficients: options.indices.map { options[$0].day == day ? direct[$0] : 0 },
+                    limit: limits.sessionFundingCeiling(day: day, allocation: index)))
+                if limits.focusMatch[day][index] {
+                    lower.append(.init(name: "Day \(day + 1) \(allocation.area) focus",
+                        coefficients: options.indices.map { options[$0].day == day && prime[$0] ? 1 : 0 }, limit: 1))
+                }
+            }
+        }
+        let minimum = WorkoutSetBudgetPolicy.maintenanceFloor(recoveryTight:
+            blueprint.calibration.recoveryConstrained || blueprint.calibration.poorNutritionAdherence)
+        for index in accounting.groups.indices {
+            let group = accounting.groups[index]
+            upper.append(.init(name: "\(group.label) maintenance/residue ceiling", coefficients: vector {
+                accounting.exercises[$0.day][$0.slot].groupTargets[index] ? Double($0.sets) : 0
+            }, limit: limits.maintenanceFundingCeiling))
+            if !group.residueOnly {
+                lower.append(.init(name: "\(group.label) maintenance floor", coefficients: vector {
+                    accounting.exercises[$0.day][$0.slot].directlyTargetsGroup[index] ? Double($0.sets) : 0
+                }, limit: minimum))
+            }
+            let coveredDays = menus.indices.map { day in
+                options.indices.filter { options[$0].day == day && options[$0].sets > 0
+                    && accounting.exercises[day][options[$0].slot].directlyTargetsGroup[index] }
+            }.filter { !$0.isEmpty }
+            coverage.append(.init(name: "\(group.label) baseline days", groups: coveredDays,
+                minimumGroups: min(2, coveredDays.count)))
+        }
+        return .init(problem: .init(domains: domains, upperBounds: upper, lowerBounds: lower, coverage: coverage,
+            thresholdCoverage: thresholdCoverage),
+            options: options, slotCapacityShortfalls: slotCapacityShortfalls)
+    }
+
     struct SetBudgetLimits {
         // maintenance/sessionPriority are raw; use their funding wrappers for +0.01.
         // normalWeeklyPriority already includes +0.01. floorWeeklyPriority includes

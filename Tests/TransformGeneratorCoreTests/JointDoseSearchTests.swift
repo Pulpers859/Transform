@@ -24,6 +24,9 @@ final class JointDoseSearchTests: XCTestCase {
             && problem.coverage.allSatisfy { coverage in
                 coverage.groups.filter { group in group.contains { picks.contains($0) } }.count >= coverage.minimumGroups
             }
+            && problem.thresholdCoverage.allSatisfy { coverage in
+                coverage.groups.filter { total($0) >= $0.limit }.count >= coverage.minimumGroups
+            }
     }
 
     func testJointDoseChoiceCanFitWhereKeepingEveryFloorAppearanceCannot() {
@@ -156,6 +159,95 @@ final class JointDoseSearchTests: XCTestCase {
             upperBounds: [.init(name: "upper", coefficients: [1], limit: 0.998)], lowerBounds: [])
         guard case .infeasible = WorkoutAppearancePlanner.solveChoices(outside) else {
             return XCTFail("Tolerance must not silently expand")
+        }
+    }
+
+    func testThresholdCoverageAggregatesMultipleAppearancesOnTheSameDay() {
+        let problem = Problem(domains: [[0], [1]], upperBounds: [], lowerBounds: [],
+            thresholdCoverage: [.init(name: "meaningful day", groups: [
+                .init(name: "day one", coefficients: [2, 1], limit: 3)
+            ], minimumGroups: 1)])
+        XCTAssertTrue(valid([0, 1], for: problem))
+        XCTAssertEqual(WorkoutAppearancePlanner.solveChoices(problem), .admitted([0, 1]))
+    }
+
+    func testWeeklyTwoPlusFourSetsDoesNotProveTwoThreeSetDays() {
+        let problem = Problem(domains: [[0], [1]], upperBounds: [],
+            lowerBounds: [.init(name: "weekly six", coefficients: [2, 4], limit: 6)],
+            thresholdCoverage: [.init(name: "two meaningful days", groups: [
+                .init(name: "day one", coefficients: [2, 0], limit: 3),
+                .init(name: "day two", coefficients: [0, 4], limit: 3)
+            ], minimumGroups: 2)])
+        XCTAssertFalse(valid([0, 1], for: problem))
+        guard case .infeasible = WorkoutAppearancePlanner.solveChoices(problem) else {
+            return XCTFail("Weekly dose and two appearances cannot substitute for daily threshold coverage")
+        }
+    }
+
+    func testThresholdCoverageDoesNotBorrowLinearBoundTolerance() {
+        for (sets, admitted) in [(3.0, true), (2.9995, false), (2.99, false)] {
+            let problem = Problem(domains: [[0]], upperBounds: [], lowerBounds: [],
+                thresholdCoverage: [.init(name: "exact threshold", groups: [
+                    .init(name: "day", coefficients: [sets], limit: 3)
+                ], minimumGroups: 1)])
+            XCTAssertEqual(valid([0], for: problem), admitted)
+            let result = WorkoutAppearancePlanner.solveChoices(problem)
+            if admitted { XCTAssertEqual(result, .admitted([0])) }
+            else if case .infeasible = result {} else { XCTFail("No implicit 0.001 allowance: \(result)") }
+        }
+        let callerAdjusted = Problem(domains: [[0]], upperBounds: [], lowerBounds: [],
+            thresholdCoverage: [.init(name: "caller policy tolerance", groups: [
+                .init(name: "day", coefficients: [2.99], limit: 3 - 0.01)
+            ], minimumGroups: 1)])
+        XCTAssertEqual(WorkoutAppearancePlanner.solveChoices(callerAdjusted), .admitted([0]))
+    }
+
+    func testMalformedThresholdCoverageIsNotAnInfeasibilityProof() {
+        let malformedGroups: [Constraint] = [
+            .init(name: "short", coefficients: [1], limit: 1),
+            .init(name: "negative", coefficients: [-1, 0], limit: 1),
+            .init(name: "nan coefficient", coefficients: [.nan, 0], limit: 1),
+            .init(name: "infinite coefficient", coefficients: [.infinity, 0], limit: 1),
+            .init(name: "nan limit", coefficients: [1, 0], limit: .nan),
+            .init(name: "infinite limit", coefficients: [1, 0], limit: .infinity),
+            .init(name: "overflowing sum", coefficients: [.greatestFiniteMagnitude, .greatestFiniteMagnitude], limit: 1)
+        ]
+        var cases = malformedGroups.map { group in
+            Problem(domains: [[0], [1]], upperBounds: [], lowerBounds: [],
+                thresholdCoverage: [.init(name: "bad group", groups: [group], minimumGroups: 1)])
+        }
+        cases.append(Problem(domains: [[0], [1]], upperBounds: [], lowerBounds: [],
+            thresholdCoverage: [.init(name: "negative count", groups: [], minimumGroups: -1)]))
+        for problem in cases {
+            guard case .invalidProblem = WorkoutAppearancePlanner.solveChoices(problem) else {
+                XCTFail("Malformed threshold coverage must be rejected before search")
+                continue
+            }
+        }
+    }
+
+    func testThresholdCoverageMatchesSmallExhaustiveOracle() {
+        // Each group shares options across decisions; optimistic maxima can conflict.
+        // The oracle enumerates leaves without reproducing the DFS pruning logic.
+        for threshold in 1...4 {
+            for required in 0...3 {
+                let problem = Problem(domains: [[1, 0], [2, 3], [4, 5]],
+                    upperBounds: [.init(name: "budget", coefficients: [0, 2, 1, 2, 0, 2], limit: 4)],
+                    lowerBounds: [], thresholdCoverage: [.init(name: "dose days", groups: [
+                        .init(name: "day one", coefficients: [0, 2, 1, 0, 0, 0], limit: Double(threshold)),
+                        .init(name: "day two", coefficients: [0, 0, 0, 2, 0, 2], limit: Double(threshold))
+                    ], minimumGroups: required)])
+                let exists = combinations(problem.domains).contains { valid($0, for: problem) }
+                let result = WorkoutAppearancePlanner.solveChoices(problem, maximumStates: 1_000)
+                switch result {
+                case .admitted(let picks):
+                    XCTAssertTrue(exists)
+                    XCTAssertTrue(valid(picks, for: problem))
+                case .infeasible: XCTAssertFalse(exists)
+                default: XCTFail("Tiny well-formed problem should finish: \(result)")
+                }
+                XCTAssertEqual(result, WorkoutAppearancePlanner.solveChoices(problem, maximumStates: 1_000))
+            }
         }
     }
 

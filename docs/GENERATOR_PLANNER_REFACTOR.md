@@ -1,5 +1,39 @@
 # Generator planner refactor: evidence and acceptance
 
+## App-budget projection (2026-09-24, diagnostic integration pending)
+
+Foundation checkpoint `b5c2240`: focused run `35988210821` executed 162 cases
+with zero failures/errors/skips, including 13 joint-choice tests. Swift run
+`35988210862` logged BUILD SUCCEEDED. This was partial, not full-suite proof.
+
+`jointDoseProjection` now maps supplied, fixed-location catalog appearances to
+explicit omission or legal phase/role set-count options. Placeholder counts are
+ignored; separately supplied retained-history identities cannot be omitted.
+Shared accounting supplies priority direct/weighted, session, maintenance/residue
+and fatigue budgets. It is still diagnostic-only: no production caller, new
+exercise eligibility, cross-day placement generation or workout adoption.
+
+Independent audits caught and corrected three first-draft errors: inventing
+two-day coverage where the existing pool policy allows one; counting under-dosed
+prime appearances as meaningful days; and requiring raw prime-slot targets beyond
+existing fundable placement capacity. Meaningful days now count aggregate direct
+dose using canonical thresholds. Unfundable requested slot counts remain visible
+in `slotCapacityShortfalls`; dose and meaningful-frequency targets are unchanged.
+The search's threshold coverage has no extra numerical slack beyond the caller's
+explicit threshold adjustment. Eighteen exact test bodies passed locally using
+the portable assertion adapter, including small exhaustive oracles; not XCTest.
+
+Eight projection tests check mapping, placeholder invariance, canonical arithmetic,
+phase bounds, malformed context and the corrected exposure/slot rules. Existing
+five-persona diagnostics now attempt bounded joint searches on their captured
+candidate pools and two named hypothesis pools. Any result concerns only those
+supplied options. Exact-baseline-dose comparison is reported separately: the
+projection does not yet protect every regional quantity or establish full style,
+symptom, order, spacing, history or progression validity. XCTest and observed
+profile results for this projection are pending; no device check is requested yet.
+The staged Claude review attempt failed with expired OAuth (not approval).
+Separate Codex reviewers audited the mapping and verified the slot correction.
+
 ## Prospective joint-search foundation (2026-09-24, integration pending)
 
 The owner approved improving coordinated appearance/set search, not reducing

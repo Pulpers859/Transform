@@ -188,6 +188,36 @@ final class SixExerciseCapacityTests: XCTestCase {
                 }
             }
             report.append("CANDIDATE \(signature(candidate))")
+            // Diagnostic only: exact inclusion+dose choices within this supplied
+            // fixed-location pool. No names, placements or history are invented;
+            // numeric admission is NOT full quality or symptom authorization.
+            func traceJointSearch(_ label: String, _ pool: [[ClaudeService.PreSelectedExercise]]) throws {
+                let projection = try XCTUnwrap(service.jointDoseProjection(for: pool,
+                    blueprint: effectiveBlueprint, weekNumber: 1, requiredKeysByDay: funded.retainedKeysByDay))
+                var statistics: WorkoutAppearancePlanner.ChoiceSearchStatistics?
+                let outcome = WorkoutAppearancePlanner.solveChoices(projection.problem, maximumStates: 512,
+                    statistics: { statistics = $0 })
+                let observed = try XCTUnwrap(statistics)
+                XCTAssertLessThanOrEqual(observed.visitedStates, 512)
+                report.append("JOINT_SEARCH \(label) domains=\(projection.problem.domains.count) options=\(projection.options.count) states=\(observed.visitedStates) complete=\(observed.completeAssignments) outcome=\(outcome); supplied pool only, not exhaustive catalog search or workout approval")
+                report.append("JOINT_SEARCH \(label) slotCapacityShortfalls=\(projection.slotCapacityShortfalls)")
+                if case .admitted(let picks) = outcome {
+                    var proposed = Array(repeating: [ClaudeService.PreSelectedExercise](), count: 7)
+                    for pick in picks {
+                        let option = projection.options[pick]
+                        guard option.sets > 0 else { continue }
+                        var item = pool[option.day][option.slot]
+                        item.prescribedSets = option.sets
+                        proposed[option.day].append(item)
+                    }
+                    for day in proposed.indices {
+                        XCTAssertTrue(effectiveBlueprint.dayPlans[day].isRestDay
+                            ? proposed[day].isEmpty : (5...6).contains(proposed[day].count))
+                    }
+                    report.append("JOINT_SEARCH \(label) menus=\(signature(proposed)) exactBaselineDose=\(service.verifyExactFundedDose(proposed, baseline: funded)); regional preservation and complete placement checks still required")
+                }
+            }
+            try traceJointSearch("existingLocations", candidate)
             if ["Five-day lifter reporting lumbar-extension pain", "Arms specialisation on four days"].contains(persona.name) {
                 // Named diagnostic hypotheses, NOT a production search or an adoption path.
                 // They distinguish whole-plan feasibility from the current operation contract.
@@ -248,6 +278,7 @@ final class SixExerciseCapacityTests: XCTestCase {
                     report.append("JOINT_HYPOTHESIS \(label) menus=\(signature(menus)) back=\(service.plannedBackBalanceFindings(menus, blueprint: effectiveBlueprint))")
                 }
                 summarize("proposed", trial)
+                try traceJointSearch("hypothesisLocations", trial)
                 let exactProposedDose = service.verifyExactFundedDose(trial, baseline: funded)
                 report.append("EXACT_FUNDED_DOSE proposed=\(exactProposedDose); quantitative only, no placement authorization")
                 XCTAssertEqual(exactProposedDose, .verified, persona.name)

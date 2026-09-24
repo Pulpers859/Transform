@@ -41,6 +41,16 @@ enum WorkoutAppearancePlanner {
         let upperBounds: [Constraint]
         let lowerBounds: [Constraint]
         var coverage: [Coverage] = []
+        var thresholdCoverage: [ThresholdCoverage] = []
+    }
+
+    /// Count groups whose aggregate selected dose reaches their own limit. Unlike
+    /// binary coverage, several appearances can jointly fund one meaningful day.
+    /// Limits already include the caller's policy tolerance; no extra slack here.
+    struct ThresholdCoverage {
+        let name: String
+        let groups: [Constraint]
+        let minimumGroups: Int
     }
 
     enum ChoiceOutcome: Equatable {
@@ -68,13 +78,15 @@ enum WorkoutAppearancePlanner {
         let options = problem.domains.flatMap { $0 }
         let count = options.count
         let constraints = problem.upperBounds + problem.lowerBounds
+        let validatedConstraints = constraints + problem.thresholdCoverage.flatMap(\.groups)
         guard problem.domains.allSatisfy({ !$0.isEmpty }),
               Set(options) == Set(0..<count),
-              constraints.allSatisfy({ $0.coefficients.count == count && $0.limit.isFinite
+              validatedConstraints.allSatisfy({ $0.coefficients.count == count && $0.limit.isFinite
                   && $0.coefficients.allSatisfy { $0.isFinite && $0 >= 0 }
                   && $0.coefficients.reduce(0, +).isFinite }),
               problem.coverage.allSatisfy({ $0.minimumGroups >= 0
-                  && $0.groups.joined().allSatisfy { (0..<count).contains($0) } }) else {
+                  && $0.groups.joined().allSatisfy { (0..<count).contains($0) } }),
+              problem.thresholdCoverage.allSatisfy({ $0.minimumGroups >= 0 }) else {
             return .invalidProblem("Invalid finite-choice planning problem")
         }
         guard maximumStates > 0 else {
@@ -121,6 +133,23 @@ enum WorkoutAppearancePlanner {
                         chosen[domain] >= 0 ? group.contains(chosen[domain])
                             : problem.domains[domain].contains(where: group.contains)
                     }
+                }.count
+                if possible < requirement.minimumGroups {
+                    conflicts.insert(requirement.name)
+                    allowed = false
+                }
+            }
+            for requirement in problem.thresholdCoverage {
+                // Independent maxima are optimistic while undecided; that can
+                // cost search time but cannot wrongly prune a feasible assignment.
+                // At a leaf every group total is exact in original domain order.
+                let possible = requirement.groups.filter { group in
+                    var maximum = 0.0
+                    for domain in problem.domains.indices {
+                        maximum += chosen[domain] >= 0 ? group.coefficients[chosen[domain]]
+                            : problem.domains[domain].map { group.coefficients[$0] }.max()!
+                    }
+                    return maximum >= group.limit
                 }.count
                 if possible < requirement.minimumGroups {
                     conflicts.insert(requirement.name)
