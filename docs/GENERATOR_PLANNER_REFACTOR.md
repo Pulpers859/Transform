@@ -1,5 +1,33 @@
 # Generator planner refactor: evidence and acceptance
 
+## Preserved-dose search iteration (2026-09-24, verification pending)
+
+Projection checkpoint `467daa4`: focused `35989541813` passed 175 cases with
+zero failures/errors/skips; Swift `35989541841` logged BUILD SUCCEEDED. All 98
+pre-existing diagnostic lines match `b5c2240`. New numeric-only searches admitted
+the lumbar existing/hypothesis pools and the Arms hypothesis pool, but EVERY
+admission failed the independent baseline-dose verifier (daily Hamstrings or
+Biceps loss). They were NOT adopted. Three existing pools exhausted 512 states;
+the compound-priority pool failed its modeled Calves weighted target at the root.
+These findings do not establish global infeasibility or a catalog shortage.
+
+The next iteration explicitly accepts a separately supplied baseline and adds
+daily/weekly priority direct+weighted non-loss, baseline meaningful frequency,
+weekly canonical primary-region and physical maintenance non-loss constraints.
+Placeholder counts still never imply commitments. Baseline counts are bounded
+before arithmetic. This optional diagnostic contract does not silently make
+provisional quantities mandatory in normal initial planning. Baseline admission
+provenance remains caller-owned; the synthetic caller asserts it and independently
+verifies EVERY returned preserved-dose admission. Search numerical tolerance is
+not identical to every exact verifier ceiling, so that check remains mandatory.
+
+The same captured pools are tested both with and without preservation; no extra
+workout generation or API calls. Synthetic numeric projections are exported in
+the existing report for local pure-Swift replay and search experiments. This
+does not export owner data or confer symptom/history/placement authorization.
+Independent review checked the added preservation mapping; runtime results for
+this iteration are pending. No production caller and no iPhone check yet.
+
 ## App-budget projection (2026-09-24, diagnostic integration pending)
 
 Foundation checkpoint `b5c2240`: focused run `35988210821` executed 162 cases

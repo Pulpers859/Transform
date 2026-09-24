@@ -213,4 +213,145 @@ final class JointDoseProjectionTests: XCTestCase {
         XCTAssertEqual(weighted.limit, allocation.weightedStimulusTarget - WorkoutSetBudgetPolicy.fundingTolerance)
         XCTAssertEqual(frequency.minimumGroups, allocation.targetFrequency)
     }
+
+    func testPreservedDailyPriorityBoundsMatchCanonicalBaselineCredits() throws {
+        let plan = blueprint(["Triceps", "Lateral Deltoids"])
+        var baseline = menus
+        for day in [0, 3] { for slot in baseline[day].indices { baseline[day][slot].prescribedSets = 3 } }
+        let plain = try XCTUnwrap(service.jointDoseProjection(for: menus, blueprint: plan,
+            weekNumber: 1, requiredKeysByDay: required))
+        let projected = try XCTUnwrap(service.jointDoseProjection(for: menus, blueprint: plan,
+            weekNumber: 1, requiredKeysByDay: required, preservingDoseOf: baseline))
+        for allocation in plan.priorityAllocations {
+            for day in 0..<7 {
+                let credits = baseline[day].map { service.stimulusCredit(for: response($0, sets: $0.prescribedSets), area: allocation.area) }
+                for weighted in [false, true] {
+                    let suffix = weighted ? "weighted" : "direct"
+                    let bound = try XCTUnwrap(projected.problem.lowerBounds.first {
+                        $0.name == "Day \(day + 1) \(allocation.area) baseline \(suffix)"
+                    })
+                    let expected = credits.reduce(0.0) { $0 + (weighted ? $1.weightedStimulus : $1.directSets) }
+                    XCTAssertEqual(bound.limit, expected - 0.01, accuracy: 0.000001)
+                    for (index, option) in projected.options.enumerated() {
+                        let credit = service.stimulusCredit(for: response(menus[option.day][option.slot], sets: option.sets), area: allocation.area)
+                        XCTAssertEqual(bound.coefficients[index], option.day == day ? (weighted ? credit.weightedStimulus : credit.directSets) : 0, accuracy: 0.000001)
+                    }
+                }
+            }
+        }
+        XCTAssertEqual(projected.problem.lowerBounds.filter { $0.name.contains(" baseline weekly ") }.count,
+            plan.priorityAllocations.count * 2)
+        XCTAssertEqual(projected.problem.thresholdCoverage.filter { $0.name.hasSuffix(" baseline meaningful days") }.count,
+            plan.priorityAllocations.count)
+        for allocation in plan.priorityAllocations {
+            let dailyCredits = baseline.map { day in
+                day.map { service.stimulusCredit(for: response($0, sets: $0.prescribedSets), area: allocation.area) }
+            }
+            for weighted in [false, true] {
+                let suffix = weighted ? "weighted" : "direct"
+                let bound = try XCTUnwrap(projected.problem.lowerBounds.first {
+                    $0.name == "\(allocation.area) baseline weekly \(suffix)"
+                })
+                let total = dailyCredits.joined().reduce(0.0) { $0 + (weighted ? $1.weightedStimulus : $1.directSets) }
+                XCTAssertEqual(bound.limit, total - 0.01, accuracy: 0.000001)
+                for (index, option) in projected.options.enumerated() {
+                    let credit = service.stimulusCredit(for: response(menus[option.day][option.slot], sets: option.sets), area: allocation.area)
+                    XCTAssertEqual(bound.coefficients[index], weighted ? credit.weightedStimulus : credit.directSets, accuracy: 0.000001)
+                }
+            }
+            let threshold = service.minimumMeaningfulPriorityExposureSets(for: allocation.area)
+            let meaningful = dailyCredits.filter { $0.reduce(0.0) { $0 + $1.directSets } + 0.01 >= threshold }.count
+            let coverage = try XCTUnwrap(projected.problem.thresholdCoverage.first {
+                $0.name == "\(allocation.area) baseline meaningful days"
+            })
+            XCTAssertEqual(coverage.minimumGroups, meaningful)
+            XCTAssertEqual(coverage.groups.count, 7)
+            for day in 0..<7 {
+                XCTAssertEqual(coverage.groups[day].limit, threshold - 0.01)
+                for (index, option) in projected.options.enumerated() {
+                    let credit = service.stimulusCredit(for: response(menus[option.day][option.slot], sets: option.sets), area: allocation.area)
+                    XCTAssertEqual(coverage.groups[day].coefficients[index], option.day == day ? credit.directSets : 0, accuracy: 0.000001)
+                }
+            }
+        }
+        // Preservation adds requirements; it must not rewrite ordinary targets or ceilings.
+        for original in plain.problem.lowerBounds + plain.problem.upperBounds {
+            let same = try XCTUnwrap((projected.problem.lowerBounds + projected.problem.upperBounds).first { $0.name == original.name })
+            XCTAssertEqual(same.limit, original.limit)
+            XCTAssertEqual(same.coefficients, original.coefficients)
+        }
+    }
+
+    func testPreservedRegionsDistinguishUpperChestFromBroadMaintenanceChest() throws {
+        var pool = menus
+        for day in [0, 3] { pool[day].append(item("Cable Fly", "Chest", sets: 2)) }
+        var baseline = pool
+        for day in [0, 3] { baseline[day][0].prescribedSets = 3 }
+        let plan = blueprint()
+        let projected = try XCTUnwrap(service.jointDoseProjection(for: pool, blueprint: plan,
+            weekNumber: 1, requiredKeysByDay: required, preservingDoseOf: baseline))
+        let upperChest = try XCTUnwrap(projected.problem.lowerBounds.first { $0.name == "upper chest baseline region" })
+        let chest = try XCTUnwrap(projected.problem.lowerBounds.first { $0.name == "chest baseline region" })
+        XCTAssertEqual(upperChest.limit, 6)
+        XCTAssertEqual(chest.limit, 4)
+        let regions = Set(baseline.joined().flatMap {
+            service.exerciseMetadata(forExerciseName: $0.exerciseName, muscleTarget: $0.muscleTarget).primaryAreas.map(service.normalizedPriorityText)
+        })
+        XCTAssertEqual(projected.problem.lowerBounds.filter { $0.name.hasSuffix(" baseline region") }.count, regions.count)
+        for region in regions {
+            let bound = try XCTUnwrap(projected.problem.lowerBounds.first { $0.name == "\(region) baseline region" })
+            func targets(_ item: ClaudeService.PreSelectedExercise) -> Bool {
+                service.exerciseMetadata(forExerciseName: item.exerciseName, muscleTarget: item.muscleTarget)
+                    .primaryAreas.map(service.normalizedPriorityText).contains(region)
+            }
+            XCTAssertEqual(bound.limit, Double(baseline.joined().filter(targets).reduce(0) { $0 + $1.prescribedSets }))
+            for (index, option) in projected.options.enumerated() {
+                XCTAssertEqual(bound.coefficients[index], targets(pool[option.day][option.slot]) ? Double(option.sets) : 0)
+            }
+        }
+        for group in service.majorMuscleGroups {
+            let aliases = service.normalizedGroupAliases(forSeed: group.seed)
+            func targets(_ item: ClaudeService.PreSelectedExercise) -> Bool {
+                service.exerciseDirectlyTargets(groupAliases: aliases, exerciseName: item.exerciseName, muscleTarget: item.muscleTarget)
+            }
+            let bound = try XCTUnwrap(projected.problem.lowerBounds.first { $0.name == "\(group.label) baseline maintenance" })
+            XCTAssertEqual(bound.limit, Double(baseline.joined().filter(targets).reduce(0) { $0 + $1.prescribedSets }) - 0.01, accuracy: 0.000001)
+            for (index, option) in projected.options.enumerated() {
+                XCTAssertEqual(bound.coefficients[index], targets(pool[option.day][option.slot]) ? Double(option.sets) : 0)
+            }
+        }
+    }
+
+    func testDefaultProjectionDoesNotInferBaselineDoseFromPlaceholders() throws {
+        var pool = menus
+        pool[0][0].prescribedSets = Int.max
+        let implicit = try XCTUnwrap(service.jointDoseProjection(for: pool, blueprint: blueprint(),
+            weekNumber: 1, requiredKeysByDay: required))
+        let explicit = try XCTUnwrap(service.jointDoseProjection(for: pool, blueprint: blueprint(),
+            weekNumber: 1, requiredKeysByDay: required, preservingDoseOf: nil))
+        XCTAssertEqual(snapshot(implicit), snapshot(explicit))
+        XCTAssertFalse(implicit.problem.lowerBounds.contains {
+            $0.name.contains("baseline direct") || $0.name.contains("baseline weighted")
+                || $0.name.hasSuffix("baseline region") || $0.name.hasSuffix("baseline maintenance")
+        })
+    }
+
+    func testMalformedPreservedBaselineRefusesBeforeArithmetic() {
+        var invalid: [[[ClaudeService.PreSelectedExercise]]] = [Array(menus.dropLast())]
+        for sets in [Int.max, Int.min, -1, 0] {
+            var baseline = menus
+            baseline[0][0].prescribedSets = sets
+            invalid.append(baseline)
+        }
+        var unknown = menus
+        unknown[0][0] = item("Uncatalogued Press", "Upper Chest", sets: 3)
+        invalid.append(unknown)
+        var restWork = menus
+        restWork[1] = [item("Cable Crunch", "Abs", sets: 2)]
+        invalid.append(restWork)
+        for baseline in invalid {
+            XCTAssertNil(service.jointDoseProjection(for: menus, blueprint: blueprint(),
+                weekNumber: 1, requiredKeysByDay: required, preservingDoseOf: baseline))
+        }
+    }
 }

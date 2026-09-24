@@ -147,6 +147,7 @@ final class SixExerciseCapacityTests: XCTestCase {
                 menuPlanningTrace: { phases.append(($0, $1)) }, rowPlanningReport: { rowInput = $0; _ = $1 },
                 capacityPlanningReport: { baseline = $0; capacity = $1 })
             let funded = try XCTUnwrap(baseline)
+            XCTAssertEqual(funded.roleFloorAdmission, .admitted, "Preserved-dose diagnostics require an admitted baseline")
             let observedCapacity = try XCTUnwrap(capacity)
             let observedRowInput = try XCTUnwrap(rowInput)
             XCTAssertEqual(signature(observedRowInput.menus), signature(observedCapacity.plan.menus))
@@ -191,14 +192,36 @@ final class SixExerciseCapacityTests: XCTestCase {
             // Diagnostic only: exact inclusion+dose choices within this supplied
             // fixed-location pool. No names, placements or history are invented;
             // numeric admission is NOT full quality or symptom authorization.
-            func traceJointSearch(_ label: String, _ pool: [[ClaudeService.PreSelectedExercise]]) throws {
+            func traceJointSearch(_ label: String, _ pool: [[ClaudeService.PreSelectedExercise]], preservingBaseline: Bool = false) throws {
                 let projection = try XCTUnwrap(service.jointDoseProjection(for: pool,
-                    blueprint: effectiveBlueprint, weekNumber: 1, requiredKeysByDay: funded.retainedKeysByDay))
+                    blueprint: effectiveBlueprint, weekNumber: 1, requiredKeysByDay: funded.retainedKeysByDay,
+                    preservingDoseOf: preservingBaseline ? funded.menus : nil))
                 var statistics: WorkoutAppearancePlanner.ChoiceSearchStatistics?
                 let outcome = WorkoutAppearancePlanner.solveChoices(projection.problem, maximumStates: 512,
                     statistics: { statistics = $0 })
                 let observed = try XCTUnwrap(statistics)
                 XCTAssertLessThanOrEqual(observed.visitedStates, 512)
+                // Synthetic, network-free replay of these EXACT coefficients permits
+                // search-only experiments on Windows without rebuilding the app/core.
+                func constraintJSON(_ value: WorkoutAppearancePlanner.Constraint) -> [String: Any] {
+                    ["name": value.name, "coefficients": value.coefficients, "limit": value.limit]
+                }
+                let replay: [String: Any] = ["persona": persona.name, "pool": label,
+                    "domains": projection.problem.domains,
+                    "upperBounds": projection.problem.upperBounds.map(constraintJSON),
+                    "lowerBounds": projection.problem.lowerBounds.map(constraintJSON),
+                    "coverage": projection.problem.coverage.map {
+                        ["name": $0.name, "groups": $0.groups, "minimumGroups": $0.minimumGroups] as [String: Any]
+                    },
+                    "thresholdCoverage": projection.problem.thresholdCoverage.map {
+                        ["name": $0.name, "groups": $0.groups.map(constraintJSON), "minimumGroups": $0.minimumGroups] as [String: Any]
+                    },
+                    "options": projection.options.map {
+                        ["day": $0.day, "slot": $0.slot, "sets": $0.sets,
+                         "name": pool[$0.day][$0.slot].exerciseName] as [String: Any]
+                    }]
+                let replayData = try JSONSerialization.data(withJSONObject: replay, options: [.sortedKeys])
+                report.append("JOINT_REPLAY " + (try XCTUnwrap(String(data: replayData, encoding: .utf8))))
                 report.append("JOINT_SEARCH \(label) domains=\(projection.problem.domains.count) options=\(projection.options.count) states=\(observed.visitedStates) complete=\(observed.completeAssignments) outcome=\(outcome); supplied pool only, not exhaustive catalog search or workout approval")
                 report.append("JOINT_SEARCH \(label) slotCapacityShortfalls=\(projection.slotCapacityShortfalls)")
                 if case .admitted(let picks) = outcome {
@@ -214,10 +237,13 @@ final class SixExerciseCapacityTests: XCTestCase {
                         XCTAssertTrue(effectiveBlueprint.dayPlans[day].isRestDay
                             ? proposed[day].isEmpty : (5...6).contains(proposed[day].count))
                     }
-                    report.append("JOINT_SEARCH \(label) menus=\(signature(proposed)) exactBaselineDose=\(service.verifyExactFundedDose(proposed, baseline: funded)); regional preservation and complete placement checks still required")
+                    let verified = service.verifyExactFundedDose(proposed, baseline: funded)
+                    if preservingBaseline { XCTAssertEqual(verified, .verified, "Modeled preservation must survive the independent dose verifier") }
+                    report.append("JOINT_SEARCH \(label) menus=\(signature(proposed)) exactBaselineDose=\(verified); complete placement checks still required")
                 }
             }
             try traceJointSearch("existingLocations", candidate)
+            try traceJointSearch("existingLocationsPreservingDose", candidate, preservingBaseline: true)
             if ["Five-day lifter reporting lumbar-extension pain", "Arms specialisation on four days"].contains(persona.name) {
                 // Named diagnostic hypotheses, NOT a production search or an adoption path.
                 // They distinguish whole-plan feasibility from the current operation contract.
@@ -279,6 +305,7 @@ final class SixExerciseCapacityTests: XCTestCase {
                 }
                 summarize("proposed", trial)
                 try traceJointSearch("hypothesisLocations", trial)
+                try traceJointSearch("hypothesisLocationsPreservingDose", trial, preservingBaseline: true)
                 let exactProposedDose = service.verifyExactFundedDose(trial, baseline: funded)
                 report.append("EXACT_FUNDED_DOSE proposed=\(exactProposedDose); quantitative only, no placement authorization")
                 XCTAssertEqual(exactProposedDose, .verified, persona.name)

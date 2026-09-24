@@ -18,8 +18,12 @@ extension ClaudeService {
     /// history commitments. Input placeholder sets do not become requirements.
     /// Does not encode style, symptoms, spacing, variation, ordering or full
     /// regional quality. Those must be verified before any production use.
+    /// An explicit funded baseline adds conservative daily priority and weekly
+    /// regional/maintenance non-loss requirements. Never infer those requirements
+    /// from provisional candidate placeholders. This still is NOT adoption.
     func jointDoseProjection(for menus: [[PreSelectedExercise]], blueprint: ProgramBlueprint,
-        weekNumber: Int, requiredKeysByDay: [Set<String>]) -> JointDoseProjection? {
+        weekNumber: Int, requiredKeysByDay: [Set<String>],
+        preservingDoseOf baseline: [[PreSelectedExercise]]? = nil) -> JointDoseProjection? {
         guard (1...3).contains(weekNumber), menus.count == 7, blueprint.dayPlans.count == 7,
               requiredKeysByDay.count == 7,
               blueprint.dayPlans.filter({ !$0.isRestDay }).count == blueprint.weeklyTrainingDays,
@@ -36,6 +40,19 @@ extension ClaudeService {
                   item.movementPattern == known.movementPattern,
                   item.role == proceduralExerciseRole(for: item.exerciseName, muscleTarget: item.muscleTarget) else {
                 return nil
+            }
+        }
+        if let baseline {
+            guard baseline.count == 7, baseline.indices.allSatisfy({ day in
+                blueprint.dayPlans[day].isRestDay ? baseline[day].isEmpty : !baseline[day].isEmpty
+            }) else { return nil }
+            for item in baseline.joined() {
+                guard let known = exerciseMetadataCatalog[normalizeExerciseName(item.exerciseName)],
+                      known.canonicalName == item.exerciseName, known.movementPattern == item.movementPattern,
+                      item.role == proceduralExerciseRole(for: item.exerciseName, muscleTarget: item.muscleTarget),
+                      item.prescribedSets > 0,
+                      item.prescribedSets <= max(proceduralSets(for: weekNumber,
+                          exerciseName: item.exerciseName, muscleTarget: item.muscleTarget), 4) else { return nil }
             }
         }
         let accounting = weeklyExerciseAccounting(for: menus, blueprint: blueprint)
@@ -140,6 +157,67 @@ extension ClaudeService {
             }.filter { !$0.isEmpty }
             coverage.append(.init(name: "\(group.label) baseline days", groups: coveredDays,
                 minimumGroups: min(2, coveredDays.count)))
+        }
+        if let baseline {
+            let old = weeklyExerciseAccounting(for: baseline, blueprint: blueprint)
+            for index in blueprint.priorityAllocations.indices {
+                let area = blueprint.priorityAllocations[index].area
+                var weeklyDirect = 0.0, weeklyWeighted = 0.0, meaningfulDays = 0
+                let threshold = minimumMeaningfulPriorityExposureSets(for: area)
+                for day in baseline.indices {
+                    let direct = baseline[day].indices.reduce(0.0) {
+                        $0 + Double(baseline[day][$1].prescribedSets) * old.exercises[day][$1].unitDirect[index]
+                    }
+                    let weighted = baseline[day].indices.reduce(0.0) {
+                        $0 + Double(baseline[day][$1].prescribedSets) * old.exercises[day][$1].unitWeighted[index]
+                    }
+                    weeklyDirect += direct
+                    weeklyWeighted += weighted
+                    if direct + 0.01 >= threshold { meaningfulDays += 1 }
+                    lower.append(.init(name: "Day \(day + 1) \(area) baseline direct", coefficients: vector {
+                        $0.day == day ? Double($0.sets) * accounting.exercises[$0.day][$0.slot].unitDirect[index] : 0
+                    }, limit: direct - WorkoutSetBudgetPolicy.fundingTolerance))
+                    lower.append(.init(name: "Day \(day + 1) \(area) baseline weighted", coefficients: vector {
+                        $0.day == day ? Double($0.sets) * accounting.exercises[$0.day][$0.slot].unitWeighted[index] : 0
+                    }, limit: weighted - WorkoutSetBudgetPolicy.fundingTolerance))
+                }
+                lower.append(.init(name: "\(area) baseline weekly direct", coefficients: vector {
+                    Double($0.sets) * accounting.exercises[$0.day][$0.slot].unitDirect[index]
+                }, limit: weeklyDirect - WorkoutSetBudgetPolicy.fundingTolerance))
+                lower.append(.init(name: "\(area) baseline weekly weighted", coefficients: vector {
+                    Double($0.sets) * accounting.exercises[$0.day][$0.slot].unitWeighted[index]
+                }, limit: weeklyWeighted - WorkoutSetBudgetPolicy.fundingTolerance))
+                thresholdCoverage.append(.init(name: "\(area) baseline meaningful days", groups: menus.indices.map { day in
+                    .init(name: "Day \(day + 1) \(area) baseline meaningful dose", coefficients: vector {
+                        $0.day == day ? Double($0.sets) * accounting.exercises[$0.day][$0.slot].unitDirect[index] : 0
+                    }, limit: threshold - 0.01)
+                }, minimumGroups: meaningfulDays))
+            }
+            var regions: [String: Double] = [:]
+            for item in baseline.joined() {
+                // The canonical catalog check above is mandatory before region arithmetic.
+                let known = exerciseMetadataCatalog[normalizeExerciseName(item.exerciseName)]!
+                for region in Set(known.primaryAreas.map(normalizedPriorityText)) {
+                    regions[region, default: 0] += Double(item.prescribedSets)
+                }
+            }
+            for region in regions.keys.sorted() {
+                lower.append(.init(name: "\(region) baseline region", coefficients: vector {
+                    let item = menus[$0.day][$0.slot]
+                    let known = exerciseMetadataCatalog[normalizeExerciseName(item.exerciseName)]!
+                    return Set(known.primaryAreas.map(normalizedPriorityText)).contains(region) ? Double($0.sets) : 0
+                }, limit: regions[region]!))
+            }
+            for index in old.groups.indices where !old.groups[index].residueOnly {
+                let total = baseline.indices.reduce(0.0) { sum, day in
+                    sum + baseline[day].indices.reduce(0.0) {
+                        $0 + (old.exercises[day][$1].directlyTargetsGroup[index] ? Double(baseline[day][$1].prescribedSets) : 0)
+                    }
+                }
+                lower.append(.init(name: "\(old.groups[index].label) baseline maintenance", coefficients: vector {
+                    accounting.exercises[$0.day][$0.slot].directlyTargetsGroup[index] ? Double($0.sets) : 0
+                }, limit: total - WorkoutSetBudgetPolicy.fundingTolerance))
+            }
         }
         return .init(problem: .init(domains: domains, upperBounds: upper, lowerBounds: lower, coverage: coverage,
             thresholdCoverage: thresholdCoverage),
