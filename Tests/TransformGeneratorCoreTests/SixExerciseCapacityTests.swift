@@ -192,10 +192,29 @@ final class SixExerciseCapacityTests: XCTestCase {
             // Diagnostic only: exact inclusion+dose choices within this supplied
             // fixed-location pool. No names, placements or history are invented;
             // numeric admission is NOT full quality or symptom authorization.
-            func traceJointSearch(_ label: String, _ pool: [[ClaudeService.PreSelectedExercise]], preservingBaseline: Bool = false) throws {
-                let projection = try XCTUnwrap(service.jointDoseProjection(for: pool,
+            func traceJointSearch(_ label: String, _ pool: [[ClaudeService.PreSelectedExercise]],
+                preservingBaseline: Bool = false, limitOriginalAppearances: Bool = false) throws {
+                let raw = try XCTUnwrap(service.jointDoseProjection(for: pool,
                     blueprint: effectiveBlueprint, weekNumber: 1, requiredKeysByDay: funded.retainedKeysByDay,
                     preservingDoseOf: preservingBaseline ? funded.menus : nil))
+                var identityLimits: [WorkoutAppearancePlanner.Constraint] = []
+                if limitOriginalAppearances {
+                    let originalCounts = Dictionary(grouping: funded.menus.joined(), by: {
+                        ExerciseWeightEntry.canonicalLookupKey($0.exerciseName)
+                    }).mapValues(\.count)
+                    XCTAssertTrue(pool.joined().allSatisfy {
+                        originalCounts[ExerciseWeightEntry.canonicalLookupKey($0.exerciseName)] != nil
+                    }, "This experiment may move existing identities, not invent new ones")
+                    identityLimits = originalCounts.keys.sorted().map { key in
+                        .init(name: "\(key) original appearance ceiling", coefficients: raw.options.map {
+                            $0.sets > 0 && ExerciseWeightEntry.canonicalLookupKey(pool[$0.day][$0.slot].exerciseName) == key ? 1 : 0
+                        }, limit: Double(originalCounts[key]!))
+                    }
+                }
+                let projection = ClaudeService.JointDoseProjection(problem: .init(domains: raw.problem.domains,
+                    upperBounds: raw.problem.upperBounds + identityLimits, lowerBounds: raw.problem.lowerBounds,
+                    coverage: raw.problem.coverage, thresholdCoverage: raw.problem.thresholdCoverage),
+                    options: raw.options, slotCapacityShortfalls: raw.slotCapacityShortfalls, weightedGoals: raw.weightedGoals)
                 var statistics: WorkoutAppearancePlanner.ChoiceSearchStatistics?
                 let outcome = WorkoutAppearancePlanner.solveChoices(projection.problem, maximumStates: 512,
                     statistics: { statistics = $0 })
@@ -245,11 +264,56 @@ final class SixExerciseCapacityTests: XCTestCase {
                     }
                     let verified = service.verifyExactFundedDose(proposed, baseline: funded)
                     if preservingBaseline { XCTAssertEqual(verified, .verified, "Modeled preservation must survive the independent dose verifier") }
+                    if limitOriginalAppearances {
+                        let counts = Dictionary(grouping: proposed.joined(), by: {
+                            ExerciseWeightEntry.canonicalLookupKey($0.exerciseName)
+                        }).mapValues(\.count)
+                        let original = Dictionary(grouping: funded.menus.joined(), by: {
+                            ExerciseWeightEntry.canonicalLookupKey($0.exerciseName)
+                        }).mapValues(\.count)
+                        for (key, count) in counts { XCTAssertLessThanOrEqual(count, original[key, default: 0]) }
+                        for day in proposed.indices {
+                            XCTAssertTrue(funded.retainedKeysByDay[day].isSubset(of: Set(proposed[day].map {
+                                ExerciseWeightEntry.canonicalLookupKey($0.exerciseName)
+                            })))
+                        }
+                    }
                     report.append("JOINT_SEARCH \(label) menus=\(signature(proposed)) exactBaselineDose=\(verified); complete placement checks still required")
                 }
             }
             try traceJointSearch("existingLocations", candidate)
             try traceJointSearch("existingLocationsPreservingDose", candidate, preservingBaseline: true)
+            // Automatically enumerate alternate locations of EXISTING crowded-day
+            // identities. No persona-specific move list, no catalog-name expansion.
+            // This deliberately narrow experiment uses the existing lexical style
+            // screen, which is not the full focus/core-adjunct placement policy.
+            // It is NOT symptom-screened or approved by optional-change guards.
+            // It must never be adopted as a workout merely because quantities fit.
+            if funded.menus.contains(where: { $0.count > 6 }) {
+                var expanded = funded.menus
+                let pain = funded.exerciseHistory?.painExercises ?? []
+                let originalKeys = funded.menus.map { Set($0.map { ExerciseWeightEntry.canonicalLookupKey($0.exerciseName) }) }
+                XCTAssertTrue(originalKeys.allSatisfy { $0.isDisjoint(with: pain) })
+                for source in funded.menus.indices where funded.menus[source].count > 6 {
+                    for item in funded.menus[source] {
+                        let key = ExerciseWeightEntry.canonicalLookupKey(item.exerciseName)
+                        guard !pain.contains(key), !funded.retainedKeysByDay[source].contains(key) else { continue }
+                        let probe = WorkoutExerciseResponse(exerciseName: item.exerciseName, sets: item.prescribedSets,
+                            reps: "", tempo: "", restSeconds: 0, notes: "", muscleTarget: item.muscleTarget)
+                        for receiver in funded.menus.indices where receiver != source {
+                            guard !effectiveBlueprint.dayPlans[receiver].isRestDay,
+                                  funded.menus[receiver].count <= 6,
+                                  !expanded[receiver].contains(where: { ExerciseWeightEntry.canonicalLookupKey($0.exerciseName) == key }),
+                                  service.exerciseMatchesDayStyle(probe,
+                                    style: service.canonicalTrainingStyle(effectiveBlueprint.dayPlans[receiver].style)) else { continue }
+                            expanded[receiver].append(item)
+                        }
+                    }
+                }
+                report.append("JOINT_PLACEMENT_POOL originalCounts=\(funded.menus.map(\.count)) optionCounts=\(expanded.map(\.count)); alternate locations, not a workout; symptom/ordering/complete-style checks pending")
+                try traceJointSearch("automaticStyleScreenedLocationsPreservingDose", expanded,
+                    preservingBaseline: true, limitOriginalAppearances: true)
+            }
             if ["Five-day lifter reporting lumbar-extension pain", "Arms specialisation on four days"].contains(persona.name) {
                 // Named diagnostic hypotheses, NOT a production search or an adoption path.
                 // They distinguish whole-plan feasibility from the current operation contract.

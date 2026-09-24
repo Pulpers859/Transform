@@ -60,6 +60,7 @@ extension ClaudeService {
             }
         }
         let accounting = weeklyExerciseAccounting(for: menus, blueprint: blueprint)
+        let baselineAccounting = baseline.map { weeklyExerciseAccounting(for: $0, blueprint: blueprint) }
         let limits = setBudgetLimits(for: blueprint)
         var options: [JointDoseOption] = [], domains: [[Int]] = []
         for day in menus.indices {
@@ -160,11 +161,21 @@ extension ClaudeService {
                 options.indices.filter { options[$0].day == day && options[$0].sets > 0
                     && accounting.exercises[day][options[$0].slot].directlyTargetsGroup[index] }
             }.filter { !$0.isEmpty }
+            // Alternate locations are choices, not extra exposure obligations. With
+            // an explicit baseline, retain its coverage requirement while allowing
+            // the expanded pool to supply that coverage on another compatible day.
+            let originalDays: Int
+            if let baselineAccounting {
+                originalDays = baselineAccounting.exercises.filter { day in
+                    day.contains { $0.directlyTargetsGroup[index] }
+                }.count
+            } else {
+                originalDays = coveredDays.count
+            }
             coverage.append(.init(name: "\(group.label) baseline days", groups: coveredDays,
-                minimumGroups: min(2, coveredDays.count)))
+                minimumGroups: min(2, originalDays)))
         }
-        if let baseline {
-            let old = weeklyExerciseAccounting(for: baseline, blueprint: blueprint)
+        if let baseline, let old = baselineAccounting {
             for index in blueprint.priorityAllocations.indices {
                 let area = blueprint.priorityAllocations[index].area
                 var weeklyDirect = 0.0, weeklyWeighted = 0.0, meaningfulDays = 0

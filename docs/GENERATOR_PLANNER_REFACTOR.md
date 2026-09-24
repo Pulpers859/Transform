@@ -1,5 +1,45 @@
 # Generator planner refactor: evidence and acceptance
 
+## Owner-directed scope and cost limit (2026-09-24)
+
+Stay focused on coordinated exercise appearances and set budgets for the
+six-exercise ceiling. Record unrelated findings for later; do not implement
+them as side quests. Reuse existing evidence, keep each next step bounded,
+and delegate only when it materially advances that step. The owner requested
+publishing this pending checkpoint and stopping to conserve weekly usage.
+This checkpoint is diagnostic infrastructure, not a shipped six-exercise fix.
+
+## Automatic alternate-location diagnostic (2026-09-24, runtime proof pending)
+
+`25f27c3` passed 180 focused cases in run `35991416811`, with zero failures,
+errors or skips; Swift `35991416801` logged BUILD SUCCEEDED. All 98 pre-existing
+non-joint-search diagnostic lines match `8b16c60`. This is focused coverage,
+not a new full-journey or device checkpoint. Shipping menus remain unchanged.
+
+The next diagnostic automatically offers existing crowded-day identities on
+other non-rest, not-already-crowded days that pass the existing lexical style
+screen. It does not hardcode the two named persona layouts or add new identities.
+Original weekly appearance-count ceilings prevent these alternate locations
+from multiplying exercises; retained identities stay required at their original
+days. It is explicitly NOT symptom-screened, an exhaustive placement search,
+or a production adoption path. Complete style/focus/core-adjunct eligibility,
+symptoms, ordering, spacing and preferences still need separate adjudication.
+Every admitted preserved-dose result must pass the independent dose verifier.
+
+Independent review caught a new-model error before this experiment: deriving
+required baseline exposure days from an expanded option pool turns one movable
+appearance into a two-day obligation. Explicit-baseline projections now derive
+that requirement from the original baseline, while allowing candidate locations
+to satisfy it. A sliced regression checks either calf location alone, original
+two-day obligations, and unchanged behavior without a supplied baseline.
+
+An ignored local forward-checking prototype was NOT integrated. Although it
+rejected some captured pools earlier, it slowed others and did not bound its
+extra probes. Fewer DFS states alone are not evidence of lower runtime cost.
+Claude review remains unavailable after the expired-OAuth failure; an independent
+Codex source audit found no blocker in this bounded diff. Local syntax checks
+pass; this iteration's XCTest and generated-candidate evidence remain pending.
+
 ## Weighted-goal contract correction (2026-09-24, focused proof pending)
 
 `8b16c60` passed 179 focused cases in run `35990473538`, zero failures/errors/

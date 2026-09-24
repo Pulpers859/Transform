@@ -200,6 +200,52 @@ final class JointDoseProjectionTests: XCTestCase {
         XCTAssertEqual(hamstrings.groups.count, 2)
     }
 
+    func testExpandedOptionalLocationDoesNotInventAnotherBaselineExposure() throws {
+        var baseline = menus
+        for day in [0, 3] { for slot in baseline[day].indices { baseline[day][slot].prescribedSets = 3 } }
+        baseline[3][4] = item("Seated Calf Raise", "Calves", sets: 3)
+        var pool = baseline
+        pool[0].append(item("Seated Calf Raise", "Calves"))
+        let aliases = service.normalizedGroupAliases(forSeed: "calf")
+        XCTAssertTrue(service.exerciseDirectlyTargets(groupAliases: aliases,
+            exerciseName: "Seated Calf Raise", muscleTarget: "Calves"))
+        let preserved = try XCTUnwrap(service.jointDoseProjection(for: pool, blueprint: blueprint(),
+            weekNumber: 1, requiredKeysByDay: required, preservingDoseOf: baseline))
+        let calves = try XCTUnwrap(preserved.problem.coverage.first { $0.name == "Calves baseline days" })
+        XCTAssertEqual(calves.minimumGroups, 1)
+        XCTAssertEqual(calves.groups.count, 2, "Both candidate locations remain available")
+        XCTAssertEqual(Set(calves.groups.flatMap { $0 }.map { preserved.options[$0].day }), Set([0, 3]))
+        let hamstrings = try XCTUnwrap(preserved.problem.coverage.first { $0.name == "Hamstrings baseline days" })
+        XCTAssertEqual(hamstrings.minimumGroups, 2, "An original two-day obligation remains intact")
+        let unpreserved = try XCTUnwrap(service.jointDoseProjection(for: pool, blueprint: blueprint(),
+            weekNumber: 1, requiredKeysByDay: required))
+        XCTAssertEqual(try XCTUnwrap(unpreserved.problem.coverage.first { $0.name == "Calves baseline days" }).minimumGroups, 2)
+
+        // Isolate only calf choices and the exposure requirement, not full workout admission.
+        let sourceDomains = preserved.problem.domains.filter { domain in
+            let option = preserved.options[domain[0]]
+            return pool[option.day][option.slot].exerciseName == "Seated Calf Raise"
+        }
+        XCTAssertEqual(sourceDomains.count, 2)
+        let optionIDs = sourceDomains.flatMap { $0 }
+        let remap = Dictionary(uniqueKeysWithValues: optionIDs.enumerated().map { ($0.element, $0.offset) })
+        let domains = sourceDomains.map { $0.compactMap { remap[$0] } }
+        let appearances = optionIDs.map { preserved.options[$0].sets > 0 ? 1.0 : 0.0 }
+        let groups = calves.groups.map { $0.compactMap { remap[$0] } }
+        for wantedDay in [0, 3] {
+            let location = optionIDs.map { preserved.options[$0].day == wantedDay && preserved.options[$0].sets > 0 ? 1.0 : 0.0 }
+            let sliced = WorkoutAppearancePlanner.ChoiceProblem(domains: domains,
+                upperBounds: [.init(name: "one appearance", coefficients: appearances, limit: 1)],
+                lowerBounds: [.init(name: "chosen location", coefficients: location, limit: 1)],
+                coverage: [.init(name: calves.name, groups: groups, minimumGroups: calves.minimumGroups)])
+            guard case .admitted(let selected) = WorkoutAppearancePlanner.solveChoices(sliced) else {
+                return XCTFail("Either location alone should satisfy the original one-day exposure")
+            }
+            XCTAssertEqual(selected.reduce(0.0) { $0 + appearances[$1] }, 1)
+            XCTAssertEqual(selected.reduce(0.0) { $0 + location[$1] }, 1)
+        }
+    }
+
     func testUnfundableRawSlotRequestStaysVisibleWithoutReducingDoseOrFrequency() throws {
         let plan = blueprint(["Triceps"], slots: 8)
         let allocation = plan.priorityAllocations[0]
