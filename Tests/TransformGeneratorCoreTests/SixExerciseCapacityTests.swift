@@ -248,6 +248,9 @@ final class SixExerciseCapacityTests: XCTestCase {
                     report.append("JOINT_HYPOTHESIS \(label) menus=\(signature(menus)) back=\(service.plannedBackBalanceFindings(menus, blueprint: effectiveBlueprint))")
                 }
                 summarize("proposed", trial)
+                let exactProposedDose = service.verifyExactFundedDose(trial, baseline: funded)
+                report.append("EXACT_FUNDED_DOSE proposed=\(exactProposedDose); quantitative only, no placement authorization")
+                XCTAssertEqual(exactProposedDose, .verified, persona.name)
                 if persona.name == "Arms specialisation on four days" {
                     // Preserve the actual daily priority dose, not just weekly arm totals.
                     for area in ["Biceps", "Triceps"] {
@@ -269,6 +272,14 @@ final class SixExerciseCapacityTests: XCTestCase {
                     weekNumber: 1, lockedPrefixCounts: funded.lockedPrefixCounts,
                     roleFloorAdmissionReport: { trialAdmission = $0 }, publishConflictLogs: false)
                 summarize("reallocated", trialAllocated)
+                let exactReallocatedDose = service.verifyExactFundedDose(trialAllocated, baseline: funded)
+                report.append("EXACT_FUNDED_DOSE reallocated=\(exactReallocatedDose)")
+                if persona.name == "Arms specialisation on four days" {
+                    XCTAssertEqual(exactReallocatedDose, .refused(.dose(.sessionPriority(day: 0, area: "Triceps"))))
+                } else {
+                    XCTAssertEqual(exactReallocatedDose,
+                        .refused(.primaryRegionLoss(region: "upper chest", baselineSets: 8, candidateSets: 7)))
+                }
                 report.append("JOINT_HYPOTHESIS admission=\(trialAdmission); not authorized for adoption; catalog/history/symptom eligibility, full prescriptions and neighboring weeks remain unverified")
             }
             let result = service.reserveWeeklyAppearanceFloors(candidate, blueprint: effectiveBlueprint, weekNumber: 1,

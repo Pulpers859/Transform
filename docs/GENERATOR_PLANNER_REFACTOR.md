@@ -1,6 +1,33 @@
 # Generator planner refactor: evidence and acceptance
 
-## Core adjunct theme correction (2026-09-24, verification pending)
+## Exact funded-dose contract (2026-09-24, runtime verification pending)
+
+The next bounded check evaluates a proposed menu's existing sets without calling
+the allocator. It reuses the dose comparator for role, fatigue, maintenance and
+daily/weekly priority checks, adds the normal absolute weekly priority ceiling,
+and protects each catalog primary region from losing weekly work. Canonical
+catalog identities and valid week/rest/slot shape are prerequisites. Counts in
+both inputs are bounded by the widest existing role ceiling before arithmetic;
+the independent review identified the initial positive-only check's overflow risk.
+
+This is quantitative verification ONLY, not allocation or placement authorization.
+It does not establish that a baseline met every minimum, nor replace history,
+symptom, identity/prefix, order, spacing or delivered-prescription checks. There
+is no production caller and neither diagnostic hypothesis is adopted. New tests
+cover immutable inputs, role/fatigue/maintenance limits, daily priority loss,
+inherited weekly overage, hidden Upper Chest loss, unknown identities, malformed
+shape, deload/unadmitted baselines and extreme signed set counts. The focused
+planning lane includes the new suite; no additional generation or paid API call.
+
+## Core adjunct theme correction (2026-09-24, full checkpoint verified)
+
+Full Generator Tests `35950167965` on `879df59` passed 787 XCTest cases,
+including all 15 core-adjunct cases, with zero failures/errors. Swift build
+`35950167923` logged BUILD SUCCEEDED. All 20 complete week `days`, `priorities`
+and `validatorFindings` fields match the prior `acefd78` checkpoint; six oversized
+synthetic sessions remain. Independent source and artifact reviews confirmed
+the bounded result. Claude second review was attempted but OAuth was expired;
+it did not approve the change. Separate Codex adversarial reviews were completed.
 
 The bounded `247711d` planning run `35949637987` reproduced exactly three
 failures in `CoreAdjunctStyleTests`: valid Upper plus Hanging Knee Raise,

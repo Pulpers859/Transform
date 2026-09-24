@@ -110,6 +110,104 @@ extension ClaudeService {
         case dosePreserved(improvesMaintenanceMinimum: Bool)
     }
 
+    enum ExactFundedDoseFailure: Equatable {
+        case invalidContext
+        case baselineNotAdmitted
+        case unsupportedWeek
+        case unknownExercise(day: Int, exercise: Int)
+        case dose(AllocatedPlanDoseFailure)
+        case weeklyPriorityCeiling(area: String)
+        case primaryRegionLoss(region: String, baselineSets: Int, candidateSets: Int)
+    }
+
+    enum ExactFundedDoseVerification: Equatable {
+        case verified
+        case refused(ExactFundedDoseFailure)
+    }
+
+    /// Quantitative check of the supplied sets, NOT allocation or authorization to
+    /// adopt a placement. Identity/history/symptom protection, ordering, spacing,
+    /// selection quality and delivered prescriptions require separate checks.
+    /// ExactFundedDoseTests pins immutable inputs and the refusal boundaries.
+    func verifyExactFundedDose(_ candidate: [[PreSelectedExercise]],
+        baseline: SubstitutionPlanningBaseline) -> ExactFundedDoseVerification {
+        let menus = baseline.menus, blueprint = baseline.blueprint
+        guard (1...3).contains(baseline.weekNumber) else { return .refused(.unsupportedWeek) }
+        guard baseline.roleFloorAdmission == .admitted else { return .refused(.baselineNotAdmitted) }
+        guard menus.count == 7, candidate.count == 7, blueprint.dayPlans.count == 7,
+              blueprint.dayPlans.filter({ !$0.isRestDay }).count == blueprint.weeklyTrainingDays,
+              menus.indices.allSatisfy({ day in
+                  let plan = blueprint.dayPlans[day]
+                  return plan.dayIndex == day + 1
+                      && (plan.isRestDay ? menus[day].isEmpty && candidate[day].isEmpty
+                          : !menus[day].isEmpty && (5...6).contains(candidate[day].count))
+                      && menus[day].allSatisfy { $0.prescribedSets > 0 }
+                      && candidate[day].allSatisfy { $0.prescribedSets > 0 }
+              }) else { return .refused(.invalidContext) }
+
+        // Regional preservation must use known catalog regions, not a target label
+        // or inferred metadata. Locked-menu callers supply canonical identities.
+        for plan in [menus, candidate] {
+            for day in plan.indices {
+                for slot in plan[day].indices {
+                    let item = plan[day][slot], name = item.exerciseName
+                    guard let known = exerciseMetadataCatalog[normalizeExerciseName(name)],
+                          known.canonicalName == name else {
+                        return .refused(.unknownExercise(day: day, exercise: slot))
+                    }
+                    // Reject malformed counts before fatigue/credit arithmetic. This
+                    // is the allocator's widest role ceiling (including prime work),
+                    // not a new funding allowance; the comparison still applies each
+                    // candidate's actual, potentially lower ceiling below.
+                    let widestCeiling = max(proceduralSets(for: baseline.weekNumber,
+                        exerciseName: name, muscleTarget: item.muscleTarget), 4)
+                    guard item.prescribedSets <= widestCeiling else {
+                        return .refused(.invalidContext)
+                    }
+                }
+            }
+        }
+        let dose = compareAllocatedDoseOnly(candidate, baseline: menus,
+            blueprint: blueprint, weekNumber: baseline.weekNumber)
+        if case .rejected(let reason) = dose {
+            return .refused(.dose(reason))
+        }
+        let accounting = weeklyExerciseAccounting(for: candidate, blueprint: blueprint)
+        let limits = setBudgetLimits(for: blueprint)
+        // The comparison above permits inherited weekly overage. New exact-funded
+        // candidates must independently fit the normal funding ceiling; they do
+        // not inherit the legacy allocator's exceptional role-floor allowance.
+        for allocation in blueprint.priorityAllocations.indices {
+            let direct = candidate.indices.reduce(0.0) { total, day in
+                total + candidate[day].indices.reduce(0.0) { sum, slot in
+                    sum + Double(candidate[day][slot].prescribedSets)
+                        * accounting.exercises[day][slot].unitDirect[allocation]
+                }
+            }
+            guard direct <= limits.normalWeeklyPriority[allocation] else {
+                return .refused(.weeklyPriorityCeiling(area: blueprint.priorityAllocations[allocation].area))
+            }
+        }
+        func regionalSets(_ plan: [[PreSelectedExercise]]) -> [String: Int] {
+            var totals: [String: Int] = [:]
+            for item in plan.joined() {
+                guard let info = exerciseMetadataCatalog[normalizeExerciseName(item.exerciseName)] else { continue }
+                for region in Set(info.primaryAreas.map(normalizedPriorityText)) {
+                    totals[region, default: 0] += item.prescribedSets
+                }
+            }
+            return totals
+        }
+        let original = regionalSets(menus), proposed = regionalSets(candidate)
+        for region in original.keys.sorted() {
+            let old = original[region, default: 0], new = proposed[region, default: 0]
+            if new < old {
+                return .refused(.primaryRegionLoss(region: region, baselineSets: old, candidateSets: new))
+            }
+        }
+        return .verified
+    }
+
     /// Dose-only comparison, not authorization to substitute exercises. Callers must separately
     /// enforce identity/eligibility, locked slots, rest-day shape, movement/focus quality and their
     /// improvement objective. In particular, the minimum-dose caller above retains its identity lock.
