@@ -31,6 +31,129 @@ enum WorkoutAppearancePlanner {
         case searchLimit([String])
     }
 
+    /// Prospective finite choices: each domain is one decision, such as which
+    /// eligible placement and set count to use for an appearance. Exactly one
+    /// option per domain is chosen; omission requires an explicit zero-cost option.
+    /// A fixed domain represents a commitment, not an automatically protected
+    /// provisional choice. Callers own catalog, history and symptom eligibility.
+    struct ChoiceProblem {
+        let domains: [[Int]]
+        let upperBounds: [Constraint]
+        let lowerBounds: [Constraint]
+        var coverage: [Coverage] = []
+    }
+
+    enum ChoiceOutcome: Equatable {
+        case admitted([Int])
+        case infeasible([String])
+        case searchLimit([String])
+        case invalidProblem(String)
+    }
+
+    struct ChoiceSearchStatistics: Equatable {
+        // States include partial and pruned assignments; they are NOT complete
+        // workouts tried or exercises ruled out. Full assignments may fail bounds.
+        let visitedStates: Int
+        let completeAssignments: Int
+    }
+
+    /// Joint feasibility, not a training-quality optimum or permission to publish
+    /// a workout. Options must describe the SAME placement/dose in every budget.
+    /// No production caller yet; JointDoseSearchTests independently enumerates
+    /// small cases and checks returned choices. Does not change the subset solver.
+    static func solveChoices(_ problem: ChoiceProblem, maximumStates: Int = 512,
+        statistics: ((ChoiceSearchStatistics) -> Void)? = nil) -> ChoiceOutcome {
+        var visited = 0, complete = 0
+        defer { statistics?(.init(visitedStates: visited, completeAssignments: complete)) }
+        let options = problem.domains.flatMap { $0 }
+        let count = options.count
+        let constraints = problem.upperBounds + problem.lowerBounds
+        guard problem.domains.allSatisfy({ !$0.isEmpty }),
+              Set(options) == Set(0..<count),
+              constraints.allSatisfy({ $0.coefficients.count == count && $0.limit.isFinite
+                  && $0.coefficients.allSatisfy { $0.isFinite && $0 >= 0 }
+                  && $0.coefficients.reduce(0, +).isFinite }),
+              problem.coverage.allSatisfy({ $0.minimumGroups >= 0
+                  && $0.groups.joined().allSatisfy { (0..<count).contains($0) } }) else {
+            return .invalidProblem("Invalid finite-choice planning problem")
+        }
+        guard maximumStates > 0 else {
+            return .searchLimit(["Joint planning state budget is exhausted"])
+        }
+        // Fewer choices first; ties preserve original decision order. The result
+        // is mapped back to original domains, never search-order coordinates.
+        let order = problem.domains.indices.sorted {
+            let lhs = problem.domains[$0].count, rhs = problem.domains[$1].count
+            return lhs == rhs ? $0 < $1 : lhs < rhs
+        }
+        var chosen = Array(repeating: -1, count: problem.domains.count)
+        var exhausted = false
+        var conflicts = Set<String>()
+
+        func boundsAllowCompletion() -> Bool {
+            var allowed = true
+            for (index, constraint) in constraints.enumerated() {
+                var minimum = 0.0, maximum = 0.0
+                for domain in problem.domains.indices {
+                    if chosen[domain] >= 0 {
+                        let cost = constraint.coefficients[chosen[domain]]
+                        minimum += cost
+                        maximum += cost
+                    } else {
+                        let costs = problem.domains[domain].map { constraint.coefficients[$0] }
+                        // Validation guarantees a nonempty domain.
+                        minimum += costs.min()!
+                        maximum += costs.max()!
+                    }
+                }
+                if index < problem.upperBounds.count
+                    ? minimum > constraint.limit + 0.001
+                    : maximum + 0.001 < constraint.limit {
+                    conflicts.insert(constraint.name)
+                    allowed = false
+                }
+            }
+            for requirement in problem.coverage {
+                // Count potentially covered groups, not exercise appearances.
+                // At a complete assignment this is the exact covered-group count.
+                let possible = requirement.groups.filter { group in
+                    problem.domains.indices.contains { domain in
+                        chosen[domain] >= 0 ? group.contains(chosen[domain])
+                            : problem.domains[domain].contains(where: group.contains)
+                    }
+                }.count
+                if possible < requirement.minimumGroups {
+                    conflicts.insert(requirement.name)
+                    allowed = false
+                }
+            }
+            return allowed
+        }
+
+        func search(_ depth: Int) -> [Int]? {
+            guard visited < maximumStates else {
+                exhausted = true
+                return nil
+            }
+            visited += 1
+            if depth == order.count { complete += 1 }
+            guard boundsAllowCompletion() else { return nil }
+            if depth == order.count { return chosen }
+            let domain = order[depth]
+            for option in problem.domains[domain] {
+                chosen[domain] = option
+                if let result = search(depth + 1) { return result }
+                if exhausted { break }
+            }
+            chosen[domain] = -1
+            return nil
+        }
+        if let result = search(0) { return .admitted(result) }
+        // These are observed conflicts, not a minimal unsatisfiable constraint set.
+        let reasons = conflicts.isEmpty ? ["No complete choice within the supplied constraints"] : conflicts.sorted()
+        return exhausted ? .searchLimit(reasons) : .infeasible(reasons)
+    }
+
     static func solve(_ problem: Problem, maximumStates: Int = 512) -> Outcome {
         let count = problem.protected.count
         let constraints = problem.upperBounds + problem.lowerBounds

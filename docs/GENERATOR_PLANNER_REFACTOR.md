@@ -1,5 +1,44 @@
 # Generator planner refactor: evidence and acceptance
 
+## Prospective joint-search foundation (2026-09-24, integration pending)
+
+The owner approved improving coordinated appearance/set search, not reducing
+targets or adding fail-before-API UI. Current repair failure does not demonstrate
+library exhaustion: the explicit metadata catalog has 126 distinct entries, base
+style lists 11-14, and repairs search only restricted changes to an already chosen
+menu. Named symptom-conflict assertions in focused run 35953054065 on b8fb3c2
+executed successfully (149 cases, zero failures/errors/skips); Swift 35953054023
+logged BUILD SUCCEEDED. These remain policy findings, not clinical conclusions.
+
+Independent architecture and exercise-policy reviews distinguish actual retained
+history from same-call provisional choices. Initial selection excludes saved-pain
+identities and uses symptom/recovery preferences; optional post-allocation changes
+are deliberately stricter. Those downstream guards remain unchanged. Initial
+planning must not borrow their arbitrary baseline quantities as if the athlete
+had already performed them, nor discard the original initial-selection rules.
+
+`WorkoutAppearancePlanner.solveChoices` adds an opt-in finite-choice engine: one
+option per decision can jointly specify inclusion, placement and sets, and all
+shared upper/lower budgets and exposure groups are checked together. Singleton
+domains represent actual commitments supplied by the caller. Search exhaustion,
+invalid inputs and proven infeasibility WITHIN THE SUPPLIED OPTION POOL are
+distinct. Statistics count partial states and completed assignments separately;
+conflict names are observed constraints, not a minimal incompatibility proof.
+
+There is NO production caller or workout adoption. The original subset solver is
+unchanged. The engine does not itself create eligible exercise options or encode
+history, symptoms, ordering, progression or all workout-quality requirements.
+Those must be supplied and verified by the next app-specific integration layer.
+Do not mistake a mathematical admission for workout approval.
+
+Thirteen test bodies executed locally against the actual pure Swift engine with
+a portable assertion adapter: zero failures, including an independent exhaustive
+oracle over 36 small problems. This is not XCTest/app runtime proof. Independent
+source review found no blocker and prompted positive-budget exhaustion, malformed
+domain and overflowing-sum tests. The focused CI lane now includes this suite;
+XCTest/app compilation proof is pending. INC-3/8/9 still forbid free-form AI
+selection, output trimming and adoption based on a locally passing predicate.
+
 ## Exact funded-dose contract (2026-09-24, focused checkpoint verified)
 
 Focused planning run `35952575156` on `257c455` passed 149 cases across 16

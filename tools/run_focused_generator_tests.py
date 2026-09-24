@@ -26,6 +26,7 @@ PLANNING_SUITES = (
     "BackBalanceAndStyleCanonicalTests",
     "CoreAdjunctStyleTests",
     "ExactFundedDoseTests",
+    "JointDoseSearchTests",
     "PriorityStyleAndSlotCapacityTests",
     "InjuryTimeAndSessionBudgetTests",
     "SessionOrderingPolicyTests",
