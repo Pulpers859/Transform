@@ -2144,10 +2144,10 @@ extension ClaudeService {
             guard gapsAfter != gapsBefore else { break }
         }
         menuPlanningTrace?("baselineCoverageRecheck", finalCoverageMenus)
-        // Both balance passes run BEFORE the knee anchor on purpose. Horizontal-pull work is
-        // additive; maintenance breadth may trade a redundant slot at capacity. The knee anchor
-        // DOES evict slots on lower-body days, so letting it have the last word means a repair
-        // it considers necessary is never blocked by work added for breadth.
+        // Both balance passes run BEFORE the knee anchor on purpose. They are purely additive, so
+        // they cannot create the shape the knee anchor repairs, but the knee anchor DOES evict
+        // slots on lower-body days — letting it have the last word means a repair it considers
+        // necessary is never blocked by a movement added for breadth.
         //
         // The row survives this ordering for a structural reason rather than by luck: "row" is a
         // FORBIDDEN keyword on Lower and Legs styles, so `exerciseMatchesDayStyle` can never place
@@ -2167,12 +2167,8 @@ extension ClaudeService {
         let breadthCompleteMenus = enforceMaintenanceExposureBreadth(
             rowCompleteMenus,
             blueprint: blueprint,
-            trainingIntent: trainingIntent,
             weekNumber: weekNumber,
             avoidedExercises: avoidedExercises,
-            exerciseHistory: exerciseHistory,
-            lockedPrefixCounts: lockedPrefixCounts,
-            retainedKeysByDay: retainedKeysByDay,
             maximumExercisesPerDay: maximumExercisesPerDay
         )
         menuPlanningTrace?("maintenanceBreadth", breadthCompleteMenus)
@@ -3056,18 +3052,14 @@ extension ClaudeService {
     /// `enforceBaselineMuscleCoverage`, which is allowed to evict a slot for it and runs first.
     /// Prioritized groups are skipped because their own allocation owns their volume.
     ///
-    /// Best-effort by construction. At capacity, a redundant non-priority slot may be replaced
-    /// only when baseline and priority coverage, locked history, symptom screens, and budgets
-    /// remain intact. A week with no legal placement ships unchanged rather than exceeding six.
+    /// Best-effort by construction. Every placement still passes the day's slot ceiling, the
+    /// movement-pattern cap and the full menu budget, so a week with no room ships unchanged
+    /// rather than being forced over its recovery budget to satisfy a breadth rule.
     func enforceMaintenanceExposureBreadth(
         _ menus: [[PreSelectedExercise]],
         blueprint: ProgramBlueprint,
-        trainingIntent: TrainingIntentPlan,
         weekNumber: Int,
         avoidedExercises: Set<String>,
-        exerciseHistory: ExerciseHistoryContext?,
-        lockedPrefixCounts: [Int],
-        retainedKeysByDay: [Set<String>],
         maximumExercisesPerDay: Int = 6
     ) -> [[PreSelectedExercise]] {
         var updated = menus
@@ -3102,7 +3094,7 @@ extension ClaudeService {
                         muscleTarget: candidate.target
                     )
                 }
-                if let expanded = menusByAppendingBalanceExercise(
+                guard let expanded = menusByAppendingBalanceExercise(
                     to: updated,
                     blueprint: blueprint,
                     weekNumber: weekNumber,
@@ -3110,117 +3102,13 @@ extension ClaudeService {
                     candidates: candidates,
                     deprioritizedDays: coveredDays,
                     maximumExercisesPerDay: maximumExercisesPerDay
-                ) {
-                    updated = expanded
-                    continue
-                }
-                // Deload menus intentionally keep their smaller selected footprint and
-                // continuity; loading weeks carry the maintenance-breadth repair.
-                guard !MesocyclePhase.isDeloadWeek(weekNumber) else { break }
-                let replacementCandidates = applyHistoryFilters(candidates,
-                    avoidedExercises: avoidedExercises,
-                    deprioritizedExercises: exerciseHistory?.equipmentSkipExercises ?? [],
-                    catalogOffset: exerciseHistory.map { variationCatalogOffset(for: $0) } ?? 0,
-                    weekNumber: weekNumber,
-                    priorMesocycleExercises: exerciseHistory?.priorMesocycleExercises ?? [])
-                guard let swapped = menusByReplacingForMaintenanceBreadth(updated,
-                    groupSeed: group.seed, candidates: replacementCandidates, blueprint: blueprint,
-                    trainingIntent: trainingIntent, avoidedExercises: avoidedExercises,
-                    lockedPrefixCounts: lockedPrefixCounts, retainedKeysByDay: retainedKeysByDay)
-                else { break }
-                updated = swapped
+                ) else { break }
+
+                updated = expanded
             }
         }
 
         return updated
-    }
-
-    private func menusByReplacingForMaintenanceBreadth(
-        _ menus: [[PreSelectedExercise]], groupSeed: String,
-        candidates: [(name: String, target: String)], blueprint: ProgramBlueprint,
-        trainingIntent: TrainingIntentPlan, avoidedExercises: Set<String>,
-        lockedPrefixCounts: [Int], retainedKeysByDay: [Set<String>]
-    ) -> [[PreSelectedExercise]]? {
-        guard lockedPrefixCounts.count == menus.count, retainedKeysByDay.count == menus.count else { return nil }
-        let aliases = normalizedGroupAliases(forSeed: groupSeed)
-        let coveredDays = Set(maintenanceSlots(in: menus, forSeed: groupSeed).map(\.day))
-        let gapsBefore = Set(baselineCoverageGaps(in: menus, blueprint: blueprint).map(\.seed))
-        let priorityDaysBefore = priorityExposureDayCounts(in: menus, trainingIntent: trainingIntent)
-        let protectedMaintenanceFloors = majorMuscleGroups.filter { group in
-            !isMajorMuscleGroupPrioritized(seed: group.seed, blueprint: blueprint)
-                && maintenanceSlots(in: menus, forSeed: group.seed).count >= maintenanceExposureFloor
-        }.map(\.seed)
-        for candidate in candidates {
-            let key = ExerciseWeightEntry.canonicalLookupKey(candidate.name)
-            guard !avoidedExercises.contains(key),
-                  exerciseDirectlyTargets(groupAliases: aliases, exerciseName: candidate.name,
-                    muscleTarget: candidate.target),
-                  !reportedShoulderPainImplicates(exerciseName: candidate.name,
-                    muscleTarget: candidate.target, injuryRiskFocus: blueprint.injuryRiskFocus),
-                  [ReportedJointStressArea.elbow, .lowerBack, .knee].allSatisfy({ joint in
-                      !reportedJointPainImplicates(joint, exerciseName: candidate.name,
-                          muscleTarget: candidate.target, injuryRiskFocus: blueprint.injuryRiskFocus)
-                  }) else { continue }
-            let probe = WorkoutExerciseResponse(exerciseName: candidate.name, sets: 3,
-                reps: "10-12", tempo: "", restSeconds: 60, notes: "", muscleTarget: candidate.target)
-            let dayOrder = menus.indices.filter { day in
-                !blueprint.dayPlans[day].isRestDay && !menus[day].isEmpty
-            }.sorted { lhs, rhs in
-                if coveredDays.contains(lhs) != coveredDays.contains(rhs) {
-                    return !coveredDays.contains(lhs)
-                }
-                return lhs < rhs
-            }
-            for day in dayOrder {
-                let plan = blueprint.dayPlans[day]
-                guard exerciseMatchesDayStyle(probe, style: canonicalTrainingStyle(plan.style)),
-                      !menus[day].contains(where: {
-                          ExerciseWeightEntry.canonicalLookupKey($0.exerciseName) == key
-                      }) else { continue }
-                let focus = focusIntentForArea(plan.focusArea, within: trainingIntent)
-                let support = plan.supportAreas.compactMap { focusIntentForArea($0, within: trainingIntent) }
-                for slot in baselineCoverageReplacementIndices(in: menus[day],
-                    focusIntent: focus, supportIntents: support) where slot >= lockedPrefixCounts[day] {
-                    let evicted = menus[day][slot]
-                    guard !retainedKeysByDay[day].contains(
-                        ExerciseWeightEntry.canonicalLookupKey(evicted.exerciseName)) else { continue }
-                    var proposed = menus
-                    proposed[day].remove(at: slot)
-                    guard dayPatternCapAllows(candidateName: candidate.name, candidateTarget: candidate.target,
-                              in: proposed[day].map { ($0.exerciseName, $0.muscleTarget) }),
-                          menuPlanningBudgetAllows(candidateName: candidate.name,
-                              candidateTarget: candidate.target, existingMenus: proposed,
-                              selectedToday: [], blueprint: blueprint),
-                          seededDayFitsItsBudgets(adding: candidate, to: proposed[day], plan: plan) else { continue }
-                    let metadata = exerciseMetadata(forExerciseName: candidate.name,
-                        muscleTarget: candidate.target)
-                    proposed[day].insert(PreSelectedExercise(exerciseName: candidate.name,
-                        muscleTarget: candidate.target, movementPattern: metadata.movementPattern,
-                        role: proceduralExerciseRole(for: candidate.name, muscleTarget: candidate.target),
-                        prescribedSets: 1), at: slot)
-                    let gapsAfter = Set(baselineCoverageGaps(in: proposed, blueprint: blueprint).map(\.seed))
-                    guard gapsAfter.isSubset(of: gapsBefore),
-                          protectedMaintenanceFloors.allSatisfy({ seed in
-                              maintenanceSlots(in: proposed, forSeed: seed).count >= maintenanceExposureFloor
-                          }),
-                          priorityDaysBefore.allSatisfy({ area, days in
-                              priorityExposureDayCounts(in: proposed,
-                                  trainingIntent: trainingIntent)[area, default: 0] >= days
-                          }),
-                          blueprint.priorityAllocations.allSatisfy({ allocation in
-                              let evictedPrime = focusStimulusKind(exerciseName: evicted.exerciseName,
-                                  muscleTarget: evicted.muscleTarget, focusArea: allocation.area) == .prime
-                              let replacementPrime = focusStimulusKind(exerciseName: candidate.name,
-                                  muscleTarget: candidate.target, focusArea: allocation.area) == .prime
-                              return !evictedPrime || replacementPrime
-                          }),
-                          maintenanceSlots(in: proposed, forSeed: groupSeed).count
-                              > maintenanceSlots(in: menus, forSeed: groupSeed).count else { continue }
-                    return proposed
-                }
-            }
-        }
-        return nil
     }
 
     // MARK: - Session Flow Re-Order

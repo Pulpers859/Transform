@@ -183,13 +183,15 @@ extension ClaudeService {
         previousWeekDays: [WorkoutDayResponse]? = nil) -> SessionCapacityFinalization {
         let subset = finalizeSessionCapacitySubset(baseline, trainingIntent: trainingIntent,
             baselineMessages: baselineMessages, baselineReceipts: baselineReceipts, collectFunding: collectFunding)
-        guard !subset.decision.hasPrefix("adopted"), baseline.menus.contains(where: { $0.count > 6 }) else {
-            return subset
+        if subset.decision.hasPrefix("adopted") { return subset }
+        if baseline.menus.contains(where: { $0.count > 6 }) {
+            let placement = finalizeFirstAccessoryRelocation(baseline, trainingIntent: trainingIntent,
+                previousWeekDays: previousWeekDays, baselineMessages: baselineMessages,
+                baselineReceipts: baselineReceipts, collectFunding: collectFunding)
+            if placement.decision.hasPrefix("adopted") { return placement }
         }
-        let placement = finalizeFirstAccessoryRelocation(baseline, trainingIntent: trainingIntent,
-            previousWeekDays: previousWeekDays, baselineMessages: baselineMessages,
-            baselineReceipts: baselineReceipts, collectFunding: collectFunding)
-        if placement.decision.hasPrefix("adopted") { return placement }
+        // A six-slot Upper day can still carry expendable triceps work that belongs on
+        // its existing Arms day. The consolidation has its own strict dose/history gates.
         let consolidation = finalizeFirstCrossDayTricepsConsolidation(baseline, trainingIntent: trainingIntent,
             previousWeekDays: previousWeekDays, baselineMessages: baselineMessages,
             baselineReceipts: baselineReceipts, collectFunding: collectFunding)

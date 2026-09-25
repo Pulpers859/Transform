@@ -96,6 +96,21 @@ final class CrossDayTricepsTests: XCTestCase {
         }
     }
 
+    func testAlreadySixSlotUpperDayStillConsolidatesTricepsIntoArms() throws {
+        let base = fixture { menus, _, _ in menus[3].removeLast() }
+        XCTAssertEqual(base.menus[3].count, 6)
+        guard case .candidate(let proposed) = trial(base) else {
+            return XCTFail("The six-slot source must use the same bounded transfer")
+        }
+        XCTAssertEqual(proposed.menus[3].count, 5)
+        XCTAssertEqual(proposed.menus[5].map(\.prescribedSets), [3, 2, 3, 3, 3])
+        let final = service.finalizeSessionCapacity(base, trainingIntent: intent,
+            baselineMessages: [], baselineReceipts: [], collectFunding: false,
+            previousWeekDays: previous())
+        XCTAssertTrue(final.decision.hasPrefix("adopted"), final.decision)
+        XCTAssertEqual(final.plan.menus.map(\.count), [6, 6, 0, 5, 6, 5, 0])
+    }
+
     func testProtectedAndRetainedDonorsRefuse() {
         XCTAssertEqual(reason(trial(fixture { _, locks, _ in locks[3] = 6 })), "protected or unsupported triceps donor")
         XCTAssertEqual(reason(trial(fixture { _, _, retained in

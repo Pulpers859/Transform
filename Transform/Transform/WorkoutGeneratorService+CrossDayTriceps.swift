@@ -10,10 +10,17 @@ extension ClaudeService {
         func retained(_ reason: String) -> SessionCapacityFinalization {
             .init(plan: baseline, messages: baselineMessages, receipts: baselineReceipts, decision: reason)
         }
-        guard baseline.menus.count == 7, baseline.menus.filter({ $0.count > 6 }).count == 1,
-              let source = baseline.menus.firstIndex(where: { $0.count == 7 }) else {
+        guard baseline.menus.count == 7, baseline.blueprint.dayPlans.count == 7 else {
             return retained("no eligible cross-day triceps consolidation")
         }
+        let source = baseline.menus.indices.first(where: { day in
+                baseline.menus[day].count == 7
+                    && canonicalTrainingStyle(baseline.blueprint.dayPlans[day].style) == "Upper"
+            }) ?? baseline.menus.indices.first(where: { day in
+                baseline.menus[day].count == 6
+                    && canonicalTrainingStyle(baseline.blueprint.dayPlans[day].style) == "Upper"
+            })
+        guard let source else { return retained("no eligible cross-day triceps consolidation") }
         for donor in baseline.menus[source].indices.reversed() {
             for receiver in baseline.menus.indices where baseline.menus[receiver].count == 5 {
                 guard case .candidate(let proposed) = proposeCrossDayTricepsConsolidation(baseline,
@@ -81,8 +88,8 @@ extension ClaudeService {
                       && (blueprint.dayPlans[day].isRestDay ? menus[day].isEmpty : (5...7).contains(menus[day].count))
                       && menus[day].allSatisfy { $0.prescribedSets > 0 }
                       && Set(menus[day].map { ExerciseWeightEntry.canonicalLookupKey($0.exerciseName) }).count == menus[day].count
-              }), menus.filter({ $0.count > 6 }).count == 1,
-              menus[source].count == 7, menus[receiver].count == 5,
+              }), menus.filter({ $0.count > 6 }).count == (menus[source].count == 7 ? 1 : 0),
+              (6...7).contains(menus[source].count), menus[receiver].count == 5,
               canonicalTrainingStyle(blueprint.dayPlans[source].style) == "Upper",
               canonicalTrainingStyle(blueprint.dayPlans[receiver].style) == "Arms" else {
             return .refused("outside bounded cross-day triceps context")
