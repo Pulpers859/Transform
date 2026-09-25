@@ -2144,10 +2144,10 @@ extension ClaudeService {
             guard gapsAfter != gapsBefore else { break }
         }
         menuPlanningTrace?("baselineCoverageRecheck", finalCoverageMenus)
-        // Both balance passes run BEFORE the knee anchor on purpose. They are purely additive, so
-        // they cannot create the shape the knee anchor repairs, but the knee anchor DOES evict
-        // slots on lower-body days — letting it have the last word means a repair it considers
-        // necessary is never blocked by a movement added for breadth.
+        // Both balance passes run BEFORE the knee anchor on purpose. Horizontal-pull work is
+        // additive; maintenance breadth may trade a redundant slot at capacity. The knee anchor
+        // DOES evict slots on lower-body days, so letting it have the last word means a repair
+        // it considers necessary is never blocked by work added for breadth.
         //
         // The row survives this ordering for a structural reason rather than by luck: "row" is a
         // FORBIDDEN keyword on Lower and Legs styles, so `exerciseMatchesDayStyle` can never place
@@ -2160,7 +2160,6 @@ extension ClaudeService {
             trainingIntent: trainingIntent,
             weekNumber: weekNumber,
             avoidedExercises: avoidedExercises,
-            exerciseHistory: exerciseHistory,
             lockedPrefixCounts: lockedPrefixCounts,
             maximumExercisesPerDay: maximumExercisesPerDay
         )
@@ -2171,6 +2170,7 @@ extension ClaudeService {
             trainingIntent: trainingIntent,
             weekNumber: weekNumber,
             avoidedExercises: avoidedExercises,
+            exerciseHistory: exerciseHistory,
             lockedPrefixCounts: lockedPrefixCounts,
             retainedKeysByDay: retainedKeysByDay,
             maximumExercisesPerDay: maximumExercisesPerDay
