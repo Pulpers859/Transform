@@ -123,6 +123,10 @@ enum WorkoutAppearancePlanner {
                     : maximum + 0.001 < constraint.limit {
                     conflicts.insert(constraint.name)
                     allowed = false
+                    // The root gathers a broad diagnostic. Below it, one failed
+                    // necessary bound already proves this partial choice cannot
+                    // complete; evaluating every other bound only burns runtime.
+                    if visited > 1 { return false }
                 }
             }
             for requirement in problem.coverage {
@@ -137,6 +141,7 @@ enum WorkoutAppearancePlanner {
                 if possible < requirement.minimumGroups {
                     conflicts.insert(requirement.name)
                     allowed = false
+                    if visited > 1 { return false }
                 }
             }
             for requirement in problem.thresholdCoverage {
@@ -154,6 +159,7 @@ enum WorkoutAppearancePlanner {
                 if possible < requirement.minimumGroups {
                     conflicts.insert(requirement.name)
                     allowed = false
+                    if visited > 1 { return false }
                 }
             }
             return allowed

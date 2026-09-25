@@ -1,5 +1,28 @@
 # Generator planner refactor: evidence and acceptance
 
+## Bounded search efficiency and captured automatic candidate (verification pending)
+
+Commit `4631d87` passed 182 focused cases in run `36061541551` with zero
+failures/errors/skips; Swift run `36061541524` logged BUILD SUCCEEDED. The
+pre-existing non-joint-search workout report lines were unchanged. Its five
+automatically expanded pools all exhausted the diagnostic 512-state limit.
+
+Replaying the saved numeric problems locally with 2048 states found an admission
+for the lumbar persona after 840 visited states; the Arms pool was infeasible
+within its supplied, style-screened locations after 1095 states. The other
+three pools still exhausted 2048 states. These are bounded pool outcomes, not
+global feasibility or workout approval; reported symptoms remain unresolved.
+
+The solver now stops checking further bounds after the first necessary bound
+fails below the root. The root still gathers broad diagnostic conflicts. This
+does not change feasible choices, budget accounting or the DFS state count.
+On the saved five-pool optimized replay, its 1024-state run was roughly as fast
+in total as the old 512-state run and admitted the lumbar numeric candidate.
+This local timing is indicative, not a device/runtime guarantee. Eighteen
+portable assertion bodies, including exhaustive small-problem oracles, passed.
+The automatic diagnostic alone now has a 1024-state cap and must independently
+verify any admitted plan's baseline dose. No production caller is enabled.
+
 ## Owner-directed scope and cost limit (2026-09-24)
 
 Stay focused on coordinated exercise appearances and set budgets for the

@@ -193,7 +193,8 @@ final class SixExerciseCapacityTests: XCTestCase {
             // fixed-location pool. No names, placements or history are invented;
             // numeric admission is NOT full quality or symptom authorization.
             func traceJointSearch(_ label: String, _ pool: [[ClaudeService.PreSelectedExercise]],
-                preservingBaseline: Bool = false, limitOriginalAppearances: Bool = false) throws {
+                preservingBaseline: Bool = false, limitOriginalAppearances: Bool = false,
+                maximumStates: Int = 512) throws {
                 let raw = try XCTUnwrap(service.jointDoseProjection(for: pool,
                     blueprint: effectiveBlueprint, weekNumber: 1, requiredKeysByDay: funded.retainedKeysByDay,
                     preservingDoseOf: preservingBaseline ? funded.menus : nil,
@@ -217,10 +218,17 @@ final class SixExerciseCapacityTests: XCTestCase {
                     coverage: raw.problem.coverage, thresholdCoverage: raw.problem.thresholdCoverage),
                     options: raw.options, slotCapacityShortfalls: raw.slotCapacityShortfalls, weightedGoals: raw.weightedGoals)
                 var statistics: WorkoutAppearancePlanner.ChoiceSearchStatistics?
-                let outcome = WorkoutAppearancePlanner.solveChoices(projection.problem, maximumStates: 512,
+                let outcome = WorkoutAppearancePlanner.solveChoices(projection.problem, maximumStates: maximumStates,
                     statistics: { statistics = $0 })
                 let observed = try XCTUnwrap(statistics)
-                XCTAssertLessThanOrEqual(observed.visitedStates, 512)
+                XCTAssertLessThanOrEqual(observed.visitedStates, maximumStates)
+                if label == "automaticStyleScreenedLocationsPreservingDose",
+                   persona.name == "Five-day lifter reporting lumbar-extension pain" {
+                    guard case .admitted = outcome else {
+                        XCTFail("The bounded automatic location search must find the captured quantitative candidate")
+                        return
+                    }
+                }
                 // Synthetic, network-free replay of these EXACT coefficients permits
                 // search-only experiments on Windows without rebuilding the app/core.
                 func constraintJSON(_ value: WorkoutAppearancePlanner.Constraint) -> [String: Any] {
@@ -313,7 +321,7 @@ final class SixExerciseCapacityTests: XCTestCase {
                 }
                 report.append("JOINT_PLACEMENT_POOL originalCounts=\(funded.menus.map(\.count)) optionCounts=\(expanded.map(\.count)); alternate locations, not a workout; symptom/ordering/complete-style checks pending")
                 try traceJointSearch("automaticStyleScreenedLocationsPreservingDose", expanded,
-                    preservingBaseline: true, limitOriginalAppearances: true)
+                    preservingBaseline: true, limitOriginalAppearances: true, maximumStates: 1024)
             }
             if ["Five-day lifter reporting lumbar-extension pain", "Arms specialisation on four days"].contains(persona.name) {
                 // Named diagnostic hypotheses, NOT a production search or an adoption path.
