@@ -3114,6 +3114,9 @@ extension ClaudeService {
                     updated = expanded
                     continue
                 }
+                // Deload menus intentionally keep their smaller selected footprint and
+                // continuity; loading weeks carry the maintenance-breadth repair.
+                guard !MesocyclePhase.isDeloadWeek(weekNumber) else { break }
                 let replacementCandidates = applyHistoryFilters(candidates,
                     avoidedExercises: avoidedExercises,
                     deprioritizedExercises: exerciseHistory?.equipmentSkipExercises ?? [],
@@ -3143,6 +3146,10 @@ extension ClaudeService {
         let coveredDays = Set(maintenanceSlots(in: menus, forSeed: groupSeed).map(\.day))
         let gapsBefore = Set(baselineCoverageGaps(in: menus, blueprint: blueprint).map(\.seed))
         let priorityDaysBefore = priorityExposureDayCounts(in: menus, trainingIntent: trainingIntent)
+        let protectedMaintenanceFloors = majorMuscleGroups.filter { group in
+            !isMajorMuscleGroupPrioritized(seed: group.seed, blueprint: blueprint)
+                && maintenanceSlots(in: menus, forSeed: group.seed).count >= maintenanceExposureFloor
+        }.map(\.seed)
         for candidate in candidates {
             let key = ExerciseWeightEntry.canonicalLookupKey(candidate.name)
             guard !avoidedExercises.contains(key),
@@ -3193,6 +3200,9 @@ extension ClaudeService {
                         prescribedSets: 1), at: slot)
                     let gapsAfter = Set(baselineCoverageGaps(in: proposed, blueprint: blueprint).map(\.seed))
                     guard gapsAfter.isSubset(of: gapsBefore),
+                          protectedMaintenanceFloors.allSatisfy({ seed in
+                              maintenanceSlots(in: proposed, forSeed: seed).count >= maintenanceExposureFloor
+                          }),
                           priorityDaysBefore.allSatisfy({ area, days in
                               priorityExposureDayCounts(in: proposed,
                                   trainingIntent: trainingIntent)[area, default: 0] >= days
