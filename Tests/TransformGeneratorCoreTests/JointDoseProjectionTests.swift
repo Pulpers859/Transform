@@ -320,6 +320,19 @@ final class JointDoseProjectionTests: XCTestCase {
         XCTAssertEqual(try cost(0, 5, 3), 1, "New implicated work is excluded")
         XCTAssertEqual(try cost(0, 5, 0), 0, "Omission remains available")
         XCTAssertEqual(bound.limit, 0)
+        let inclineChoices = guarded.options.indices.filter {
+            guarded.options[$0].day == 0 && guarded.options[$0].slot == 0
+                && [3, 4].contains(guarded.options[$0].sets)
+        }
+        XCTAssertEqual(inclineChoices.count, 2)
+        let isolated = WorkoutAppearancePlanner.ChoiceProblem(domains: [Array(inclineChoices.indices)],
+            upperBounds: [.init(name: bound.name,
+                coefficients: inclineChoices.map { bound.coefficients[$0] }, limit: bound.limit)],
+            lowerBounds: [])
+        guard case .admitted(let selected) = WorkoutAppearancePlanner.solveChoices(isolated) else {
+            return XCTFail("The existing dose must remain selectable when an increase is guarded")
+        }
+        XCTAssertEqual(guarded.options[inclineChoices[try XCTUnwrap(selected.first)]].sets, 3)
         let unguarded = try XCTUnwrap(service.jointDoseProjection(for: pool, blueprint: plan,
             weekNumber: 1, requiredKeysByDay: required, preservingDoseOf: baseline))
         XCTAssertFalse(unguarded.problem.upperBounds.contains { $0.name == bound.name })

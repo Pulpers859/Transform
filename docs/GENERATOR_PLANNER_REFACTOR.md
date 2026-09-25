@@ -1,6 +1,6 @@
 # Generator planner refactor: evidence and acceptance
 
-## Symptom-aware joint-search boundary (verification pending)
+## Symptom-aware joint-search boundary (focused verification)
 
 Commit `9088bdf` passed 182 focused cases in run `36128907690` with zero
 failures/errors/skips; Swift run `36128907649` logged BUILD SUCCEEDED. The
@@ -18,6 +18,16 @@ search remains separately visible so a symptom-guarded search limit cannot be
 mistaken for a catalog or global feasibility proof. Neither path can adopt a
 workout in production. The candidate still requires order and full-plan
 quality checks; no iPhone or paid API test is requested at this stage.
+
+Commit `78c8073` passed 183 focused cases in run `36129857136` with zero
+failures/errors/skips; Swift run `36129855417` logged BUILD SUCCEEDED. The
+symptom-guarded lumbar search exhausted its supplied pool after 826 states;
+the other four guarded pools hit their 1024-state limit or were infeasible
+within their supplied pools. None admitted a plan. A follow-up corrects the
+diagnostic harness so any future guarded admission actually receives the
+post-search symptom audit, with a small solver regression for retaining an
+existing dose while vetoing an implicated increase. This follow-up's CI is
+pending. No global infeasibility or clinical-safety conclusion follows.
 
 ## Bounded search efficiency and captured automatic candidate (verification pending)
 

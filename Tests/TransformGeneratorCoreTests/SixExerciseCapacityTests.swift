@@ -289,7 +289,7 @@ final class SixExerciseCapacityTests: XCTestCase {
                         }
                     }
                     report.append("JOINT_SEARCH \(label) menus=\(signature(proposed)) exactBaselineDose=\(verified); complete placement checks still required")
-                    if label == "automaticStyleScreenedLocationsPreservingDose" {
+                    if label == "automaticStyleScreenedLocationsPreservingDose" || guardReportedSymptoms {
                         let ordered = service.reorderedMenusForSessionFlow(proposed, blueprint: effectiveBlueprint,
                             trainingIntent: intent, lockedPrefixCounts: funded.lockedPrefixCounts)
                         let symptomChanges = proposed.indices.flatMap { day in
