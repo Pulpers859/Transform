@@ -288,6 +288,41 @@ final class SixExerciseCapacityTests: XCTestCase {
                         }
                     }
                     report.append("JOINT_SEARCH \(label) menus=\(signature(proposed)) exactBaselineDose=\(verified); complete placement checks still required")
+                    if label == "automaticStyleScreenedLocationsPreservingDose" {
+                        let ordered = service.reorderedMenusForSessionFlow(proposed, blueprint: effectiveBlueprint,
+                            trainingIntent: intent, lockedPrefixCounts: funded.lockedPrefixCounts)
+                        let symptomChanges = proposed.indices.flatMap { day in
+                            proposed[day].compactMap { item -> String? in
+                                let key = ExerciseWeightEntry.canonicalLookupKey(item.exerciseName)
+                                let oldSets = funded.menus[day].first {
+                                    ExerciseWeightEntry.canonicalLookupKey($0.exerciseName) == key
+                                }?.prescribedSets ?? 0
+                                guard item.prescribedSets > oldSets else { return nil }
+                                let risk = effectiveBlueprint.injuryRiskFocus
+                                let shoulder = service.reportedShoulderPainImplicates(
+                                    exerciseName: item.exerciseName, muscleTarget: item.muscleTarget,
+                                    injuryRiskFocus: risk)
+                                let otherJoint = [ClaudeService.ReportedJointStressArea.elbow,
+                                    .lowerBack, .knee].contains { joint in
+                                    service.reportedJointPainImplicates(joint, exerciseName: item.exerciseName,
+                                        muscleTarget: item.muscleTarget, injuryRiskFocus: risk)
+                                }
+                                return shoulder || otherJoint ? "day \(day + 1) \(item.exerciseName) \(oldSets)->\(item.prescribedSets)" : nil
+                            }
+                        }
+                        let dayStyle = proposed.indices.filter { !effectiveBlueprint.dayPlans[$0].isRestDay }.map { day in
+                            let response = WorkoutDayResponse(dayNumber: day + 1,
+                                dayName: effectiveBlueprint.dayPlans[day].style, muscleGroups: "",
+                                isRestDay: false, notes: "", exercises: proposed[day].map { item in
+                                    WorkoutExerciseResponse(exerciseName: item.exerciseName, sets: item.prescribedSets,
+                                        reps: "", tempo: "", restSeconds: 0, notes: "", muscleTarget: item.muscleTarget)
+                                })
+                            return service.dayClearlySupportsExpectedStyle(effectiveBlueprint.dayPlans[day].style,
+                                day: response)
+                        }
+                        let variation = service.weeklyVariationViolations(in: proposed, blueprint: effectiveBlueprint)
+                        report.append("JOINT_PLACEMENT_AUDIT \(persona.name) style=\(dayStyle) orderingUnchanged=\(signature(ordered) == signature(proposed)) variation=\(variation) symptomImplicatedChanges=\(symptomChanges); diagnostic only, no adoption or medical-safety claim")
+                    }
                 }
             }
             try traceJointSearch("existingLocations", candidate)
