@@ -1848,6 +1848,10 @@ final class UserJourneySimulationTests: XCTestCase {
             }
             if persona.name == "Compound priority area, small muscles", weekNumber < 4 {
                 XCTAssertTrue(capacity.plan.menus.allSatisfy { $0.count <= 6 }, capacity.decision)
+                if (2...3).contains(weekNumber) {
+                    XCTAssertTrue(capacity.decision.contains("adopted six-slot cross-day triceps consolidation"),
+                        "Week \(weekNumber) must adopt the complete-dose six-slot transfer: \(capacity.decision)")
+                }
                 if capacity.decision.contains("cross-day triceps consolidation") {
                     var removed: [ClaudeService.PreSelectedExercise] = []
                     var increments: [Int] = []
