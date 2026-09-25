@@ -194,11 +194,12 @@ final class SixExerciseCapacityTests: XCTestCase {
             // numeric admission is NOT full quality or symptom authorization.
             func traceJointSearch(_ label: String, _ pool: [[ClaudeService.PreSelectedExercise]],
                 preservingBaseline: Bool = false, limitOriginalAppearances: Bool = false,
-                maximumStates: Int = 512) throws {
+                maximumStates: Int = 512, guardReportedSymptoms: Bool = false) throws {
                 let raw = try XCTUnwrap(service.jointDoseProjection(for: pool,
                     blueprint: effectiveBlueprint, weekNumber: 1, requiredKeysByDay: funded.retainedKeysByDay,
                     preservingDoseOf: preservingBaseline ? funded.menus : nil,
-                    groupSingleAppearanceAlternatives: limitOriginalAppearances))
+                    groupSingleAppearanceAlternatives: limitOriginalAppearances,
+                    avoidReportedSymptomEscalation: guardReportedSymptoms))
                 var identityLimits: [WorkoutAppearancePlanner.Constraint] = []
                 if limitOriginalAppearances {
                     let originalCounts = Dictionary(grouping: funded.menus.joined(), by: {
@@ -322,6 +323,10 @@ final class SixExerciseCapacityTests: XCTestCase {
                         }
                         let variation = service.weeklyVariationViolations(in: proposed, blueprint: effectiveBlueprint)
                         report.append("JOINT_PLACEMENT_AUDIT \(persona.name) style=\(dayStyle) orderingUnchanged=\(signature(ordered) == signature(proposed)) variation=\(variation) symptomImplicatedChanges=\(symptomChanges); diagnostic only, no adoption or medical-safety claim")
+                        if guardReportedSymptoms {
+                            XCTAssertTrue(symptomChanges.isEmpty,
+                                "A symptom-guarded numeric admission must not add implicated work")
+                        }
                     }
                 }
             }
@@ -357,6 +362,9 @@ final class SixExerciseCapacityTests: XCTestCase {
                 report.append("JOINT_PLACEMENT_POOL originalCounts=\(funded.menus.map(\.count)) optionCounts=\(expanded.map(\.count)); alternate locations, not a workout; symptom/ordering/complete-style checks pending")
                 try traceJointSearch("automaticStyleScreenedLocationsPreservingDose", expanded,
                     preservingBaseline: true, limitOriginalAppearances: true, maximumStates: 1024)
+                try traceJointSearch("automaticSymptomGuardedLocationsPreservingDose", expanded,
+                    preservingBaseline: true, limitOriginalAppearances: true,
+                    maximumStates: 1024, guardReportedSymptoms: true)
             }
             if ["Five-day lifter reporting lumbar-extension pain", "Arms specialisation on four days"].contains(persona.name) {
                 // Named diagnostic hypotheses, NOT a production search or an adoption path.

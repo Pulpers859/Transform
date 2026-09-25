@@ -28,8 +28,10 @@ extension ClaudeService {
     func jointDoseProjection(for menus: [[PreSelectedExercise]], blueprint: ProgramBlueprint,
         weekNumber: Int, requiredKeysByDay: [Set<String>],
         preservingDoseOf baseline: [[PreSelectedExercise]]? = nil,
-        groupSingleAppearanceAlternatives: Bool = false) -> JointDoseProjection? {
+        groupSingleAppearanceAlternatives: Bool = false,
+        avoidReportedSymptomEscalation: Bool = false) -> JointDoseProjection? {
         guard (1...3).contains(weekNumber), menus.count == 7, blueprint.dayPlans.count == 7,
+              !avoidReportedSymptomEscalation || baseline != nil,
               requiredKeysByDay.count == 7,
               blueprint.dayPlans.filter({ !$0.isRestDay }).count == blueprint.weeklyTrainingDays,
               menus.indices.allSatisfy({ day in
@@ -125,6 +127,27 @@ extension ClaudeService {
         var slotCapacityShortfalls: [String] = []
         var weightedGoals: [WorkoutAppearancePlanner.Constraint] = []
         func vector(_ value: (JointDoseOption) -> Double) -> [Double] { options.map(value) }
+        if avoidReportedSymptomEscalation, let baseline {
+            let risk = blueprint.injuryRiskFocus
+            upper.append(.init(name: "No new or increased work implicated by reported symptoms",
+                coefficients: vector { option in
+                    guard option.sets > 0 else { return 0 }
+                    let item = menus[option.day][option.slot]
+                    let key = ExerciseWeightEntry.canonicalLookupKey(item.exerciseName)
+                    let oldSets = baseline[option.day].first {
+                        ExerciseWeightEntry.canonicalLookupKey($0.exerciseName) == key
+                    }?.prescribedSets ?? 0
+                    guard option.sets > oldSets else { return 0 }
+                    if reportedShoulderPainImplicates(exerciseName: item.exerciseName,
+                        muscleTarget: item.muscleTarget, injuryRiskFocus: risk) {
+                        return 1
+                    }
+                    return [ReportedJointStressArea.elbow, .lowerBack, .knee].contains { joint in
+                        reportedJointPainImplicates(joint, exerciseName: item.exerciseName,
+                            muscleTarget: item.muscleTarget, injuryRiskFocus: risk)
+                    } ? 1 : 0
+                }, limit: 0))
+        }
         for day in menus.indices where !blueprint.dayPlans[day].isRestDay {
             let slots = vector { $0.day == day && $0.sets > 0 ? 1 : 0 }
             lower.append(.init(name: "Day \(day + 1) exercise floor", coefficients: slots, limit: 5))

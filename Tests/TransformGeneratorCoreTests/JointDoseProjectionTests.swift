@@ -18,7 +18,7 @@ final class JointDoseProjectionTests: XCTestCase {
     private var required: [Set<String>] { Array(repeating: Set<String>(), count: 7) }
     private func blueprint(_ areas: [String] = [], slots: Int = 2, frequency: Int = 2,
         directTarget: Double = 8, weightedTarget: Double = 10, focusCap: Double = 6,
-        focusDay: Int = 0) -> ClaudeService.ProgramBlueprint {
+        focusDay: Int = 0, injuryRiskFocus: String = "") -> ClaudeService.ProgramBlueprint {
         .init(evidenceVersion: "projection-test", splitRecommendation: "Upper / Lower", weeklyTrainingDays: 2,
             priorityAllocations: areas.map { area in
                 .init(area: area, priorityLevel: "High", rationale: "", targetFrequency: frequency,
@@ -31,7 +31,7 @@ final class JointDoseProjectionTests: XCTestCase {
                     targetFatigueCap: day == 0 || day == 3 ? 48 : 0,
                     targetSessionMinutes: 60, targetPrioritySlots: 0, emphasisPatterns: [],
                     isRestDay: day != 0 && day != 3)
-            }, topLeverageChange: "", posturalFocus: "", injuryRiskFocus: "", programmingNotes: [],
+            }, topLeverageChange: "", posturalFocus: "", injuryRiskFocus: injuryRiskFocus, programmingNotes: [],
             calibration: service.neutralCalibrationProfile())
     }
     private func response(_ item: ClaudeService.PreSelectedExercise, sets: Int) -> WorkoutExerciseResponse {
@@ -289,6 +289,40 @@ final class JointDoseProjectionTests: XCTestCase {
             groupSingleAppearanceAlternatives: true))
         XCTAssertEqual(protected.problem.domains.count, separate.problem.domains.count,
             "Actual retained work cannot become a relocatable choice")
+    }
+
+    func testReportedSymptomGuardRejectsIncreasedAndNewImplicatedWork() throws {
+        var baseline = menus
+        for day in [0, 3] { for slot in baseline[day].indices { baseline[day][slot].prescribedSets = 3 } }
+        var pool = baseline
+        pool[0].append(item("Seated Calf Raise", "Calves"))
+        let plan = blueprint(injuryRiskFocus: "Lower back pain with lumbar extension.")
+        XCTAssertTrue(service.reportedJointPainImplicates(.lowerBack,
+            exerciseName: "Incline Barbell Press", muscleTarget: "Upper Chest",
+            injuryRiskFocus: plan.injuryRiskFocus))
+        XCTAssertNil(service.jointDoseProjection(for: pool, blueprint: plan, weekNumber: 1,
+            requiredKeysByDay: required, avoidReportedSymptomEscalation: true),
+            "A symptom limit needs a real funded baseline")
+        let guarded = try XCTUnwrap(service.jointDoseProjection(for: pool, blueprint: plan,
+            weekNumber: 1, requiredKeysByDay: required, preservingDoseOf: baseline,
+            avoidReportedSymptomEscalation: true))
+        let bound = try XCTUnwrap(guarded.problem.upperBounds.first {
+            $0.name == "No new or increased work implicated by reported symptoms"
+        })
+        func cost(_ day: Int, _ slot: Int, _ sets: Int) throws -> Double {
+            let index = try XCTUnwrap(guarded.options.firstIndex {
+                $0.day == day && $0.slot == slot && $0.sets == sets
+            })
+            return bound.coefficients[index]
+        }
+        XCTAssertEqual(try cost(0, 0, 4), 1, "An increase to an implicated lift is excluded")
+        XCTAssertEqual(try cost(0, 0, 3), 0, "Existing baseline dose stays available")
+        XCTAssertEqual(try cost(0, 5, 3), 1, "New implicated work is excluded")
+        XCTAssertEqual(try cost(0, 5, 0), 0, "Omission remains available")
+        XCTAssertEqual(bound.limit, 0)
+        let unguarded = try XCTUnwrap(service.jointDoseProjection(for: pool, blueprint: plan,
+            weekNumber: 1, requiredKeysByDay: required, preservingDoseOf: baseline))
+        XCTAssertFalse(unguarded.problem.upperBounds.contains { $0.name == bound.name })
     }
 
     func testUnfundableRawSlotRequestStaysVisibleWithoutReducingDoseOrFrequency() throws {

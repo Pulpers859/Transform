@@ -1,5 +1,24 @@
 # Generator planner refactor: evidence and acceptance
 
+## Symptom-aware joint-search boundary (verification pending)
+
+Commit `9088bdf` passed 182 focused cases in run `36128907690` with zero
+failures/errors/skips; Swift run `36128907649` logged BUILD SUCCEEDED. The
+automatically found lumbar plan kept baseline numeric dose, and its day styles
+and weekly variation passed the existing checks, but session ordering changed.
+The app's current reported-symptom matcher implicated six newly added or
+increased day/exercise doses in that candidate. This is a conservative policy
+finding, not a claim that any particular movement causes pain.
+
+The diagnostic projection can now make those implicated options unavailable
+while leaving existing same-day doses and omission choices intact. It requires
+an explicit funded baseline, uses the existing shoulder/elbow/lower-back/knee
+matchers, and keeps all dose, capacity and history constraints. The old numeric
+search remains separately visible so a symptom-guarded search limit cannot be
+mistaken for a catalog or global feasibility proof. Neither path can adopt a
+workout in production. The candidate still requires order and full-plan
+quality checks; no iPhone or paid API test is requested at this stage.
+
 ## Bounded search efficiency and captured automatic candidate (verification pending)
 
 Commit `4631d87` passed 182 focused cases in run `36061541551` with zero
