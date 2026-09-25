@@ -1805,8 +1805,12 @@ extension ClaudeService {
         menuPlanningTrace: ((String, [[PreSelectedExercise]]) -> Void)? = nil,
         corePlanningReport: ((SubstitutionPlanningBaseline, CoreRelocationFinalization) -> Void)? = nil,
         rowPlanningReport: ((SubstitutionPlanningBaseline, RowBalanceFinalization) -> Void)? = nil,
-        capacityPlanningReport: ((SubstitutionPlanningBaseline, SessionCapacityFinalization) -> Void)? = nil
+        capacityPlanningReport: ((SubstitutionPlanningBaseline, SessionCapacityFinalization) -> Void)? = nil,
+        historicalCapacityDiagnosticCeiling: Int? = nil
     ) -> SubstitutionPlanningBaseline {
+        // Only the captured pre-ceiling test replay opts into eight. Every app caller
+        // takes the six-exercise default before any menu is sent to AI or fallback.
+        let maximumExercisesPerDay = historicalCapacityDiagnosticCeiling == 8 ? 8 : 6
         let previousExercisesByStyle = proceduralPreviousExercisesByStyle(from: previousWeekDays)
         var previousUsageByStyle: [String: Int] = [:]
         var usedAcrossDays = Set<String>()
@@ -2105,7 +2109,8 @@ extension ClaudeService {
             allMenus,
             blueprint: blueprint,
             trainingIntent: trainingIntent,
-            avoidedExercises: avoidedExercises
+            avoidedExercises: avoidedExercises,
+            maximumExercisesPerDay: maximumExercisesPerDay
         )
         menuPlanningTrace?("baselineCoverage", coverageCompleteMenus)
         let feasibilityCompleteMenus = enforcePriorityDirectSetFeasibility(
@@ -2113,7 +2118,8 @@ extension ClaudeService {
             blueprint: blueprint,
             trainingIntent: trainingIntent,
             weekNumber: weekNumber,
-            avoidedExercises: avoidedExercises
+            avoidedExercises: avoidedExercises,
+            maximumExercisesPerDay: maximumExercisesPerDay
         )
         menuPlanningTrace?("priorityFeasibility", feasibilityCompleteMenus)
         var finalCoverageMenus = feasibilityCompleteMenus
@@ -2128,7 +2134,8 @@ extension ClaudeService {
                 blueprint: blueprint,
                 trainingIntent: trainingIntent,
                 avoidedExercises: avoidedExercises,
-                allowReplacements: false
+                allowReplacements: false,
+                maximumExercisesPerDay: maximumExercisesPerDay
             )
             let gapsAfter = Set(
                 baselineCoverageGaps(in: repairedMenus, blueprint: blueprint).map { $0.seed }
@@ -2153,14 +2160,16 @@ extension ClaudeService {
             trainingIntent: trainingIntent,
             weekNumber: weekNumber,
             avoidedExercises: avoidedExercises,
-            lockedPrefixCounts: lockedPrefixCounts
+            lockedPrefixCounts: lockedPrefixCounts,
+            maximumExercisesPerDay: maximumExercisesPerDay
         )
         menuPlanningTrace?("horizontalPullCoverage", rowCompleteMenus)
         let breadthCompleteMenus = enforceMaintenanceExposureBreadth(
             rowCompleteMenus,
             blueprint: blueprint,
             weekNumber: weekNumber,
-            avoidedExercises: avoidedExercises
+            avoidedExercises: avoidedExercises,
+            maximumExercisesPerDay: maximumExercisesPerDay
         )
         menuPlanningTrace?("maintenanceBreadth", breadthCompleteMenus)
         let balancedMenus = enforceLowerSessionKneeAnchor(
@@ -2451,7 +2460,8 @@ extension ClaudeService {
         blueprint: ProgramBlueprint,
         trainingIntent: TrainingIntentPlan,
         avoidedExercises: Set<String>,
-        allowReplacements: Bool = true
+        allowReplacements: Bool = true,
+        maximumExercisesPerDay: Int = 6
     ) -> [[PreSelectedExercise]] {
         var updated = menus
         for group in majorMuscleGroups {
@@ -2547,12 +2557,10 @@ extension ClaudeService {
                         break candidateSearch
                     }
 
-                    // The validator permits 5-8 movements per training day. A six-movement
-                    // menu can already contain the only direct exposure for several other
-                    // maintenance groups, so swapping one of them would simply move BASE-001's
-                    // zero to a different muscle. Use the available capacity only after every
-                    // safe replacement has been rejected.
-                    if updated[dayOffset].count < 8 {
+                    // Keep the owner-directed session ceiling even when no safe replacement
+                    // exists. The gap remains visible to validation instead of being hidden
+                    // behind a seventh movement.
+                    if updated[dayOffset].count < maximumExercisesPerDay {
                         var expandedMenus = updated
                         expandedMenus[dayOffset].append(candidateMenu)
                         let gapsBefore = Set(
@@ -2602,12 +2610,9 @@ extension ClaudeService {
 
     /// How many movements a day may hold before adding another one makes the session worse.
     ///
-    /// The validator permits 5-8 movements per training day, but `validateSessionFocusDiscipline`
-    /// applies a stricter rule to lower-body sessions: a Lower day with 7 or more movements is
-    /// "too crowded for a fatigue-managed Lower session". The first version of the balance passes
-    /// used the flat ceiling of 8 and promptly earned that finding — it added a second calf
-    /// movement to a six-movement Legs day, trading a thin muscle group for an overcrowded
-    /// session. Buying breadth by making a day worse is not a fix.
+    /// The owner's hard limit is six, including Upper, Push and Arms sessions.
+    /// Older balance passes could append a second maintenance movement to an
+    /// already full day; their optional breadth cannot outrank this limit.
     ///
     /// A DELOAD week is capped at the size the planner deliberately built it, and this is the more
     /// important half of the rule. `preSelectedExerciseMenu` drops `targetCount` from 6 to 5 on
@@ -2617,11 +2622,12 @@ extension ClaudeService {
     /// notice. Reduction weeks do not grow. If that leaves a deload week without a row or with a
     /// thin muscle group, the validator reports it and the three loading weeks around it carry the
     /// coverage.
-    func comfortableDayExerciseCeiling(forStyle style: String, weekNumber: Int) -> Int {
+    func comfortableDayExerciseCeiling(forStyle style: String, weekNumber: Int,
+        maximumExercisesPerDay: Int = 6) -> Int {
         if MesocyclePhase.isDeloadWeek(weekNumber) {
             return deloadDayExerciseTarget
         }
-        return canonicalTrainingStyle(style) == "Lower" ? 6 : 8
+        return min(maximumExercisesPerDay, canonicalTrainingStyle(style) == "Lower" ? 6 : 8)
     }
 
     /// Movements per training day on the deload week. Shared with `preSelectedExerciseMenu`'s
@@ -2698,7 +2704,8 @@ extension ClaudeService {
         weekNumber: Int,
         avoidedExercises: Set<String>,
         candidates: [(name: String, target: String)],
-        deprioritizedDays: Set<Int> = []
+        deprioritizedDays: Set<Int> = [],
+        maximumExercisesPerDay: Int = 6
     ) -> [[PreSelectedExercise]]? {
         // Lightest day first. Every caller here is evening out a lopsided week, and the day
         // carrying the fewest movements is both the likeliest to have slot, fatigue and time
@@ -2734,7 +2741,8 @@ extension ClaudeService {
             for dayIndex in dayOrder {
                 guard menus[dayIndex].count < comfortableDayExerciseCeiling(
                     forStyle: blueprint.dayPlans[dayIndex].style,
-                    weekNumber: weekNumber
+                    weekNumber: weekNumber,
+                    maximumExercisesPerDay: maximumExercisesPerDay
                 ) else { continue }
                 guard exerciseMatchesDayStyle(
                     probe,
@@ -2857,7 +2865,8 @@ extension ClaudeService {
         trainingIntent: TrainingIntentPlan,
         weekNumber: Int,
         avoidedExercises: Set<String>,
-        lockedPrefixCounts: [Int] = []
+        lockedPrefixCounts: [Int] = [],
+        maximumExercisesPerDay: Int = 6
     ) -> [[PreSelectedExercise]] {
         let backAliases = normalizedGroupAliases(forSeed: "back")
         let trainsBack = menus.joined().contains { exercise in
@@ -2886,7 +2895,8 @@ extension ClaudeService {
             blueprint: blueprint,
             weekNumber: weekNumber,
             avoidedExercises: avoidedExercises,
-            candidates: rowCandidates
+            candidates: rowCandidates,
+            maximumExercisesPerDay: maximumExercisesPerDay
         ) {
             return appended
         }
@@ -3049,7 +3059,8 @@ extension ClaudeService {
         _ menus: [[PreSelectedExercise]],
         blueprint: ProgramBlueprint,
         weekNumber: Int,
-        avoidedExercises: Set<String>
+        avoidedExercises: Set<String>,
+        maximumExercisesPerDay: Int = 6
     ) -> [[PreSelectedExercise]] {
         var updated = menus
 
@@ -3089,7 +3100,8 @@ extension ClaudeService {
                     weekNumber: weekNumber,
                     avoidedExercises: avoidedExercises,
                     candidates: candidates,
-                    deprioritizedDays: coveredDays
+                    deprioritizedDays: coveredDays,
+                    maximumExercisesPerDay: maximumExercisesPerDay
                 ) else { break }
 
                 updated = expanded
@@ -3286,7 +3298,8 @@ extension ClaudeService {
         blueprint: ProgramBlueprint,
         trainingIntent: TrainingIntentPlan,
         weekNumber: Int,
-        avoidedExercises: Set<String>
+        avoidedExercises: Set<String>,
+        maximumExercisesPerDay: Int = 6
     ) -> [[PreSelectedExercise]] {
         var updated = menus
 
@@ -3467,7 +3480,8 @@ extension ClaudeService {
                         // work at all is worth one movement even on a deload.
                         if updated[dayIndex].count < comfortableDayExerciseCeiling(
                                forStyle: plan.style,
-                               weekNumber: weekNumber
+                               weekNumber: weekNumber,
+                               maximumExercisesPerDay: maximumExercisesPerDay
                            ),
                            !blueprint.calibration.recoveryConstrained,
                            !blueprint.calibration.poorNutritionAdherence,
@@ -3502,6 +3516,17 @@ extension ClaudeService {
                             // Do not evict a slot that already credits this same priority (net-zero swap).
                             let evicted = updated[dayIndex][replaceIndex]
                             guard !credits(evicted.exerciseName, evicted.muscleTarget, area: allocation.area) else { continue }
+                            // A six-slot day now reaches replacement more often. BASE-001 below
+                            // excludes priorities, so preserve every other priority's prime
+                            // appearance before trading this slot for the current one.
+                            let losesOtherPriority = blueprint.priorityAllocations.contains { other in
+                                guard normalizedPriorityText(other.area) != normalizedPriorityText(allocation.area) else {
+                                    return false
+                                }
+                                return credits(evicted.exerciseName, evicted.muscleTarget, area: other.area)
+                                    && !credits(candidate.name, candidate.target, area: other.area)
+                            }
+                            guard !losesOtherPriority else { continue }
 
                             // Priority feasibility is downstream of BASE-001. Never evict the
                             // only direct movement for another non-priority major group while

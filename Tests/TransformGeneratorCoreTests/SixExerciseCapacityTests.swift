@@ -127,6 +127,38 @@ final class SixExerciseCapacityTests: XCTestCase {
             macroTargets: nil, structuredTrainingIntent: structured)
     }
 
+    func testLivePlannerNeverHandsMoreThanSixExercisesToLockedMenuConsumers() throws {
+        for persona in personas {
+            let source = analysis(for: persona)
+            let intent = service.trainingIntentPlan(from: source)
+            let blueprint = service.programBlueprint(for: intent, weekNumber: 1)
+            let planned = service.preSelectedExercisePlan(for: blueprint, trainingIntent: intent,
+                weekNumber: 1, previousWeekDays: nil, exerciseHistory: nil)
+            XCTAssertTrue(planned.menus.indices.allSatisfy { day in
+                planned.blueprint.dayPlans[day].isRestDay
+                    ? planned.menus[day].isEmpty : (5...6).contains(planned.menus[day].count)
+            }, "Live menu exceeds six or loses its exercise floor: \(persona.name)")
+            XCTAssertTrue(service.baselineCoverageGaps(in: planned.menus,
+                blueprint: planned.blueprint).isEmpty,
+                "The six-exercise limit must not erase a major muscle group: \(persona.name)")
+            XCTAssertNoThrow(try service.requireSixExerciseMenu(planned.menus, blueprint: planned.blueprint))
+            var overfilled = planned.menus
+            let firstTrainingDay = try XCTUnwrap(planned.blueprint.dayPlans.firstIndex { !$0.isRestDay })
+            while overfilled[firstTrainingDay].count <= 6 {
+                overfilled[firstTrainingDay].append(overfilled[firstTrainingDay][0])
+            }
+            XCTAssertThrowsError(try service.requireSixExerciseMenu(overfilled,
+                blueprint: planned.blueprint), "Do not spend API credits on a locked seven-slot menu")
+            let program = try service.validatedProceduralWeekOneProgram(from: source,
+                trainingIntent: intent, blueprint: planned.blueprint, exerciseMenus: planned.menus)
+            let findings = service.validateProgramResponse(program, blueprint: planned.blueprint,
+                expectedExerciseMenus: planned.menus)
+            let hard = findings.filter { service.validationDisposition(for: $0, menuLocked: true) == .hardFailure }
+            XCTAssertTrue(hard.isEmpty, "The exact locked menu must not cause a hard failure: \(persona.name): \(hard)")
+            print("LIVE_SIX \(persona.name) counts=\(planned.menus.map(\.count)) findings=\(findings)")
+        }
+    }
+
     func testTraceFiveCompleteWeekOnePlansWithOptionalSixSlotReservation() throws {
         var report = ["SIX_SLOT_DIAGNOSTIC: five synthetic Week 1 plans; production capacity comparison, no device proof.",
             "Reservation proves role-floor subset feasibility only; fresh allocation/dose comparison is reported separately."]
@@ -145,7 +177,8 @@ final class SixExerciseCapacityTests: XCTestCase {
             let delivered = service.preSelectedExercisePlan(for: blueprint, trainingIntent: intent, weekNumber: 1,
                 previousWeekDays: nil, exerciseHistory: nil,
                 menuPlanningTrace: { phases.append(($0, $1)) }, rowPlanningReport: { rowInput = $0; _ = $1 },
-                capacityPlanningReport: { baseline = $0; capacity = $1 })
+                capacityPlanningReport: { baseline = $0; capacity = $1 },
+                historicalCapacityDiagnosticCeiling: 8)
             let funded = try XCTUnwrap(baseline)
             XCTAssertEqual(funded.roleFloorAdmission, .admitted, "Preserved-dose diagnostics require an admitted baseline")
             let observedCapacity = try XCTUnwrap(capacity)

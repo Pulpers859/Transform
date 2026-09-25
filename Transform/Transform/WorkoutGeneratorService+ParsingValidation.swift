@@ -1293,8 +1293,8 @@ extension ClaudeService {
         var totalTrainingExercises = 0
 
         for day in trainingDays {
-            if day.exercises.count < 5 || day.exercises.count > 8 {
-                issues.append("Day \(day.dayNumber) must have 5-8 exercises.")
+            if day.exercises.count < 5 || day.exercises.count > 6 {
+                issues.append("Day \(day.dayNumber) must have 5-6 exercises.")
             }
             if day.dayName.trimmedOr(default: "").isEmpty {
                 issues.append("Day \(day.dayNumber) has empty dayName.")
@@ -1494,7 +1494,7 @@ extension ClaudeService {
             "Training days must be between 4 and 6.",
             "Rest days must be between 1 and 3.",
             "daysPerWeek should be between 4 and 6.",
-            "must have 5-8 exercises.",
+            "must have 5-6 exercises.",
             "has empty dayName.",
             "has an exercise with empty exerciseName.",
             "has invalid sets.",

@@ -50,7 +50,7 @@ final class ValidationDispositionOwnershipTests: XCTestCase {
             "Training days must be between 4 and 6.",
             "Rest days must be between 1 and 3.",
             "daysPerWeek should be between 4 and 6.",
-            "Day 2 must have 5-8 exercises.",
+            "Day 2 must have 5-6 exercises.",
             "Day 2 has empty dayName.",
             "Day 2 has an exercise with empty exerciseName.",
             "Day 2 exercise Back Squat has invalid sets.",

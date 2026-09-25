@@ -41,6 +41,15 @@ extension ClaudeService {
 
     var aiSourceLabel: String { "[AI Coach]" }
     var fallbackSourceLabel: String { "[Recovery Engine]" }
+    func requireSixExerciseMenu(_ menus: [[PreSelectedExercise]], blueprint: ProgramBlueprint) throws {
+        guard menus.count == 7, blueprint.dayPlans.count == 7,
+              menus.indices.allSatisfy({ day in
+                  blueprint.dayPlans[day].isRestDay
+                      ? menus[day].isEmpty : (5...6).contains(menus[day].count)
+              }) else {
+            throw ClaudeError.parseError("Workout planning could not fit every training day within 5-6 exercises. No AI request was sent.")
+        }
+    }
     var evidenceProfile: HypertrophyEvidenceProfile { Self.evidenceProfileCache }
     static let evidenceProfileCache = HypertrophyEvidenceProfile(
         version: "hypertrophy_v1_10",
@@ -204,6 +213,7 @@ extension ClaudeService {
         )
         let blueprint = exercisePlan.blueprint
         let exerciseMenus = exercisePlan.menus
+        try requireSixExerciseMenu(exerciseMenus, blueprint: blueprint)
         let intentSummary = trainingIntentContext(from: trainingIntent, blueprint: blueprint)
         let blueprintSummary = blueprintContext(from: blueprint)
         let context = generationContext(
@@ -526,6 +536,7 @@ extension ClaudeService {
         )
         let blueprint = exercisePlan.blueprint
         let exerciseMenus = exercisePlan.menus
+        try requireSixExerciseMenu(exerciseMenus, blueprint: blueprint)
         let intentSummary = trainingIntentContext(from: trainingIntent, blueprint: blueprint)
         let blueprintSummary = blueprintContext(from: blueprint)
         let context = generationContext(
@@ -855,6 +866,7 @@ extension ClaudeService {
         )
         let blueprint = exercisePlan.blueprint
         let exerciseMenus = exercisePlan.menus
+        try requireSixExerciseMenu(exerciseMenus, blueprint: blueprint)
         let intentSummary = trainingIntentContext(from: trainingIntent, blueprint: blueprint)
         let blueprintSummary = blueprintContext(from: blueprint)
         let context = generationContext(
@@ -1244,6 +1256,7 @@ extension ClaudeService {
         )
         let blueprint = exercisePlan.blueprint
         let exerciseMenus = exercisePlan.menus
+        try requireSixExerciseMenu(exerciseMenus, blueprint: blueprint)
         let intentSummary = trainingIntentContext(from: trainingIntent, blueprint: blueprint)
         let blueprintSummary = blueprintContext(from: blueprint)
         let context = generationContext(

@@ -572,7 +572,7 @@ extension WorkoutValidatorNotice {
         }
 
         if containsAnyFragment(issue, [
-            "must have 5-8 exercises.",
+            "must have 5-6 exercises.",
             "Total training exercises are too low."
         ]) {
             return notice(
