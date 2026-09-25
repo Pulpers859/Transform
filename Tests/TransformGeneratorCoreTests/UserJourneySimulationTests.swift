@@ -1073,7 +1073,11 @@ final class UserJourneySimulationTests: XCTestCase {
             }
             let findings = service.validateWeekResponse(delivered, dayStart: dayStart, dayEnd: dayEnd,
                 previousWeekDays: previousExperimentalDays, blueprint: relocated.blueprint, expectedExerciseMenus: relocated.menus)
-            XCTAssertTrue(findings.isEmpty, "Repeatable relocation must resolve crowding without new findings: \(findings)")
+            // This reconstructed historical week intentionally keeps a different seven-slot
+            // Upper day. The live six-slot rule must flag it; relocation only fixes the Lower
+            // receiver and must not introduce any other finding.
+            XCTAssertEqual(findings, ["Day \(dayStart + 3) must have 5-6 exercises."],
+                "The historical fixture should retain only its pre-existing Upper-day over-cap finding")
             chain.append("WEEK \(week) FINDINGS \(findings)")
             chain.append("WEEK \(week) DELIVERED \(try encodedDays(delivered.days))")
             previousExperimentalDays = delivered.days
@@ -2090,6 +2094,8 @@ final class UserJourneySimulationTests: XCTestCase {
                     }
                 }
                 let trainingDays = days.filter { !$0.isRestDay }
+                XCTAssertTrue(trainingDays.allSatisfy { (5...6).contains($0.exercises.count) },
+                    "\(persona.name) week \(weekNumber): live menu must contain five or six exercises per training day")
                 let totalSets = trainingDays.flatMap(\.exercises).reduce(0) { $0 + $1.sets }
                 let exerciseCount = trainingDays.reduce(0) { $0 + $1.exercises.count }
                 if !MesocyclePhase.isDeloadWeek(weekNumber) {

@@ -800,7 +800,10 @@ final class GeneratorBalanceFixTests: XCTestCase {
             XCTAssertEqual(service.comfortableDayExerciseCeiling(forStyle: style, weekNumber: 1), 6)
         }
         for style in ["Push", "Upper"] {
-            XCTAssertEqual(service.comfortableDayExerciseCeiling(forStyle: style, weekNumber: 1), 8)
+            XCTAssertEqual(service.comfortableDayExerciseCeiling(forStyle: style, weekNumber: 1), 6)
+            XCTAssertEqual(service.comfortableDayExerciseCeiling(
+                forStyle: style, weekNumber: 1, maximumExercisesPerDay: 8), 8,
+                "Only explicit historical diagnostics may use the former eight-slot ceiling")
         }
     }
 
