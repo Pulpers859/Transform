@@ -4126,7 +4126,24 @@ extension ClaudeService {
         priorMesocycleExercises: Set<String>,
         preferredReplacements: [String: String] = [:]
     ) -> [(name: String, target: String)] {
-        let filtered = catalog.filter { item in
+        // The replacement picker uses the full metadata catalog, while a day's seed
+        // catalog is deliberately small (e.g. Push lacks Machine Lateral Raise).
+        // Admit a preferred alternative only beside an already represented compatible
+        // slot. These are candidates, not extra exercise appearances or set allocations.
+        var preferenceCatalog = catalog
+        for sourceKey in preferredReplacements.keys.sorted() {
+            guard let targetName = preferredReplacements[sourceKey],
+                  let source = exerciseMetadataCatalog.values.first(where: { ExerciseWeightEntry.canonicalLookupKey($0.canonicalName) == sourceKey }),
+                  let target = exerciseMetadataCatalog.values.first(where: { $0.canonicalName == targetName }),
+                  ExerciseReplacement.compatible(originalName: source.canonicalName, candidateName: target.canonicalName),
+                  !preferenceCatalog.contains(where: { ExerciseWeightEntry.canonicalLookupKey($0.name) == ExerciseWeightEntry.canonicalLookupKey(target.canonicalName) }),
+                  let slot = preferenceCatalog.firstIndex(where: {
+                      ExerciseWeightEntry.canonicalLookupKey($0.name) == sourceKey
+                          || ExerciseReplacement.compatible(originalName: source.canonicalName, candidateName: $0.name)
+                  }) else { continue }
+            preferenceCatalog.insert((target.canonicalName, target.primaryAreas.joined(separator: ", ")), at: slot)
+        }
+        let filtered = preferenceCatalog.filter { item in
             !avoidedExercises.contains(ExerciseWeightEntry.canonicalLookupKey(item.name))
         }
 
@@ -4154,7 +4171,7 @@ extension ClaudeService {
                 deprioritizedExercises.contains(ExerciseWeightEntry.canonicalLookupKey(item.name))
             }
             var ranked = items.filter { !deprioritized($0) }
-            // Only reorder an existing compatible pair. Never inject extra work, bypass
+            // Only reorder a compatible pair. Never inject extra work, bypass
             // pain filtering, or let a preference override recurring equipment trouble.
             for sourceKey in preferredReplacements.keys.sorted() {
                 guard let target = preferredReplacements[sourceKey],

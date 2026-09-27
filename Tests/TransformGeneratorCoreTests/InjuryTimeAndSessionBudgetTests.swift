@@ -296,12 +296,20 @@ final class InjuryTimeAndSessionBudgetTests: XCTestCase {
         XCTAssertEqual(ordered(pain: [sourceKey]).first, target)
         XCTAssertFalse(ordered(pain: [targetKey]).contains(target))
         XCTAssertEqual(ordered(pain: [], equipment: [targetKey]).last, target)
+        let smallCatalog = Array(catalog.prefix(2)) // Real day catalogs omit some picker alternatives.
+        let expanded = service.applyHistoryFilters(smallCatalog, avoidedExercises: [sourceKey],
+            deprioritizedExercises: [], catalogOffset: 0, weekNumber: 1, priorMesocycleExercises: [],
+            preferredReplacements: [sourceKey: target])
+        XCTAssertEqual(expanded.first?.name, target)
+        XCTAssertFalse(expanded.contains { $0.name == source })
         XCTAssertEqual(service.applyHistoryFilters(catalog, avoidedExercises: [],
             deprioritizedExercises: [], catalogOffset: 0, weekNumber: 1, priorMesocycleExercises: []).first?.name, source)
     }
 
     func testPainAndReplacementPreferenceReachACompleteLockedPlan() throws {
-        let analysis = blankAnalysis()
+        // Make lateral work part of the contract: a preference must not invent a
+        // muscle-region requirement that an empty analysis never requested.
+        let analysis = blankAnalysis(priorities: ["Lateral Deltoids"])
         let intent = service.trainingIntentPlan(from: analysis)
         let source = ExerciseWeightEntry.canonicalLookupKey("Dumbbell Lateral Raise")
         let history = ClaudeService.ExerciseHistoryContext(
@@ -315,7 +323,7 @@ final class InjuryTimeAndSessionBudgetTests: XCTestCase {
         try service.requireSixExerciseMenu(plan.menus, blueprint: plan.blueprint)
         let names = plan.menus.flatMap { $0 }.map { $0.exerciseName }
         XCTAssertFalse(names.contains("Dumbbell Lateral Raise"))
-        XCTAssertTrue(names.contains("Machine Lateral Raise"), "A real complete plan should use the compatible available preference")
+        XCTAssertTrue(names.contains("Machine Lateral Raise"), "A real complete plan should use the compatible available preference: \(names)")
         let delivered = try service.validatedProceduralWeekOneProgram(from: analysis,
             trainingIntent: intent, blueprint: plan.blueprint, exerciseMenus: plan.menus)
         XCTAssertEqual(delivered.days.flatMap { $0.exercises }.map { $0.exerciseName }, names)
@@ -378,12 +386,12 @@ final class InjuryTimeAndSessionBudgetTests: XCTestCase {
     }
 
     /// Copied verbatim from `RecoveryModulationTests` so the initialiser labels stay correct.
-    private func blankAnalysis() -> BodyAnalysisResult {
+    private func blankAnalysis(priorities: [String] = []) -> BodyAnalysisResult {
         BodyAnalysisResult(
             overallAssessment: "", trainingAssessment: "", nutritionAssessment: "",
             recoveryRiskAssessment: "", adherenceAssessment: "", analysisLimitations: "",
             inputContext: nil, regionBreakdown: [], topLeverageChange: "",
-            priorityMuscles: [], workoutRecommendations: [], dietRecommendations: [],
+            priorityMuscles: priorities, workoutRecommendations: [], dietRecommendations: [],
             posturalNotes: "", estimatedBodyFat: "", metabolicHealthNotes: "",
             psychologicalInsights: "", injuryRiskNotes: "", macroTargets: nil,
             structuredTrainingIntent: nil
