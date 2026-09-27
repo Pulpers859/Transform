@@ -45,6 +45,17 @@ final class ExerciseSessionSummaryTests: XCTestCase {
     }
 
     // MARK: - Wiring contract
+
+    func testSkipMenuOnlyOffersRealSkipsWithoutRemovingLegacyHistoryValues() {
+        XCTAssertEqual(ExerciseCompletionStatus.skipChoices, [.skippedTime, .skippedEquipment, .skippedPain])
+        for status in ExerciseCompletionStatus.skipChoices {
+            XCTAssertTrue(status.isSkipped)
+            XCTAssertTrue(status.marksExerciseFinished)
+            XCTAssertFalse(status.skipEffect.isEmpty)
+        }
+        XCTAssertEqual(ExerciseCompletionStatus(rawValue: "Substituted"), .substituted)
+        XCTAssertEqual(ExerciseCompletionStatus(rawValue: "Completed (modified)"), .completedModified)
+    }
     //
     // These pin the properties the card actually renders from. Before wiring, the resolver
     // passed its own tests while the view read `exercise.isCompleted` raw at seven sites — the

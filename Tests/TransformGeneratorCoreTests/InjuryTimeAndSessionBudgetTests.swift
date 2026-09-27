@@ -259,6 +259,65 @@ final class InjuryTimeAndSessionBudgetTests: XCTestCase {
         )
     }
 
+    func testEquipmentPreferenceIncludesMainLiftsWithoutMovingIsolationAheadOfThem() {
+        let catalog = [
+            (name: "Barbell Bench Press", target: "Chest"),
+            (name: "Dumbbell Bench Press", target: "Chest"),
+            (name: "Cable Fly", target: "Chest"),
+            (name: "Pec Deck", target: "Chest")
+        ]
+        let ordered = service.applyHistoryFilters(
+            catalog, avoidedExercises: [],
+            deprioritizedExercises: Set(["Barbell Bench Press", "Cable Fly"].map { ExerciseWeightEntry.canonicalLookupKey($0) }),
+            catalogOffset: 0, weekNumber: 2, priorMesocycleExercises: []
+        )
+        XCTAssertEqual(ordered.map { $0.name }, ["Dumbbell Bench Press", "Barbell Bench Press", "Pec Deck", "Cable Fly"])
+        let anchorsOnly = service.applyHistoryFilters(
+            Array(catalog.prefix(2)), avoidedExercises: [],
+            deprioritizedExercises: [ExerciseWeightEntry.canonicalLookupKey("Barbell Bench Press")],
+            catalogOffset: 0, weekNumber: 2, priorMesocycleExercises: []
+        )
+        XCTAssertEqual(anchorsOnly.map { $0.name }, ["Dumbbell Bench Press", "Barbell Bench Press"])
+    }
+
+    func testUnavailableAnchorsAreNotAutomaticallyLockedIntoNextWeek() throws {
+        let analysis = blankAnalysis()
+        let intent = service.trainingIntentPlan(from: analysis)
+        let first = service.preSelectedExercisePlan(
+            for: service.programBlueprint(for: intent, weekNumber: 1), trainingIntent: intent,
+            weekNumber: 1, previousWeekDays: nil, exerciseHistory: nil
+        )
+        let program = try service.validatedProceduralWeekOneProgram(
+            from: analysis, trainingIntent: intent, blueprint: first.blueprint, exerciseMenus: first.menus
+        )
+        let normal = service.preSelectedExercisePlan(
+            for: service.programBlueprint(for: intent, weekNumber: 2), trainingIntent: intent,
+            weekNumber: 2, previousWeekDays: program.days, exerciseHistory: nil
+        )
+        let retained = normal.retainedKeysByDay.reduce(into: Set<String>()) { $0.formUnion($1) }
+        XCTAssertFalse(retained.isEmpty, "The fixture must actually exercise anchor retention")
+        let history = ClaudeService.ExerciseHistoryContext(
+            painExercises: [], equipmentSkipExercises: retained, priorMesocycleExercises: [], mesocycleIndex: 0
+        )
+        let changed = service.preSelectedExercisePlan(
+            for: service.programBlueprint(for: intent, weekNumber: 2), trainingIntent: intent,
+            weekNumber: 2, previousWeekDays: program.days, exerciseHistory: history
+        )
+        XCTAssertTrue(changed.retainedKeysByDay.allSatisfy { $0.isDisjoint(with: retained) })
+        XCTAssertNoThrow(try service.requireSixExerciseMenu(changed.menus, blueprint: changed.blueprint))
+        XCTAssertEqual(changed.menus.filter { !$0.isEmpty }.count, normal.menus.filter { !$0.isEmpty }.count)
+        let delivered = try service.validatedProceduralWeek(
+            weekNumber: 2, dayStart: 8, dayEnd: 14, splitType: program.splitType,
+            programName: program.programName, trainingIntent: intent, blueprint: changed.blueprint,
+            previousWeekDays: program.days, exerciseMenus: changed.menus
+        )
+        XCTAssertEqual(delivered.days.count, 7)
+        for (day, menu) in zip(delivered.days, changed.menus) {
+            XCTAssertEqual(day.exercises.map { $0.exerciseName }, menu.map { $0.exerciseName })
+            XCTAssertEqual(day.exercises.map { $0.sets }, menu.map { $0.prescribedSets })
+        }
+    }
+
     /// Deprioritizing is not banning. A busy machine says nothing about safety, so the movement
     /// must still be reachable when nothing else covers the muscle.
     func testADeprioritizedMovementIsStillAvailableWhenItIsTheOnlyOption() {

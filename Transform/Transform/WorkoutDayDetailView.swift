@@ -829,6 +829,7 @@ struct ExerciseCard: View {
     let onSetStatus: (ExerciseCompletionStatus) -> Void
     let onClearStatus: () -> Void
     @State private var showDetails = false
+    @State private var pendingSkip: ExerciseCompletionStatus?
 
     var latestWeightLog: ExerciseWeightEntry? {
         weightSummary
@@ -1698,9 +1699,9 @@ struct ExerciseCard: View {
             .buttonStyle(.plain)
 
             Menu {
-                ForEach(ExerciseCompletionStatus.allCases.filter { $0 != .completed }) { status in
+                ForEach(ExerciseCompletionStatus.skipChoices) { status in
                     Button {
-                        onSetStatus(status)
+                        pendingSkip = status
                     } label: {
                         Text(status.rawValue)
                     }
@@ -1709,6 +1710,18 @@ struct ExerciseCard: View {
                 Label("Skip", systemImage: "forward.fill")
                     .font(.caption.bold())
                     .foregroundStyle(.secondary)
+            }
+            .alert("Skip \(exercise.exerciseName)?", isPresented: Binding(
+                get: { pendingSkip != nil },
+                set: { if !$0 { pendingSkip = nil } }
+            ), presenting: pendingSkip) { status in
+                Button("Cancel", role: .cancel) { pendingSkip = nil }
+                Button("Record Skip") {
+                    onSetStatus(status)
+                    pendingSkip = nil
+                }
+            } message: { status in
+                Text("\(status.skipEffect) Any sets already logged are kept. No replacement exercise is logged by this action.")
             }
 
             NavigationLink {

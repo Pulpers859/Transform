@@ -301,6 +301,23 @@ enum ExerciseCompletionStatus: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
+    /// Only actual skips belong in the Skip menu. Legacy substitution/modified values
+    /// remain decodable; a status alone cannot identify or log a replacement exercise.
+    static let skipChoices: [Self] = [.skippedTime, .skippedEquipment, .skippedPain]
+
+    var skipEffect: String {
+        switch self {
+        case .skippedTime:
+            return "Records missed work today. It does not reduce future sets or replace this exercise."
+        case .skippedEquipment:
+            return "Repeated equipment skips make this exercise less preferred in future generated workouts, including main lifts. It may still be selected if needed; today's workout is not replaced."
+        case .skippedPain:
+            return "Records pain and excludes this exercise from future generated menus while this pain record remains. It does not replace it in workouts already created. Clear an accidental skip on this card."
+        default:
+            return ""
+        }
+    }
+
     /// Whether choosing this status settles the exercise for today.
     ///
     /// Skips already did this; `.completed` and `.completedModified` did NOT, so picking

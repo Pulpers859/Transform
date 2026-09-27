@@ -1875,7 +1875,7 @@ extension ClaudeService {
             let retained = retainedAnchorExercises(from: previousExercises, style: style)
                 .filter { exercise in
                     let canonKey = ExerciseWeightEntry.canonicalLookupKey(exercise.exerciseName)
-                    if avoidedExercises.contains(canonKey) { return false }
+                    if avoidedExercises.contains(canonKey) || deprioritizedExercises.contains(canonKey) { return false }
                     guard let focusIntent else { return true }
                     return focusStimulusKind(
                         exerciseName: exercise.exerciseName,
@@ -4138,18 +4138,15 @@ extension ClaudeService {
             }
         }
 
-        var result = anchors + accessories
-
-        let anchorCount = anchors.count
-        for i in result.indices.reversed() where i >= anchorCount {
-            let canonKey = ExerciseWeightEntry.canonicalLookupKey(result[i].name)
-            if deprioritizedExercises.contains(canonKey) {
-                let item = result.remove(at: i)
-                result.append(item)
+        // Equipment availability applies to main lifts too. Keep the compound-first
+        // boundary and stable ordering; this is preference, never an equipment ban.
+        func preferAvailable(_ items: [(name: String, target: String)]) -> [(name: String, target: String)] {
+            func deprioritized(_ item: (name: String, target: String)) -> Bool {
+                deprioritizedExercises.contains(ExerciseWeightEntry.canonicalLookupKey(item.name))
             }
+            return items.filter { !deprioritized($0) } + items.filter { deprioritized($0) }
         }
-
-        return result
+        return preferAvailable(anchors) + preferAvailable(accessories)
     }
 
     func variationCatalogOffset(for history: ExerciseHistoryContext) -> Int {
