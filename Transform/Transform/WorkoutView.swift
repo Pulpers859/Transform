@@ -1496,20 +1496,20 @@ struct WorkoutView: View {
             let next = formatWeight(
                 WorkoutProgressionEngine.nextLoad(from: decision.workingWeight, exerciseName: entry.exerciseName)
             )
-            return "beat the \(range.low)-\(range.high) rep target at \(weight) lb — cue ADDING LOAD; next achievable step is \(next) lb"
+            return "beat the \(range.low)-\(range.high) rep target at \(weight) lb — app action: increase load; next achievable step is \(next) lb"
         case .holdBelowRange:
-            return "fell below the \(range.low)-\(range.high) rep target — cue HOLDING \(weight) lb and building reps"
+            return "fell below the \(range.low)-\(range.high) rep target — app action: retain \(weight) lb while working toward the existing rep range"
         case .reduceLoad:
-            let cue = WorkoutProgressionEngine.reductionPromptCue(
-                from: decision.workingWeight,
-                exerciseName: entry.exerciseName,
-                formatLoad: { formatWeight($0) }
-            )
-            return "stalled under the \(range.low)-\(range.high) rep target at \(weight) lb across repeated sessions — \(cue)"
+            let reduced = WorkoutProgressionEngine.reducedLoad(from: decision.workingWeight,
+                exerciseName: entry.exerciseName)
+            let action = reduced < decision.workingWeight
+                ? "app action: reduce load to \(formatWeight(reduced)) lb"
+                : "no smaller load step is available; this does not authorize an exercise substitution"
+            return "stalled under the \(range.low)-\(range.high) rep target at \(weight) lb across repeated sessions — \(action)"
         case .holdForRecovery:
-            return "repeated low RIR at \(weight) lb — cue HOLDING LOAD to protect recovery before progressing"
+            return "repeated low RIR at \(weight) lb — app action: retain load for recovery"
         case .addRepsInRange:
-            return "inside the \(range.low)-\(range.high) rep target at \(weight) lb — cue ADDING REPS before load"
+            return "inside the \(range.low)-\(range.high) rep target at \(weight) lb — app action: progress within the existing rep range before increasing load"
         }
     }
 

@@ -122,7 +122,9 @@ final class BodyweightAndEffortFieldTests: XCTestCase {
             "Progression target: add 2.5-5 lb or 1 rep versus last week.",
             "Keep this at 2 RIR maintenance — add a rep before adding a barbell step.",
             "When you clear 15 clean reps, add ankle weight.",
-            "Baseline target: finish sets with 2-3 reps in reserve."
+            "Baseline target: finish sets with 2-3 reps in reserve.",
+            "Keep your hips pinned to the pad. Hold 115 territory and build reps, since you fell just short of the range last time here.",
+            "Keep building reps within the range."
         ] {
             XCTAssertTrue(service.notesContainProgressionInstruction(offender), "Should flag: \(offender)")
         }
@@ -136,9 +138,43 @@ final class BodyweightAndEffortFieldTests: XCTestCase {
             // execution-only rule is not the same as being execution-only; see
             // CoachingVoiceTests.testNoCueContradictsTheProgressionVerdict, which checks the
             // whole cue library against both.
-            "Prioritise a full range and repeatable mechanics over anything else in the set."
+            "Prioritise a full range and repeatable mechanics over anything else in the set.",
+            "Hold 2 seconds at the top with the elbow at 90 degrees.",
+            "Increase total time under tension with a controlled lowering phase.",
+            "Stop when you clearly feel the chest lengthen."
         ] {
             XCTAssertFalse(service.notesContainProgressionInstruction(clean), "Should NOT flag: \(clean)")
+        }
+    }
+
+    func testHistoryDoesNotAuthorizeUnlockedCoachingInEitherGenerationStage() {
+        let history = "Seated Leg Curl: 115 lb x 10 — app verdict: cue HOLDING 115 lb and building reps"
+        let skips = "Incline Barbell Press: equipment unavailable 1x, modified 3x"
+        let prompts = [
+            service.weekOneUserPrompt(context: "analysis", exerciseMenuContext: "locked menu",
+                performanceHistory: history, skipHistory: skips),
+            service.nextWeekUserPrompt(weekNumber: 2, dayStart: 8, dayEnd: 14,
+                previousWeekReference: "prior week", analysisContext: "analysis",
+                exerciseMenuContext: "locked menu", performanceHistory: history,
+                sessionFeedbackSummary: "Repeated high effort and pain", skipHistory: skips)
+        ]
+        for prompt in prompts {
+            XCTAssertTrue(prompt.contains(history), "Keep logged evidence intact")
+            XCTAssertTrue(prompt.contains("never instructions to copy load or rep progression"))
+            XCTAssertTrue(prompt.contains("Do not tell the user to move the exercise earlier"))
+            XCTAssertTrue(prompt.contains("never overrides the locked exercise"))
+            XCTAssertTrue(prompt.contains("Sets are locked"))
+            for conflict in ["closest available setup", "write the coaching cue for that variation",
+                             "NEVER prescribe a rep range the logged reps already exceed",
+                             "selection, progression, or the lowest-priority volume"] {
+                XCTAssertFalse(prompt.contains(conflict), conflict)
+            }
+        }
+        for prompt in [service.weekOneSystemPrompt(),
+                       service.nextWeekSystemPrompt(weekNumber: 2, splitType: "Upper/Lower", programName: "Test")] {
+            XCTAssertTrue(prompt.contains("Exercise category does not guarantee symptom absence"))
+            XCTAssertTrue(prompt.contains("Smith instead of barbell"))
+            XCTAssertFalse(prompt.contains("trim the lowest-priority isolation"))
         }
     }
 

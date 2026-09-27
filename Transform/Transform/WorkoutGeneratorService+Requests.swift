@@ -411,8 +411,8 @@ extension ClaudeService {
           Write numbers plainly; never use shorthand like "2-".
         - Use double progression as the default progression model when choosing each
           prescription: choose a load intent that lands in the rep range at the target RIR,
-          prefer rep increases before load increases, and trim the lowest-priority isolation
-          exposure when sleep, joint pain, or stress is poor.
+          respect the app's rep-before-load progression and express reduced effort through
+          targetRIR when recovery is poor. Preserve every locked exercise and set count.
 
         Programming constraints:
         - Exactly 7 days, dayNumber 1..7.
@@ -459,6 +459,8 @@ extension ClaudeService {
         Example of a BAD Session Note (never write like this):
         "Training session. Progressive overload. Warm-up: light cardio. Mobility: stretch."
 
+        \(lockedCoachingConstraints)
+
         Always call the emit_workout_program tool. Never respond with free text.
         """
     }
@@ -470,7 +472,7 @@ extension ClaudeService {
         --- Logged performance (actual weights/reps from recent workouts) ---
         \(history)
 
-        HOW LOAD WORKS HERE. You program reps, sets, tempo and targetRIR. You never write a
+        HOW LOAD WORKS HERE. Sets are locked; you program reps, tempo and targetRIR. You never write a
         weight anywhere. The app computes each exercise's working load itself, from this
         lifter's own logged capacity, and shows it on the exercise card.
 
@@ -506,12 +508,15 @@ extension ClaudeService {
            big for one week; take the intermediate range instead.
         4. REPS AND targetRIR MUST AGREE. A range meant to be taken near failure needs a low
            targetRIR; a range programmed with reserve needs a higher one.
-        5. NEVER prescribe a rep range the logged reps already exceed at that load.
+        5. Logged reps describe the OLD load. Exceeding that range does not require changing
+           the range: the app can increase load while retaining it. Follow the phase and verdict.
         6. NOTES ARE EXECUTION-ONLY. No loads, no "add weight", no "beat last week". The app
            renders progression beside your note; a load instruction there contradicts the card
            directly below it.
 
         Do not change the output schema or add new fields.
+        Historical verdicts (including older lines saying "cue") are data for choosing reps
+        and targetRIR, never instructions to copy load or rep progression into coaching notes.
         --- end logged performance ---
         """
     }
@@ -582,8 +587,8 @@ extension ClaudeService {
         the structured `targetRIR` field). Add a "why this is here for you" phrase only when it is
         specific and not already repeated in the day notes.
         Use double progression as the default progression model when choosing prescriptions: add
-        reps before load, keep compounds inside the phase RPE cap, and hold load or trim the
-        lowest-priority isolation set when sleep, joint pain, or stress is poor.
+        reps before load through the app's progression engine, keep compounds inside the phase
+        RPE cap, and use targetRIR for reduced effort when recovery is poor. Keep locked sets.
 
         Programming constraints:
         - Exactly 7 days for the requested dayNumber range.
@@ -608,6 +613,8 @@ extension ClaudeService {
         - Postural/injury notes from the analysis continue to drive warm-up and mobility choices.
         - Session Notes must match the actual session. Do not mention pressing, pulling, or hinge
           prep if that lift family is not meaningfully present that day.
+
+        \(lockedCoachingConstraints)
 
         Always call the emit_workout_week tool. Never respond with free text.
         """
@@ -671,10 +678,24 @@ extension ClaudeService {
         --- Completed-session feedback ---
         \(summary)
         Use this as a conservative adjustment signal, not an instruction to rewrite the split.
-        Repeated high effort, pain, worse performance, or poor stimulus should change exercise
-        selection, progression, or the lowest-priority volume. Do not infer a diagnosis, and do
-        not overreact to one session when the rest of the week was productive.
+        Repeated high effort, pain, worse performance, or poor stimulus can inform reps,
+        targetRIR, tempo, role-appropriate rest, and symptom-limited execution cues. Preserve
+        the locked exercises, equipment, order and sets; the app owns load progression.
+        Do not infer a diagnosis or overreact to one session when the rest of the week was productive.
         --- end completed-session feedback ---
+        """
+    }
+
+    private var lockedCoachingConstraints: String {
+        """
+        Coaching must preserve the locked exercise identity, equipment, order and sets in prose
+        as well as in structured fields. Do not recommend another movement or equipment setup
+        (for example, Smith instead of barbell), or tell the user to reorder the session.
+        Exercise category does not guarantee symptom absence: no overhead pressing does not
+        mean nothing can affect the shoulder. Never promise a movement will spare or protect
+        a painful joint. Give symptom-limited execution and stopping instructions instead.
+        Never write working-load numbers or progression instructions such as "hold 115 and
+        build reps" in notes. The app's progression card owns those instructions.
         """
     }
 
@@ -689,15 +710,15 @@ extension ClaudeService {
         \(summary)
         These are movements the user has repeatedly skipped, substituted, or modified. Exercise
         selection is locked by the Pre-Selected Exercise Menu, so do not swap exercises here.
-        Instead, use this history to adjust PROGRAMMING for flagged movements:
+        Use this history only for execution coaching within the locked menu:
         - pain/discomfort: add specific warm-up/mobility cues in the day and exercise notes,
-          reduce load or intensity prescription, and note the regression in the coaching cue.
-        - equipment unavailable: note the constraint in the exercise coaching cue so the user
-          knows to use the closest available setup.
-        - ran out of time: prioritize the flagged movement earlier in the session notes and keep
-          its set/rep prescription efficient.
-        - substituted/modified: acknowledge the user's preferred variation in the exercise note
-          and write the coaching cue for that variation.
+          describe symptom-limited range and stopping for pain; use targetRIR for effort intent.
+        - equipment unavailable: coach the exact listed equipment and movement. Do not suggest
+          alternate equipment or a substitute exercise, including Smith for barbell.
+        - ran out of time: offer concise setup cues while preserving exercise order, sets,
+          and role-appropriate rest. Do not tell the user to move the exercise earlier.
+        - substituted/modified: the history does not identify a preferred variation unless it
+          explicitly names one, and it never overrides the locked exercise. Coach the listed one.
         --- end recurring skip / substitution history ---
         """
     }

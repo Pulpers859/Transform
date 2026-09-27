@@ -31,6 +31,7 @@ enum ProgressionProseFragments {
     static let validatorBanned: [String] = [
         "next session", "next week", "add load", "add weight", "increase to",
         "add reps", "add a rep", "add one rep", "add 1 rep", "when you clear",
+        "build reps", "building reps",
         "beat last week", "before increasing load", "before adding load",
         "progression target", "deload target", "baseline target"
     ]
