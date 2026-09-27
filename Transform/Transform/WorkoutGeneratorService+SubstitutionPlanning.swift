@@ -822,7 +822,8 @@ extension ClaudeService {
                 avoidedExercises: history?.painExercises ?? [],
                 deprioritizedExercises: history?.equipmentSkipExercises ?? [],
                 catalogOffset: history.map { variationCatalogOffset(for: $0) } ?? 0,
-                weekNumber: baseline.weekNumber, priorMesocycleExercises: history?.priorMesocycleExercises ?? [])
+                weekNumber: baseline.weekNumber, priorMesocycleExercises: history?.priorMesocycleExercises ?? [],
+                preferredReplacements: history?.preferredReplacements ?? [:])
             for slot in baseline.menus[day].indices.reversed() where family.contains(baseline.menus[day][slot].exerciseName) {
                 let old = baseline.menus[day][slot]
                 let oldRole = proceduralExerciseRole(for: old.exerciseName, muscleTarget: old.muscleTarget)

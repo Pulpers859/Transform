@@ -10,6 +10,7 @@ struct WorkoutDayDetailView: View {
     @State private var exerciseForWeightLogging: WorkoutExercise?
     @State private var feedbackDay: WorkoutDay?
     @State private var completionPromptExercise: WorkoutExercise?
+    @State private var exerciseForReplacement: WorkoutExercise?
     /// Which exercise cards are open. Manual open/close is authoritative; the one-time
     /// seed (see `seedExpansionIfNeeded`) opens only the current lift so a finished or
     /// returning day lands collapsed and calm.
@@ -19,11 +20,11 @@ struct WorkoutDayDetailView: View {
     @State private var didSeedExpansion = false
 
     var completedExerciseCount: Int {
-        day.sortedExercises.filter { $0.isCompleted }.count
+        day.activeExercises.filter { $0.isCompleted }.count
     }
 
     var totalExerciseCount: Int {
-        day.exercises.count
+        day.activeExercises.count
     }
 
     var exerciseProgress: Double {
@@ -106,6 +107,9 @@ struct WorkoutDayDetailView: View {
         }
         .sheet(item: $feedbackDay) { selectedDay in
             WorkoutSessionFeedbackSheet(day: selectedDay)
+        }
+        .sheet(item: $exerciseForReplacement) { exercise in
+            ExerciseReplacementView(exercise: exercise)
         }
         .alert(
             partialCompletionPromptTitle,
@@ -406,7 +410,7 @@ struct WorkoutDayDetailView: View {
         return VStack(alignment: .leading, spacing: 10) {
             TFSectionLabel(text: "Exercises")
 
-            ForEach(day.sortedExercises) { exercise in
+            ForEach(day.activeExercises) { exercise in
                 // Each of these scans the full log set, so they are resolved ONCE here and
                 // handed down rather than recomputed inside the card.
                 let entry = weightSummary(for: exercise)
@@ -438,8 +442,28 @@ struct WorkoutDayDetailView: View {
                     onFinalSetLogged: { autoCompleteAfterFinalSet(exercise) },
                     onLogWeight: { exerciseForWeightLogging = exercise },
                     onSetStatus: { setStatus($0, on: exercise) },
+                    onReplace: { exerciseForReplacement = exercise },
                     onClearStatus: { clearStatus(on: exercise) }
                 )
+            }
+            let replaced = day.sortedExercises.filter { !$0.replacementName.isEmpty }
+            if !replaced.isEmpty {
+                DisclosureGroup("Replacement history") {
+                    ForEach(replaced) { exercise in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("\(exercise.exerciseName) → \(exercise.replacementName)").font(.subheadline)
+                            Text("\(sessionSetLogs(for: exercise).count) of \(exercise.sets) original sets logged. Remaining work moved to the replacement.")
+                                .font(.caption).foregroundStyle(.secondary)
+                            if exercise.completionStatus == .skippedPain {
+                                Text("Pain was reported on the original exercise.").font(.caption).foregroundStyle(TFColor.warning)
+                            }
+                            ForEach(sessionSetLogs(for: exercise)) { set in
+                                Text("Set \(set.setNumber): \(set.weightLbs.formatted()) lb × \(set.repsCompleted)")
+                                    .font(.caption)
+                            }
+                        }.padding(.vertical, 6)
+                    }
+                }
             }
         }
     }
@@ -653,6 +677,7 @@ struct WorkoutDayDetailView: View {
         let sessionEndedAt: Date?
         let sessionClosed: Bool
         let status: ExerciseCompletionStatus?
+        let painReviewRaw: String
 
         init(exercise: WorkoutExercise, day: WorkoutDay, status: ExerciseCompletionStatus?) {
             self.exerciseCompleted = exercise.isCompleted
@@ -660,11 +685,13 @@ struct WorkoutDayDetailView: View {
             self.sessionEndedAt = day.sessionEndedAt
             self.sessionClosed = day.isSessionClosed
             self.status = status
+            self.painReviewRaw = exercise.painReviewRaw
         }
 
         func restore(exercise: WorkoutExercise, day: WorkoutDay) {
             exercise.isCompleted = exerciseCompleted
             exercise.completionStatus = status
+            exercise.painReviewRaw = painReviewRaw
             day.isCompleted = dayCompleted
             day.sessionEndedAt = sessionEndedAt
             day.isSessionClosed = sessionClosed
@@ -697,6 +724,7 @@ struct WorkoutDayDetailView: View {
     func setStatus(_ status: ExerciseCompletionStatus, on exercise: WorkoutExercise) {
         let snapshot = DispositionSnapshot(exercise: exercise, day: day, status: exercise.completionStatus)
         exercise.completionStatus = status
+        if status == .skippedPain && exercise.painReviewRaw != "avoid" { exercise.painReviewRaw = "" }
         // Any settling status finishes the exercise, not just skips. Picking "Completed" from
         // the menu used to set the status and leave isCompleted false, so the card claimed to
         // be done while the resolver read it as not started and the day never closed.
@@ -827,6 +855,7 @@ struct ExerciseCard: View {
     /// day's completion state has to be re-derived from the same funnel that the
     /// completion checkmark uses, and the card cannot see its siblings.
     let onSetStatus: (ExerciseCompletionStatus) -> Void
+    let onReplace: () -> Void
     let onClearStatus: () -> Void
     @State private var showDetails = false
     @State private var pendingSkip: ExerciseCompletionStatus?
@@ -1699,6 +1728,8 @@ struct ExerciseCard: View {
             .buttonStyle(.plain)
 
             Menu {
+                Button("Replace exercise", systemImage: "arrow.triangle.swap", action: onReplace)
+                Divider()
                 ForEach(ExerciseCompletionStatus.skipChoices) { status in
                     Button {
                         pendingSkip = status
@@ -1707,7 +1738,7 @@ struct ExerciseCard: View {
                     }
                 }
             } label: {
-                Label("Skip", systemImage: "forward.fill")
+                Label("Options", systemImage: "ellipsis.circle")
                     .font(.caption.bold())
                     .foregroundStyle(.secondary)
             }

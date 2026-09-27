@@ -305,26 +305,6 @@ nonisolated struct WorkoutDaySnapshot: Codable {
     let exercises: [WorkoutExerciseSnapshot]
 }
 
-nonisolated struct WorkoutExerciseSnapshot: Codable {
-    let order: Int
-    let exerciseName: String
-    let sets: Int
-    let reps: String
-    let tempo: String?
-    let restSeconds: Int
-    let notes: String
-    let muscleTarget: String
-    let isCompleted: Bool
-    let completionStatusRaw: String?
-    /// Optional so backups written before the structured-RIR field decode cleanly.
-    let targetRIR: Int?
-    /// Optional so backups written before coaching provenance existed decode cleanly; absent
-    /// means "unknown", which is the correct reading of an older backup. Appended last —
-    /// these snapshots use synthesized memberwise inits with positional call sites, so
-    /// inserting mid-struct would silently reorder same-typed arguments.
-    let coachingSourceRaw: String?
-}
-
 nonisolated struct ExerciseWeightSnapshot: Codable {
     let loggedAt: Date
     let exerciseName: String
@@ -807,7 +787,10 @@ nonisolated struct ProfileSettingsSnapshot: Codable {
             isCompleted: exercise.isCompleted,
             completionStatusRaw: exercise.completionStatusRaw.isEmpty ? nil : exercise.completionStatusRaw,
             targetRIR: exercise.targetRIR,
-            coachingSourceRaw: exercise.coachingSourceRaw.isEmpty ? nil : exercise.coachingSourceRaw
+            coachingSourceRaw: exercise.coachingSourceRaw.isEmpty ? nil : exercise.coachingSourceRaw,
+            painReviewRaw: exercise.painReviewRaw.isEmpty ? nil : exercise.painReviewRaw,
+            replacementName: exercise.replacementName.isEmpty ? nil : exercise.replacementName,
+            preferredReplacementName: exercise.preferredReplacementName.isEmpty ? nil : exercise.preferredReplacementName
         )
     }
 
@@ -826,6 +809,9 @@ nonisolated struct ProfileSettingsSnapshot: Codable {
         exercise.isCompleted = isCompleted
         exercise.completionStatusRaw = completionStatusRaw ?? ""
         exercise.coachingSourceRaw = coachingSourceRaw ?? ""
+        exercise.painReviewRaw = painReviewRaw ?? ""
+        exercise.replacementName = replacementName ?? ""
+        exercise.preferredReplacementName = preferredReplacementName ?? ""
         return exercise
     }
 }

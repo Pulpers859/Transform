@@ -841,7 +841,7 @@ struct DashboardView: View {
             return "Recovery: mobility, light cardio · Week \(program.currentWeek)"
         }
         let groups = day.muscleGroups.isEmpty ? "Training" : day.muscleGroups
-        return "\(groups) · \(day.exercises.count) exercises · Week \(program.currentWeek)"
+        return "\(groups) · \(day.activeExercises.count) exercise slots · Week \(program.currentWeek)"
     }
 
     // MARK: - Today's Rings Card

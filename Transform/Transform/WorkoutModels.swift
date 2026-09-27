@@ -218,6 +218,11 @@ class WorkoutDay {
         exercises.sorted { $0.order < $1.order }
     }
 
+    /// Replaced originals are preserved history segments, not extra planned slots.
+    var activeExercises: [WorkoutExercise] {
+        sortedExercises.filter { $0.replacementName.isEmpty }
+    }
+
     var weekNumber: Int {
         ((dayNumber - 1) / 7) + 1
     }
@@ -312,7 +317,7 @@ enum ExerciseCompletionStatus: String, CaseIterable, Identifiable {
         case .skippedEquipment:
             return "Repeated equipment skips make this exercise less preferred in future generated workouts, including main lifts. It may still be selected if needed; today's workout is not replaced."
         case .skippedPain:
-            return "Records pain and excludes this exercise from future generated menus while this pain record remains. It does not replace it in workouts already created. Clear an accidental skip on this card."
+            return "Records pain today. Before generating another week, you can report whether it has resolved. Until then this exercise is avoided. Existing workouts are unchanged. Clear an accidental skip on this card."
         default:
             return ""
         }
@@ -405,6 +410,13 @@ class WorkoutExercise {
     var muscleTarget: String = ""
     var isCompleted: Bool = false
     var completionStatusRaw: String = ""
+    /// A review changes the active restriction, never the historical pain disposition.
+    /// Empty is an unreviewed legacy/new pain report; a new pain report resets it.
+    var painReviewRaw: String = ""
+    /// A replaced card remains a historical segment with its original name and logs.
+    var replacementName: String = ""
+    /// Explicit preference only; an incidental same-day swap never fills this field.
+    var preferredReplacementName: String = ""
     /// Structured target reps-in-reserve from generation. Optional (lightweight
     /// migration): nil for programs generated before the field existed — display
     /// falls back to parsing the coaching note prose.
@@ -474,7 +486,7 @@ class WorkoutExercise {
     /// Skips already set `isCompleted = true` at the call site; the status check keeps the
     /// definition honest if that ever changes.
     var isResolved: Bool {
-        isCompleted || (completionStatus?.isSkipped ?? false)
+        !replacementName.isEmpty || isCompleted || (completionStatus?.isSkipped ?? false)
     }
 
     /// Whether work actually happened here, as distinct from `isResolved` / `isCompleted`,

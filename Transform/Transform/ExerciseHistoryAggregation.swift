@@ -82,11 +82,10 @@ enum ExerciseHistoryAggregator {
         from programs: [WorkoutProgram],
         now: Date = Date()
     ) -> ClaudeService.ExerciseHistoryContext {
-        var painExercises = Set<String>()
+        let painExercises = ExercisePainReview.activeKeys(from: programs)
         var equipmentSkipExercises = Set<String>()
         var priorMesocycleExercises = Set<String>()
 
-        var painCounts: [String: Int] = [:]
         var equipmentCounts: [String: Int] = [:]
 
         var trainedSessions: [TrainedSession] = []
@@ -110,13 +109,6 @@ enum ExerciseHistoryAggregator {
                     showsEvidenceOfTraining = true
                     guard status != .completed else { continue }
 
-                    if status == .skippedPain {
-                        // NOT windowed, deliberately. Pain is the one signal here about the
-                        // lifter's body rather than his circumstances, and a movement that hurt
-                        // him is not something to quietly reintroduce because enough sessions
-                        // have gone by. Changing that is the owner's call, not a side effect.
-                        painCounts[key, default: 0] += 1
-                    }
                 }
 
                 // Only days the lifter actually trained can occupy a slot in the window. A day
@@ -176,10 +168,6 @@ enum ExerciseHistoryAggregator {
             }
         }
 
-        // One pain report is enough; it is not a recurrence question.
-        for (key, count) in painCounts where count >= 1 {
-            painExercises.insert(key)
-        }
         for (key, count) in equipmentCounts where count >= recurrenceBar {
             equipmentSkipExercises.insert(key)
         }
@@ -191,7 +179,24 @@ enum ExerciseHistoryAggregator {
             painExercises: painExercises,
             equipmentSkipExercises: equipmentSkipExercises,
             priorMesocycleExercises: priorMesocycleExercises,
-            mesocycleIndex: mesocycleIndex
+            mesocycleIndex: mesocycleIndex,
+            preferredReplacements: preferredReplacements(from: programs)
         )
+    }
+
+    static func preferredReplacements(from programs: [WorkoutProgram]) -> [String: String] {
+        var result: [String: String] = [:]
+        for program in programs.sorted(by: { $0.createdDate > $1.createdDate }) {
+            for day in program.sortedDays.reversed() {
+                for exercise in day.sortedExercises {
+                    let key = ExerciseWeightEntry.canonicalLookupKey(exercise.exerciseName)
+                    let preferred = exercise.preferredReplacementName
+                    guard result[key] == nil, !preferred.isEmpty,
+                          ExerciseReplacement.compatible(originalName: exercise.exerciseName, candidateName: preferred) else { continue }
+                    result[key] = preferred
+                }
+            }
+        }
+        return result
     }
 }

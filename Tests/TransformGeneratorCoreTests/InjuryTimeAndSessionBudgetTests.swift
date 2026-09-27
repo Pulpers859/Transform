@@ -280,6 +280,48 @@ final class InjuryTimeAndSessionBudgetTests: XCTestCase {
         XCTAssertEqual(anchorsOnly.map { $0.name }, ["Dumbbell Bench Press", "Barbell Bench Press"])
     }
 
+    func testPreferredReplacementSurvivesExcludedSourceButCannotOverrideExcludedTarget() {
+        let source = "Dumbbell Lateral Raise", target = "Machine Lateral Raise"
+        let sourceKey = ExerciseWeightEntry.canonicalLookupKey(source)
+        let targetKey = ExerciseWeightEntry.canonicalLookupKey(target)
+        let catalog = [(name: source, target: "Lateral Deltoids"),
+                       (name: "Cable Lateral Raise", target: "Lateral Deltoids"),
+                       (name: target, target: "Lateral Deltoids")]
+        func ordered(pain: Set<String>, equipment: Set<String> = []) -> [String] {
+            service.applyHistoryFilters(catalog, avoidedExercises: pain,
+                deprioritizedExercises: equipment, catalogOffset: 0, weekNumber: 1,
+                priorMesocycleExercises: [], preferredReplacements: [sourceKey: target]).map { $0.name }
+        }
+        XCTAssertEqual(ordered(pain: []).first, target)
+        XCTAssertEqual(ordered(pain: [sourceKey]).first, target)
+        XCTAssertFalse(ordered(pain: [targetKey]).contains(target))
+        XCTAssertEqual(ordered(pain: [], equipment: [targetKey]).last, target)
+        XCTAssertEqual(service.applyHistoryFilters(catalog, avoidedExercises: [],
+            deprioritizedExercises: [], catalogOffset: 0, weekNumber: 1, priorMesocycleExercises: []).first?.name, source)
+    }
+
+    func testPainAndReplacementPreferenceReachACompleteLockedPlan() throws {
+        let analysis = blankAnalysis()
+        let intent = service.trainingIntentPlan(from: analysis)
+        let source = ExerciseWeightEntry.canonicalLookupKey("Dumbbell Lateral Raise")
+        let history = ClaudeService.ExerciseHistoryContext(
+            painExercises: [source], equipmentSkipExercises: [], priorMesocycleExercises: [],
+            mesocycleIndex: 0, preferredReplacements: [source: "Machine Lateral Raise"]
+        )
+        let plan = service.preSelectedExercisePlan(
+            for: service.programBlueprint(for: intent, weekNumber: 1), trainingIntent: intent,
+            weekNumber: 1, previousWeekDays: nil, exerciseHistory: history
+        )
+        try service.requireSixExerciseMenu(plan.menus, blueprint: plan.blueprint)
+        let names = plan.menus.flatMap { $0 }.map { $0.exerciseName }
+        XCTAssertFalse(names.contains("Dumbbell Lateral Raise"))
+        XCTAssertTrue(names.contains("Machine Lateral Raise"), "A real complete plan should use the compatible available preference")
+        let delivered = try service.validatedProceduralWeekOneProgram(from: analysis,
+            trainingIntent: intent, blueprint: plan.blueprint, exerciseMenus: plan.menus)
+        XCTAssertEqual(delivered.days.flatMap { $0.exercises }.map { $0.exerciseName }, names)
+        XCTAssertEqual(delivered.days.flatMap { $0.exercises }.map { $0.sets }, plan.menus.flatMap { $0 }.map { $0.prescribedSets })
+    }
+
     func testUnavailableAnchorsAreNotAutomaticallyLockedIntoNextWeek() throws {
         let analysis = blankAnalysis()
         let intent = service.trainingIntentPlan(from: analysis)

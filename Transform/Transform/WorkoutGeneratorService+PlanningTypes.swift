@@ -305,6 +305,7 @@ extension ClaudeService {
         let equipmentSkipExercises: Set<String>
         let priorMesocycleExercises: Set<String>
         let mesocycleIndex: Int
+        var preferredReplacements: [String: String] = [:]
     }
 
     struct WeekDiffEntry: Identifiable {

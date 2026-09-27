@@ -75,6 +75,9 @@ let package = Package(
                 // generator closure references it, and it drags in unrelated types.)
                 "BodyAnalysisModels.swift",
                 "WorkoutModels.swift",
+                "ExercisePainReview.swift",
+                "ExerciseReplacement.swift",
+                "WorkoutExerciseSnapshot.swift",
                 // Execution-cue authoring: movement-pattern/equipment keying plus the
                 // day-scoped uniqueness pass. Foundation-only, and the content it emits must
                 // survive the validator's execution-only rules — a banned fragment here is a

@@ -45,6 +45,9 @@ struct WorkoutView: View {
     @State private var analysisThumbnail: UIImage?
     @State private var lastSyncedProgramID: UUID?
     @State private var navPath = NavigationPath()
+    @State private var showPainReview = false
+    @State private var painReviewBeforeGeneration = false
+    @State private var pendingPainReviewedGeneration: (() -> Void)?
 
     var currentProgram: WorkoutProgram? { programs.first { !$0.isArchived } }
     var latestAnalysis: BodyAnalysisSession? { analysisSessions.first }
@@ -73,6 +76,23 @@ struct WorkoutView: View {
             }
             .workoutTabBarClearance()
             .navigationTitle("Workout")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Exercise Preferences", systemImage: "slider.horizontal.3") {
+                        painReviewBeforeGeneration = false
+                        pendingPainReviewedGeneration = nil
+                        showPainReview = true
+                    }
+                    .disabled(isGenerating)
+                }
+            }
+            .sheet(isPresented: $showPainReview, onDismiss: { pendingPainReviewedGeneration = nil }) {
+                ExercisePainReviewView(programs: programs, beforeGeneration: painReviewBeforeGeneration) {
+                    let action = pendingPainReviewedGeneration
+                    pendingPainReviewedGeneration = nil
+                    action?()
+                }
+            }
             .navigationDestination(for: WorkoutDayRoute.self) { route in
                 if let program = currentProgram,
                    let day = program.sortedDays.first(where: { $0.dayNumber == route.dayNumber }) {
@@ -696,8 +716,9 @@ struct WorkoutView: View {
     // MARK: - Logic: Generate Week 1
 
     @MainActor
-    func startFirstWeekGeneration(from result: BodyAnalysisResult, sourceAnalysisDate: Date?) {
+    func startFirstWeekGeneration(from result: BodyAnalysisResult, sourceAnalysisDate: Date?, painReviewed: Bool = false) {
         guard !isGenerating else { return }
+        if !painReviewed && requestPainReview({ startFirstWeekGeneration(from: result, sourceAnalysisDate: sourceAnalysisDate, painReviewed: true) }) { return }
         activeGeneration = .firstWeek
         generationTask?.cancel()
         generationTask = Task {
@@ -706,8 +727,9 @@ struct WorkoutView: View {
     }
 
     @MainActor
-    func startNextWeekGeneration(for program: WorkoutProgram) {
+    func startNextWeekGeneration(for program: WorkoutProgram, painReviewed: Bool = false) {
         guard !isGenerating else { return }
+        if !painReviewed && requestPainReview({ startNextWeekGeneration(for: program, painReviewed: true) }) { return }
         activeGeneration = .nextWeek
         generationTask?.cancel()
         generationTask = Task {
@@ -716,13 +738,23 @@ struct WorkoutView: View {
     }
 
     @MainActor
-    func startRegeneration(from result: BodyAnalysisResult, sourceAnalysisDate: Date?) {
+    func startRegeneration(from result: BodyAnalysisResult, sourceAnalysisDate: Date?, painReviewed: Bool = false) {
         guard !isGenerating else { return }
+        if !painReviewed && requestPainReview({ startRegeneration(from: result, sourceAnalysisDate: sourceAnalysisDate, painReviewed: true) }) { return }
         activeGeneration = .regenerate
         generationTask?.cancel()
         generationTask = Task {
             await regenerateProgram(from: result, sourceAnalysisDate: sourceAnalysisDate)
         }
+    }
+
+    @MainActor
+    func requestPainReview(_ continuation: @escaping () -> Void) -> Bool {
+        guard ExercisePainReview.reviewItems(from: programs, includeResolved: false).contains(where: \.requiresReview) else { return false }
+        pendingPainReviewedGeneration = continuation
+        painReviewBeforeGeneration = true
+        showPainReview = true
+        return true
     }
 
     @MainActor
@@ -984,7 +1016,7 @@ struct WorkoutView: View {
         // Keep exercise checks consistent with the day: completing checks all,
         // un-completing clears them (otherwise a single re-toggle instantly
         // re-completes the day).
-        for exercise in day.exercises {
+        for exercise in day.activeExercises {
             exercise.isCompleted = day.isCompleted
         }
         // Ticking the day off from the week list is a finish tap like any other, so it
@@ -1096,6 +1128,9 @@ struct WorkoutView: View {
             for day in program.sortedDays where !day.isRestDay {
                 for exercise in day.sortedExercises {
                     guard let status = exercise.completionStatus, status != .completed else { continue }
+                    // The historical pain disposition stays stored; only active restrictions
+                    // belong in the generation prompt. A new pain report resets this flag.
+                    if status == .skippedPain && exercise.painReviewRaw == "resolved" { continue }
                     let name = exercise.exerciseName.trimmingCharacters(in: .whitespacesAndNewlines)
                     guard !name.isEmpty else { continue }
                     byExercise[name, default: [:]][status, default: 0] += 1
@@ -1137,7 +1172,7 @@ struct WorkoutView: View {
             }
             return "\(entry.name): \(reasonParts.joined(separator: ", "))"
         }
-        return lines.joined(separator: "\n")
+        return "Pain counts below are active restrictions only. Historical pain explicitly marked resolved is omitted; resolution permits selection but is not a safety guarantee.\n" + lines.joined(separator: "\n")
     }
 
     /// Delegates to `ExerciseHistoryAggregator`. The aggregation moved out of this view so it

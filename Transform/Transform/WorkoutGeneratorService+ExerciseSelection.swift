@@ -1876,6 +1876,12 @@ extension ClaudeService {
                 .filter { exercise in
                     let canonKey = ExerciseWeightEntry.canonicalLookupKey(exercise.exerciseName)
                     if avoidedExercises.contains(canonKey) || deprioritizedExercises.contains(canonKey) { return false }
+                    if let preferred = exerciseHistory?.preferredReplacements[canonKey],
+                       !avoidedExercises.contains(ExerciseWeightEntry.canonicalLookupKey(preferred)),
+                       !deprioritizedExercises.contains(ExerciseWeightEntry.canonicalLookupKey(preferred)),
+                       ExerciseReplacement.compatible(originalName: exercise.exerciseName, candidateName: preferred) {
+                        return false // Reconsider the slot, rather than locking out the preference.
+                    }
                     guard let focusIntent else { return true }
                     return focusStimulusKind(
                         exerciseName: exercise.exerciseName,
@@ -1912,7 +1918,8 @@ extension ClaudeService {
                 deprioritizedExercises: deprioritizedExercises,
                 catalogOffset: catalogOffset,
                 weekNumber: weekNumber,
-                priorMesocycleExercises: exerciseHistory?.priorMesocycleExercises ?? []
+                priorMesocycleExercises: exerciseHistory?.priorMesocycleExercises ?? [],
+                preferredReplacements: exerciseHistory?.preferredReplacements ?? [:]
             )
             let focusPrimeCap = focusPrimeSlotCap(targetPrioritySlots: plan.targetPrioritySlots)
             for candidate in catalog where selected.count < targetCount {
@@ -1952,7 +1959,8 @@ extension ClaudeService {
                     deprioritizedExercises: deprioritizedExercises,
                     catalogOffset: catalogOffset,
                     weekNumber: weekNumber,
-                    priorMesocycleExercises: exerciseHistory?.priorMesocycleExercises ?? []
+                    priorMesocycleExercises: exerciseHistory?.priorMesocycleExercises ?? [],
+                    preferredReplacements: exerciseHistory?.preferredReplacements ?? [:]
                 )
                 for candidate in generic where selected.count < 5 {
                     let key = normalizeExerciseName(candidate.name)
@@ -4115,7 +4123,8 @@ extension ClaudeService {
         deprioritizedExercises: Set<String>,
         catalogOffset: Int,
         weekNumber: Int,
-        priorMesocycleExercises: Set<String>
+        priorMesocycleExercises: Set<String>,
+        preferredReplacements: [String: String] = [:]
     ) -> [(name: String, target: String)] {
         let filtered = catalog.filter { item in
             !avoidedExercises.contains(ExerciseWeightEntry.canonicalLookupKey(item.name))
@@ -4144,7 +4153,20 @@ extension ClaudeService {
             func deprioritized(_ item: (name: String, target: String)) -> Bool {
                 deprioritizedExercises.contains(ExerciseWeightEntry.canonicalLookupKey(item.name))
             }
-            return items.filter { !deprioritized($0) } + items.filter { deprioritized($0) }
+            var ranked = items.filter { !deprioritized($0) }
+            // Only reorder an existing compatible pair. Never inject extra work, bypass
+            // pain filtering, or let a preference override recurring equipment trouble.
+            for sourceKey in preferredReplacements.keys.sorted() {
+                guard let target = preferredReplacements[sourceKey],
+                      let original = catalog.first(where: { ExerciseWeightEntry.canonicalLookupKey($0.name) == sourceKey })
+                        ?? exerciseMetadataCatalog.values.first(where: { ExerciseWeightEntry.canonicalLookupKey($0.canonicalName) == sourceKey }).map({ (name: $0.canonicalName, target: $0.primaryAreas.first ?? "") }),
+                      let source = ranked.firstIndex(where: { ExerciseReplacement.compatible(originalName: original.name, candidateName: $0.name) || ExerciseWeightEntry.canonicalLookupKey($0.name) == sourceKey }),
+                      let destination = ranked.firstIndex(where: { ExerciseWeightEntry.canonicalLookupKey($0.name) == ExerciseWeightEntry.canonicalLookupKey(target) }),
+                      destination > source,
+                      ExerciseReplacement.compatible(originalName: original.name, candidateName: ranked[destination].name) else { continue }
+                ranked.insert(ranked.remove(at: destination), at: source)
+            }
+            return ranked + items.filter { deprioritized($0) }
         }
         return preferAvailable(anchors) + preferAvailable(accessories)
     }

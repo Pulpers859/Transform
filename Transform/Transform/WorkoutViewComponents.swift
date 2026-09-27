@@ -47,7 +47,7 @@ struct TrainingDayCard: View {
                             .clipShape(Capsule())
                     }
                 }
-                Text("\(day.exercises.count) exercises")
+                Text("\(day.activeExercises.count) exercise slots")
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
             }
