@@ -3,7 +3,6 @@ import SwiftData
 
 /// A replacement is new remaining work, never a rename of recorded work. Catalog matching
 /// preserves programming intent; it is not a claim that an alternative is pain-free.
-@MainActor
 enum ExerciseReplacement {
     enum Failure: LocalizedError {
         case unavailableSession, alreadyReplaced, noRemainingSets, ineligibleCandidate, unsavedChanges
@@ -45,6 +44,7 @@ enum ExerciseReplacement {
             && candidate.fatigueCost <= original.fatigueCost
     }
 
+    @MainActor
     static func candidates(for exercise: WorkoutExercise, avoidedKeys: Set<String>) -> [String] {
         guard exercise.replacementName.isEmpty, let day = exercise.day,
               sessionAllowsReplacement(exercise) else { return [] }
@@ -62,6 +62,7 @@ enum ExerciseReplacement {
             .sorted()
     }
 
+    @MainActor
     private static func sessionAllowsReplacement(_ exercise: WorkoutExercise) -> Bool {
         guard let day = exercise.day, !day.isRestDay, day.program?.isArchived != true,
               day.feedbackSubmittedAt == nil else { return false }
@@ -77,6 +78,7 @@ enum ExerciseReplacement {
     /// A clean context prevents rollback from discarding an unrelated pending user edit.
     /// `save` is a failure-injection seam; production uses a single ModelContext save.
     @discardableResult
+    @MainActor
     static func replace(
         _ exercise: WorkoutExercise,
         with candidateName: String,
