@@ -1136,7 +1136,9 @@ struct ExerciseCard: View {
         return ProgressionSuggestion(
             icon: outcome.recommendedLoadLbs < referenceLoad ? "arrow.down.circle.fill" : "arrow.right.circle.fill",
             text: "Start at \(newLoad) lb — last time was \(oldLoad) lb x \(freshest.reps)\(was), and this week's \(now) \(direction)",
-            color: TFColor.info
+            color: TFColor.info,
+            compactText: "Suggested start: \(newLoad) lb · \(currentRange.low)–\(currentRange.high) reps",
+            suggestedLoad: outcome.recommendedLoadLbs
         )
     }
 
@@ -1371,8 +1373,7 @@ struct ExerciseCard: View {
                     ExerciseRestTimerView(
                         exercise: exercise,
                         loggedSets: sessionSetLogs,
-                        suggestedWeight: workingSetAnalysis.workingWeight,
-                        suggestedReps: workingSetAnalysis.topWorkingSet?.reps,
+                        suggestedWeight: isDeloadContext ? nil : (progressionSuggestion?.suggestedLoad ?? workingSetAnalysis.workingWeight),
                         targetRepsPlaceholder: RepRange.parse(exercise.reps)?.high,
                         onLogSet: { setNumber, weight, reps, rir in
                             logSetFromCard(setNumber: setNumber, weight: weight, reps: reps, rir: rir)
@@ -1383,8 +1384,7 @@ struct ExerciseCard: View {
                 InlineSetLogger(
                     exercise: exercise,
                     loggedSets: sessionSetLogs,
-                    suggestedWeight: workingSetAnalysis.workingWeight,
-                    suggestedReps: workingSetAnalysis.topWorkingSet?.reps,
+                    suggestedWeight: isDeloadContext ? nil : (progressionSuggestion?.suggestedLoad ?? workingSetAnalysis.workingWeight),
                     targetRepsPlaceholder: RepRange.parse(exercise.reps)?.high,
                     onLog: { setNumber, weight, reps, rir in
                         logSetFromCard(setNumber: setNumber, weight: weight, reps: reps, rir: rir)
@@ -1403,7 +1403,7 @@ struct ExerciseCard: View {
 
                 if let suggestion = progressionSuggestion {
                     ExerciseGuidanceCard(
-                        suggestion: suggestion,
+                        suggestion: ProgressionSuggestion(icon: suggestion.icon, text: suggestion.compactText ?? suggestion.text, color: suggestion.color),
                         coachingText: ""
                     )
                 }
@@ -1451,7 +1451,8 @@ struct ExerciseCard: View {
     /// "Log sets" list and the full-screen rest timer's entry panel. Two entry points in the
     /// UI must never mean two ways of writing training data: they differ only in where the
     /// numbers were typed, so completion reporting and the rest-timer signal stay identical.
-    private func logSetFromCard(setNumber: Int, weight: Double, reps: Int, rir: Double?) {
+    @discardableResult
+    private func logSetFromCard(setNumber: Int, weight: Double, reps: Int, rir: Double?) -> Bool {
         guard SetLoggingService.logSet(
             setNumber: setNumber,
             weightLbs: weight,
@@ -1459,7 +1460,7 @@ struct ExerciseCard: View {
             rir: rir,
             for: exercise,
             modelContext: modelContext
-        ) else { return }
+        ) else { return false }
         // A finished set is when rest begins. The rest card decides what to do with this:
         // it starts a timer that is sitting still and leaves a running one alone.
         NotificationCenter.default.post(
@@ -1467,6 +1468,7 @@ struct ExerciseCard: View {
             object: exercise.persistentModelID
         )
         reportFinalSetIfComplete(setNumber: setNumber)
+        return true
     }
 
     /// Reports the log that fills the last outstanding set, so the exercise can tick itself
@@ -1612,6 +1614,9 @@ struct ExerciseCard: View {
     @ViewBuilder
     private var detailContent: some View {
         VStack(alignment: .leading, spacing: 10) {
+            if let suggestion = progressionSuggestion, suggestion.compactText != nil {
+                ExerciseGuidanceCard(suggestion: suggestion, coachingText: "Starting-load estimate, not a measured requirement. Missing effort data and equipment rounding can affect it.")
+            }
             if !detailedCoachingNote.isEmpty {
                 ExerciseGuidanceCard(suggestion: nil, coachingText: detailedCoachingNote)
             }
@@ -2136,9 +2141,8 @@ struct ExerciseRestTimerView: View {
     /// save path. Nothing about set logging is duplicated here.
     let loggedSets: [SetLogEntry]
     let suggestedWeight: Double?
-    let suggestedReps: Int?
     let targetRepsPlaceholder: Int?
-    let onLogSet: (Int, Double, Int, Double?) -> Void
+    let onLogSet: (Int, Double, Int, Double?) -> Bool
 
     @State private var isRestTimerActive = false
     @State private var remainingRestSeconds = 0
@@ -2295,7 +2299,6 @@ struct ExerciseRestTimerView: View {
                 programmedSets: exercise.sets,
                 loggedSets: loggedSets,
                 suggestedWeight: suggestedWeight,
-                suggestedReps: suggestedReps,
                 targetRepsPlaceholder: targetRepsPlaceholder,
                 onLogSet: onLogSet,
                 onToggle: { toggleRestTimer() },
@@ -2412,9 +2415,8 @@ struct RestTimerFullscreen: View {
     /// logged set shows what was actually stored, not a stale local copy.
     let loggedSets: [SetLogEntry]
     let suggestedWeight: Double?
-    let suggestedReps: Int?
     let targetRepsPlaceholder: Int?
-    let onLogSet: (Int, Double, Int, Double?) -> Void
+    let onLogSet: (Int, Double, Int, Double?) -> Bool
     let onToggle: () -> Void
     let onReset: () -> Void
     let onClose: () -> Void
@@ -2541,6 +2543,7 @@ struct RestTimerFullscreen: View {
             guard !didPickStartingSet else { return }
             didPickStartingSet = true
             currentSet = firstUnloggedSet()
+            prepareCurrentSet()
         }
         .statusBarHidden()
     }
@@ -2594,8 +2597,9 @@ struct RestTimerFullscreen: View {
                 Button {
                     confirmCurrentSet()
                 } label: {
-                    Image(systemName: isCurrentSetLogged ? "checkmark.circle.fill" : "checkmark.circle")
-                        .font(.system(size: 30))
+                    Text(isCurrentSetLogged ? "Save" : "Log")
+                        .font(.caption.bold())
+                        .frame(minWidth: 44, minHeight: TFTapTarget.minimum)
                         .foregroundStyle(canConfirm ? Color.white : Color.white.opacity(0.3))
                 }
                 .buttonStyle(.plain)
@@ -2652,12 +2656,7 @@ struct RestTimerFullscreen: View {
             return
         }
         draftWeight[currentSet] = "BW"
-        // A bodyweight movement usually has no load history to prefill reps from, so seed
-        // the programmed target — otherwise the set dead-ends on a disabled checkmark.
-        if repsBinding.wrappedValue.trimmingCharacters(in: .whitespaces).isEmpty,
-           let target = targetRepsPlaceholder ?? suggestedReps {
-            draftReps[currentSet] = "\(target)"
-        }
+        focusedField = .reps
     }
 
     /// Bare chevrons. The filled circles behind them read as two more controls parked next
@@ -2694,14 +2693,22 @@ struct RestTimerFullscreen: View {
     private func step(_ delta: Int) {
         focusedField = nil
         currentSet = min(max(currentSet + delta, 1), totalSets)
+        prepareCurrentSet()
+    }
+
+    private func prepareCurrentSet() {
+        guard draftWeight[currentSet] == nil else { return }
+        draftWeight[currentSet] = defaultWeightText(currentSet)
+        draftReps[currentSet] = defaultRepsText(currentSet)
+        draftRIR[currentSet] = defaultRIRText(currentSet)
     }
 
     private func confirmCurrentSet() {
-        guard let weight = parsedWeight, let reps = parsedReps else { return }
+        guard canConfirm, let weight = parsedWeight, let reps = parsedReps else { return }
         let confirmed = currentSet
+        guard onLogSet(confirmed, weight, reps, parsedRIR) else { return }
         focusedField = nil
         TFHaptics.impact(.light)
-        onLogSet(confirmed, weight, reps, parsedRIR)
 
         // The set that fills the prescription finishes the exercise, and the card owning this
         // cover collapses itself the instant that happens (`autoCompleteAfterFinalSet`) —
@@ -2718,10 +2725,12 @@ struct RestTimerFullscreen: View {
         let next = firstUnloggedSet(alsoLogged: [confirmed])
         guard next != confirmed else { return }
         currentSet = next
-        // Drop any stale draft so the new set falls back to prefill from real history.
-        draftWeight[next] = nil
-        draftReps[next] = nil
-        draftRIR[next] = nil
+        // Preserve an unfinished draft. A newly selected set may reuse only the load.
+        if draftWeight[next] == nil {
+            draftWeight[next] = SetEntryDraft(suggestedWeight: weight).weight
+            draftReps[next] = ""
+            draftRIR[next] = ""
+        }
     }
 
     // MARK: - Set bookkeeping
@@ -2761,7 +2770,6 @@ struct RestTimerFullscreen: View {
 
     private func defaultRepsText(_ n: Int) -> String {
         if let logged = loggedSet(n) { return "\(logged.repsCompleted)" }
-        if let r = loggedSets.last?.repsCompleted ?? suggestedReps, r > 0 { return "\(r)" }
         return ""
     }
 
@@ -2808,7 +2816,11 @@ struct RestTimerFullscreen: View {
     }
 
     private var canConfirm: Bool {
-        parsedWeight != nil && parsedReps != nil
+        var draft = SetEntryDraft()
+        draft.weight = weightBinding.wrappedValue
+        draft.reps = repsBinding.wrappedValue
+        draft.rir = rirBinding.wrappedValue
+        return draft.canLog
     }
 }
 
@@ -3049,6 +3061,8 @@ struct ProgressionSuggestion {
     let icon: String
     let text: String
     let color: Color
+    var compactText: String? = nil
+    var suggestedLoad: Double? = nil
 
     /// True for cues that tell the lifter to add weight. Used so a written prescription can
     /// veto a generic "add load" cue that would contradict it.
@@ -3741,26 +3755,21 @@ enum SetLoggingService {
 // MARK: - Inline Set Logger
 
 /// Compact, collapsed-by-default set tracker shown on each exercise card. Expands to
-/// exactly the programmed number of set rows. Unlogged rows are pre-filled (working
-/// weight + target reps, chaining off the last set logged), so a set is usually one tap
-/// to confirm. Each confirm/clear persists immediately into today's session.
+/// Idle rows contain no results. Selecting a row prepares only its load, never reps.
+/// Saved rows come exclusively from persisted session data.
 struct InlineSetLogger: View {
     let exercise: WorkoutExercise
     let loggedSets: [SetLogEntry]
-    /// Prefill values must come from ACTUAL history (this session's last set, or
-    /// last session's working sets) — never from the programmed target, which is
-    /// a guess and renders as a placeholder instead (`targetRepsPlaceholder`).
+    /// Load only, prepared after selecting a row. Reps are always entered explicitly.
     let suggestedWeight: Double?
-    let suggestedReps: Int?
     let targetRepsPlaceholder: Int?
-    let onLog: (Int, Double, Int, Double?) -> Void
-    let onClear: (Int) -> Void
+    let onLog: (Int, Double, Int, Double?) -> Bool
+    let onClear: (Int) -> Bool
 
     @State private var expanded = false
     @State private var editing: Set<Int> = []
-    @State private var draftWeight: [Int: String] = [:]
-    @State private var draftReps: [Int: String] = [:]
-    @State private var draftRIR: [Int: String] = [:]
+    @State private var drafts: [Int: SetEntryDraft] = [:]
+    @State private var activeSet: Int?
     @FocusState private var focusedField: FieldKey?
 
     enum FieldKey: Hashable {
@@ -3784,7 +3793,7 @@ struct InlineSetLogger: View {
         VStack(spacing: 8) {
             header
             if expanded {
-                Text("Confirm each set as you finish.")
+                Text("Tap a set. Enter reps completed.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -3836,10 +3845,33 @@ struct InlineSetLogger: View {
 
     @ViewBuilder
     private func setRow(_ n: Int) -> some View {
-        if let logged = loggedSet(n), !editing.contains(n) {
+        let state = SetEntryDraft.rowState(hasSavedSet: loggedSet(n) != nil, isActive: activeSet == n, isEditing: editing.contains(n))
+        if let logged = loggedSet(n), state == .saved {
             loggedRow(n, logged)
-        } else {
+        } else if state == .entry {
             entryRow(n)
+        } else {
+            Button {
+                if drafts[n] == nil {
+                    drafts[n] = SetEntryDraft(suggestedWeight: loggedSets.sorted { $0.setNumber < $1.setNumber }.last?.weightLbs ?? suggestedWeight)
+                }
+                activeSet = n
+                focusedField = .reps(n)
+            } label: {
+                HStack {
+                    setLabel(n)
+                    Text(drafts[n] == nil ? "—" : "Draft")
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Image(systemName: "pencil").foregroundStyle(.secondary)
+                }
+                .font(.caption)
+                .padding(.horizontal, 8)
+                .frame(minHeight: TFTapTarget.minimum)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Set \(n), not logged. Tap to enter results")
         }
     }
 
@@ -3854,19 +3886,24 @@ struct InlineSetLogger: View {
                 Text("RIR \(formatRIR(rir))").font(.caption2).foregroundStyle(.secondary)
             }
             Spacer()
+            if editing.contains(n) {
+                Text("Draft").font(.caption2).foregroundStyle(.secondary)
+                    .accessibilityLabel("Unsaved edits; shown values are saved")
+            }
             Button {
-                draftWeight[n] = WorkoutProgressionEngine.isBodyweightEquivalent(set.weightLbs) ? "BW" : formatWeight(set.weightLbs)
-                draftReps[n] = "\(set.repsCompleted)"
-                draftRIR[n] = set.rir.map { formatRIR($0) } ?? ""
+                var draft = SetEntryDraft(suggestedWeight: set.weightLbs)
+                draft.reps = "\(set.repsCompleted)"
+                draft.rir = set.rir.map { formatRIR($0) } ?? ""
+                if drafts[n] == nil { drafts[n] = draft }
                 editing.insert(n)
+                activeSet = n
             } label: {
                 Image(systemName: "pencil").font(.caption2).foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Edit set \(n)")
             Button {
-                onClear(n)
-                resetDraft(n)
+                if onClear(n) { resetDraft(n) }
             } label: {
                 Image(systemName: "xmark.circle.fill").font(.caption).foregroundStyle(.tertiary)
             }
@@ -3895,8 +3932,9 @@ struct InlineSetLogger: View {
                 Button {
                     logRow(n)
                 } label: {
-                    Image(systemName: "checkmark.circle")
-                        .font(.title3)
+                    Text(editing.contains(n) ? "Save" : "Log")
+                        .font(.caption.bold())
+                        .frame(minWidth: 44, minHeight: TFTapTarget.minimum)
                         .foregroundStyle(canLog(n) ? AnyShapeStyle(TFColor.accent) : AnyShapeStyle(.tertiary))
                 }
                 .buttonStyle(.plain)
@@ -3912,18 +3950,9 @@ struct InlineSetLogger: View {
             if !isBodyweightText(weightBinding(n).wrappedValue),
                weightBinding(n).wrappedValue.trimmingCharacters(in: .whitespaces).isEmpty || focusedField == .weight(n) {
                 Button {
-                    draftWeight[n] = "BW"
-                    // A bodyweight movement progresses on reps and usually has no
-                    // load history to prefill them, so tapping "Bodyweight" used to
-                    // resolve the weight but leave reps an empty placeholder — the
-                    // checkmark stayed silently disabled and the set dead-ended.
-                    // Seed the programmed target as an editable starting point so the
-                    // set is one confirm away; the user still edits/confirms the
-                    // actual count (a tap reports what happened, not what was hoped).
-                    if repsBinding(n).wrappedValue.trimmingCharacters(in: .whitespaces).isEmpty,
-                       let target = targetRepsPlaceholder ?? suggestedReps {
-                        draftReps[n] = "\(target)"
-                    }
+                    drafts[n, default: SetEntryDraft()].weight = "BW"
+                    // Selecting a load never asserts that any reps were performed.
+                    focusedField = .reps(n)
                 } label: {
                     Label("Bodyweight — no external load", systemImage: "figure.core.training")
                         .font(.caption2.bold())
@@ -3965,77 +3994,37 @@ struct InlineSetLogger: View {
     // MARK: Drafts & parsing
 
     /// Placeholder for the reps field: the programmed target, visibly a suggestion.
-    /// Actual history prefills as a value; a pure guess never does — a tap must
-    /// report what happened, not confirm what was hoped.
+    /// A target is a hint only and cannot be submitted as performed reps.
     private var repsPlaceholder: String {
         targetRepsPlaceholder.map(String.init) ?? "reps"
     }
 
-    private func defaultWeightText() -> String {
-        // nil = no history (leave empty); bodyweight-equivalent history (true 0 or a legacy
-        // ≤1 lb stand-in) prefills "BW" so the logger field matches how the load displays.
-        guard let w = loggedSets.last?.weightLbs ?? suggestedWeight else { return "" }
-        return WorkoutProgressionEngine.isBodyweightEquivalent(w) ? "BW" : formatWeight(w)
-    }
-
-    private func defaultRepsText() -> String {
-        if let r = loggedSets.last?.repsCompleted ?? suggestedReps, r > 0 { return "\(r)" }
-        return ""
-    }
-
     private func weightBinding(_ n: Int) -> Binding<String> {
-        Binding(get: { draftWeight[n] ?? defaultWeightText() }, set: { draftWeight[n] = $0 })
+        Binding(get: { drafts[n]?.weight ?? "" }, set: { drafts[n, default: SetEntryDraft()].weight = $0 })
     }
 
     private func repsBinding(_ n: Int) -> Binding<String> {
-        Binding(get: { draftReps[n] ?? defaultRepsText() }, set: { draftReps[n] = $0 })
+        Binding(get: { drafts[n]?.reps ?? "" }, set: { drafts[n, default: SetEntryDraft()].reps = $0 })
     }
 
     private func rirBinding(_ n: Int) -> Binding<String> {
-        Binding(get: { draftRIR[n] ?? "" }, set: { draftRIR[n] = $0 })
-    }
-
-    private func parsedWeight(_ n: Int) -> Double? {
-        let t = (draftWeight[n] ?? defaultWeightText())
-            .trimmingCharacters(in: .whitespaces)
-        // "BW" (from the bodyweight button or a BW-history prefill) is an explicit
-        // 0-load set; it is the only way to log 0 — a typed number must be positive.
-        if t.caseInsensitiveCompare("BW") == .orderedSame { return 0 }
-        let cleaned = t.replacingOccurrences(of: ",", with: ".")
-        guard let v = Double(cleaned), v > 0 else { return nil }
-        return v
-    }
-
-    private func parsedReps(_ n: Int) -> Int? {
-        let t = (draftReps[n] ?? defaultRepsText()).trimmingCharacters(in: .whitespaces)
-        guard let v = Int(t), v > 0 else { return nil }
-        return v
-    }
-
-    private func parsedRIR(_ n: Int) -> Double? {
-        let t = (draftRIR[n] ?? "")
-            .trimmingCharacters(in: .whitespaces)
-            .replacingOccurrences(of: ",", with: ".")
-        guard let v = Double(t), (0...6).contains(v) else { return nil }
-        return v
+        Binding(get: { drafts[n]?.rir ?? "" }, set: { drafts[n, default: SetEntryDraft()].rir = $0 })
     }
 
     private func canLog(_ n: Int) -> Bool {
-        parsedWeight(n) != nil && parsedReps(n) != nil
+        drafts[n]?.canLog == true
     }
 
     private func logRow(_ n: Int) {
-        guard let w = parsedWeight(n), let r = parsedReps(n) else { return }
+        guard var draft = drafts[n], draft.save(using: { onLog(n, $0, $1, $2) }) else { return }
         focusedField = nil
-        editing.remove(n)
         TFHaptics.impact(.light)
-        onLog(n, w, r, parsedRIR(n))
+        resetDraft(n)
     }
 
     private func resetDraft(_ n: Int) {
-        draftWeight[n] = nil
-        draftReps[n] = nil
-        draftRIR[n] = nil
+        drafts[n] = nil
+        if activeSet == n { activeSet = nil }
         editing.remove(n)
     }
 

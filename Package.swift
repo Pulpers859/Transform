@@ -128,6 +128,7 @@ let package = Package(
                 // is told to pick up when the rep range or set count CHANGES — arithmetic that
                 // is invisible to inspection and was previously nobody's job at all.
                 "WorkoutLoadTranslation.swift",
+                "SetEntryDraft.swift",
                 "WorkoutEffortGovernance.swift",
 
                 // Deterministic workout generator (the menu-locked planning core).
