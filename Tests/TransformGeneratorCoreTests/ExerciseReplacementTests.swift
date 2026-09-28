@@ -98,7 +98,7 @@ final class ExerciseReplacementTests: XCTestCase {
         XCTAssertEqual(inserted.sets, 2)
     }
 
-    func testDuplicatesCyclesAndSecondSwapOfOriginalRefuse() throws {
+    func testUnrelatedDuplicatesAndSecondSwapOfHistoricalOriginalRefuse() throws {
         let (_, context, day, original) = try fixture()
         let duplicate = WorkoutExercise(order: 6, exerciseName: machine, sets: 3, reps: "10-15")
         context.insert(duplicate)
@@ -112,8 +112,174 @@ final class ExerciseReplacementTests: XCTestCase {
             loggedSetNumbers: [], preferFuture: false, modelContext: context)
         XCTAssertThrowsError(try ExerciseReplacement.replace(original, with: machine,
             loggedSetNumbers: [], preferFuture: false, modelContext: context))
-        XCTAssertThrowsError(try ExerciseReplacement.replace(inserted, with: dumbbell,
-            loggedSetNumbers: [], preferFuture: false, modelContext: context))
+        let returned = try ExerciseReplacement.replace(inserted, with: dumbbell,
+            loggedSetNumbers: [], preferFuture: false, modelContext: context)
+        XCTAssertTrue(returned === original)
+        XCTAssertEqual(day.activeExercises.count, 2) // Original slot + unrelated machine slot.
+    }
+
+    func testInclineDumbbellSmithRoundTripReusesOriginalAndPersists() throws {
+        let (container, context, day, original) = try fixture()
+        original.exerciseName = "Incline Dumbbell Press"
+        original.muscleTarget = "Upper Chest"
+        try context.save()
+        let smith = try ExerciseReplacement.replace(original, with: "Incline Smith Machine Press",
+            loggedSetNumbers: [], preferFuture: false, modelContext: context)
+        XCTAssertTrue(ExerciseReplacement.candidates(for: smith, avoidedKeys: []).contains("Incline Dumbbell Press"))
+        XCTAssertFalse(ExerciseReplacement.candidates(for: smith, avoidedKeys: []).contains("Incline Barbell Press"))
+        XCTAssertFalse(ExerciseReplacement.candidates(for: smith, avoidedKeys: []).contains("Machine Shoulder Press"))
+        let returned = try ExerciseReplacement.replace(smith, with: "Incline Dumbbell Press",
+            loggedSetNumbers: [], preferFuture: false, modelContext: context)
+        XCTAssertTrue(returned === original)
+        XCTAssertEqual(returned.sets, 3)
+        XCTAssertEqual(day.activeExercises.map(\.exerciseName), ["Incline Dumbbell Press"])
+        XCTAssertEqual(day.exercises.count, 2)
+        let reopened = ModelContext(container)
+        let restored = try XCTUnwrap(reopened.fetch(FetchDescriptor<WorkoutDay>()).first)
+        XCTAssertEqual(restored.activeExercises.map(\.exerciseName), ["Incline Dumbbell Press"])
+        XCTAssertEqual(restored.activeExercises.first?.sets, 3)
+    }
+
+    func testPartialReturnPreservesBothLogsAndTotalRemainingBudget() throws {
+        let (_, context, day, original) = try fixture()
+        let originalLog = ExercisePerformanceLog(exerciseName: dumbbell, weightLbs: 20, repsCompleted: 12,
+            workoutDayNumber: 1, prescribedSets: 3, prescribedReps: "10-15",
+            setLogs: [SetLogEntry(setNumber: 1, weightLbs: 20, repsCompleted: 12)])
+        context.insert(originalLog)
+        try context.save()
+        let alternate = try ExerciseReplacement.replace(original, with: machine, loggedSetNumbers: [1],
+            preferFuture: false, modelContext: context)
+        let alternateLog = ExercisePerformanceLog(exerciseName: machine, weightLbs: 45, repsCompleted: 10,
+            workoutDayNumber: 1, prescribedSets: 2, prescribedReps: "10-15",
+            setLogs: [SetLogEntry(setNumber: 1, weightLbs: 45, repsCompleted: 10)])
+        context.insert(alternateLog)
+        try context.save()
+        let originalJSON = originalLog.setLogsJSON
+        let alternateJSON = alternateLog.setLogsJSON
+        let returned = try ExerciseReplacement.replace(alternate, with: dumbbell, loggedSetNumbers: [1],
+            preferFuture: false, modelContext: context)
+        XCTAssertEqual(returned.sets, 2) // 1 original set saved + only 1 set still to do.
+        XCTAssertEqual(day.activeExercises.count, 1)
+        XCTAssertEqual(originalLog.setLogsJSON, originalJSON)
+        XCTAssertEqual(alternateLog.setLogsJSON, alternateJSON)
+        XCTAssertEqual(originalLog.prescribedSets, 3)
+        XCTAssertEqual(originalLog.weightLbs, 20)
+        XCTAssertEqual(alternateLog.weightLbs, 45)
+        XCTAssertTrue(ExerciseSessionLog.resolve(for: returned, among: [alternateLog, originalLog], on: .now) === originalLog)
+        let again = try ExerciseReplacement.replace(returned, with: machine, loggedSetNumbers: [1],
+            preferFuture: false, modelContext: context)
+        XCTAssertTrue(again === alternate)
+        XCTAssertEqual(again.sets, 2)
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<ExercisePerformanceLog>()), 2)
+    }
+
+    func testRepeatedThreeWayReturnsNeverCreateDuplicateRowsOrLoseChoices() throws {
+        let (_, context, day, original) = try fixture()
+        var current = original
+        for name in [machine, cable, dumbbell, cable, machine, dumbbell] + Array(repeating: [machine, cable, dumbbell], count: 10).flatMap({ $0 }) {
+            XCTAssertTrue(ExerciseReplacement.candidates(for: current, avoidedKeys: []).contains(name), "Missing \(name) from \(current.exerciseName)")
+            current = try ExerciseReplacement.replace(current, with: name, loggedSetNumbers: [],
+                preferFuture: false, modelContext: context)
+            XCTAssertEqual(current.sets, 3)
+            XCTAssertEqual(day.activeExercises.count, 1)
+            XCTAssertLessThanOrEqual(day.exercises.count, 3)
+            XCTAssertEqual(Set(day.exercises.map(\.exerciseName)).count, day.exercises.count)
+        }
+    }
+
+    func testReturnKeepsPainAndSkipExclusions() throws {
+        for status: ExerciseCompletionStatus in [.skippedPain, .skippedEquipment, .skippedTime] {
+            let (_, context, _, original) = try fixture()
+            original.completionStatus = status
+            original.painReviewRaw = "resolved"
+            try context.save()
+            let alternate = try ExerciseReplacement.replace(original, with: machine, loggedSetNumbers: [],
+                preferFuture: false, modelContext: context)
+            XCTAssertFalse(ExerciseReplacement.candidates(for: alternate, avoidedKeys: []).contains(dumbbell))
+            XCTAssertEqual(original.completionStatus, status)
+        }
+        let (_, context, _, original) = try fixture()
+        let alternate = try ExerciseReplacement.replace(original, with: machine, loggedSetNumbers: [],
+            preferFuture: false, modelContext: context)
+        XCTAssertThrowsError(try ExerciseReplacement.replace(alternate, with: dumbbell, loggedSetNumbers: [],
+            preferFuture: false, avoidedKeys: [ExerciseWeightEntry.canonicalLookupKey(dumbbell)], modelContext: context))
+    }
+
+    func testReturnRejectsSparseAndSummaryOnlyLogsWithoutMutation() throws {
+        for sets in [[], [SetLogEntry(setNumber: 4, weightLbs: 20, repsCompleted: 12)]] {
+            let (_, context, day, original) = try fixture()
+            let alternate = try ExerciseReplacement.replace(original, with: machine, loggedSetNumbers: [],
+                preferFuture: false, modelContext: context)
+            context.insert(ExercisePerformanceLog(exerciseName: dumbbell, weightLbs: 20,
+                workoutDayNumber: 1, setLogs: sets))
+            try context.save()
+            XCTAssertThrowsError(try ExerciseReplacement.replace(alternate, with: dumbbell, loggedSetNumbers: [],
+                preferFuture: false, modelContext: context))
+            XCTAssertEqual(day.activeExercises.map(\.exerciseName), [machine])
+            XCTAssertEqual(original.sets, 3)
+        }
+    }
+
+    func testReturnPreferenceAndFailureRollback() throws {
+        struct SaveFailure: Error {}
+        let (container, context, day, original) = try fixture()
+        let alternate = try ExerciseReplacement.replace(original, with: machine, loggedSetNumbers: [],
+            preferFuture: true, modelContext: context)
+        XCTAssertThrowsError(try ExerciseReplacement.replace(alternate, with: dumbbell, loggedSetNumbers: [],
+            preferFuture: true, modelContext: context, save: { _ in throw SaveFailure() }))
+        XCTAssertEqual(day.activeExercises.map(\.exerciseName), [machine])
+        XCTAssertEqual(original.preferredReplacementName, machine)
+        XCTAssertEqual(original.replacementName, machine)
+        XCTAssertEqual(alternate.replacementName, "")
+        XCTAssertEqual(try ModelContext(container).fetchCount(FetchDescriptor<WorkoutExercise>()), 2)
+        try context.save()
+        _ = try ExerciseReplacement.replace(alternate, with: dumbbell, loggedSetNumbers: [],
+            preferFuture: true, modelContext: context)
+        XCTAssertEqual(original.preferredReplacementName, "")
+        XCTAssertEqual(alternate.preferredReplacementName, dumbbell)
+    }
+
+    func testFailedMiddleReturnRestoresAllChainEdges() throws {
+        struct SaveFailure: Error {}
+        let (container, context, day, original) = try fixture()
+        let second = try ExerciseReplacement.replace(original, with: machine, loggedSetNumbers: [],
+            preferFuture: false, modelContext: context)
+        let third = try ExerciseReplacement.replace(second, with: cable, loggedSetNumbers: [],
+            preferFuture: false, modelContext: context)
+        let orderBefore = day.sortedExercises.map(\.exerciseName)
+        XCTAssertThrowsError(try ExerciseReplacement.replace(third, with: machine, loggedSetNumbers: [],
+            preferFuture: false, modelContext: context, save: { _ in throw SaveFailure() }))
+        XCTAssertEqual(original.replacementName, machine)
+        XCTAssertEqual(second.replacementName, cable)
+        XCTAssertEqual(third.replacementName, "")
+        XCTAssertEqual(day.sortedExercises.map(\.exerciseName), orderBefore)
+        let reloaded = try XCTUnwrap(ModelContext(container).fetch(FetchDescriptor<WorkoutDay>()).first)
+        XCTAssertEqual(reloaded.activeExercises.map(\.exerciseName), [cable])
+    }
+
+    func testSharedSessionAdapterRejectsOldProgramAndWrongDayLogs() throws {
+        let (_, _, day, original) = try fixture()
+        let old = ExercisePerformanceLog(exerciseName: dumbbell, weightLbs: 100, workoutDayNumber: 1)
+        old.loggedAt = try XCTUnwrap(day.program).createdDate.addingTimeInterval(-60)
+        let otherDay = ExercisePerformanceLog(exerciseName: dumbbell, weightLbs: 200, workoutDayNumber: 2)
+        let current = ExercisePerformanceLog(exerciseName: dumbbell, weightLbs: 20, workoutDayNumber: 1)
+        XCTAssertNil(ExerciseSessionLog.resolve(for: original, among: [old, otherDay], on: .now))
+        XCTAssertTrue(ExerciseSessionLog.resolve(for: original, among: [old, otherDay, current], on: .now) === current)
+    }
+
+    func testReversePreferenceCannotBeSilentlyIgnored() throws {
+        let (_, context, _, original) = try fixture()
+        original.exerciseName = "Incline Dumbbell Press"
+        try context.save()
+        let alternate = try ExerciseReplacement.replace(original, with: "Incline Smith Machine Press",
+            loggedSetNumbers: [], preferFuture: false, modelContext: context)
+        XCTAssertTrue(ExerciseReplacement.candidates(for: alternate, avoidedKeys: []).contains(original.exerciseName))
+        XCTAssertFalse(ExerciseReplacement.compatible(originalName: alternate.exerciseName, candidateName: original.exerciseName))
+        XCTAssertThrowsError(try ExerciseReplacement.replace(alternate, with: original.exerciseName,
+            loggedSetNumbers: [], preferFuture: true, modelContext: context))
+        XCTAssertEqual(alternate.preferredReplacementName, "")
+        XCTAssertTrue(try ExerciseReplacement.replace(alternate, with: original.exerciseName,
+            loggedSetNumbers: [], preferFuture: false, modelContext: context) === original)
     }
 
     func testPainExclusionRevalidatedAndOriginalPainNotErased() throws {

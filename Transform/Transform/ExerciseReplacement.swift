@@ -5,7 +5,7 @@ import SwiftData
 /// preserves programming intent; it is not a claim that an alternative is pain-free.
 enum ExerciseReplacement {
     enum Failure: LocalizedError {
-        case unavailableSession, alreadyReplaced, noRemainingSets, ineligibleCandidate, unsavedChanges
+        case unavailableSession, alreadyReplaced, noRemainingSets, ineligibleCandidate, unsavedChanges, incompleteHistory, preferenceUnavailable
 
         nonisolated var errorDescription: String? {
             switch self {
@@ -14,6 +14,8 @@ enum ExerciseReplacement {
             case .noRemainingSets: return "There are no remaining sets to replace."
             case .ineligibleCandidate: return "This replacement is no longer available. Choose another exercise."
             case .unsavedChanges: return "Save your current changes before replacing this exercise."
+            case .incompleteHistory: return "This earlier exercise has gaps in its set numbers or only a summary log. Returning could miscount your remaining sets, so no changes were made."
+            case .preferenceUnavailable: return "You can return to this exercise today, but it does not meet the planner's future-substitution limits. Turn off the future preference to continue."
             }
         }
     }
@@ -28,20 +30,60 @@ enum ExerciseReplacement {
     }
 
     static func compatible(originalName: String, candidateName: String) -> Bool {
+        compatible(originalName: originalName, candidateName: candidateName, returning: false)
+    }
+
+    private static func compatible(originalName: String, candidateName: String, returning: Bool, live: Bool = false) -> Bool {
         guard let original = metadata(originalName), let candidate = metadata(candidateName),
               ExerciseWeightEntry.canonicalLookupKey(original.canonicalName)
                 != ExerciseWeightEntry.canonicalLookupKey(candidate.canonicalName) else { return false }
         let service = ClaudeService.shared
+        let compoundClasses: Set<String> = ["Heavy Compound", "Hypertrophy Compound"]
+        let sameClass = original.exerciseClass == candidate.exerciseClass
+            || (live && compoundClasses.contains(original.exerciseClass) && compoundClasses.contains(candidate.exerciseClass))
         return Set(original.primaryAreas) == Set(candidate.primaryAreas)
             && original.movementPattern == candidate.movementPattern
-            && original.exerciseClass == candidate.exerciseClass
-            && service.proceduralExerciseRole(for: original.canonicalName,
+            && sameClass
+            && (live || service.proceduralExerciseRole(for: original.canonicalName,
                                               muscleTarget: original.primaryAreas.joined(separator: ", "))
                 == service.proceduralExerciseRole(for: candidate.canonicalName,
-                                                  muscleTarget: candidate.primaryAreas.joined(separator: ", "))
-            && candidate.shoulderRisk <= original.shoulderRisk
-            && candidate.systemicFatigue <= original.systemicFatigue
-            && candidate.fatigueCost <= original.fatigueCost
+                                                  muscleTarget: candidate.primaryAreas.joined(separator: ", ")))
+            && (returning || (candidate.shoulderRisk <= original.shoulderRisk
+                && candidate.systemicFatigue <= original.systemicFatigue
+                && candidate.fatigueCost <= original.fatigueCost))
+    }
+
+    private static func identity(_ name: String) -> String {
+        ExerciseWeightEntry.canonicalLookupKey(metadata(name)?.canonicalName ?? name)
+    }
+
+    /// Walk backward through this slot only. Never adopt another slot's historical card.
+    @MainActor
+    private static func ancestors(of exercise: WorkoutExercise) -> [WorkoutExercise] {
+        guard let day = exercise.day else { return [] }
+        var result: [WorkoutExercise] = []
+        var visited: Set<String> = [identity(exercise.exerciseName)]
+        var current = exercise
+        while true {
+            let predecessors = day.exercises.filter {
+                !$0.replacementName.isEmpty && identity($0.replacementName) == identity(current.exerciseName)
+            }
+            guard predecessors.count == 1, let previous = predecessors.first,
+                  visited.insert(identity(previous.exerciseName)).inserted else { break }
+            result.append(previous)
+            current = previous
+        }
+        return result
+    }
+
+    @MainActor
+    private static func returningExercise(for exercise: WorkoutExercise, name: String) -> WorkoutExercise? {
+        let matching = exercise.day?.exercises.filter { identity($0.exerciseName) == identity(name) } ?? []
+        guard matching.count == 1, let prior = matching.first,
+              // Reversal must not erase a recorded skip/pain disposition.
+              prior.completionStatus?.isSkipped != true,
+              ancestors(of: exercise).contains(where: { $0 === prior }) else { return nil }
+        return prior
     }
 
     @MainActor
@@ -55,8 +97,9 @@ enum ExerciseReplacement {
         return ClaudeService.shared.exerciseMetadataCatalog.values
             .filter { candidate in
                 let key = ExerciseWeightEntry.canonicalLookupKey(candidate.canonicalName)
-                return !occupied.contains(key) && !avoidedKeys.contains(key)
-                    && compatible(originalName: exercise.exerciseName, candidateName: candidate.canonicalName)
+                let returning = returningExercise(for: exercise, name: candidate.canonicalName) != nil
+                return (!occupied.contains(key) || returning) && !avoidedKeys.contains(key)
+                    && compatible(originalName: exercise.exerciseName, candidateName: candidate.canonicalName, returning: returning, live: true)
             }
             .map(\.canonicalName)
             .sorted()
@@ -100,14 +143,25 @@ enum ExerciseReplacement {
         let exclusions = avoidedKeys.union(ExercisePainReview.activeKeys(from: programs))
         guard candidates(for: exercise, avoidedKeys: exclusions).contains(candidateName),
               let candidate = metadata(candidateName) else { throw Failure.ineligibleCandidate }
+        guard !preferFuture || compatible(originalName: exercise.exerciseName, candidateName: candidateName)
+        else { throw Failure.preferenceUnavailable }
         // Logs are keyed by canonical name + day number + session date, not model identity.
         // Refuse an already-logged destination even if its old card is no longer on the day.
         let candidateKey = ExerciseWeightEntry.canonicalLookupKey(candidateName)
         let destinationLogs = try modelContext.fetch(FetchDescriptor<ExercisePerformanceLog>())
-        guard !destinationLogs.contains(where: {
+        let returning = returningExercise(for: exercise, name: candidateName)
+        guard returning != nil || !destinationLogs.contains(where: {
             $0.canonicalExerciseKey == candidateKey && $0.workoutDayNumber == day.dayNumber
                 && Calendar.current.isDateInToday($0.loggedAt)
         }) else { throw Failure.ineligibleCandidate }
+
+        let priorLog = returning.flatMap { ExerciseSessionLog.resolve(for: $0, among: destinationLogs, on: .now) }
+        let priorNumbers = Set((priorLog?.decodedSetLogs ?? []).map(\.setNumber).filter { $0 > 0 })
+        if returning != nil, let priorLog {
+            guard !priorLog.decodedSetLogs.isEmpty,
+                  priorNumbers.count == priorLog.decodedSetLogs.count,
+                  priorNumbers == Set(1...max(1, priorNumbers.count)) else { throw Failure.incompleteHistory }
+        }
 
         let oldExercises = day.exercises
         let oldOrders = oldExercises.map { ($0, $0.order) }
@@ -116,13 +170,20 @@ enum ExerciseReplacement {
         let oldReplacement = exercise.replacementName
         let oldPreference = exercise.preferredReplacementName
         let sourceKey = ExerciseWeightEntry.canonicalLookupKey(exercise.exerciseName)
+        // Choosing a previous exercise as the future preference must not leave A→B→A.
+        let preferenceKeys: Set<String> = returning == nil ? [sourceKey] : [sourceKey, candidateKey]
         let oldPreferences = preferFuture ? programs.flatMap(\.days).flatMap(\.exercises)
-            .filter { ExerciseWeightEntry.canonicalLookupKey($0.exerciseName) == sourceKey }
+            .filter { preferenceKeys.contains(ExerciseWeightEntry.canonicalLookupKey($0.exerciseName)) }
             .map { ($0, $0.preferredReplacementName) } : []
         let oldDayCompleted = day.isCompleted
         let oldDayClosed = day.isSessionClosed
         let oldDayEnded = day.sessionEndedAt
-        let replacement = WorkoutExercise(
+        let oldReturning = returning.map { ($0.sets, $0.completionStatusRaw, $0.isCompleted, $0.replacementName) }
+        let oldIncoming = returning.map { prior in
+            day.exercises.filter { !$0.replacementName.isEmpty && identity($0.replacementName) == identity(prior.exerciseName) }
+                .map { ($0, $0.replacementName) }
+        } ?? []
+        let replacement = returning ?? WorkoutExercise(
             order: 0, exerciseName: candidate.canonicalName,
             sets: exercise.sets - completedCount, reps: exercise.reps,
             tempo: exercise.tempo, restSeconds: exercise.restSeconds,
@@ -132,11 +193,22 @@ enum ExerciseReplacement {
         // Normalize slot order rather than adding one to a possibly noncontiguous order.
         var ordered = day.sortedExercises
         guard let index = ordered.firstIndex(where: { $0 === exercise }) else { throw Failure.unavailableSession }
-        ordered.insert(replacement, at: index + 1)
+        ordered.removeAll { $0 === replacement }
+        let insertionIndex = ordered.firstIndex(where: { $0 === exercise }) ?? index
+        ordered.insert(replacement, at: insertionIndex + 1)
         let autosave = modelContext.autosaveEnabled
         modelContext.autosaveEnabled = false
         defer { modelContext.autosaveEnabled = autosave }
-        modelContext.insert(replacement)
+        if returning == nil { modelContext.insert(replacement) }
+        else {
+            // Remove the reused node from its old position before appending it as active.
+            // This keeps A→B→C→A→C a chain, not two competing predecessors of C.
+            for (incoming, _) in oldIncoming { incoming.replacementName = replacement.replacementName }
+            replacement.sets = priorNumbers.count + exercise.sets - completedCount
+            replacement.completionStatusRaw = ""
+            replacement.isCompleted = false
+            replacement.replacementName = ""
+        }
         replacement.day = day
         day.exercises = ordered
         for (position, item) in ordered.enumerated() { item.order = position }
@@ -160,6 +232,13 @@ enum ExerciseReplacement {
             exercise.isCompleted = oldCompleted
             exercise.replacementName = oldReplacement
             exercise.preferredReplacementName = oldPreference
+            for (incoming, name) in oldIncoming { incoming.replacementName = name }
+            if let returning, let oldReturning {
+                returning.sets = oldReturning.0
+                returning.completionStatusRaw = oldReturning.1
+                returning.isCompleted = oldReturning.2
+                returning.replacementName = oldReturning.3
+            }
             for (item, preference) in oldPreferences { item.preferredReplacementName = preference }
             day.isCompleted = oldDayCompleted
             day.isSessionClosed = oldDayClosed

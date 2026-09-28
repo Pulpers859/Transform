@@ -111,6 +111,7 @@ let package = Package(
                 // already trained report that nothing had been logged. Foundation-only, so
                 // the rule that broke is pinned by tests rather than by inspection.
                 "SessionLogResolution.swift",
+                "ExerciseSessionLog.swift",
                 // Session completion / clock state machine. Foundation + SwiftData only
                 // (all its UI callers stay out of this closure), so the rules that decide
                 // when a day is finished and when the clock closes get real regression

@@ -3419,34 +3419,7 @@ enum SetLoggingService {
         among logs: [ExercisePerformanceLog],
         on date: Date
     ) -> ExercisePerformanceLog? {
-        let key = ExerciseWeightEntry.canonicalLookupKey(exercise.exerciseName)
-        let dayNumber = exercise.day?.dayNumber ?? 0
-        let matching = logs.filter {
-            $0.canonicalExerciseKey == key && $0.workoutDayNumber == dayNumber
-        }
-        guard !matching.isEmpty else { return nil }
-
-        // Sessions belong to a program; see `SessionLogResolution.belongsToProgram`.
-        //
-        // Empty means EMPTY — no falling back to the unscoped set. An earlier draft did, on the
-        // theory that a restored backup might predate its program's creation date, and that
-        // fallback was worse than the bug it guarded: on the first day of a new mesocycle every
-        // day is untrained, so the scoped set is empty for every carried-over exercise, and the
-        // fallback would hand back the ARCHIVED program's session — displaying old sets as
-        // today's, and then, because writes resolve through this same function, merging new sets
-        // into that old program's log and restamping it.
-        let programStart = exercise.day?.program?.createdDate
-        let pool = matching.filter {
-            SessionLogResolution.belongsToProgram(logDate: $0.loggedAt, programStart: programStart)
-        }
-        guard !pool.isEmpty else { return nil }
-
-        let index = SessionLogResolution.indexOfSession(
-            candidateDates: pool.map(\.loggedAt),
-            sessionDates: exercise.day?.sessionCalendarDates ?? [],
-            viewingDate: date
-        )
-        return index.map { pool[$0] }
+        ExerciseSessionLog.resolve(for: exercise, among: logs, on: date)
     }
 
     /// Sets logged for this card's session — today's while training, that day's when looking
