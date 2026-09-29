@@ -22,6 +22,166 @@ import SwiftData
 @MainActor
 enum SessionLifecycle {
 
+    enum ResetFailure: LocalizedError {
+        case unavailable, pendingChanges, ambiguousHistory
+        var errorDescription: String? {
+            switch self {
+            case .unavailable: return "Only a training day in the current program can be reset."
+            case .pendingChanges: return "Finish saving your current edits, then try again."
+            case .ambiguousHistory: return "Some saved records cannot be safely assigned to this day. Nothing was reset."
+            }
+        }
+    }
+
+    static func canCancelAccidentalStart(_ day: WorkoutDay, logs: [ExercisePerformanceLog]) -> Bool {
+        guard day.feedbackSubmittedAt == nil, day.sessionEffort == 0, day.stimulusQuality == 0,
+              day.jointPain == 0, day.performanceRatingRaw.isEmpty, day.sessionFeedbackNotes.isEmpty,
+              day.exercises.allSatisfy({ !$0.isCompleted && $0.completionStatusRaw.isEmpty && $0.painReviewRaw.isEmpty })
+        else { return false }
+        return !logs.contains { $0.workoutDayNumber == day.dayNumber && $0.loggedAt >= (day.program?.createdDate ?? .distantPast) }
+    }
+
+    /// Destructive, explicit owner action. Never use the display resolver's latest-log fallback
+    /// to select records for deletion. Tests in WorkoutDayResetTests pin the ownership boundary.
+    static func reset(_ day: WorkoutDay, in context: ModelContext,
+                      save: (ModelContext) throws -> Void = { try $0.save() }) throws {
+        guard let program = day.program, !program.isArchived, !day.isRestDay else { throw ResetFailure.unavailable }
+        guard !context.hasChanges else { throw ResetFailure.pendingChanges }
+        let programs = try context.fetch(FetchDescriptor<WorkoutProgram>())
+        guard !programs.contains(where: { $0 !== program && $0.createdDate >= program.createdDate }) else {
+            throw ResetFailure.ambiguousHistory
+        }
+        let logs = try context.fetch(FetchDescriptor<ExercisePerformanceLog>())
+        let keys = Set(day.exercises.map { ExerciseWeightEntry.canonicalLookupKey($0.exerciseName) })
+        let recent = logs.filter { $0.loggedAt >= program.createdDate }
+        guard !recent.contains(where: { $0.workoutDayNumber == 0 && keys.contains($0.canonicalExerciseKey) }),
+              program.days.filter({ $0.dayNumber == day.dayNumber }).count == 1 else {
+            throw ResetFailure.ambiguousHistory
+        }
+        let removed = recent.filter { $0.workoutDayNumber == day.dayNumber }
+        guard removed.allSatisfy({ keys.contains($0.canonicalExerciseKey) }) else { throw ResetFailure.ambiguousHistory }
+        let otherDays = programs.filter { $0 !== program }.flatMap(\.days).filter { $0.dayNumber == day.dayNumber }
+        guard !removed.contains(where: { log in
+            otherDays.contains { other in
+                other.sessionCalendarDates.contains { Calendar.current.isDate($0, inSameDayAs: log.loggedAt) }
+                    && other.exercises.contains { ExerciseWeightEntry.canonicalLookupKey($0.exerciseName) == log.canonicalExerciseKey }
+            }
+        }) else { throw ResetFailure.ambiguousHistory }
+        let removedIDs = Set(removed.map(\.persistentModelID))
+        let remaining = logs.filter { !removedIDs.contains($0.persistentModelID) }
+        let summaries = try context.fetch(FetchDescriptor<ExerciseWeightEntry>())
+        for summary in summaries where removed.contains(where: { $0.canonicalExerciseKey == summary.canonicalExerciseKey }) {
+            // A correction can advance a log's timestamp while leaving an earlier personal
+            // best in the summary. Without provenance, do not guess which session owns it.
+            if let bestDate = summary.bestLoggedAt, bestDate >= program.createdDate,
+               !logs.contains(where: { $0.canonicalExerciseKey == summary.canonicalExerciseKey && $0.loggedAt == bestDate }) {
+                throw ResetFailure.ambiguousHistory
+            }
+        }
+
+        // Restore sets performed on earlier segments of a replacement chain to its active lift.
+        var restoredSets: [(WorkoutExercise, Int)] = []
+        var accountedExercises = Set<PersistentIdentifier>()
+        for active in day.activeExercises {
+            var total = active.sets
+            var cursor = active
+            var visited = Set([active.persistentModelID])
+            while true {
+                let predecessors = day.exercises.filter {
+                    !$0.replacementName.isEmpty && ExerciseReplacement.identity($0.replacementName)
+                        == ExerciseReplacement.identity(cursor.exerciseName)
+                }
+                guard predecessors.count <= 1 else { throw ResetFailure.ambiguousHistory }
+                guard let prior = predecessors.first else { break }
+                guard visited.insert(prior.persistentModelID).inserted else { throw ResetFailure.ambiguousHistory }
+                let priorLogs = removed.filter { $0.canonicalExerciseKey == ExerciseWeightEntry.canonicalLookupKey(prior.exerciseName) }
+                guard priorLogs.count <= 1 else { throw ResetFailure.ambiguousHistory }
+                if let log = priorLogs.first {
+                    let numbers = Set(log.decodedSetLogs.map(\.setNumber))
+                    guard !numbers.isEmpty, numbers.count == log.decodedSetLogs.count,
+                          numbers == Set(1...numbers.count), numbers.count <= prior.sets else { throw ResetFailure.ambiguousHistory }
+                    total += numbers.count
+                }
+                cursor = prior
+            }
+            restoredSets.append((active, total))
+            guard accountedExercises.isDisjoint(with: visited) else { throw ResetFailure.ambiguousHistory }
+            accountedExercises.formUnion(visited)
+        }
+        guard accountedExercises.count == day.exercises.count else { throw ResetFailure.ambiguousHistory }
+
+        let autosave = context.autosaveEnabled
+        context.autosaveEnabled = false
+        defer { context.autosaveEnabled = autosave }
+        do {
+            for summary in summaries {
+                let deletedDates = Set(removed.filter { $0.canonicalExerciseKey == summary.canonicalExerciseKey }.map(\.loggedAt))
+                guard !deletedDates.isEmpty else { continue }
+                var records = remaining.filter { $0.canonicalExerciseKey == summary.canonicalExerciseKey }.map { log in
+                    let top = WorkingSetAnalysis.summaryTop(from: log.decodedSetLogs)
+                    return ResetRecord(date: log.loggedAt, weight: top?.weightLbs ?? log.weightLbs,
+                                       reps: top?.reps ?? log.repsCompleted, notes: log.notes)
+                }
+                // Summaries may carry legacy history with no performance-log row. Preserve it.
+                if !deletedDates.contains(summary.loggedAt) {
+                    records.append(ResetRecord(date: summary.loggedAt, weight: summary.weightLbs, reps: summary.repsCompleted, notes: summary.notes))
+                }
+                if let date = summary.bestLoggedAt, !deletedDates.contains(date) {
+                    records.append(ResetRecord(date: date, weight: summary.bestWeightLbs, reps: summary.bestRepsCompleted, notes: summary.bestNotes))
+                }
+                guard let latest = records.max(by: { $0.date < $1.date }) else {
+                    context.delete(summary)
+                    continue
+                }
+                let best = records.max {
+                    if abs($0.weight - $1.weight) > 0.001 { return $0.weight < $1.weight }
+                    if ($0.reps ?? 0) != ($1.reps ?? 0) { return ($0.reps ?? 0) < ($1.reps ?? 0) }
+                    return $0.date < $1.date
+                }!
+                if deletedDates.contains(summary.loggedAt) {
+                    summary.loggedAt = latest.date
+                    summary.weightLbs = latest.weight
+                    summary.repsCompleted = latest.reps
+                    summary.notes = latest.notes
+                }
+                if summary.bestLoggedAt.map(deletedDates.contains) ?? false {
+                    summary.bestLoggedAt = best.date
+                    summary.bestWeightLbs = best.weight
+                    summary.bestRepsCompleted = best.reps
+                    summary.bestNotes = best.notes
+                }
+            }
+            for log in removed { context.delete(log) }
+            for (exercise, sets) in restoredSets { exercise.sets = sets }
+            for exercise in day.exercises {
+                exercise.isCompleted = false
+                exercise.completionStatusRaw = ""
+                exercise.painReviewRaw = ""
+            }
+            day.isCompleted = false
+            day.isSessionClosed = false
+            day.sessionStartedAt = nil
+            day.sessionEndedAt = nil
+            day.feedbackSubmittedAt = nil
+            day.sessionEffort = 0
+            day.stimulusQuality = 0
+            day.jointPain = 0
+            day.performanceRatingRaw = ""
+            day.sessionFeedbackNotes = ""
+            try save(context)
+        } catch {
+            context.rollback()
+            throw error
+        }
+    }
+
+    private struct ResetRecord {
+        let date: Date
+        let weight: Double
+        let reps: Int?
+        let notes: String
+    }
+
     /// Warm-up lead: the athlete is already training (warming up) before the first rep is
     /// logged, so an *inferred* start is back-dated by this much to approximate real
     /// session length. Applies ONLY to an inferred start — a manual "Start session" tap

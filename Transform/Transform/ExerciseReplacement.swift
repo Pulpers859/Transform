@@ -53,7 +53,7 @@ enum ExerciseReplacement {
                 && candidate.fatigueCost <= original.fatigueCost))
     }
 
-    private static func identity(_ name: String) -> String {
+    static func identity(_ name: String) -> String {
         ExerciseWeightEntry.canonicalLookupKey(metadata(name)?.canonicalName ?? name)
     }
 

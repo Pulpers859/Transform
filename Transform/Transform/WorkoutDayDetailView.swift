@@ -11,6 +11,9 @@ struct WorkoutDayDetailView: View {
     @State private var feedbackDay: WorkoutDay?
     @State private var completionPromptExercise: WorkoutExercise?
     @State private var exerciseForReplacement: WorkoutExercise?
+    @State private var showingResetConfirmation = false
+    @State private var resetError: String?
+    @State private var resetRevision = 0
     /// Which exercise cards are open. Manual open/close is authoritative; the one-time
     /// seed (see `seedExpansionIfNeeded`) opens only the current lift so a finished or
     /// returning day lands collapsed and calm.
@@ -86,6 +89,7 @@ struct WorkoutDayDetailView: View {
                     sessionFeedbackCard
                 }
                 exerciseList
+                    .id(resetRevision)
             }
             .padding()
         }
@@ -97,6 +101,27 @@ struct WorkoutDayDetailView: View {
         .onAppear { seedExpansionIfNeeded() }
         .navigationTitle("Day \(day.dayNumber)")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if !day.isRestDay && day.program?.isArchived == false {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Button(resetActionTitle, role: .destructive) { showingResetConfirmation = true }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                    }
+                    .accessibilityLabel("Workout day options")
+                }
+            }
+        }
+        .confirmationDialog(resetActionTitle + "?", isPresented: $showingResetConfirmation, titleVisibility: .visible) {
+            Button(resetActionTitle, role: .destructive) { resetWorkoutDay() }
+            Button("Keep Workout", role: .cancel) { }
+        } message: {
+            Text("Clear this day's saved sets, skip and pain marks, timer, and feedback. Keep the current exercises and your exercise preferences. Other days stay unchanged. This cannot be undone.")
+        }
+        .alert("Workout was not reset", isPresented: Binding(get: { resetError != nil }, set: { if !$0 { resetError = nil } })) {
+            Button("OK", role: .cancel) { resetError = nil }
+        } message: { Text(resetError ?? "") }
         .sheet(item: $exerciseForWeightLogging) { exercise in
             AddExerciseWeightSheet(
                 exercise: exercise,
@@ -140,6 +165,30 @@ struct WorkoutDayDetailView: View {
     }
 
     // MARK: - Day Header
+
+    private var resetActionTitle: String {
+        SessionLifecycle.canCancelAccidentalStart(day, logs: allPerformanceLogs)
+            ? "Cancel Accidental Start" : "Reset Workout Day"
+    }
+
+    private func resetWorkoutDay() {
+        do {
+            try SessionLifecycle.reset(day, in: modelContext)
+            feedbackDay = nil
+            completionPromptExercise = nil
+            exerciseForWeightLogging = nil
+            exerciseForReplacement = nil
+            resetRevision += 1
+            expandedExerciseIDs = []
+            didSeedExpansion = false
+            seedExpansionIfNeeded()
+            DataBackupManager.shared.writeAutomaticBackupCoalesced(using: modelContext)
+            TFHaptics.success()
+        } catch {
+            resetError = error.localizedDescription
+            TFHaptics.error()
+        }
+    }
 
     var dayHeader: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -703,6 +752,10 @@ struct WorkoutDayDetailView: View {
     /// deliberately does NOT mark the day complete: the untouched exercises are real
     /// missing work and skip/pain history feeds next week's programming.
     func finishSessionEarly() {
+        if SessionLifecycle.canCancelAccidentalStart(day, logs: allPerformanceLogs) {
+            showingResetConfirmation = true
+            return
+        }
         let previousEnd = day.sessionEndedAt
         let previousClosed = day.isSessionClosed
         SessionLifecycle.markSessionEnded(for: day)
