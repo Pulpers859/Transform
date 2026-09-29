@@ -2476,6 +2476,7 @@ struct RestTimerFullscreen: View {
 
     @State private var currentSet = 1
     @State private var didPickStartingSet = false
+    @State private var logError: String?
     @State private var draftWeight: [Int: String] = [:]
     @State private var draftReps: [Int: String] = [:]
     @State private var draftRIR: [Int: String] = [:]
@@ -2599,6 +2600,13 @@ struct RestTimerFullscreen: View {
             prepareCurrentSet()
         }
         .statusBarHidden()
+        .onReceive(NotificationCenter.default.publisher(for: .persistenceSaveFailed)) { notification in
+            logError = notification.userInfo?[PersistenceReporter.messageUserInfoKey] as? String
+                ?? "The set could not be saved. Your entries are still here; please try again."
+        }
+        .alert("Set not logged", isPresented: Binding(get: { logError != nil }, set: { if !$0 { logError = nil } })) {
+            Button("OK", role: .cancel) { logError = nil }
+        } message: { Text(logError ?? "") }
     }
 
     // MARK: - Set entry
@@ -2654,9 +2662,9 @@ struct RestTimerFullscreen: View {
                         .font(.caption.bold())
                         .frame(minWidth: 44, minHeight: TFTapTarget.minimum)
                         .foregroundStyle(canConfirm ? Color.white : Color.white.opacity(0.3))
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .disabled(!canConfirm)
                 .accessibilityLabel(isCurrentSetLogged ? "Update set \(currentSet)" : "Confirm set \(currentSet)")
             }
 
@@ -2757,9 +2765,17 @@ struct RestTimerFullscreen: View {
     }
 
     private func confirmCurrentSet() {
-        guard canConfirm, let weight = parsedWeight, let reps = parsedReps else { return }
+        let draft = currentDraft
+        guard draft.canLog, let weight = draft.parsedWeight, let reps = draft.parsedReps else {
+            logError = "Enter a weight (or select Bodyweight), completed reps, and an optional RIR from 0 to 6."
+            return
+        }
         let confirmed = currentSet
-        guard onLogSet(confirmed, weight, reps, parsedRIR) else { return }
+        logError = nil
+        guard onLogSet(confirmed, weight, reps, draft.parsedRIR) else {
+            if logError == nil { logError = "The set could not be saved. Your entries are still here; please try again." }
+            return
+        }
         focusedField = nil
         TFHaptics.impact(.light)
 
@@ -2846,35 +2862,14 @@ struct RestTimerFullscreen: View {
         return Binding(get: { draftRIR[n] ?? defaultRIRText(n) }, set: { draftRIR[n] = $0 })
     }
 
-    /// "BW" is the only way to log a 0 load; a typed number must be positive.
-    private var parsedWeight: Double? {
-        let t = weightBinding.wrappedValue.trimmingCharacters(in: .whitespaces)
-        if t.caseInsensitiveCompare("BW") == .orderedSame { return 0 }
-        guard let v = Double(t.replacingOccurrences(of: ",", with: ".")), v > 0 else { return nil }
-        return v
-    }
-
-    private var parsedReps: Int? {
-        let t = repsBinding.wrappedValue.trimmingCharacters(in: .whitespaces)
-        guard let v = Int(t), v > 0 else { return nil }
-        return v
-    }
-
-    private var parsedRIR: Double? {
-        let t = rirBinding.wrappedValue
-            .trimmingCharacters(in: .whitespaces)
-            .replacingOccurrences(of: ",", with: ".")
-        guard let v = Double(t), (0...6).contains(v) else { return nil }
-        return v
-    }
-
-    private var canConfirm: Bool {
+    private var currentDraft: SetEntryDraft {
         var draft = SetEntryDraft()
         draft.weight = weightBinding.wrappedValue
         draft.reps = repsBinding.wrappedValue
         draft.rir = rirBinding.wrappedValue
-        return draft.canLog
+        return draft
     }
+    private var canConfirm: Bool { currentDraft.canLog }
 }
 
 struct SessionNoteSections {
@@ -3796,6 +3791,7 @@ struct InlineSetLogger: View {
     @State private var editing: Set<Int> = []
     @State private var drafts: [Int: SetEntryDraft] = [:]
     @State private var activeSet: Int?
+    @State private var logError: String?
     @FocusState private var focusedField: FieldKey?
 
     enum FieldKey: Hashable {
@@ -3962,10 +3958,13 @@ struct InlineSetLogger: View {
                         .font(.caption.bold())
                         .frame(minWidth: 44, minHeight: TFTapTarget.minimum)
                         .foregroundStyle(canLog(n) ? AnyShapeStyle(TFColor.accent) : AnyShapeStyle(.tertiary))
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .disabled(!canLog(n))
                 .accessibilityLabel("Log set \(n)")
+                .alert("Set not logged", isPresented: Binding(get: { logError != nil }, set: { if !$0 { logError = nil } })) {
+                    Button("OK", role: .cancel) { logError = nil }
+                } message: { Text(logError ?? "") }
             }
             // The decimal keyboard can't type "BW", so the option is offered explicitly. It
             // shows while the weight field is empty OR while this row is the one being
@@ -4042,7 +4041,14 @@ struct InlineSetLogger: View {
     }
 
     private func logRow(_ n: Int) {
-        guard var draft = drafts[n], draft.save(using: { onLog(n, $0, $1, $2) }) else { return }
+        guard var draft = drafts[n], draft.canLog else {
+            logError = "Enter a weight (or select Bodyweight), completed reps, and an optional RIR from 0 to 6."
+            return
+        }
+        guard draft.save(using: { onLog(n, $0, $1, $2) }) else {
+            logError = "The set could not be saved. Your entries are still here; please try again."
+            return
+        }
         focusedField = nil
         TFHaptics.impact(.light)
         resetDraft(n)

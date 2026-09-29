@@ -2,6 +2,24 @@ import XCTest
 @testable import Transform
 
 final class SetEntryDraftTests: XCTestCase {
+    func testDisplayedValidResultsReachSaveWithIdenticalNormalization() {
+        for padding in ["", " ", "\n", "\r\n", "\t"] {
+            var draft = SetEntryDraft()
+            draft.weight = padding + "150" + padding
+            draft.reps = padding + "12" + padding
+            draft.rir = padding + "2" + padding
+            XCTAssertTrue(draft.canLog)
+            var calls = 0
+            XCTAssertTrue(draft.save { weight, reps, rir in
+                calls += 1
+                XCTAssertEqual(weight, 150)
+                XCTAssertEqual(reps, 12)
+                XCTAssertEqual(rir, 2)
+                return true
+            })
+            XCTAssertEqual(calls, 1)
+        }
+    }
     func testSwitchingAwayFromAnEditKeepsSavedResultVisible() {
         XCTAssertEqual(SetEntryDraft.rowState(hasSavedSet: true, isActive: false, isEditing: true), .saved)
         XCTAssertEqual(SetEntryDraft.rowState(hasSavedSet: true, isActive: true, isEditing: true), .entry)
