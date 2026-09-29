@@ -112,6 +112,12 @@ enum SessionLifecycle {
         }
         guard accountedExercises.count == day.exercises.count else { throw ResetFailure.ambiguousHistory }
 
+        let daySnapshot = (day.isCompleted, day.isSessionClosed, day.sessionStartedAt, day.sessionEndedAt,
+                           day.feedbackSubmittedAt, day.sessionEffort, day.stimulusQuality, day.jointPain,
+                           day.performanceRatingRaw, day.sessionFeedbackNotes)
+        let exerciseSnapshots = day.exercises.map { ($0, $0.sets, $0.isCompleted, $0.completionStatusRaw, $0.painReviewRaw) }
+        let summarySnapshots = summaries.map { ($0, $0.loggedAt, $0.weightLbs, $0.repsCompleted, $0.notes,
+                                               $0.bestLoggedAt, $0.bestWeightLbs, $0.bestRepsCompleted, $0.bestNotes) }
         let autosave = context.autosaveEnabled
         context.autosaveEnabled = false
         defer { context.autosaveEnabled = autosave }
@@ -173,6 +179,27 @@ enum SessionLifecycle {
             try save(context)
         } catch {
             context.rollback()
+            // SwiftData rollback restores disk state but does not reliably refresh objects
+            // already held by SwiftUI. Keep those references consistent as well.
+            (day.isCompleted, day.isSessionClosed, day.sessionStartedAt, day.sessionEndedAt,
+             day.feedbackSubmittedAt, day.sessionEffort, day.stimulusQuality, day.jointPain,
+             day.performanceRatingRaw, day.sessionFeedbackNotes) = daySnapshot
+            for (exercise, sets, completed, status, pain) in exerciseSnapshots {
+                exercise.sets = sets
+                exercise.isCompleted = completed
+                exercise.completionStatusRaw = status
+                exercise.painReviewRaw = pain
+            }
+            for (summary, date, weight, reps, notes, bestDate, bestWeight, bestReps, bestNotes) in summarySnapshots {
+                summary.loggedAt = date
+                summary.weightLbs = weight
+                summary.repsCompleted = reps
+                summary.notes = notes
+                summary.bestLoggedAt = bestDate
+                summary.bestWeightLbs = bestWeight
+                summary.bestRepsCompleted = bestReps
+                summary.bestNotes = bestNotes
+            }
             throw error
         }
     }

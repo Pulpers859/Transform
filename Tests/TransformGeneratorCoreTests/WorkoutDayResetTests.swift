@@ -99,11 +99,16 @@ final class WorkoutDayResetTests: XCTestCase {
         exercise.completionStatus = .skippedTime
         let log = ExercisePerformanceLog(exerciseName: exercise.exerciseName, weightLbs: 20, repsCompleted: 10, workoutDayNumber: 1)
         context.insert(log)
+        let summary = ExerciseWeightEntry(loggedAt: log.loggedAt, exerciseName: exercise.exerciseName, weightLbs: 20, repsCompleted: 10)
+        context.insert(summary)
         try context.save()
         enum Failure: Error { case expected }
         XCTAssertThrowsError(try SessionLifecycle.reset(day, in: context, save: { _ in throw Failure.expected }))
         XCTAssertEqual(day.sessionStartedAt, stamp)
         XCTAssertEqual(exercise.completionStatus, .skippedTime)
+        XCTAssertEqual(summary.weightLbs, 20)
+        XCTAssertEqual(summary.bestWeightLbs, 20)
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<ExerciseWeightEntry>()), 1)
         XCTAssertEqual(try context.fetchCount(FetchDescriptor<ExercisePerformanceLog>()), 1)
         XCTAssertEqual(try ModelContext(container).fetch(FetchDescriptor<WorkoutDay>()).first?.sessionStartedAt, stamp)
     }
