@@ -105,16 +105,56 @@ enum ExerciseReplacement {
             .sorted()
     }
 
+    /// Visible only when the picker is empty. Do not call a session/storage gate a
+    /// shortage of exercises; this report uses the same predicates as the picker.
+    @MainActor
+    static func emptyCandidateExplanation(for exercise: WorkoutExercise, avoidedKeys: Set<String>) -> String {
+        if !exercise.replacementName.isEmpty {
+            return "This is a previous replacement card. Open Replace on the active exercise instead. [R2: previous-card]"
+        }
+        if let reason = sessionBlockReason(exercise) { return reason }
+        guard let day = exercise.day else { return "The exercise is not linked to its workout day. [R2: missing-day]" }
+        guard metadata(exercise.exerciseName) != nil else {
+            return "The exercise name could not be matched to the exercise library. [R2: unknown-name]"
+        }
+        let occupied = Set(day.exercises.flatMap { item in
+            [ExerciseWeightEntry.canonicalLookupKey(item.exerciseName), identity(item.exerciseName)]
+        })
+        let compatibleNames = ClaudeService.shared.exerciseMetadataCatalog.values.filter {
+            compatible(originalName: exercise.exerciseName, candidateName: $0.canonicalName,
+                returning: returningExercise(for: exercise, name: $0.canonicalName) != nil, live: true)
+        }.map(\.canonicalName)
+        let unoccupied = compatibleNames.filter {
+            !occupied.contains(ExerciseWeightEntry.canonicalLookupKey($0)) || returningExercise(for: exercise, name: $0) != nil
+        }
+        let available = unoccupied.filter { !avoidedKeys.contains(ExerciseWeightEntry.canonicalLookupKey($0)) }
+        let counts = "[R2: compatible=\(compatibleNames.count), after-day-filter=\(unoccupied.count), after-pain-filter=\(available.count)]"
+        if compatibleNames.isEmpty { return "The library has no alternative meeting this exercise's current matching rules. \(counts)" }
+        if unoccupied.isEmpty { return "Matching alternatives are already on this day or belong to protected replacement history. \(counts)" }
+        if available.isEmpty { return "The remaining matching alternatives are excluded by recorded pain restrictions. Review them in Exercise Preferences only if their status has changed. \(counts)" }
+        return "Alternatives were found, but the list did not display them. Close and reopen this picker. \(counts)"
+    }
+
     @MainActor
     private static func sessionAllowsReplacement(_ exercise: WorkoutExercise) -> Bool {
-        guard let day = exercise.day, !day.isRestDay, day.program?.isArchived != true,
-              day.feedbackSubmittedAt == nil else { return false }
-        if let end = day.sessionEndedAt, !Calendar.current.isDateInToday(end) { return false }
-        guard day.hasReviewableSession else { return true }
+        sessionBlockReason(exercise) == nil
+    }
+
+    @MainActor
+    private static func sessionBlockReason(_ exercise: WorkoutExercise) -> String? {
+        guard let day = exercise.day else { return "The exercise is not linked to its workout day. [R2: missing-day]" }
+        if day.isRestDay { return "This day is stored as a rest day. [R2: rest-day]" }
+        if day.program?.isArchived == true { return "This workout belongs to an archived program. [R2: archived-program]" }
+        if day.feedbackSubmittedAt != nil { return "This workout has submitted session feedback and is protected from replacement. [R2: rated-session]" }
+        if let end = day.sessionEndedAt, !Calendar.current.isDateInToday(end) {
+            return "This workout has a saved session-end date on a different calendar day, even if it appears unfinished. [R2: different-end-date]"
+        }
+        guard day.hasReviewableSession else { return nil }
         // Skipping the final lift auto-closes the day. Choosing an alternative immediately
         // afterwards is still today's training, unlike editing a historical/explicit finish.
-        return day.isCompleted && (exercise.completionStatus?.isSkipped ?? false)
-            && day.sessionEndedAt.map { Calendar.current.isDateInToday($0) } == true
+        if day.isCompleted && (exercise.completionStatus?.isSkipped ?? false)
+            && day.sessionEndedAt.map({ Calendar.current.isDateInToday($0) }) == true { return nil }
+        return "This workout is stored as completed or closed, even if sets remain. [R2: completed=\(day.isCompleted), closed=\(day.isSessionClosed)]"
     }
 
     /// `loggedSetNumbers` must come from the session resolver for THIS day, not global history.

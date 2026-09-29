@@ -4,6 +4,75 @@ import SwiftData
 
 @MainActor
 final class ExerciseReplacementTests: XCTestCase {
+    func testReversePecDeckOffersAlternativesOnFutureAndUnfinishedDays() throws {
+        let (_, context, day, original) = try fixture()
+        original.exerciseName = "Reverse Pec Deck"
+        original.muscleTarget = "Rear Deltoids"
+        day.dayNumber = 14
+        try context.save()
+        for started in [false, true] {
+            if started { SessionLifecycle.noteSetLogged(for: original, at: .now) }
+            let names = ExerciseReplacement.candidates(for: original, avoidedKeys: [])
+            XCTAssertTrue(names.contains("Cable Rear Delt Fly"))
+            XCTAssertTrue(names.contains("Dumbbell Rear Delt Fly"))
+            XCTAssertTrue(names.contains("Prone Incline Dumbbell Rear Delt Raise"))
+        }
+    }
+
+    func testLivePickerRetainsEveryBaselineCompatibleCatalogChoice() throws {
+        let (_, _, _, original) = try fixture()
+        let service = ClaudeService.shared
+        let catalog = Array(service.exerciseMetadataCatalog.values)
+        var checked = 0
+        for source in catalog {
+            original.exerciseName = source.canonicalName
+            let actual = Set(ExerciseReplacement.candidates(for: original, avoidedKeys: []))
+            for target in catalog where source.canonicalName != target.canonicalName {
+                // The exact 0c0b4aa predicate, independent of today's compatible helper.
+                let oldAccepted = ExerciseWeightEntry.canonicalLookupKey(source.canonicalName) != ExerciseWeightEntry.canonicalLookupKey(target.canonicalName)
+                    && Set(source.primaryAreas) == Set(target.primaryAreas)
+                    && source.movementPattern == target.movementPattern
+                    && source.exerciseClass == target.exerciseClass
+                    && service.proceduralExerciseRole(for: source.canonicalName, muscleTarget: source.primaryAreas.joined(separator: ", "))
+                        == service.proceduralExerciseRole(for: target.canonicalName, muscleTarget: target.primaryAreas.joined(separator: ", "))
+                    && target.shoulderRisk <= source.shoulderRisk
+                    && target.systemicFatigue <= source.systemicFatigue
+                    && target.fatigueCost <= source.fatigueCost
+                if oldAccepted {
+                    checked += 1
+                    XCTAssertTrue(actual.contains(target.canonicalName), "Lost baseline choice: \(source.canonicalName) → \(target.canonicalName)")
+                }
+            }
+        }
+        XCTAssertGreaterThan(checked, 0)
+    }
+
+    func testEmptyPickerReportsSessionGateRatherThanMissingAlternatives() throws {
+        let (_, _, day, original) = try fixture()
+        day.program?.isArchived = true
+        XCTAssertTrue(ExerciseReplacement.candidates(for: original, avoidedKeys: []).isEmpty)
+        XCTAssertTrue(ExerciseReplacement.emptyCandidateExplanation(for: original, avoidedKeys: []).contains("archived-program"))
+        day.program?.isArchived = false
+        day.isSessionClosed = true
+        XCTAssertTrue(ExerciseReplacement.emptyCandidateExplanation(for: original, avoidedKeys: []).contains("closed=true"))
+        day.isSessionClosed = false
+        day.sessionEndedAt = Date().addingTimeInterval(-48 * 60 * 60)
+        XCTAssertTrue(ExerciseReplacement.emptyCandidateExplanation(for: original, avoidedKeys: []).contains("different-end-date"))
+        day.sessionEndedAt = nil
+        original.day = nil
+        XCTAssertTrue(ExerciseReplacement.emptyCandidateExplanation(for: original, avoidedKeys: []).contains("missing-day"))
+    }
+
+    func testEmptyPickerDistinguishesPainAndUnrecognizedName() throws {
+        let (_, _, _, original) = try fixture()
+        let names = ExerciseReplacement.candidates(for: original, avoidedKeys: [])
+        let blocked = Set(names.map { ExerciseWeightEntry.canonicalLookupKey($0) })
+        XCTAssertTrue(ExerciseReplacement.candidates(for: original, avoidedKeys: blocked).isEmpty)
+        XCTAssertTrue(ExerciseReplacement.emptyCandidateExplanation(for: original, avoidedKeys: blocked).contains("after-pain-filter=0"))
+        original.exerciseName = "Unknown owner exercise"
+        XCTAssertTrue(ExerciseReplacement.emptyCandidateExplanation(for: original, avoidedKeys: []).contains("unknown-name"))
+    }
+
     private let dumbbell = "Dumbbell Lateral Raise"
     private let machine = "Machine Lateral Raise"
     private let cable = "Cable Lateral Raise"

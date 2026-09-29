@@ -38,7 +38,8 @@ struct ExerciseReplacementView: View {
                 }
                 Section("Choose an available alternative") {
                     if candidates.isEmpty {
-                        Text("No compatible alternative is available for this slot. You can cancel and skip the remaining work; the app will not force a mismatched replacement.")
+                        Text(ExerciseReplacement.emptyCandidateExplanation(for: exercise,
+                            avoidedKeys: ExercisePainReview.activeKeys(from: programs)))
                     }
                     ForEach(candidates, id: \.self) { name in
                         Button {
