@@ -188,7 +188,9 @@ final class WorkoutDayResetTests: XCTestCase {
         oldDay.program = older
         oldDay.exercises = [oldExercise]
         oldExercise.day = oldDay
-        oldDay.sessionEndedAt = .now
+        // A bulk edit can move the log into the current program's dates without moving
+        // its original day's clock. Clock-date mismatch must not authorize deletion.
+        oldDay.sessionEndedAt = older.createdDate
         context.insert(ExercisePerformanceLog(exerciseName: exercise.exerciseName, weightLbs: 20, workoutDayNumber: 1))
         try context.save()
         XCTAssertThrowsError(try SessionLifecycle.reset(day, in: context))

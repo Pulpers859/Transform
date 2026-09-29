@@ -24,9 +24,11 @@ No schema, exercise key, backup guard or automatic migration changes. Explicit
 user-triggered destructive action only. The current nonarchived program's creation
 date and day number scope logs, using the app's existing program-history boundary.
 Legacy logs do not contain program IDs: this is not proof of ownership for every
-historically hand-edited/imported database. Overlapping old-day timestamps, newer
+historically hand-edited/imported database. Matching older-program day/exercise keys, newer
 programs, duplicate days, unscoped recent records, untraceable recent personal bests,
-and malformed replacement chains are refused rather than guessed.
+and malformed replacement chains are refused rather than guessed. This can block resetting
+logged days when an archived program used the same exercise on the same day number,
+even if the owner knows the records are separate. Empty accidental starts remain resettable.
 
 Affected latest/best summaries are rebuilt from surviving evidence; unaffected
 summary components and legacy history are preserved. One save, rollback on failure,

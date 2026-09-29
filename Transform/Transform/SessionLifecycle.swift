@@ -63,8 +63,9 @@ enum SessionLifecycle {
         let otherDays = programs.filter { $0 !== program }.flatMap(\.days).filter { $0.dayNumber == day.dayNumber }
         guard !removed.contains(where: { log in
             otherDays.contains { other in
-                other.sessionCalendarDates.contains { Calendar.current.isDate($0, inSameDayAs: log.loggedAt) }
-                    && other.exercises.contains { ExerciseWeightEntry.canonicalLookupKey($0.exerciseName) == log.canonicalExerciseKey }
+                // A historical log's date is editable independently of its day's clock.
+                // Without a stored program ID, identical old day/key ownership is ambiguous.
+                other.exercises.contains { ExerciseWeightEntry.canonicalLookupKey($0.exerciseName) == log.canonicalExerciseKey }
             }
         }) else { throw ResetFailure.ambiguousHistory }
         let removedIDs = Set(removed.map(\.persistentModelID))
@@ -77,6 +78,7 @@ enum SessionLifecycle {
                !logs.contains(where: { $0.canonicalExerciseKey == summary.canonicalExerciseKey && $0.loggedAt == bestDate }) {
                 throw ResetFailure.ambiguousHistory
             }
+            if summary.hasBestRecord && summary.bestLoggedAt == nil { throw ResetFailure.ambiguousHistory }
         }
 
         // Restore sets performed on earlier segments of a replacement chain to its active lift.
