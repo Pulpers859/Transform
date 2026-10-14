@@ -160,7 +160,7 @@ extension ClaudeService {
                     // not a new funding allowance; the comparison still applies each
                     // candidate's actual, potentially lower ceiling below.
                     let widestCeiling = max(proceduralSets(for: baseline.weekNumber,
-                        exerciseName: name, muscleTarget: item.muscleTarget), 4)
+                        exerciseName: name, muscleTarget: item.muscleTarget, goalPolicy: blueprint.calibration.goalPolicy), 4)
                     guard item.prescribedSets <= widestCeiling else {
                         return .refused(.invalidContext)
                     }
@@ -239,7 +239,7 @@ extension ClaudeService {
                 let slot = candidate[day][index], cost = accounting.exercises[day][index]
                 let prime = blueprint.priorityAllocations.indices.contains { cost.unitDirect[$0] > 0 && cost.qualityScore[$0] == 30 }
                 let ceiling = max(proceduralSets(for: weekNumber, exerciseName: slot.exerciseName,
-                    muscleTarget: slot.muscleTarget), prime ? 4 : 0)
+                    muscleTarget: slot.muscleTarget, goalPolicy: blueprint.calibration.goalPolicy), prime ? 4 : 0)
                 guard slot.prescribedSets >= cost.setFloor, slot.prescribedSets <= ceiling else {
                     return .rejected(.roleDose(day: day, exercise: index))
                 }

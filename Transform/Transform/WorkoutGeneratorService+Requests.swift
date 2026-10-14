@@ -629,7 +629,8 @@ extension ClaudeService {
         exerciseMenuContext: String,
         performanceHistory: String? = nil,
         sessionFeedbackSummary: String? = nil,
-        skipHistory: String? = nil
+        skipHistory: String? = nil,
+        goalPolicy: WorkoutGoalPolicy? = nil
     ) -> String {
         """
         Generate Week \(weekNumber) (days \(dayStart)-\(dayEnd)) of the mesocycle.
@@ -646,7 +647,7 @@ extension ClaudeService {
         \(sessionFeedbackSection(from: sessionFeedbackSummary))
         \(skipHistorySection(from: skipHistory))
         Phase guidance for Week \(weekNumber):
-        \(phaseGuidance(for: weekNumber))
+        \(phaseGuidance(for: weekNumber, goalPolicy: goalPolicy))
 
         Requirements:
         - Use the Weekly Blueprint as the authoritative programming contract for this week. The
@@ -831,7 +832,10 @@ extension ClaudeService {
         return String(cleaned.prefix(137)).trimmingCharacters(in: .whitespacesAndNewlines) + "..."
     }
 
-    func phaseGuidance(for weekNumber: Int) -> String {
+    func phaseGuidance(for weekNumber: Int, goalPolicy: WorkoutGoalPolicy? = nil) -> String {
+        if goalPolicy?.mode == .fatLoss && (2...3).contains(weekNumber) {
+            return "Week \(weekNumber) — Muscle retention during a fat-loss goal. The locked menu uses baseline role-set allowances, not calendar-only additions. Keep useful resistance training and exercise-appropriate reps, tempo, rest and effort. Use actual performance for progression; an unchanged load can be appropriate. Do not claim volume increased, prescribe circuits, or cut loads simply because the goal is fat loss."
+        }
         switch weekNumber {
         // The volume arc is NOT yours to write — the deterministic allocator has already
         // applied it to the Pre-Selected Exercise Menu you are given. These strings therefore

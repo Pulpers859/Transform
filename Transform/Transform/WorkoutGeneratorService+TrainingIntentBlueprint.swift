@@ -234,6 +234,7 @@ extension ClaudeService {
         return """
         Deterministic weekly blueprint (generated from the evidence profile and used as the execution plan):
         evidence_version: \(blueprint.evidenceVersion)
+        goal_policy: \(blueprint.calibration.goalPolicy?.auditDescription ?? "legacy / no saved goal policy")
         split_recommendation: \(blueprint.splitRecommendation)
         weekly_training_days: \(blueprint.weeklyTrainingDays)
         top_leverage_change: \(blueprint.topLeverageChange)
@@ -1301,10 +1302,9 @@ extension ClaudeService {
             analysis.nutritionAssessment
         ].joined(separator: " "))
 
-        let recompositionGoal = containsAny(
-            goalText,
-            keywords: ["recomp", "recomposition", "fat loss", "deficit", "cut", "visible abs"]
-        )
+        let goalPolicy = profile?.workoutGoalPolicy
+        let recompositionGoal = containsAny(goalText,
+            keywords: ["recomp", "recomposition", "fat loss", "deficit", "cut", "visible abs"])
 
         let nutritionText = normalizedPriorityText([
             progress?.nutritionAdherence ?? "",
@@ -1445,6 +1445,7 @@ extension ClaudeService {
         ]
 
         var notes: [String] = []
+        if let goalPolicy { notes.append(goalPolicy.coachingGuidance) }
         if lowPerformanceDataQuality {
             notes.append("Recent performance-data quality is limited, so keep exercise selection stable and progression conservative until more high-quality logs exist.")
         }
@@ -1472,7 +1473,8 @@ extension ClaudeService {
             reduceExerciseSlotComplexity: reduceExerciseSlotComplexity,
             defaultSessionTimeCapMinutes: defaultSessionTimeCapMinutes,
             sessionTimeCapsByStyle: styleSessionCaps,
-            programmingNotes: notes
+            programmingNotes: notes,
+            goalPolicy: goalPolicy
         )
     }
 

@@ -95,7 +95,7 @@ extension ClaudeService {
             // target simultaneously; final delivered coverage is checked separately.
             keep("\(allocation.area) direct capacity", exercises.indices.map { index in
                 let ceiling = max(proceduralSets(for: weekNumber, exerciseName: exercises[index].exerciseName,
-                    muscleTarget: exercises[index].muscleTarget), prime[index] ? 4 : 0)
+                    muscleTarget: exercises[index].muscleTarget, goalPolicy: blueprint.calibration.goalPolicy), prime[index] ? 4 : 0)
                 return direct[index] / Double(floors[index]) * Double(ceiling)
             }, atLeast: allocation.directSetTarget)
             for day in menus.indices {

@@ -59,7 +59,8 @@ extension ClaudeService {
                       item.role == proceduralExerciseRole(for: item.exerciseName, muscleTarget: item.muscleTarget),
                       item.prescribedSets > 0,
                       item.prescribedSets <= max(proceduralSets(for: weekNumber,
-                          exerciseName: item.exerciseName, muscleTarget: item.muscleTarget), 4) else { return nil }
+                          exerciseName: item.exerciseName, muscleTarget: item.muscleTarget,
+                          goalPolicy: blueprint.calibration.goalPolicy), 4) else { return nil }
             }
         }
         let accounting = weeklyExerciseAccounting(for: menus, blueprint: blueprint)
@@ -103,7 +104,7 @@ extension ClaudeService {
                     cost.unitDirect[$0] > 0 && cost.qualityScore[$0] == 30
                 }
                 let ceiling = max(proceduralSets(for: weekNumber, exerciseName: item.exerciseName,
-                    muscleTarget: item.muscleTarget), prime ? 4 : 0)
+                    muscleTarget: item.muscleTarget, goalPolicy: blueprint.calibration.goalPolicy), prime ? 4 : 0)
                 guard cost.setFloor > 0, cost.setFloor <= ceiling else { return nil }
                 // Within one identity, prefer the legal phase/priority ceiling, then lower
                 // meaningful doses, then omission. This is deterministic search

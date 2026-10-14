@@ -764,7 +764,8 @@ struct AnalysisClientProfile {
             painHistory: painHistory,
             activityLevel: activityLevel,
             primaryGoal: primaryGoal,
-            lifestyleConstraints: lifestyleConstraints
+            lifestyleConstraints: lifestyleConstraints,
+            workoutGoalPolicy: WorkoutGoalPolicy.capture(primaryGoal: primaryGoal)
         )
     }
 }

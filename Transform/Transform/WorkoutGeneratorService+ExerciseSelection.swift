@@ -3692,7 +3692,7 @@ extension ClaudeService {
         func nextSetRejection(dayIndex: Int, exerciseIndex: Int, allowFloorOvershoot: Bool = false) -> SetFundingRejection? {
             let exercise = allocated[dayIndex][exerciseIndex]
             let roleDefault = proceduralSets(for: weekNumber, exerciseName: exercise.exerciseName,
-                muscleTarget: exercise.muscleTarget)
+                muscleTarget: exercise.muscleTarget, goalPolicy: blueprint.calibration.goalPolicy)
             let isPrimePriorityExercise = allocations.indices.contains { allocIndex in
                 accounting[dayIndex][exerciseIndex].unitDirect[allocIndex] > 0
                     && accounting[dayIndex][exerciseIndex].qualityScore[allocIndex] == 30

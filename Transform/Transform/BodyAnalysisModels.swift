@@ -464,6 +464,8 @@ nonisolated struct AnalysisProfileSnapshot: Codable {
     let activityLevel: String
     let primaryGoal: String
     let lifestyleConstraints: String
+    // Optional additive JSON field: historical analyses keep their original behavior.
+    var workoutGoalPolicy: WorkoutGoalPolicy? = nil
 
     private var lines: [(String, String)] {
         [

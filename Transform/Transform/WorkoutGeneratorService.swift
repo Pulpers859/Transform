@@ -52,7 +52,7 @@ extension ClaudeService {
     }
     var evidenceProfile: HypertrophyEvidenceProfile { Self.evidenceProfileCache }
     static let evidenceProfileCache = HypertrophyEvidenceProfile(
-        version: "hypertrophy_v1_10",
+        version: "hypertrophy_v1_11",
         defaultTrainingDays: 5,
         allowedStyles: ["Push", "Pull", "Legs", "Lower", "Upper", "Arms"],
         // EvidenceProfile.md FREQ-001 / SLOT-001 [confidence: moderate]
@@ -558,7 +558,8 @@ extension ClaudeService {
             exerciseMenuContext: menuContext,
             performanceHistory: performanceHistory,
             sessionFeedbackSummary: sessionFeedbackSummary,
-            skipHistory: skipHistory
+            skipHistory: skipHistory,
+            goalPolicy: blueprint.calibration.goalPolicy
         )
         let requestContext = workoutRequestContext(
             phase: "next_week",
@@ -1274,7 +1275,8 @@ extension ClaudeService {
             dayEnd: dayEnd,
             previousWeekReference: previousWeekReference,
             analysisContext: context,
-            exerciseMenuContext: menuContext
+            exerciseMenuContext: menuContext,
+            goalPolicy: blueprint.calibration.goalPolicy
         )
         let requestContext = workoutRequestContext(
             phase: "next_week_debug",

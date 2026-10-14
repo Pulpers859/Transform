@@ -1,8 +1,8 @@
 # Transform Evidence Profile
 
-Version: `hypertrophy_v1_10`
-Implemented in code: `hypertrophy_v1_10` (`WorkoutGeneratorService.swift` -> `evidenceProfileCache.version`)
-Last updated: `September 16, 2026`
+Version: `hypertrophy_v1_11`
+Implemented in code: `hypertrophy_v1_11` (`WorkoutGeneratorService.swift` -> `evidenceProfileCache.version`)
+Last updated: `October 14, 2026`
 Scope: `General hypertrophy-oriented bodybuilding programming for healthy adults using a fully equipped commercial gym`
 
 This file is the programming contract for the workout generator. The goal is not to pretend the literature gives one perfect answer for every client. The goal is to make the app's assumptions explicit, versioned, reviewable, and adjustable.
@@ -50,6 +50,49 @@ This file is the programming contract for the workout generator. The goal is not
 | `SLEEP-002` | Recovery-tier volume action | Tier cuts happen in whole sets anchored to the `VOL-001` bands: Constrained caps each priority's weekly direct sets at its band midpoint; Restricted caps at the band floor with the cut directed at back-off/accessory hard-set exposure (preserve the first `1-2` hard sets per exercise and session identity per `DEL-001`), accessories biased about `1` rep further from failure, and loads NOT reduced; maintenance uses its `MAINT-001` constrained ceiling in both tiers | Low-Moderate | Flat percentage scalers frequently vanished in half-set rounding and cut first hard sets and marginal sets with equal probability; band-anchored whole-set caps are auditable and match fatigue-management practice (reduce hard-set exposure, protect intensity, since maximal strength expression is acutely preserved under short-term sleep restriction). Maintenance-on-low-volume evidence makes trimming the top of the range low-risk for retention |
 
 ## Operational notes
+
+### GOAL-001: muscle building versus fat loss (policy `resistance_goals_v1`)
+
+- New analysis profile snapshots capture the explicit Muscle gain or Fat loss category.
+  Existing snapshots without this optional field retain legacy rules; a settings change
+  does not reinterpret an existing program. Recomposition/strength/general-health are
+  unchanged in this bounded release, not advertised as separate validated engines.
+- Both supported goals retain the existing initial priority targets, rep ranges, rest,
+  effort, performance-based load progression, recovery caution and deload rules.
+- Muscle gain keeps the existing phased role-set allowances. Fat loss retains Week 1
+  role-set allowances during Weeks 2-3, including in appearance capacity, allocation and
+  substitution checks. Priority funding may still use the shared four-set allowance.
+  This removes calendar-only increases in role ceilings, NOT all changes in delivered
+  weekly totals when exercises or coverage change. It does not cut recorded workload or
+  infer a calorie deficit from a goal label.
+- This schedule is an explicit goal-label-triggered, LOW-confidence product choice,
+  not a measured-deficit response or a freeze on load/rep progression. Roth et al. (2023), DOI
+  `10.1111/sms.14237`, [trial abstract](https://pubmed.ncbi.nlm.nih.gov/36114738/),
+  found no detectable lean-mass advantage of five versus three sets/exercise during
+  energy restriction in trained men. That does not establish a universal optimal dose
+  or justify automatically reducing someone's established training.
+- Goal-aware fallback callers that omit a menu now use the shared planner; validating
+  entry points check its six-exercise limit and use its returned blueprint for validation.
+  Production already supplies the history-informed menu. The no-menu convenience path
+  has no exercise-history parameter and does not invent history. Legacy nil-policy
+  callers retain the original repair path.
+- Nutrition receives the same saved goal context but keeps its existing resolved macro
+  targets and safety rules. This release does not calculate a new calorie surplus/deficit,
+  change bodyweight-goal settings, or promise weight loss from a lifting prescription.
+
+Regression coverage: `WorkoutGoalPolicyTests` checks capture/version/legacy behavior,
+unchanged calibration, role dosage, shared budgets and locked-menu fallback agreement.
+
+Goal-rules audit, October 14:
+
+| Surface | Existing behavior | Bounded change |
+| --- | --- | --- |
+| Goal selection | Category plus free-text detail saved in analysis | Optional versioned policy captured for explicit Muscle gain/Fat loss |
+| Initial volume/recovery | Existing keyword-based recomp/nutrition calibration and dated sleep rules | Unchanged; missing logs are not proof of a deficit, and this legacy heuristic is not redesigned here |
+| Later-week sets | Shared calendar-based role allowances | Fat loss uses baseline allowances; muscle gain retains existing phases |
+| Reps/loads | Role/phase reps and separate logged-performance load engine | Unchanged; no automatic light/high-rep cutting mode |
+| Nutrition | Analysis/settings macro resolution plus safety floors | Same saved goal supplied as context; no new calorie calculator |
+| Stored history | Analysis JSON saved with program; later weeks decode that snapshot | Additive optional JSON field; no log/name-key/schema migration |
 
 ### Deterministic dosage ownership
 - Fractional weekly priority targets may reach the next whole set (for example,

@@ -48,6 +48,7 @@ let package = Package(
                 "AnthropicStreamAssembler.swift",
                 "AnthropicAPIKeyStore.swift",
                 "Config.swift",
+                "WorkoutGoalPolicy.swift",
                 // Harness-only shims for free functions that live in UIKit/SwiftUI files
                 // (e.g. formatWeight in DesignSystem.swift) which are excluded here.
                 // Guarded so it is empty in the iOS app build.

@@ -10,6 +10,14 @@ extension ClaudeService {
         exerciseMenus: [[PreSelectedExercise]]? = nil,
         diagnostic: String = ""
     ) throws -> WorkoutProgramResponse {
+        if exerciseMenus == nil, blueprint.calibration.goalPolicy?.mode != nil {
+            let plan = preSelectedExercisePlan(for: blueprint, trainingIntent: trainingIntent,
+                weekNumber: 1, previousWeekDays: nil, exerciseHistory: nil)
+            try requireSixExerciseMenu(plan.menus, blueprint: plan.blueprint)
+            return try validatedProceduralWeekOneProgram(from: analysisResult,
+                trainingIntent: trainingIntent, blueprint: plan.blueprint,
+                exerciseMenus: plan.menus, diagnostic: diagnostic)
+        }
         let fallback = buildProceduralWeekOneProgram(
             from: analysisResult,
             trainingIntent: trainingIntent,
@@ -51,6 +59,15 @@ extension ClaudeService {
         exerciseMenus: [[PreSelectedExercise]]? = nil,
         diagnostic: String = ""
     ) throws -> WorkoutWeekResponse {
+        if exerciseMenus == nil, blueprint.calibration.goalPolicy?.mode != nil {
+            let plan = preSelectedExercisePlan(for: blueprint, trainingIntent: trainingIntent,
+                weekNumber: weekNumber, previousWeekDays: previousWeekDays, exerciseHistory: nil)
+            try requireSixExerciseMenu(plan.menus, blueprint: plan.blueprint)
+            return try validatedProceduralWeek(weekNumber: weekNumber, dayStart: dayStart, dayEnd: dayEnd,
+                splitType: splitType, programName: programName, trainingIntent: trainingIntent,
+                blueprint: plan.blueprint, previousWeekDays: previousWeekDays,
+                exerciseMenus: plan.menus, diagnostic: diagnostic)
+        }
         let fallback = buildProceduralWeek(
             weekNumber: weekNumber,
             dayStart: dayStart,
@@ -136,6 +153,16 @@ extension ClaudeService {
         exerciseMenus: [[PreSelectedExercise]]? = nil,
         diagnostic: String = ""
     ) -> WorkoutWeekResponse {
+        // Goal-aware fallback uses the same funded menu even for callers that omit it.
+        // Do not let the legacy no-menu repair path invent a separate goal dose.
+        if exerciseMenus == nil, blueprint.calibration.goalPolicy?.mode != nil {
+            let plan = preSelectedExercisePlan(for: blueprint, trainingIntent: trainingIntent,
+                weekNumber: weekNumber, previousWeekDays: previousWeekDays, exerciseHistory: nil)
+            return buildProceduralWeek(weekNumber: weekNumber, dayStart: dayStart, dayEnd: dayEnd,
+                splitType: splitType, programName: programName, trainingIntent: trainingIntent,
+                blueprint: plan.blueprint, previousWeekDays: previousWeekDays,
+                exerciseMenus: plan.menus, diagnostic: diagnostic)
+        }
         let previousExercisesByStyle = proceduralPreviousExercisesByStyle(from: previousWeekDays)
         var previousUsageByStyle: [String: Int] = [:]
 
@@ -1461,8 +1488,9 @@ extension ClaudeService {
     }
 
     // EvidenceProfile.md DEL-001 / REST-001 [confidence: low-moderate / low-moderate]
-    func proceduralSets(for weekNumber: Int, exerciseName: String, muscleTarget: String) -> Int {
-        let phase = phasePrescription(for: weekNumber)
+    func proceduralSets(for weekNumber: Int, exerciseName: String, muscleTarget: String,
+        goalPolicy: WorkoutGoalPolicy? = nil) -> Int {
+        let phase = phasePrescription(for: goalPolicy?.setPhaseWeek(weekNumber) ?? weekNumber)
         switch proceduralExerciseRole(for: exerciseName, muscleTarget: muscleTarget) {
         case .anchor:
             return phase.anchorSets
@@ -1744,7 +1772,9 @@ extension ClaudeService {
         focusIntent: MusclePriorityIntent? = nil,
         blueprint: ProgramBlueprint? = nil
     ) -> String {
-        let phase = phaseSentence(for: weekNumber)
+        let phase = blueprint?.calibration.goalPolicy?.mode == .fatLoss && (2...3).contains(weekNumber)
+            ? "Keep this week's work repeatable while supporting muscle retention."
+            : phaseSentence(for: weekNumber)
 
         var purposeLine: String
         if let intent = focusIntent, !intent.rationale.isEmpty {

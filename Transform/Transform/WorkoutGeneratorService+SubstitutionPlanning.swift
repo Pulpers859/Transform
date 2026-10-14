@@ -59,7 +59,7 @@ extension ClaudeService {
             let item = menus[day][slot], cost = accounting.exercises[day][slot]
             let prime = blueprint.priorityAllocations.indices.contains { cost.unitDirect[$0] > 0 && cost.qualityScore[$0] == 30 }
             return max(proceduralSets(for: baseline.weekNumber, exerciseName: item.exerciseName,
-                muscleTarget: item.muscleTarget), prime ? 4 : 0)
+                muscleTarget: item.muscleTarget, goalPolicy: blueprint.calibration.goalPolicy), prime ? 4 : 0)
         }
         var proposed = menus
         var remaining = removed.prescribedSets

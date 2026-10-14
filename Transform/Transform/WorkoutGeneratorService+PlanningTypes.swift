@@ -68,6 +68,7 @@ extension ClaudeService {
         let defaultSessionTimeCapMinutes: Int
         let sessionTimeCapsByStyle: [String: Int]
         let programmingNotes: [String]
+        var goalPolicy: WorkoutGoalPolicy? = nil
     }
 
     /// What exercise SELECTION is allowed to know about a day.

@@ -1418,6 +1418,8 @@ extension ClaudeService {
         Overall assessment:
         \(analysis.overallAssessment.nTrimmedOr("(not provided)"))
 
+        \(analysis.inputContext?.profile.workoutGoalPolicy?.nutritionGuidance ?? "")
+
         Top leverage change: \(analysis.topLeverageChange.nTrimmedOr("(not provided)"))
 
         Priority muscles (drive protein prioritization and leucine timing): \(priority.isEmpty ? "(none)" : priority)

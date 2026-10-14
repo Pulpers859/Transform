@@ -549,6 +549,9 @@ struct SettingsProfileView: View {
                             Text(goal.label).tag(goal)
                         }
                     }
+                    Text("Goal changes apply to a new body analysis and workouts generated from it. Saved workouts keep their original goal.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                     if GoalCategory(rawValue: analysisPrimaryGoal) != .notSpecified {
                         TextField("Goal detail (optional)", text: $analysisGoalDetail, axis: .vertical)
                             .lineLimit(2...4)
