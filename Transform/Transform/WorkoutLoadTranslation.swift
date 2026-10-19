@@ -181,6 +181,14 @@ enum WorkoutLoadTranslation {
                   let first = working.first, let last = working.last,
                   first.reps > 0, last.reps > 0
             else { continue }
+            // Reps that ROSE at the working load mean the first set was not a full effort, so
+            // the session says nothing about fatigue. Counted, a 10 -> 12 session read as "no
+            // fatigue at all" and planned four sets as if they were one (leg press: 552.5 lb
+            // for 4x10-12 after a single set at 540). Pinned by LoadTranslationTests.
+            guard last.reps <= first.reps else { continue }
+            // A first set stopped by the prescribed ceiling is a lower bound, not a measurement
+            // (see `Reference.hitPrescribedCeiling`), so its drop is hidden too.
+            if let range = RepRange.parse(snapshot.prescribedReps), first.reps >= range.high { continue }
             // Per-set decay, not total: a 3-set session drops twice, a 2-set session once.
             ratios.append(pow(Double(last.reps) / Double(first.reps), 1.0 / Double(working.count - 1)))
         }
