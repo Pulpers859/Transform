@@ -369,6 +369,21 @@ extension ClaudeService {
 
     // MARK: - Prompts
 
+    /// One wording for every place the model is told how long a day note may be. It used to
+    /// say "2-3 short sentences, ideally under 70 words" in week 1 and nothing at all for weeks
+    /// 2-4, which is where the owner got a 70-word briefing stitched together with semicolons.
+    /// Semicolons are also split into separate sentences at display (`CoachingProse`), so this
+    /// rule shapes new notes and the display rule covers notes already stored.
+    var sessionNoteLengthRule: String {
+        """
+        Session Notes length and style: the part before "Warm-up:" is AT MOST 2 short sentences
+        and under 35 words. Plain everyday words. Never use a semicolon, and never use a dash
+        (— or –) to join clauses; write two short sentences instead. Do not repeat last week's
+        duration or effort ratings back to the user; mention last week only when it changes what
+        to do today (for example a pain flag).
+        """
+    }
+
     func weekOneSystemPrompt() -> String {
         """
         You are a multi-disciplinary coaching panel designing Week 1 of a personalized 4-week
@@ -392,7 +407,7 @@ extension ClaudeService {
           write "Warm-up:" followed by specific warm-up and mobility items separated by commas
           (e.g. "Warm-up: band pull-aparts x15, thoracic rotations x10, light face pulls x12").
           The warm-up must be tied to THIS day's lifts and THIS person's posture/injury notes.
-          Keep session notes concise: 2-3 short sentences, ideally under 70 words total.
+          \(sessionNoteLengthRule)
           No template language. No phrases like "progressive overload session."
         - Session Notes are subject to the SAME execution-only rule as exercise notes: state the
           day's intent and the warm-up, never a load or rep progression instruction ("put 5 lb on
@@ -450,11 +465,10 @@ extension ClaudeService {
           prep if that lift family is not meaningfully present that day.
 
         Example of a GOOD Session Note (do not copy verbatim, match the style):
-        "Today's focus is posterior chain — your analysis flagged weak glute engagement and a
-         hip-position issue, so we're leading with hinge-pattern work and glute/bracing prep to
-         improve your setup first. Warm-up: 5 min bike, then hip 90/90 openers and glute bridges
-         2x10 before your first working set of Romanian Deadlifts. Keep ribs stacked over pelvis
-         on every rep."
+        "Posterior chain leads today because your analysis flagged weak glute engagement. Keep
+         ribs stacked over pelvis on every hinge.
+         Warm-up: 5 min bike, hip 90/90 openers, glute bridges 2x10, 1 light set of Romanian
+         Deadlifts"
 
         Example of a BAD Session Note (never write like this):
         "Training session. Progressive overload. Warm-up: light cardio. Mobility: stretch."
@@ -539,7 +553,8 @@ extension ClaudeService {
           for THIS person based on the analysis.
         - Each training day's `notes` must read like a real coach's briefing for that day — tie
           the intent back to the analysis and give warm-up / mobility guidance specific to the
-          day's lifts and the user's posture/injury notes. Keep each day note compact.
+          day's lifts and the user's posture/injury notes.
+        - \(sessionNoteLengthRule)
         - Each exercise's `notes` must be concise execution coaching: one form cue and one
           setup/ROM/control cue. Add analysis personalization only when it gives new
           information that is not already stated in the day notes. No progression
@@ -570,6 +585,8 @@ extension ClaudeService {
         Exercise selection and set allocation are locked by the Pre-Selected Exercise Menu — do
         not add, remove, substitute, or change set counts. Focus your coaching judgment on reps,
         tempo, rest, targetRIR, and execution notes.
+
+        \(sessionNoteLengthRule)
 
         Session Notes still must be personal, specific, analysis-anchored, and include a "Warm-up:"
         line (on its own line) with specific warm-up and mobility items separated by commas, tied
@@ -655,6 +672,7 @@ extension ClaudeService {
         - Every training day's `notes` must re-anchor to the analysis (don't drop the
           personalization just because it's week \(weekNumber)) and must include warm-up /
           mobility guidance tied to this day's lifts and the user's posture/injury notes.
+        - \(sessionNoteLengthRule)
         - Every exercise's `notes` must be concise execution coaching: one form cue and one
           setup/ROM/control cue appropriate for Week \(weekNumber). Add analysis
           personalization only when it gives new information that is not already stated in
@@ -973,7 +991,7 @@ extension ClaudeService {
             "dayName": stringProp(),
             "muscleGroups": stringProp(),
             "isRestDay": booleanProp(),
-            "notes": stringProp("Session Notes: one-line intent framing, then on a new line 'Warm-up:' followed by comma-separated warm-up/mobility items for THIS day's lifts and THIS user's posture/injury. For rest days, a practical active-recovery note tailored to the user's shift-work schedule and postural needs."),
+            "notes": stringProp("Session Notes: at most 2 short sentences (under 35 words, no semicolons or dashes) of intent framing, then on a new line 'Warm-up:' followed by comma-separated warm-up/mobility items for THIS day's lifts and THIS user's posture/injury. For rest days, a practical active-recovery note tailored to the user's shift-work schedule and postural needs."),
             "exercises": exercisesProp
         ]
         let required: [String] = ["dayNumber", "dayName", "muscleGroups", "isRestDay", "notes", "exercises"]

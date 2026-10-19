@@ -178,6 +178,25 @@ final class BodyweightAndEffortFieldTests: XCTestCase {
         }
     }
 
+    /// Weeks 2-4 had no length rule at all for the day note, which is where the owner got a
+    /// 70-word briefing joined with semicolons. Every prompt that writes a day note must carry
+    /// the same rule, and the GOOD example must not model the dashes the rule forbids.
+    func testEveryDayNotePromptCarriesTheSameLengthRule() {
+        let prompts = [
+            service.weekOneSystemPrompt(),
+            service.weekOneUserPrompt(context: "analysis", exerciseMenuContext: "locked menu"),
+            service.nextWeekSystemPrompt(weekNumber: 2, splitType: "Upper/Lower", programName: "Test"),
+            service.nextWeekUserPrompt(weekNumber: 2, dayStart: 8, dayEnd: 14,
+                previousWeekReference: "prior week", analysisContext: "analysis",
+                exerciseMenuContext: "locked menu")
+        ]
+        for prompt in prompts {
+            XCTAssertTrue(prompt.contains(service.sessionNoteLengthRule))
+            XCTAssertFalse(prompt.contains("ideally under 70 words"))
+        }
+        XCTAssertFalse(service.weekOneSystemPrompt().contains("posterior chain —"))
+    }
+
     func testProceduralNotesAreExecutionOnlyAndRIRIsStructured() {
         for week in 1...4 {
             let notes = service.proceduralExerciseNotes(

@@ -96,7 +96,10 @@ enum CoachingProse {
         hideProgressionCue: Bool,
         hideDeloadCue: Bool
     ) -> [String] {
-        let all = sentences(in: text)
+        // Semicolon clauses become sentences of their own BEFORE filtering: the owner asked for
+        // no semicolons in anything he reads, and splitting first also lets a load instruction
+        // tucked behind a ";" be dropped alone instead of taking the useful half with it.
+        let all = sentences(in: text).flatMap(clausesSplitAtSemicolons)
         guard !all.isEmpty else { return [] }
 
         var seen = Set<String>()
@@ -128,6 +131,27 @@ enum CoachingProse {
         }
 
         return kept
+    }
+
+    /// "Keep the angle pain-free; reduce range if it pinches." becomes two sentences. Only
+    /// display prose goes through here; `sentences(in:)` itself is unchanged because the
+    /// validator reads it.
+    static func clausesSplitAtSemicolons(_ sentence: String) -> [String] {
+        guard sentence.contains(";") else { return [sentence] }
+        let clauses = sentence
+            .split(separator: ";")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        return clauses.map { clause in
+            var text = clause
+            if let first = text.first, first.isLowercase {
+                text = first.uppercased() + text.dropFirst()
+            }
+            if let last = text.last, !".!?".contains(last) {
+                text += "."
+            }
+            return text
+        }
     }
 
     private static func containsAnySubstring(_ text: String, _ fragments: [String]) -> Bool {

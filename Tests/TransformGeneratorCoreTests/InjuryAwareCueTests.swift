@@ -168,6 +168,22 @@ final class SessionNoteFilterTests: XCTestCase {
         XCTAssertEqual(kept.count, 2, "Day-level deload framing must not be stripped: \(kept)")
     }
 
+    /// The owner does not want semicolons in anything he reads. Each clause becomes its own
+    /// sentence, and a load instruction hiding behind one is dropped on its own.
+    func testSemicolonsBecomeSeparateSentences() {
+        let kept = CoachingProse.filteredSentences(
+            in: "Keep the incline angle pain-free; reduce range if any pinch returns. Lateral delts lead today; add load on your top sets.",
+            hideProgressionCue: true,
+            hideDeloadCue: false
+        )
+        XCTAssertEqual(kept, [
+            "Keep the incline angle pain-free.",
+            "Reduce range if any pinch returns.",
+            "Lateral delts lead today.",
+        ])
+        XCTAssertFalse(kept.joined().contains(";"))
+    }
+
     func testDuplicateSentencesCollapse() {
         let kept = CoachingProse.filteredSentences(
             in: "Brace hard. Brace hard.",
