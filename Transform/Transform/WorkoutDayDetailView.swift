@@ -2487,6 +2487,9 @@ struct RestTimerFullscreen: View {
     @State private var currentSet = 1
     @State private var didPickStartingSet = false
     @State private var logError: String?
+    /// "Set 2 saved", shown briefly after a successful Log so the lifter SEES the save rather
+    /// than inferring it from the set number changing.
+    @State private var savedConfirmation: String?
     @State private var draftWeight: [Int: String] = [:]
     @State private var draftReps: [Int: String] = [:]
     @State private var draftRIR: [Int: String] = [:]
@@ -2612,7 +2615,7 @@ struct RestTimerFullscreen: View {
         .statusBarHidden()
         .onReceive(NotificationCenter.default.publisher(for: .persistenceSaveFailed)) { notification in
             logError = notification.userInfo?[PersistenceReporter.messageUserInfoKey] as? String
-                ?? "The set could not be saved. Your entries are still here; please try again."
+                ?? "The set could not be saved. Your entries are still here. Please try again."
         }
         .alert("Set not logged", isPresented: Binding(get: { logError != nil }, set: { if !$0 { logError = nil } })) {
             Button("OK", role: .cancel) { logError = nil }
@@ -2623,6 +2626,13 @@ struct RestTimerFullscreen: View {
 
     private var setEntryPanel: some View {
         VStack(spacing: 10) {
+            if let savedConfirmation {
+                Label(savedConfirmation, systemImage: "checkmark.circle.fill")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .transition(.opacity)
+            }
+
             // Every other line on this screen is centred, so the set stepper is too. The
             // "n/n logged" readout that used to sit at the trailing edge is gone: the card
             // this cover was opened from already carries that count, and here it only
@@ -2775,19 +2785,36 @@ struct RestTimerFullscreen: View {
     }
 
     private func confirmCurrentSet() {
+        // Felt the instant the tap lands, before anything can fail. The owner has reported this
+        // button "doing nothing" through two fixes that could not find a cause by reading the
+        // code, so every outcome now has its own feel: a tick then a success buzz (saved), a
+        // tick then an error buzz plus a message (refused), or nothing at all, which can only
+        // mean the tap never reached this function. Not covered by a test: this file is
+        // outside the headless test target.
+        TFHaptics.selection()
         let draft = currentDraft
         guard draft.canLog, let weight = draft.parsedWeight, let reps = draft.parsedReps else {
+            TFHaptics.error()
             logError = "Enter a weight (or select Bodyweight), completed reps, and an optional RIR from 0 to 6."
             return
         }
         let confirmed = currentSet
         logError = nil
         guard onLogSet(confirmed, weight, reps, draft.parsedRIR) else {
-            if logError == nil { logError = "The set could not be saved. Your entries are still here; please try again." }
+            TFHaptics.error()
+            if logError == nil { logError = "The set could not be saved. Your entries are still here. Please try again." }
             return
         }
         focusedField = nil
-        TFHaptics.impact(.light)
+        TFHaptics.success()
+        let confirmation = "Set \(confirmed) saved"
+        withAnimation(.easeOut(duration: 0.2)) { savedConfirmation = confirmation }
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 2_500_000_000)
+            if savedConfirmation == confirmation {
+                withAnimation(.easeOut(duration: 0.2)) { savedConfirmation = nil }
+            }
+        }
 
         // The set that fills the prescription finishes the exercise, and the card owning this
         // cover collapses itself the instant that happens (`autoCompleteAfterFinalSet`) —
@@ -4056,7 +4083,7 @@ struct InlineSetLogger: View {
             return
         }
         guard draft.save(using: { onLog(n, $0, $1, $2) }) else {
-            logError = "The set could not be saved. Your entries are still here; please try again."
+            logError = "The set could not be saved. Your entries are still here. Please try again."
             return
         }
         focusedField = nil
