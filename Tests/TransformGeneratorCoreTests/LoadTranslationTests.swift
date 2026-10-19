@@ -175,6 +175,51 @@ final class LoadTranslationTests: XCTestCase {
                        WorkoutLoadTranslation.defaultFatigueDecayPerSet, accuracy: 0.001)
     }
 
+    /// Reps that ROSE at the same load (10 then 12) mean the first set was not a full effort,
+    /// so the session measures nothing about fatigue. Counting it as a 1.2 ratio taught the
+    /// estimator that this lifter does not tire across sets at all.
+    func testRisingRepsAreNotEvidenceOfZeroFatigue() {
+        XCTAssertEqual(
+            decay([session(0, weight: 47, reps: [20, 20, 15]), session(7, weight: 47, reps: [10, 12])]),
+            0.8887, accuracy: 0.001)
+    }
+
+    /// A first set stopped by the prescription's rep ceiling hides the real drop, so 15, 15
+    /// under a 12-15 prescription is not proof of zero fatigue.
+    func testASessionStoppedByTheRepCeilingIsNotEvidence() {
+        var capped = session(7, weight: 47, reps: [15, 15])
+        capped.prescribedReps = "12-15"
+        XCTAssertEqual(decay([session(0, weight: 47, reps: [20, 20, 15]), capped]), 0.8887, accuracy: 0.001)
+    }
+
+    /// The owner's real leg press history, which produced "Suggested start: 552.5 lb" for
+    /// 4x10-12 at RIR 2 — more than he had ever lifted, for four sets, after one set at 540.
+    /// Expected values computed independently (Python) before the Swift changed: the old
+    /// estimator returned 1.0 (no fatigue) and 552.5 lb; the corrected one 0.9333 and 517.5 lb.
+    func testTheOwnersLegPressIsNotPrescribedAboveHisHeaviestSetForMoreSets() throws {
+        func logged(_ daysAgo: Int, _ sets: [(Double, Int)]) -> WorkoutPerformanceLogSnapshot {
+            .init(canonicalExerciseKey: "leg press",
+                  loggedAt: Date(timeIntervalSince1970: 1_000_000 - Double(daysAgo) * 86_400),
+                  setLogs: sets.enumerated().map {
+                      SetLogEntry(setNumber: $0.offset + 1, weightLbs: $0.element.0, repsCompleted: $0.element.1)
+                  })
+        }
+        let history = [
+            logged(41, [(450, 15), (450, 15)]),
+            logged(12, [(450, 12), (500, 10), (500, 12)]),
+            logged(0, [(500, 12), (520, 12), (540, 12)]),
+        ]
+        let decay = WorkoutLoadTranslation.estimatedFatigueDecayPerSet(for: "leg press", from: history)
+        XCTAssertEqual(decay, 0.9333, accuracy: 0.001)
+
+        let outcome = try XCTUnwrap(WorkoutLoadTranslation.translate(
+            reference: reference(540, 12),
+            target: target(4, floor: 10, rir: 2),
+            fatigueDecayPerSet: decay,
+            incrementLbs: 2.5))
+        XCTAssertEqual(outcome.recommendedLoadLbs, 517.5, accuracy: 0.001)
+    }
+
     // MARK: - Rep bands
 
     func testBandJumpsMeasureHowFarAPrescriptionMoved() {
