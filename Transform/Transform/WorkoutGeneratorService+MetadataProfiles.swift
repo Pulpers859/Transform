@@ -299,9 +299,9 @@ extension ClaudeService {
     /// something the program did not cause. Day fatigue is the budget now; it is the one that
     /// describes his body.
     ///
-    /// Be exact about its status: it has NO production caller. Nothing gates on it, nothing
-    /// displays it, and the Generator Lab does not print it. Its only callers are the tests in
-    /// `InjuryTimeAndSessionBudgetTests` that pin its arithmetic. It is kept rather than deleted
+    /// Be exact about its status: nothing gates on it and the Generator Lab does not print it.
+    /// Its one production caller is the day screen's "About N min" line (display only, see
+    /// below); the tests in `InjuryTimeAndSessionBudgetTests` pin its arithmetic. It is kept rather than deleted
     /// because the model it encodes — including the changeover charge, which took an incident to
     /// get right — is the thing anyone would have to rebuild to show the owner a length, and
     /// rebuilding it from scratch is how the optimistic version came back last time.
@@ -309,12 +309,16 @@ extension ClaudeService {
     /// Do not wire this back into a gate. If a future change genuinely needs a length limit, it
     /// needs the owner's agreement first, and it must be measured against what a day OWES —
     /// every movement at `minimumSetFloor` — not against the one-set fiction the old gates used.
-    func estimatedSessionMinutes(for day: WorkoutDayResponse) -> Int {
+    ///
+    /// The day screen now DISPLAYS it (never gates on it) as the "About N min" line, with
+    /// `countingRepTempo: true`. Display only: the default stays false so every pinned test and
+    /// journey comparison above reads exactly the numbers it always did.
+    func estimatedSessionMinutes(for day: WorkoutDayResponse, countingRepTempo: Bool = false) -> Int {
         guard !day.isRestDay else { return 0 }
 
         let warmupMinutes = 8.0
         let exerciseMinutes = day.exercises.reduce(0.0) { partialResult, exercise in
-            partialResult + estimatedExerciseMinutes(for: exercise)
+            partialResult + estimatedExerciseMinutes(for: exercise, countingRepTempo: countingRepTempo)
         }
 
         // Time spent BETWEEN exercises, which this estimate did not model at all.
@@ -341,11 +345,11 @@ extension ClaudeService {
         return Int(ceil(warmupMinutes + exerciseMinutes + transitionMinutes))
     }
 
-    func estimatedExerciseMinutes(for exercise: WorkoutExerciseResponse) -> Double {
+    func estimatedExerciseMinutes(for exercise: WorkoutExerciseResponse, countingRepTempo: Bool = false) -> Double {
         let metadata = exerciseMetadata(for: exercise)
         let role = proceduralExerciseRole(for: exercise.exerciseName, muscleTarget: exercise.muscleTarget)
 
-        let activeSecondsPerSet: Double
+        var activeSecondsPerSet: Double
         switch role {
         case .anchor:
             activeSecondsPerSet = 45
@@ -355,6 +359,13 @@ extension ClaudeService {
             activeSecondsPerSet = 35
         case .core:
             activeSecondsPerSet = 30
+        }
+
+        // The flat per-role figure assumes a quick set. 4x12-20 lateral raises at tempo 2-0-1-1
+        // take about 64 seconds each, not 35, so the shown estimate takes whichever is longer.
+        if countingRepTempo,
+           let repTempoSeconds = Self.repTempoSecondsPerSet(reps: exercise.reps, tempo: exercise.tempo) {
+            activeSecondsPerSet = max(activeSecondsPerSet, repTempoSeconds)
         }
 
         let rampAndSetupMinutes: Double
@@ -372,6 +383,60 @@ extension ClaudeService {
         let activeMinutes = (Double(exercise.sets) * activeSecondsPerSet) / 60.0
         let restMinutes = (Double(max(0, exercise.sets - 1)) * Double(exercise.restSeconds)) / 60.0
         return activeMinutes + restMinutes + rampAndSetupMinutes
+    }
+
+    /// The "About N min" line on the day screen, rounded UP to 5 minutes so a guess never reads
+    /// as precise. Plans the whole day (every active exercise, warm-up, rests, changeovers) and
+    /// is not yet calibrated to the lifter's own logged session lengths. nil on a rest day.
+    func displayedSessionMinutes(for day: WorkoutDay) -> Int? {
+        let exercises = day.activeExercises
+        guard !day.isRestDay, !exercises.isEmpty else { return nil }
+        let plan = WorkoutDayResponse(
+            dayNumber: day.dayNumber,
+            dayName: day.dayName,
+            muscleGroups: day.muscleGroups,
+            isRestDay: false,
+            notes: "",
+            exercises: exercises.map {
+                WorkoutExerciseResponse(
+                    exerciseName: $0.exerciseName,
+                    sets: $0.sets,
+                    reps: $0.reps,
+                    tempo: $0.tempo,
+                    restSeconds: $0.restSeconds,
+                    notes: "",
+                    muscleTarget: $0.muscleTarget,
+                    targetRIR: $0.targetRIR
+                )
+            }
+        )
+        let minutes = estimatedSessionMinutes(for: plan, countingRepTempo: true)
+        return Int((Double(minutes) / 5).rounded(.up)) * 5
+    }
+
+    /// Seconds under the bar for one set: mid-range reps times the tempo's seconds per rep.
+    /// "3-1-1-0" is 5 seconds a rep; an explosive "X" phase counts as 1. nil when either field
+    /// is not a plain rep range or a 3-4 part tempo (timed holds, AMRAP), so the caller keeps
+    /// its role default instead of guessing.
+    static func repTempoSecondsPerSet(reps: String, tempo: String) -> Double? {
+        guard let range = RepRange.parse(reps) else { return nil }
+        let phases = tempo
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .split(separator: "-")
+            .map { $0.trimmingCharacters(in: .whitespaces).uppercased() }
+        guard (3...4).contains(phases.count) else { return nil }
+        var secondsPerRep = 0.0
+        for phase in phases {
+            if phase == "X" {
+                secondsPerRep += 1
+            } else if let seconds = Int(phase), (0...10).contains(seconds) {
+                secondsPerRep += Double(seconds)
+            } else {
+                return nil
+            }
+        }
+        guard secondsPerRep > 0 else { return nil }
+        return (Double(range.low) + Double(range.high)) / 2 * secondsPerRep
     }
 
     func shouldFlagStyleMismatch(

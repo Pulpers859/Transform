@@ -199,6 +199,16 @@ struct WorkoutDayDetailView: View {
                     Text(day.muscleGroups)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
+                    // A planning number for getting to the gym, so it shows only before the
+                    // session starts. Once it starts the timing badge below shows the real
+                    // clock, and two competing minute counts would be noise.
+                    if day.sessionStartedAt == nil,
+                       let minutes = ClaudeService.shared.displayedSessionMinutes(for: day) {
+                        Label("About \(minutes) min", systemImage: "clock")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .accessibilityLabel("Estimated workout length about \(minutes) minutes")
+                    }
                 }
                 Spacer()
                 weekBadge
