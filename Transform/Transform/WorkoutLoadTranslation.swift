@@ -185,7 +185,8 @@ enum WorkoutLoadTranslation {
             // the session says nothing about fatigue. Counted, a 10 -> 12 session read as "no
             // fatigue at all" and planned four sets as if they were one (leg press: 552.5 lb
             // for 4x10-12 after a single set at 540). Pinned by LoadTranslationTests.
-            guard last.reps <= first.reps else { continue }
+            // Any rise counts, not just first-to-last: 12, 10, 12 ends level and would read as 1.0.
+            guard !zip(working, working.dropFirst()).contains(where: { $1.reps > $0.reps }) else { continue }
             // A first set stopped by the prescribed ceiling is a lower bound, not a measurement
             // (see `Reference.hitPrescribedCeiling`), so its drop is hidden too.
             if let range = RepRange.parse(snapshot.prescribedReps), first.reps >= range.high { continue }

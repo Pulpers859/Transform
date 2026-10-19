@@ -2787,9 +2787,10 @@ struct RestTimerFullscreen: View {
     private func confirmCurrentSet() {
         // Felt the instant the tap lands, before anything can fail. The owner has reported this
         // button "doing nothing" through two fixes that could not find a cause by reading the
-        // code, so every outcome now has its own feel: a tick then a success buzz (saved), a
-        // tick then an error buzz plus a message (refused), or nothing at all, which can only
-        // mean the tap never reached this function. Not covered by a test: this file is
+        // code, so every outcome now has its own feel: a tick then a success buzz (saved, plus
+        // a "Set N saved" label, except on the final set, where this screen closes and the card
+        // ticks itself off instead), a tick then an error buzz plus a message (refused), or
+        // nothing at all, which can only mean the tap never reached this function. Not covered by a test: this file is
         // outside the headless test target.
         TFHaptics.selection()
         let draft = currentDraft
