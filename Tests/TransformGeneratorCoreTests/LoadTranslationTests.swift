@@ -184,6 +184,14 @@ final class LoadTranslationTests: XCTestCase {
             0.8887, accuracy: 0.001)
     }
 
+    /// A rise anywhere in the session, not just first-to-last: 12, 10, 12 ends where it started
+    /// and would otherwise read as "no fatigue at all".
+    func testARiseInTheMiddleOfASessionIsNotEvidenceEither() {
+        XCTAssertEqual(
+            decay([session(0, weight: 47, reps: [20, 20, 15]), session(7, weight: 47, reps: [12, 10, 12])]),
+            0.8887, accuracy: 0.001)
+    }
+
     /// A first set stopped by the prescription's rep ceiling hides the real drop, so 15, 15
     /// under a 12-15 prescription is not proof of zero fatigue.
     func testASessionStoppedByTheRepCeilingIsNotEvidence() {
