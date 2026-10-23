@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import UserNotifications
 
 @main
 struct TransformApp: App {
@@ -8,6 +9,9 @@ struct TransformApp: App {
     init() {
         AppSettingsStore.seedPersonalProfileIfNeeded()
         _ = AppLifecycleMonitor.shared.start()
+        // Set before launch finishes so a rest-over alert arriving while the app is open is
+        // routed through it. The center holds its delegate weakly; `shared` keeps it alive.
+        UNUserNotificationCenter.current().delegate = RestEndNotificationDelegate.shared
     }
 
     var body: some Scene {

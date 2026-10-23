@@ -2207,38 +2207,63 @@ struct ExerciseRestTimerView: View {
     let targetRepsPlaceholder: Int?
     let onLogSet: (Int, Double, Int, Double?) -> Bool
 
-    @State private var isRestTimerActive = false
-    @State private var remainingRestSeconds = 0
+    /// The countdown's rules live in `RestTimerClock` (headless, pinned by
+    /// RestEndAlertTests); this view only drives them and draws them.
+    @State private var clock: RestTimerClock
     @State private var restTimerTask: Task<Void, Never>?
     @State private var showExpandedRestTimer = false
-    @State private var didCompleteRestTimer = false
-    @State private var restEndDate: Date?
+    /// False once the card has left the screen, so a late state change cannot re-arm the
+    /// rest-over alert for a card that is gone (the final set completes the exercise and
+    /// removes this view in the same pass that starts its rest).
+    @State private var isOnScreen = false
+
+    init(
+        exercise: WorkoutExercise,
+        loggedSets: [SetLogEntry],
+        suggestedWeight: Double?,
+        targetRepsPlaceholder: Int?,
+        onLogSet: @escaping (Int, Double, Int, Double?) -> Bool
+    ) {
+        self.exercise = exercise
+        self.loggedSets = loggedSets
+        self.suggestedWeight = suggestedWeight
+        self.targetRepsPlaceholder = targetRepsPlaceholder
+        self.onLogSet = onLogSet
+        _clock = State(initialValue: RestTimerClock(restSeconds: exercise.restSeconds))
+    }
+
+    private var isRestTimerActive: Bool { clock.isActive }
+    private var remainingRestSeconds: Int { clock.remainingSeconds }
+    private var didCompleteRestTimer: Bool { clock.didComplete }
+
+    /// Only has to be unique among this launch's alerts; nothing persists it.
+    private var alertKey: String { String(exercise.persistentModelID.hashValue) }
 
     var restDisplayText: String {
         if didCompleteRestTimer { return "00:00" }
         if isRestTimerActive { return formatCountdown(remainingRestSeconds) }
-        if remainingRestSeconds != exercise.restSeconds { return formatCountdown(remainingRestSeconds) }
-        return formatRest(exercise.restSeconds)
+        if clock.isPausedPartWay { return formatCountdown(remainingRestSeconds) }
+        return formatRest(clock.restSeconds)
     }
 
     var restStatusLabel: String {
         if didCompleteRestTimer { return "Complete" }
         if isRestTimerActive { return "Running" }
-        if remainingRestSeconds != exercise.restSeconds { return "Paused" }
+        if clock.isPausedPartWay { return "Paused" }
         return "Rest"
     }
 
     var restProgress: Double {
-        guard exercise.restSeconds > 0 else { return 0 }
+        guard clock.restSeconds > 0 else { return 0 }
         if didCompleteRestTimer { return 1 }
-        let clampedRemaining = min(max(remainingRestSeconds, 0), exercise.restSeconds)
-        return 1 - (Double(clampedRemaining) / Double(exercise.restSeconds))
+        let clampedRemaining = min(max(remainingRestSeconds, 0), clock.restSeconds)
+        return 1 - (Double(clampedRemaining) / Double(clock.restSeconds))
     }
 
     var timerAccent: Color {
         if didCompleteRestTimer { return TFColor.success }
         if isRestTimerActive { return remainingRestSeconds <= 15 ? TFColor.danger : TFColor.accent }
-        if remainingRestSeconds != exercise.restSeconds { return TFColor.warning }
+        if clock.isPausedPartWay { return TFColor.warning }
         return TFColor.accent
     }
 
@@ -2263,7 +2288,7 @@ struct ExerciseRestTimerView: View {
                 Button {
                     toggleRestTimer()
                 } label: {
-                    Label(isRestTimerActive ? "Pause" : (remainingRestSeconds != exercise.restSeconds ? "Resume" : "Start rest"), systemImage: isRestTimerActive ? "pause.fill" : "play.fill")
+                    Label(isRestTimerActive ? "Pause" : (remainingRestSeconds != clock.restSeconds ? "Resume" : "Start rest"), systemImage: isRestTimerActive ? "pause.fill" : "play.fill")
                         .font(.caption.bold())
                         .labelStyle(.titleAndIcon)
                         .padding(.horizontal, 10)
@@ -2274,7 +2299,7 @@ struct ExerciseRestTimerView: View {
                 }
                 .buttonStyle(.plain)
 
-                if remainingRestSeconds != exercise.restSeconds || isRestTimerActive || didCompleteRestTimer {
+                if remainingRestSeconds != clock.restSeconds || isRestTimerActive || didCompleteRestTimer {
                     Button {
                         resetRestTimer()
                     } label: {
@@ -2303,7 +2328,7 @@ struct ExerciseRestTimerView: View {
                 .accessibilityLabel("Open full-screen rest timer")
             }
 
-            if isRestTimerActive || remainingRestSeconds != exercise.restSeconds || didCompleteRestTimer {
+            if isRestTimerActive || remainingRestSeconds != clock.restSeconds || didCompleteRestTimer {
                 GeometryReader { geo in
                     ZStack(alignment: .leading) {
                         Capsule()
@@ -2324,17 +2349,26 @@ struct ExerciseRestTimerView: View {
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Rest timer: \(restStatusLabel), \(restDisplayText)")
         .onAppear {
-            if remainingRestSeconds == 0 && !didCompleteRestTimer {
-                remainingRestSeconds = exercise.restSeconds
-            }
+            isOnScreen = true
             if isRestTimerActive && restTimerTask == nil {
                 startRestTimer()
             }
+            syncRestEndAlert()
         }
         .onDisappear {
             if !showExpandedRestTimer {
                 stopRestTimer()
+                // No card, no countdown on screen, so no alert either. This covers the final
+                // set, which completes the exercise and removes this card while its rest is
+                // starting. The phone locking does not count as disappearing.
+                isOnScreen = false
+                RestEndAlerts.shared.cancel(exerciseKey: alertKey)
             }
+        }
+        // The one place the rest-over alert is armed or cleared: it follows the clock, so no
+        // button handler can forget it.
+        .onChange(of: clock) { _, _ in
+            syncRestEndAlert()
         }
         .onReceive(NotificationCenter.default.publisher(for: .tfWorkoutSetLogged)) { note in
             // A confirmed set starts rest only if the clock is sitting still. It used to
@@ -2344,12 +2378,9 @@ struct ExerciseRestTimerView: View {
             // A timer that is already counting down is now left completely alone.
             guard let id = note.object as? PersistentIdentifier,
                   id == exercise.persistentModelID else { return }
-            guard !isRestTimerActive else { return }
-            didCompleteRestTimer = false
-            remainingRestSeconds = exercise.restSeconds
-            restEndDate = Date().addingTimeInterval(Double(remainingRestSeconds))
-            isRestTimerActive = true
-            startRestTimer()
+            if clock.startAfterLoggedSet(now: Date()) {
+                startRestTimer()
+            }
         }
         .fullScreenCover(isPresented: $showExpandedRestTimer) {
             RestTimerFullscreen(
@@ -2372,25 +2403,17 @@ struct ExerciseRestTimerView: View {
     }
 
     func toggleRestTimer() {
-        if isRestTimerActive {
-            pauseRestTimer()
-            return
+        if clock.toggle(now: Date()) {
+            startRestTimer()
+            TFHaptics.impact(.light)
+        } else {
+            stopRestTimer()
         }
-        if didCompleteRestTimer {
-            didCompleteRestTimer = false
-            remainingRestSeconds = exercise.restSeconds
-        }
-        if remainingRestSeconds <= 0 || remainingRestSeconds > exercise.restSeconds {
-            remainingRestSeconds = exercise.restSeconds
-        }
-        restEndDate = Date().addingTimeInterval(Double(remainingRestSeconds))
-        isRestTimerActive = true
-        startRestTimer()
-        TFHaptics.impact(.light)
     }
 
     func startRestTimer() {
         stopRestTimer()
+        RestEndAlerts.shared.setTicking(true, exerciseKey: alertKey)
         restTimerTask = Task { @MainActor in
             while isRestTimerActive && !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 500_000_000)
@@ -2403,39 +2426,33 @@ struct ExerciseRestTimerView: View {
     func stopRestTimer() {
         restTimerTask?.cancel()
         restTimerTask = nil
-    }
-
-    func pauseRestTimer() {
-        if let endDate = restEndDate {
-            remainingRestSeconds = max(0, Int(ceil(endDate.timeIntervalSinceNow)))
-        }
-        restEndDate = nil
-        isRestTimerActive = false
-        stopRestTimer()
+        RestEndAlerts.shared.setTicking(false, exerciseKey: alertKey)
     }
 
     func resetRestTimer() {
-        pauseRestTimer()
-        didCompleteRestTimer = false
-        remainingRestSeconds = exercise.restSeconds
+        clock.reset(now: Date())
+        stopRestTimer()
     }
 
     func tickRestTimer() {
-        guard isRestTimerActive, let endDate = restEndDate else {
+        guard isRestTimerActive else {
             stopRestTimer()
             return
         }
-        let remaining = Int(ceil(endDate.timeIntervalSinceNow))
-        if remaining > 0 {
-            if remaining != remainingRestSeconds {
-                remainingRestSeconds = remaining
-            }
-            return
+        if clock.tick(now: Date()) {
+            stopRestTimer()
+            TFHaptics.success()
         }
-        pauseRestTimer()
-        remainingRestSeconds = 0
-        didCompleteRestTimer = true
-        TFHaptics.success()
+    }
+
+    private func syncRestEndAlert() {
+        guard isOnScreen else { return }
+        RestEndAlerts.shared.sync(
+            exerciseKey: alertKey,
+            exerciseName: exercise.exerciseName,
+            clock: clock,
+            now: Date()
+        )
     }
 
     func formatCountdown(_ seconds: Int) -> String {
@@ -2790,7 +2807,9 @@ struct RestTimerFullscreen: View {
         // code, so every outcome now has its own feel: a tick then a success buzz (saved, plus
         // a "Set N saved" label, except on the final set, where this screen closes and the card
         // ticks itself off instead), a tick then an error buzz plus a message (refused), or
-        // nothing at all, which can only mean the tap never reached this function. Not covered by a test: this file is
+        // nothing at all, which can only mean the tap never reached this function. On
+        // 2026-10-23 the owner reported Log working on his phone with this build (96cd75d or
+        // later); the original cause was never identified. Not covered by a test: this file is
         // outside the headless test target.
         TFHaptics.selection()
         let draft = currentDraft

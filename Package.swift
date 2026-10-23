@@ -118,6 +118,10 @@ let package = Package(
                 // when a day is finished and when the clock closes get real regression
                 // coverage instead of shipping correct-by-inspection.
                 "SessionLifecycle.swift",
+                // Rest countdown rules and the rest-over alert that mirrors them. Foundation-only
+                // (the notification-center adapter stays in the app), so the alert's "exactly one,
+                // always matching the clock" rule is driven by tests, including a randomized one.
+                "RestEndAlert.swift",
                 // What past sessions say about which movements to avoid, which to push down
                 // the list, and how long the next session should be. Extracted from WorkoutView
                 // (a SwiftUI file, outside this closure) because it is keyed on
