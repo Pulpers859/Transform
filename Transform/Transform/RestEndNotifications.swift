@@ -1,4 +1,5 @@
 import Foundation
+import SwiftData
 import UserNotifications
 
 /// The system side of the rest-over alert. The rules (when to arm, when to clear) are in

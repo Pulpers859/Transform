@@ -143,7 +143,7 @@ final class RestEndAlertTests: XCTestCase {
 
     // MARK: - Stress: random workouts against the real rules
 
-    /// Drives three exercise timers through 20,000 random taps, logged sets, ticks, leaving and
+    /// Drives three exercise timers through 50,000 random taps, logged sets, ticks, leaving and
     /// returning to the card (another tab: the clock is kept), rebuilding it (collapse: the
     /// clock starts fresh), finishing and reopening the exercise, and jumps in time (including
     /// long gaps with no ticks, which is what a locked phone looks like). The alert is synced
@@ -178,7 +178,7 @@ final class RestEndAlertTests: XCTestCase {
             alerts.sync(exerciseKey: key, exerciseName: key, clock: clocks[key]!, now: now)
         }
 
-        for step in 0..<20_000 {
+        for step in 0..<50_000 {
             let key = keys[Int.random(in: 0..<keys.count, using: &rng)]
             let before = clocks[key]!
             // Only a visible, unfinished card has a timer to tap.
