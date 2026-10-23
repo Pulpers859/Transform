@@ -102,9 +102,13 @@ protocol RestEndAlertCenter: AnyObject {
 /// a locked phone used to give no signal at all. A scheduled local notification fires anyway,
 /// and iOS forwards it to a paired Apple Watch while the phone is locked.
 ///
-/// While the timer's own screen is showing and ticking, the in-app buzz already covers the
-/// moment, so the foreground banner is suppressed (`shouldPresentWhileAppIsOpen`); off that
-/// screen the banner shows, because nothing else would.
+/// While the timer's own card is showing and ticking, the in-app buzz already covers the
+/// moment, so the foreground banner is suppressed (`shouldPresentWhileAppIsOpen`). Leaving the
+/// card (another tab, collapsing it, backing out) keeps the alert, because the rest is still
+/// real; off the card the banner shows, because nothing else would.
+///
+/// A finished exercise never buzzes: logging its last set removes the card in the same pass
+/// that starts its rest, and there is no next set to rest for.
 @MainActor
 final class RestEndAlerts {
     static let idPrefix = "transform.rest-end."
@@ -115,6 +119,7 @@ final class RestEndAlerts {
     /// re-schedules (each schedule would otherwise replace the request needlessly).
     private(set) var pending: [String: Date] = [:]
     private var ticking: Set<String> = []
+    private var finished: Set<String> = []
 
     init(center: RestEndAlertCenter) {
         self.center = center
@@ -131,7 +136,7 @@ final class RestEndAlerts {
     /// none otherwise.
     func sync(exerciseKey: String, exerciseName: String, clock: RestTimerClock, now: Date) {
         let id = Self.id(for: exerciseKey)
-        guard clock.isActive, let end = clock.endDate, end > now else {
+        guard !finished.contains(exerciseKey), clock.isActive, let end = clock.endDate, end > now else {
             cancel(id)
             return
         }
@@ -143,6 +148,18 @@ final class RestEndAlerts {
 
     func cancel(exerciseKey: String) {
         cancel(Self.id(for: exerciseKey))
+    }
+
+    /// The exercise was ticked off: clear its alert and refuse to re-arm it, whatever order
+    /// the card's last state changes arrive in.
+    func exerciseFinished(exerciseKey: String) {
+        finished.insert(exerciseKey)
+        cancel(exerciseKey: exerciseKey)
+    }
+
+    /// Un-ticked again (undo, or a reopened session); its timer may arm alerts again.
+    func exerciseReopened(exerciseKey: String) {
+        finished.remove(exerciseKey)
     }
 
     /// The system delivered (or is about to deliver) this alert; it is no longer pending.

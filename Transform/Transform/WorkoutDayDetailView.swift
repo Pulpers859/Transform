@@ -1379,6 +1379,16 @@ struct ExerciseCard: View {
             RoundedRectangle(cornerRadius: 12)
                 .stroke(summary.deservesCleanCompletionTreatment ? TFColor.success.opacity(0.2) : Color.clear, lineWidth: 1)
         )
+        // The last set completes the exercise and removes its rest card while that rest is
+        // starting; this is what keeps a "Rest over" alert from buzzing for a finished lift.
+        .onChange(of: exercise.isCompleted) { _, isDone in
+            let key = RestEndAlerts.key(for: exercise)
+            if isDone {
+                RestEndAlerts.shared.exerciseFinished(exerciseKey: key)
+            } else {
+                RestEndAlerts.shared.exerciseReopened(exerciseKey: key)
+            }
+        }
     }
 
     /// Closed state, per the owner's spec: exercise name + prescription (`3×8-12`) only.
@@ -2212,10 +2222,6 @@ struct ExerciseRestTimerView: View {
     @State private var clock: RestTimerClock
     @State private var restTimerTask: Task<Void, Never>?
     @State private var showExpandedRestTimer = false
-    /// False once the card has left the screen, so a late state change cannot re-arm the
-    /// rest-over alert for a card that is gone (the final set completes the exercise and
-    /// removes this view in the same pass that starts its rest).
-    @State private var isOnScreen = false
 
     init(
         exercise: WorkoutExercise,
@@ -2236,8 +2242,7 @@ struct ExerciseRestTimerView: View {
     private var remainingRestSeconds: Int { clock.remainingSeconds }
     private var didCompleteRestTimer: Bool { clock.didComplete }
 
-    /// Only has to be unique among this launch's alerts; nothing persists it.
-    private var alertKey: String { String(exercise.persistentModelID.hashValue) }
+    private var alertKey: String { RestEndAlerts.key(for: exercise) }
 
     var restDisplayText: String {
         if didCompleteRestTimer { return "00:00" }
@@ -2349,7 +2354,6 @@ struct ExerciseRestTimerView: View {
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Rest timer: \(restStatusLabel), \(restDisplayText)")
         .onAppear {
-            isOnScreen = true
             if isRestTimerActive && restTimerTask == nil {
                 startRestTimer()
             }
@@ -2357,12 +2361,10 @@ struct ExerciseRestTimerView: View {
         }
         .onDisappear {
             if !showExpandedRestTimer {
+                // The alert is deliberately left armed: switching tabs or collapsing the card
+                // does not end the rest. Stopping the loop is what lets its banner show instead.
+                // A finished exercise is cleared by the card (`exerciseFinished`).
                 stopRestTimer()
-                // No card, no countdown on screen, so no alert either. This covers the final
-                // set, which completes the exercise and removes this card while its rest is
-                // starting. The phone locking does not count as disappearing.
-                isOnScreen = false
-                RestEndAlerts.shared.cancel(exerciseKey: alertKey)
             }
         }
         // The one place the rest-over alert is armed or cleared: it follows the clock, so no
@@ -2446,7 +2448,6 @@ struct ExerciseRestTimerView: View {
     }
 
     private func syncRestEndAlert() {
-        guard isOnScreen else { return }
         RestEndAlerts.shared.sync(
             exerciseKey: alertKey,
             exerciseName: exercise.exerciseName,

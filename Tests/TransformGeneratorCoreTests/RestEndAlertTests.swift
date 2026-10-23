@@ -109,6 +109,26 @@ final class RestEndAlertTests: XCTestCase {
         XCTAssertTrue(center.pending.isEmpty, "a paused rest must not buzz")
     }
 
+    func testAFinishedExerciseNeverBuzzesWhateverOrderItsLastChangesArriveIn() {
+        let center = FakeCenter(now: t0)
+        let alerts = RestEndAlerts(center: center)
+        var clock = RestTimerClock(restSeconds: 90)
+        clock.startAfterLoggedSet(now: t0)
+
+        // Rest armed first, then the exercise is ticked off.
+        alerts.sync(exerciseKey: "a", exerciseName: "Row", clock: clock, now: t0)
+        alerts.exerciseFinished(exerciseKey: "a")
+        XCTAssertTrue(center.pending.isEmpty)
+
+        // A late sync from the departing card must not re-arm it.
+        alerts.sync(exerciseKey: "a", exerciseName: "Row", clock: clock, now: t0)
+        XCTAssertTrue(center.pending.isEmpty)
+
+        alerts.exerciseReopened(exerciseKey: "a")
+        alerts.sync(exerciseKey: "a", exerciseName: "Row", clock: clock, now: t0)
+        XCTAssertEqual(center.pending.count, 1, "reopened, its timer may arm alerts again")
+    }
+
     func testBannerIsHiddenOnlyWhileTheTimerScreenIsBuzzingItself() {
         let alerts = RestEndAlerts(center: FakeCenter(now: t0))
         let id = RestEndAlerts.id(for: "a")
@@ -124,62 +144,77 @@ final class RestEndAlertTests: XCTestCase {
     // MARK: - Stress: random workouts against the real rules
 
     /// Drives three exercise timers through 20,000 random taps, logged sets, ticks, leaving and
-    /// returning to the screen, and jumps in time (including long gaps with no ticks, which is
-    /// what a locked phone looks like). The alert is synced only when the clock changes, the
-    /// same trigger the view uses (`onChange(of: clock)`), plus on appear.
+    /// returning to the card (another tab: the clock is kept), rebuilding it (collapse: the
+    /// clock starts fresh), finishing and reopening the exercise, and jumps in time (including
+    /// long gaps with no ticks, which is what a locked phone looks like). The alert is synced
+    /// only when the clock changes, the same trigger the view uses (`onChange(of: clock)`),
+    /// plus when a card appears.
     ///
     /// Checked after every step:
-    ///   * a pending alert exists exactly when that card is on screen and its rest is running
-    ///     with time left, and it fires at that rest's end;
-    ///   * every delivered alert belongs to a rest that was still running to that same end
-    ///     (nothing buzzes for a paused, reset or abandoned rest);
-    ///   * no rest is delivered twice, and every on-screen rest that runs out is delivered.
+    ///   * a pending alert exists exactly when the exercise is unfinished and its rest is
+    ///     running with time left, on screen or not, and it fires at that rest's end;
+    ///   * every delivered alert belongs to an unfinished rest still running to that same end
+    ///     (nothing buzzes for a paused, reset, rebuilt or finished one);
+    ///   * no rest is delivered twice, and every unfinished rest that runs out is delivered.
     func testRandomWorkoutsNeverLeaveAWrongOrMissingAlert() {
         var rng = RestWalkGenerator(seed: 0x5EED_2026)
         var now = t0
         let center = FakeCenter(now: t0)
         let alerts = RestEndAlerts(center: center)
         let keys = ["a", "b", "c"]
-        var clocks: [String: RestTimerClock] = [
-            "a": RestTimerClock(restSeconds: 90),
-            "b": RestTimerClock(restSeconds: 150),
-            "c": RestTimerClock(restSeconds: 30)
-        ]
+        let restSeconds = ["a": 90, "b": 150, "c": 30]
+        var clocks = restSeconds.mapValues { RestTimerClock(restSeconds: $0) }
         var onScreen: [String: Bool] = ["a": true, "b": true, "c": true]
+        var finished: Set<String> = []
         var deliveredEnds: Set<String> = []
         var completions = 0
 
         func syncIfChanged(_ key: String, from before: RestTimerClock) {
-            guard onScreen[key] == true, clocks[key] != before else { return }
+            guard clocks[key] != before else { return }
+            alerts.sync(exerciseKey: key, exerciseName: key, clock: clocks[key]!, now: now)
+        }
+        func freshCard(_ key: String) {
+            clocks[key] = RestTimerClock(restSeconds: restSeconds[key]!)
             alerts.sync(exerciseKey: key, exerciseName: key, clock: clocks[key]!, now: now)
         }
 
         for step in 0..<20_000 {
             let key = keys[Int.random(in: 0..<keys.count, using: &rng)]
             let before = clocks[key]!
+            // Only a visible, unfinished card has a timer to tap.
+            let usable = onScreen[key] == true && !finished.contains(key)
             switch Int.random(in: 0..<100, using: &rng) {
             case 0..<15:
-                clocks[key]!.toggle(now: now)
-                syncIfChanged(key, from: before)
+                if usable { clocks[key]!.toggle(now: now); syncIfChanged(key, from: before) }
             case 15..<27:
-                clocks[key]!.startAfterLoggedSet(now: now)
-                syncIfChanged(key, from: before)
-            case 27..<32:
-                clocks[key]!.reset(now: now)
-                syncIfChanged(key, from: before)
-            case 32..<36:
-                if onScreen[key] == true {
-                    onScreen[key] = false
-                    alerts.cancel(exerciseKey: key)
-                }
-            case 36..<40:
+                if usable { clocks[key]!.startAfterLoggedSet(now: now); syncIfChanged(key, from: before) }
+            case 27..<31:
+                if usable { clocks[key]!.reset(now: now); syncIfChanged(key, from: before) }
+            case 31..<34:
+                onScreen[key] = false
+            case 34..<37:
                 if onScreen[key] == false {
                     onScreen[key] = true
                     alerts.sync(exerciseKey: key, exerciseName: key, clock: clocks[key]!, now: now)
                 }
-            case 40..<70:
-                if clocks[key]!.tick(now: now) { completions += 1 }
-                syncIfChanged(key, from: before)
+            case 37..<39:
+                if usable { freshCard(key) }
+            case 39..<41:
+                if usable {
+                    finished.insert(key)
+                    alerts.exerciseFinished(exerciseKey: key)
+                }
+            case 41..<43:
+                if finished.contains(key), onScreen[key] == true {
+                    finished.remove(key)
+                    alerts.exerciseReopened(exerciseKey: key)
+                    freshCard(key)
+                }
+            case 43..<70:
+                if usable {
+                    if clocks[key]!.tick(now: now) { completions += 1 }
+                    syncIfChanged(key, from: before)
+                }
             default:
                 // Mostly short steps, sometimes a long locked-phone gap.
                 let gap = Int.random(in: 0..<10, using: &rng) == 0
@@ -187,9 +222,9 @@ final class RestEndAlertTests: XCTestCase {
                     : Double.random(in: 0.1...8, using: &rng)
                 let previous = now
                 now = now.addingTimeInterval(gap)
-                // Rests that run out inside this gap while their card is on screen.
+                // Unfinished rests that run out inside this gap.
                 let mustBuzz = keys.compactMap { k -> String? in
-                    guard onScreen[k] == true, let end = clocks[k]!.endDate,
+                    guard !finished.contains(k), let end = clocks[k]!.endDate,
                           end > previous, end <= now else { return nil }
                     return "\(k)@\(end.timeIntervalSinceReferenceDate)"
                 }
@@ -199,6 +234,7 @@ final class RestEndAlertTests: XCTestCase {
                     let k = String(delivery.id.dropFirst(RestEndAlerts.idPrefix.count))
                     let clock = clocks[k]!
                     XCTAssertTrue(clock.isActive, "step \(step): alert for a rest that is not running")
+                    XCTAssertFalse(finished.contains(k), "step \(step): alert for a finished exercise")
                     guard let end = clock.endDate else { continue }
                     // The center is told "in N seconds", so allow for floating-point rounding.
                     XCTAssertEqual(end.timeIntervalSinceReferenceDate, delivery.at.timeIntervalSinceReferenceDate,
@@ -216,9 +252,8 @@ final class RestEndAlertTests: XCTestCase {
 
             for k in keys {
                 let clock = clocks[k]!
-                let shouldBePending = onScreen[k] == true && clock.isActive && clock.endDate! > now
                 let pending = center.pending[RestEndAlerts.id(for: k)]
-                if shouldBePending, let end = clock.endDate {
+                if !finished.contains(k), clock.isActive, let end = clock.endDate, end > now {
                     XCTAssertEqual(pending?.timeIntervalSinceReferenceDate ?? -1, end.timeIntervalSinceReferenceDate,
                                    accuracy: 0.001, "step \(step): \(k) running without the right alert")
                 } else {

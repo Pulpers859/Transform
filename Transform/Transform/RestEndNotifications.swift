@@ -10,13 +10,19 @@ import UserNotifications
 /// the moment the question makes sense.
 extension RestEndAlerts {
     static let shared = RestEndAlerts(center: RestEndNotificationCenter())
+
+    /// Only has to be unique among this launch's alerts; nothing persists it.
+    static func key(for exercise: WorkoutExercise) -> String {
+        String(exercise.persistentModelID.hashValue)
+    }
 }
 
 final class RestEndNotificationCenter: RestEndAlertCenter {
-    /// Bumped on every schedule and cancel. Permission and `add` are asynchronous, so a cancel
-    /// can land while a schedule is still in flight; the ticket check stops that schedule from
-    /// arming an alert for a rest that was already paused or reset.
+    /// Bumped on every schedule and cancel. Permission and `add` are asynchronous, so a newer
+    /// schedule or a cancel can land while an older schedule is still in flight.
     private var tickets: [String: Int] = [:]
+    /// What should be pending for each id right now: the newest request, or nil after a cancel.
+    private var latest: [String: UNNotificationRequest] = [:]
 
     func schedule(id: String, title: String, body: String, after seconds: TimeInterval) {
         let ticket = (tickets[id] ?? 0) + 1
@@ -28,6 +34,7 @@ final class RestEndNotificationCenter: RestEndAlertCenter {
         content.sound = .default
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: max(1, seconds), repeats: false)
         let request = UNNotificationRequest(identifier: id, content: content, trigger: trigger)
+        latest[id] = request
 
         Task { @MainActor in
             let center = UNUserNotificationCenter.current()
@@ -38,15 +45,23 @@ final class RestEndNotificationCenter: RestEndAlertCenter {
             }
             guard allowed, self.tickets[id] == ticket else { return }
             try? await center.add(request)
-            // A cancel that arrived during `add` found nothing to remove; remove it now.
+            // Something newer arrived during `add`, and this stale request may have replaced it
+            // (same id). Put back whatever should be pending: the newest request, or nothing.
             if self.tickets[id] != ticket {
-                center.removePendingNotificationRequests(withIdentifiers: [id])
+                if let newest = self.latest[id] {
+                    try? await center.add(newest)
+                } else {
+                    center.removePendingNotificationRequests(withIdentifiers: [id])
+                }
             }
         }
     }
 
     func cancel(ids: [String]) {
-        for id in ids { tickets[id] = (tickets[id] ?? 0) + 1 }
+        for id in ids {
+            tickets[id] = (tickets[id] ?? 0) + 1
+            latest[id] = nil
+        }
         let center = UNUserNotificationCenter.current()
         center.removePendingNotificationRequests(withIdentifiers: ids)
         center.removeDeliveredNotifications(withIdentifiers: ids)
