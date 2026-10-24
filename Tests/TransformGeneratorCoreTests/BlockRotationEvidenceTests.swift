@@ -196,3 +196,69 @@ final class BlockRotationEvidenceTests: XCTestCase {
         }
     }
 }
+
+/// Findings from the post-merge audit of the rotation (2026-10-24): a rebuilt lineup must not
+/// carry a movement the newest injury note implicates, and a day whose priority muscle changed
+/// must be planned fresh rather than rebuilt from a lineup made for something else.
+@MainActor
+final class BlockRotationGuardTests: XCTestCase {
+    private let service = ClaudeService.shared
+
+    private func pushDayBlueprint(injuryNote: String) throws -> (ClaudeService.ProgramBlueprint, Int) {
+        let structured = StructuredTrainingIntent(
+            splitRecommendation: "Upper/Lower or Push/Pull/Legs over 5 days", weeklyTrainingDays: 5,
+            priorities: [
+                .init(area: "Upper Chest", priorityLevel: "High", rationale: "Synthetic priority.",
+                      weeklyDayTarget: 2, weeklyExerciseTarget: 3, preferredStyles: ["Push", "Upper"],
+                      preferredMovementPatterns: ["incline dumbbell press", "incline press"],
+                      volumeBias: "High", directWorkBias: "Direct emphasis")
+            ], programmingNotes: [])
+        let analysis = BodyAnalysisResult(
+            overallAssessment: "Synthetic.", trainingAssessment: "", nutritionAssessment: "",
+            recoveryRiskAssessment: "", adherenceAssessment: "", analysisLimitations: "",
+            inputContext: nil, regionBreakdown: [], topLeverageChange: "",
+            priorityMuscles: ["Upper Chest"], workoutRecommendations: [], dietRecommendations: [],
+            posturalNotes: "", estimatedBodyFat: "", metabolicHealthNotes: "", psychologicalInsights: "",
+            injuryRiskNotes: injuryNote, macroTargets: nil, structuredTrainingIntent: structured)
+        let blueprint = service.programBlueprint(for: service.trainingIntentPlan(from: analysis), weekNumber: 1)
+        let day = try XCTUnwrap(blueprint.dayPlans.firstIndex {
+            !$0.isRestDay && service.canonicalTrainingStyle($0.style) == "Push"
+        }, "the profile must produce a Push day")
+        return (blueprint, day)
+    }
+
+    private func history(push lineup: [String]) -> ClaudeService.ExerciseHistoryContext {
+        var context = ClaudeService.ExerciseHistoryContext(
+            painExercises: [], equipmentSkipExercises: [], priorMesocycleExercises: [], mesocycleIndex: 1)
+        context.recentBlockDaysByStyle = [["Push": [lineup.map {
+            ClaudeService.BlockExercise(name: $0, target: service.exerciseMetadata(forExerciseName: $0, muscleTarget: "").primaryAreas.first ?? "")
+        }]]]
+        return context
+    }
+
+    func testANewInjuryNoteDropsTheImplicatedLiftFromTheRebuiltLineup() throws {
+        let (blueprint, day) = try pushDayBlueprint(
+            injuryNote: "Right shoulder pain with overhead pressing. No pain on rows.")
+        let press = "Seated Dumbbell Shoulder Press"
+        // Precondition from ShoulderReportCorpusTests: this report implicates exactly this press.
+        XCTAssertTrue(service.reportedShoulderPainImplicates(
+            exerciseName: press, muscleTarget: "Deltoids", injuryRiskFocus: blueprint.injuryRiskFocus))
+        let input = try XCTUnwrap(service.blockRotationInput(
+            history: history(push: ["Incline Dumbbell Press", press, "Cable Lateral Raise"]),
+            blueprint: blueprint, dayIndex: day, focusArea: blueprint.dayPlans[day].focusArea))
+        XCTAssertFalse(input.lastBlock.contains(ExerciseWeightEntry.canonicalLookupKey(press)))
+        XCTAssertTrue(input.lastBlock.contains(ExerciseWeightEntry.canonicalLookupKey("Incline Dumbbell Press")))
+    }
+
+    func testADayWhoseFocusChangedIsPlannedFresh() throws {
+        let (blueprint, day) = try pushDayBlueprint(injuryNote: "")
+        let focus = try XCTUnwrap(blueprint.dayPlans[day].focusArea, "the Push day must carry a focus")
+        // Last block's Push day trained only triceps: nothing prime for today's focus.
+        let lineup = ["Rope Triceps Pressdown", "V-Bar Pressdown"]
+        XCTAssertFalse(lineup.contains {
+            service.focusStimulusKind(exerciseName: $0, muscleTarget: "Triceps", focusArea: focus) == .prime
+        })
+        XCTAssertNil(service.blockRotationInput(history: history(push: lineup), blueprint: blueprint,
+                                                dayIndex: day, focusArea: focus))
+    }
+}
