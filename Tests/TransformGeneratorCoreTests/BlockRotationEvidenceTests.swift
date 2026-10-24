@@ -9,12 +9,18 @@ import XCTest
 ///   * weeks 2-4 are planned after that block was archived.
 /// Synthetic profile, procedural path only (no paid AI, which cannot change a locked menu anyway).
 ///
-/// Asserts the two things the owner noticed (EvidenceProfile VAR-001 / CONT-001: hold a block
-/// fixed, vary between blocks):
-///   * consecutive blocks are never identical (measured before the fix: blocks 1 and 2 shared
+/// Asserts the rotation policy the owner asked for, as set by the 2026-10-24 council (evidence:
+/// Kassiano 2022 systematic variation, IUSCA 2021 keep complex lifts; EvidenceProfile CONT-001):
+///   * consecutive blocks are never identical (measured before 799ae67: blocks 1 and 2 shared
 ///     all 29 of their week-2 exercise names);
 ///   * a block does not change its lineup between week 1 and week 2 beyond 2 exercise names
-///     (measured before the fix: rotation landed there, e.g. 6 new names in block 5).
+///     (measured before 799ae67: 6 new names mid-block in block 5);
+///   * per training day, at most 2 exercise names change block over block, and at least 1 when
+///     that day had an accessory the rotation may retire (not a prime or secondary exercise for
+///     the day's focus muscle). Measured on 799ae67: 2-6 names per block across 5 days, so most
+///     days changed nothing;
+///   * main lifts (anchor and secondary roles) are the same as the block before;
+///   * an exercise dropped at one block does not come straight back at the next.
 /// Writes the menus to TRANSFORM_BLOCK_ROTATION_OUTPUT when set.
 @MainActor
 final class BlockRotationEvidenceTests: XCTestCase {
@@ -53,18 +59,32 @@ final class BlockRotationEvidenceTests: XCTestCase {
 
         var report: [String] = []
         var blockWeekTwo: [[String]] = []
+        var blockWeekTwoMenus: [[[ClaudeService.PreSelectedExercise]]] = []
+        var blockWeekTwoBlueprint: ClaudeService.ProgramBlueprint?
         var weekOneToTwoNew: [Int] = []
-        // The app's programs: archived blocks plus the active one. Each trained block carries a
-        // stamped session, which is what makes it archived rather than deleted.
+        // The app's programs: archived blocks plus the active one, holding the days actually
+        // generated. Each day is stamped as trained, which is what makes a block archived rather
+        // than deleted and what the rotation reads back.
         var programs: [WorkoutProgram] = []
-        func trainedBlock() -> WorkoutProgram {
-            let program = WorkoutProgram(programName: "Block", programSummary: "", splitType: "PPL",
-                                         daysPerWeek: 5, focusAreas: "Chest")
-            let day = WorkoutDay(dayNumber: 1, dayName: "Push", muscleGroups: "Chest")
-            day.sessionStartedAt = Date()
-            day.program = program
-            program.days.append(day)
-            return program
+        func newBlock() -> WorkoutProgram {
+            WorkoutProgram(programName: "Block", programSummary: "", splitType: "PPL",
+                           daysPerWeek: 5, focusAreas: "Chest")
+        }
+        func store(_ days: [WorkoutDayResponse], in program: WorkoutProgram) {
+            for response in days {
+                let day = WorkoutDay(dayNumber: response.dayNumber, dayName: response.dayName,
+                                     muscleGroups: response.muscleGroups, isRestDay: response.isRestDay)
+                if !response.isRestDay { day.sessionStartedAt = Date() }
+                for (index, item) in response.exercises.enumerated() {
+                    let exercise = WorkoutExercise(order: index, exerciseName: item.exerciseName,
+                                                   sets: item.sets, reps: item.reps,
+                                                   muscleTarget: item.muscleTarget)
+                    exercise.day = day
+                    day.exercises.append(exercise)
+                }
+                day.program = program
+                program.days.append(day)
+            }
         }
 
         for block in 0..<6 {
@@ -77,7 +97,7 @@ final class BlockRotationEvidenceTests: XCTestCase {
                     history = ExerciseHistoryAggregator.context(from: programs, planningNewBlock: true)
                     // What generateFirstWeek does once the week is saved.
                     programs.filter { !$0.isArchived }.forEach { $0.isArchived = true }
-                    programs.append(trainedBlock())
+                    programs.append(newBlock())
                 } else {
                     history = ExerciseHistoryAggregator.context(from: programs)
                 }
@@ -107,8 +127,11 @@ final class BlockRotationEvidenceTests: XCTestCase {
                 if weekNumber == 1 { weekOneNames = Set(names) }
                 if weekNumber == 2 {
                     blockWeekTwo.append(names)
+                    blockWeekTwoMenus.append(planned.menus)
+                    blockWeekTwoBlueprint = planned.blueprint
                     weekOneToTwoNew.append(Set(names).subtracting(weekOneNames).count)
                 }
+                if let current = programs.last { store(days, in: current) }
                 previous = days
             }
         }
@@ -137,6 +160,40 @@ final class BlockRotationEvidenceTests: XCTestCase {
         }
         for (block, count) in weekOneToTwoNew.enumerated() {
             XCTAssertLessThanOrEqual(count, 2, "Block \(block + 1) changed \(count) exercises between week 1 and week 2")
+        }
+
+        let blueprint = try XCTUnwrap(blockWeekTwoBlueprint)
+        func names(_ menu: [ClaudeService.PreSelectedExercise]) -> Set<String> {
+            Set(menu.map { ExerciseWeightEntry.canonicalLookupKey($0.exerciseName) })
+        }
+        func mainLifts(_ menu: [ClaudeService.PreSelectedExercise]) -> Set<String> {
+            names(menu.filter { $0.role == .anchor || $0.role == .secondary })
+        }
+        for block in 1..<blockWeekTwoMenus.count {
+            for day in blockWeekTwoMenus[block].indices {
+                let before = blockWeekTwoMenus[block - 1][day], now = blockWeekTwoMenus[block][day]
+                guard !before.isEmpty, !now.isEmpty else { continue }
+                let label = "Block \(block + 1) day \(day + 1)"
+                let changed = names(now).subtracting(names(before)).count
+                XCTAssertLessThanOrEqual(changed, 2, "\(label): \(changed) exercises changed")
+                let focus = blueprint.dayPlans[day].focusArea
+                let retirable = before.contains { item in
+                    guard item.role == .accessory || item.role == .core else { return false }
+                    guard let focus else { return true }
+                    let kind = service.focusStimulusKind(exerciseName: item.exerciseName,
+                                                         muscleTarget: item.muscleTarget, focusArea: focus)
+                    return kind != .prime && kind != .secondary
+                }
+                if retirable {
+                    XCTAssertGreaterThanOrEqual(changed, 1, "\(label): nothing rotated")
+                }
+                XCTAssertEqual(mainLifts(now), mainLifts(before), "\(label): main lifts changed")
+                if block >= 2 {
+                    let dropped = names(blockWeekTwoMenus[block - 2][day]).subtracting(names(before))
+                    XCTAssertTrue(dropped.isDisjoint(with: names(now)),
+                                  "\(label): \(dropped.intersection(names(now)).sorted()) came straight back")
+                }
+            }
         }
     }
 }
