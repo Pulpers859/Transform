@@ -4251,8 +4251,10 @@ extension ClaudeService {
     ///   * only accessory and core exercises kept from last block are swapped; main lifts are
     ///     never touched;
     ///   * never the day's focus-muscle prime or secondary exercise, never a saved replacement;
-    ///   * 1 swap per day (2 when at least 4 are eligible), and never more than 2 changes on the
-    ///     day counting any that selection already made;
+    ///   * 1 swap per day (2 when at least 4 are eligible). The cap counts changes present when
+    ///     the swap runs; slots refilled afterwards (a lineup exercise now pain-flagged, sunk for
+    ///     equipment, or refused by a budget) can add more, which the replay test, having none of
+    ///     those, does not exercise;
     ///   * the replacement trains a shared primary muscle, was not trained anywhere last block,
     ///     prefers something also absent from the block before, and must pass the same pattern,
     ///     focus and budget checks as normal selection. No valid replacement means no swap, so
@@ -4385,7 +4387,9 @@ extension ClaudeService {
             // Weeks 2-4 never swap; with no matching day last week there is nothing to hold.
             guard !previousWeekDay.isEmpty else { return nil }
             return BlockRotationInput(
-                lineup: previousWeekDay.map { BlockExercise(name: $0.exerciseName, target: $0.muscleTarget) },
+                lineup: previousWeekDay.map { BlockExercise(name: $0.exerciseName, target: $0.muscleTarget) }
+                    .filter { !reportedShoulderPainImplicates(exerciseName: $0.name, muscleTarget: $0.target,
+                                                              injuryRiskFocus: blueprint.injuryRiskFocus) },
                 blockBefore: [], lastBlockAnyDay: [], blockBeforeAnyDay: [],
                 focusArea: focusArea, protectedKeys: [], allowsSwaps: false)
         }
@@ -4397,8 +4401,22 @@ extension ClaudeService {
             let days = block[style] ?? []
             return days.indices.contains(occurrence) ? days[occurrence] : []
         }
-        let last = day(in: lastBlock)
+        // The current injury note re-ranks the catalogue, but a rebuilt lineup would skip that
+        // ranking, so a movement the newest report implicates is dropped from the lineup here
+        // and has to earn its place in normal selection again.
+        func clearOfReportedPain(_ exercise: BlockExercise) -> Bool {
+            !reportedShoulderPainImplicates(exerciseName: exercise.name, muscleTarget: exercise.target,
+                                            injuryRiskFocus: blueprint.injuryRiskFocus)
+        }
+        let last = day(in: lastBlock).filter(clearOfReportedPain)
         guard !last.isEmpty else { return nil }
+        // A new priority muscle for this day: last block's lineup was built for something else,
+        // so plan the day fresh rather than hand the new focus only the leftover slots.
+        if let focusArea, !last.contains(where: {
+            focusStimulusKind(exerciseName: $0.name, muscleTarget: $0.target, focusArea: focusArea) == .prime
+        }) {
+            return nil
+        }
         let previousBlock = history.recentBlockDaysByStyle.dropFirst().first
         func everyDay(in block: [String: [[BlockExercise]]]?) -> Set<String> {
             (block ?? [:]).values.reduce(into: Set<String>()) { result, days in

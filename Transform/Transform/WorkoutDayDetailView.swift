@@ -3215,7 +3215,7 @@ struct ProgressionSuggestion {
         let spare = max(targetRIR ?? 2, 1)
         return ProgressionSuggestion(
             icon: firstSessionIcon,
-            text: "New exercise. Start with a load that lets you reach the rep range with about \(spare) reps to spare on your first set, then log it. Next time the app suggests the load.",
+            text: "New exercise. Start with a load (or an easier version, if it is bodyweight) that lets you reach the rep range with about \(spare) reps to spare on your first set, then log it. Next time the app suggests the load.",
             color: TFColor.info
         )
     }

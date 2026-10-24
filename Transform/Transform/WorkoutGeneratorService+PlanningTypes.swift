@@ -310,9 +310,10 @@ extension ClaudeService {
         let mesocycleIndex: Int
         var preferredReplacements: [String: String] = [:]
         /// The lineups of the most recent earlier blocks, newest first (at most two), as canonical
-        /// exercise keys per training style and per occurrence of that style in the week. Read
-        /// by `blockRotatedCatalog`, which retires some of last block's accessories and keeps the
-        /// block before's retirees out for one more block.
+        /// exercises per training style and per occurrence of that style in the week. Read by
+        /// `blockRotationInput`: the newest block is the lineup to rebuild and swap from
+        /// (`swapAccessoriesForNewBlock`), the one before only steers swap choices away from
+        /// recently used exercises.
         var recentBlockDaysByStyle: [[String: [[BlockExercise]]]] = []
     }
 
@@ -329,7 +330,7 @@ extension ClaudeService {
         /// week (weeks 2-4). Rebuilt from these names, not from the style catalogue, because a
         /// swap can bring in an exercise the catalogue does not hold.
         let lineup: [BlockExercise]
-        /// This day's exercises in the last block.
+        /// Keys of `lineup`: last block's day in week 1, this block's previous week in weeks 2-4.
         var lastBlock: Set<String> { Set(lineup.map(\.key)) }
         /// The same day in the block before that.
         let blockBefore: Set<String>
