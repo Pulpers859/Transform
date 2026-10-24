@@ -108,7 +108,8 @@ final class BlockRotationEvidenceTests: XCTestCase {
                 let planned = service.preSelectedExercisePlan(
                     for: service.programBlueprint(for: intent, weekNumber: weekNumber),
                     trainingIntent: intent, weekNumber: weekNumber,
-                    previousWeekDays: previous, exerciseHistory: history)
+                    previousWeekDays: previous, exerciseHistory: history,
+                    rotationTrace: { report.append("   swap " + $0) })
                 let days: [WorkoutDayResponse]
                 if weekNumber == 1 {
                     days = try service.validatedProceduralWeekOneProgram(

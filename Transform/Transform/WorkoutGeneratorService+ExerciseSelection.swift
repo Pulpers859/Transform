@@ -1806,7 +1806,8 @@ extension ClaudeService {
         corePlanningReport: ((SubstitutionPlanningBaseline, CoreRelocationFinalization) -> Void)? = nil,
         rowPlanningReport: ((SubstitutionPlanningBaseline, RowBalanceFinalization) -> Void)? = nil,
         capacityPlanningReport: ((SubstitutionPlanningBaseline, SessionCapacityFinalization) -> Void)? = nil,
-        historicalCapacityDiagnosticCeiling: Int? = nil
+        historicalCapacityDiagnosticCeiling: Int? = nil,
+        rotationTrace: ((String) -> Void)? = nil
     ) -> SubstitutionPlanningBaseline {
         // Only the captured pre-ceiling test replay opts into eight. Every app caller
         // takes the six-exercise default before any menu is sent to AI or fallback.
@@ -1950,10 +1951,13 @@ extension ClaudeService {
                 selected.append((candidate.name, candidate.target))
             }
             if let rotation, rotation.allowsSwaps {
+                let dayLabel = "d\(allMenus.count + 1) "
+                let dayTrace: ((String) -> Void)? = rotationTrace.map { report in { line in report(dayLabel + line) } }
                 let swapped = swapAccessoriesForNewBlock(
                     selected, used: used, catalog: catalog, rotation: rotation,
                     deprioritizedExercises: deprioritizedExercises, focusPrimeCap: focusPrimeCap,
-                    existingMenus: allMenus, blueprint: blueprint)
+                    existingMenus: allMenus, blueprint: blueprint,
+                    trace: dayTrace)
                 selected = swapped.selected
                 used = swapped.used
             }
@@ -4242,7 +4246,8 @@ extension ClaudeService {
         deprioritizedExercises: Set<String>,
         focusPrimeCap: Int,
         existingMenus: [[PreSelectedExercise]],
-        blueprint: ProgramBlueprint
+        blueprint: ProgramBlueprint,
+        trace: ((String) -> Void)? = nil
     ) -> (selected: [(name: String, target: String)], used: Set<String>) {
         func key(_ name: String) -> String { ExerciseWeightEntry.canonicalLookupKey(name) }
         func isAccessory(_ item: (name: String, target: String)) -> Bool {
@@ -4282,6 +4287,7 @@ extension ClaudeService {
             .map(\.element)
         let wanted = eligible.count >= 4 ? 2 : min(1, eligible.count)
         var remaining = min(wanted, max(0, 2 - alreadyNew))
+        trace?("selected=\(result.map(\.name)) eligible=\(eligible.map(\.name)) selectedNew=\(selectedNew) arrivingLater=\(arrivingLater) remaining=\(remaining)")
 
         for retiree in eligible where remaining > 0 {
             guard let index = result.firstIndex(where: { $0.name == retiree.name }) else { continue }
@@ -4298,13 +4304,17 @@ extension ClaudeService {
             }
             let ordered = candidates.filter { !rotation.blockBeforeAnyDay.contains(key($0.name)) }
                 + candidates.filter { rotation.blockBeforeAnyDay.contains(key($0.name)) }
-            guard let replacement = ordered.first(where: { candidate in
-                dayPatternCapAllows(candidateName: candidate.name, candidateTarget: candidate.target, in: trial)
-                    && focusPrimeSelectionAllows(candidateName: candidate.name, candidateTarget: candidate.target,
-                                                 focusArea: rotation.focusArea, selectedToday: trial, cap: focusPrimeCap)
-                    && menuPlanningBudgetAllows(candidateName: candidate.name, candidateTarget: candidate.target,
-                                                existingMenus: existingMenus, selectedToday: trial, blueprint: blueprint)
-            }) else { continue }
+            let replacement = ordered.first(where: { candidate in
+                let pattern = dayPatternCapAllows(candidateName: candidate.name, candidateTarget: candidate.target, in: trial)
+                let focus = focusPrimeSelectionAllows(candidateName: candidate.name, candidateTarget: candidate.target,
+                                                      focusArea: rotation.focusArea, selectedToday: trial, cap: focusPrimeCap)
+                let budget = menuPlanningBudgetAllows(candidateName: candidate.name, candidateTarget: candidate.target,
+                                                      existingMenus: existingMenus, selectedToday: trial, blueprint: blueprint)
+                trace?("  \(retiree.name) -> \(candidate.name): pattern=\(pattern) focus=\(focus) budget=\(budget)")
+                return pattern && focus && budget
+            })
+            if ordered.isEmpty { trace?("  \(retiree.name): no candidate shares a primary muscle and is unused") }
+            guard let replacement else { continue }
             used.remove(normalizeExerciseName(retiree.name))
             used.insert(normalizeExerciseName(replacement.name))
             result[index] = replacement
