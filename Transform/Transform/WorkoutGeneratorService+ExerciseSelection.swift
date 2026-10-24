@@ -1925,10 +1925,10 @@ extension ClaudeService {
                 blockRotation: rotation
             )
             let focusPrimeCap = focusPrimeSlotCap(targetPrioritySlots: plan.targetPrioritySlots)
-            for candidate in catalog where selected.count < targetCount {
+            func consider(_ candidate: (name: String, target: String)) {
                 let key = normalizeExerciseName(candidate.name)
-                guard !used.contains(key) else { continue }
-                guard dayPatternCapAllows(candidateName: candidate.name, candidateTarget: candidate.target, in: selected) else { continue }
+                guard !used.contains(key) else { return }
+                guard dayPatternCapAllows(candidateName: candidate.name, candidateTarget: candidate.target, in: selected) else { return }
                 // Skipping here does not shorten the day: the loop simply moves to the next
                 // catalogue entry, and the generic-catalogue and cross-day rescue sweeps below
                 // still run if the day comes up short. The focus area stops crowding out every
@@ -1939,27 +1939,42 @@ extension ClaudeService {
                     focusArea: focusIntent?.area,
                     selectedToday: selected,
                     cap: focusPrimeCap
-                ) else { continue }
+                ) else { return }
                 guard menuPlanningBudgetAllows(
                     candidateName: candidate.name,
                     candidateTarget: candidate.target,
                     existingMenus: allMenus,
                     selectedToday: selected,
                     blueprint: blueprint
-                ) else { continue }
+                ) else { return }
                 used.insert(key)
                 selected.append((candidate.name, candidate.target))
+            }
+            // With an earlier block, last block's lineup sits at the head of the catalogue.
+            // Rebuild it, make this block's swaps, and only then fill any open slots, so the
+            // fills cannot take the alternatives a swap needs (measured in the swap trace of
+            // run 40133774891: the fill had already used Seated Calf Raise and Machine Leg Curl).
+            let referenceCount = rotation.map { reference in
+                catalog.prefix(while: { reference.lastBlock.contains(ExerciseWeightEntry.canonicalLookupKey($0.name)) }).count
+            } ?? 0
+            for candidate in catalog.prefix(referenceCount) where selected.count < targetCount {
+                consider(candidate)
             }
             if let rotation, rotation.allowsSwaps {
                 let dayLabel = "d\(allMenus.count + 1) "
                 let dayTrace: ((String) -> Void)? = rotationTrace.map { report in { line in report(dayLabel + line) } }
                 let swapped = swapAccessoriesForNewBlock(
                     selected, used: used, catalog: catalog, rotation: rotation,
+                    avoidedExercises: avoidedExercises,
                     deprioritizedExercises: deprioritizedExercises, focusPrimeCap: focusPrimeCap,
+                    style: styleKey, injuryRiskFocus: blueprint.injuryRiskFocus,
                     existingMenus: allMenus, blueprint: blueprint,
                     trace: dayTrace)
                 selected = swapped.selected
                 used = swapped.used
+            }
+            for candidate in catalog.dropFirst(referenceCount) where selected.count < targetCount {
+                consider(candidate)
             }
 
             if selected.count < 5 {
@@ -4243,8 +4258,11 @@ extension ClaudeService {
         used: Set<String>,
         catalog: [(name: String, target: String)],
         rotation: BlockRotationInput,
+        avoidedExercises: Set<String>,
         deprioritizedExercises: Set<String>,
         focusPrimeCap: Int,
+        style: String,
+        injuryRiskFocus: String,
         existingMenus: [[PreSelectedExercise]],
         blueprint: ProgramBlueprint,
         trace: ((String) -> Void)? = nil
@@ -4294,12 +4312,29 @@ extension ClaudeService {
             var trial = result
             trial.remove(at: index)
             let areas = primaryAreas(retiree)
-            let candidates = catalog.filter { candidate in
+            // The day's own catalogue is small (11-14 entries per style), so also look at every
+            // catalogued exercise for the retiree's primary muscle, kept to the day's style, out
+            // of pain avoidance, and to low shoulder risk when the lifter reports a shoulder issue.
+            let shoulderCaution = hasShoulderRisk(injuryRiskFocus: injuryRiskFocus)
+            let wider = exerciseMetadata(forExerciseName: retiree.name, muscleTarget: retiree.target).primaryAreas
+                .flatMap { metadataFocusExerciseCatalog(for: $0) }
+                .filter { candidate in
+                    let probe = WorkoutExerciseResponse(exerciseName: candidate.name, sets: 3, reps: "10-12",
+                        tempo: "", restSeconds: 60, notes: "", muscleTarget: candidate.target)
+                    return exerciseMatchesDayStyle(probe, style: style)
+                        && !avoidedExercises.contains(key(candidate.name))
+                        && (!shoulderCaution
+                            || exerciseMetadata(forExerciseName: candidate.name, muscleTarget: candidate.target).shoulderRisk <= 1)
+                }
+            var seen = Set<String>()
+            let pool = (catalog + wider).filter { seen.insert(key($0.name)).inserted }
+            let candidates = pool.filter { candidate in
                 let candidateKey = key(candidate.name)
                 return isAccessory(candidate)
                     && !rotation.lastBlockAnyDay.contains(candidateKey)
                     && !deprioritizedExercises.contains(candidateKey)
                     && !used.contains(normalizeExerciseName(candidate.name))
+                    && !result.contains(where: { key($0.name) == key(candidate.name) })
                     && !primaryAreas(candidate).isDisjoint(with: areas)
             }
             let ordered = candidates.filter { !rotation.blockBeforeAnyDay.contains(key($0.name)) }
