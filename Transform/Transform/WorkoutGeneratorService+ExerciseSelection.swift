@@ -4262,7 +4262,15 @@ extension ClaudeService {
 
         var result = selected
         var used = used
-        let alreadyNew = result.filter { !rotation.lastBlock.contains(key($0.name)) }.count
+        // Last block's exercises that this catalogue does not hold arrive later, from the
+        // coverage passes, and displace whatever selection put in those slots for now. Those
+        // placeholder picks are not changes the lifter will see, so they do not use up the
+        // day's change allowance. Measured: counting them blocked every swap on days whose
+        // core or hinge work comes from coverage (block-rotation-trials.txt, run 40130688841).
+        let catalogKeys = Set(catalog.map { key($0.name) })
+        let arrivingLater = rotation.lastBlock.subtracting(catalogKeys).count
+        let selectedNew = result.filter { !rotation.lastBlock.contains(key($0.name)) }.count
+        let alreadyNew = max(0, selectedNew - arrivingLater)
         let eligible = result.enumerated()
             .filter { rotation.lastBlock.contains(key($0.element.name)) && isAccessory($0.element) && !isProtected($0.element) }
             .sorted { lhs, rhs in
