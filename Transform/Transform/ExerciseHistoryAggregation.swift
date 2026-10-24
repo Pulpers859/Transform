@@ -174,7 +174,18 @@ enum ExerciseHistoryAggregator {
         }
         let activeCount = programs.filter { !$0.isArchived }.count
         let archivedCount = programs.filter { $0.isArchived }.count
-        let mesocycleIndex = activeCount > 0 ? archivedCount : max(0, archivedCount - 1)
+        // A new block is planned while the block it replaces is still active; that block is
+        // archived only afterwards, and only if it was trained (an untrained one is deleted). So
+        // the new block's index counts it now. Counting archived programs alone gave every new
+        // block its predecessor's index: the first two blocks came out identical and each later
+        // rotation landed between week 1 and week 2. Pinned by ExerciseHistoryRecencyTests and
+        // BlockRotationEvidenceTests.
+        let mesocycleIndex: Int
+        if planningNewBlock {
+            mesocycleIndex = archivedCount + programs.filter { !$0.isArchived && $0.hasAthleteHistory }.count
+        } else {
+            mesocycleIndex = activeCount > 0 ? archivedCount : max(0, archivedCount - 1)
+        }
 
         return ClaudeService.ExerciseHistoryContext(
             painExercises: painExercises,

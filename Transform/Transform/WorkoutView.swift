@@ -783,7 +783,8 @@ struct WorkoutView: View {
             // both wasted work and a chance for the two halves to disagree.
             let progressionLookup = makeProgressionLookup(performanceLogs: exercisePerformanceLogs)
             let performanceHistory = compactPerformanceHistory(from: exerciseWeightEntries, lookup: progressionLookup)
-            let history = exerciseHistoryContext(from: programs)
+            // A new block: the active program is archived only after this week is saved.
+            let history = exerciseHistoryContext(from: programs, planningNewBlock: true)
             // `programs` includes archived mesocycles, so skip/pain patterns persist
             // across program boundaries.
             let generationResult = try await ClaudeService.shared.generateWeekOne(
@@ -1179,8 +1180,8 @@ struct WorkoutView: View {
     /// could be compiled and tested by the headless generator harness, which cannot build a
     /// SwiftUI file — see that type for why rules keyed on canonical exercise names need
     /// executed coverage rather than inspection.
-    func exerciseHistoryContext(from programs: [WorkoutProgram]) -> ClaudeService.ExerciseHistoryContext {
-        ExerciseHistoryAggregator.context(from: programs)
+    func exerciseHistoryContext(from programs: [WorkoutProgram], planningNewBlock: Bool = false) -> ClaudeService.ExerciseHistoryContext {
+        ExerciseHistoryAggregator.context(from: programs, planningNewBlock: planningNewBlock)
     }
 
     func deleteProgram(_ program: WorkoutProgram) {
