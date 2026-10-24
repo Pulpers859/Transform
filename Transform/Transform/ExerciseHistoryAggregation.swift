@@ -80,7 +80,8 @@ enum ExerciseHistoryAggregator {
     ///   following the parameter-seam precedent `RecoveryModulationTests` sets for stored state.
     static func context(
         from programs: [WorkoutProgram],
-        now: Date = Date()
+        now: Date = Date(),
+        planningNewBlock: Bool = false
     ) -> ClaudeService.ExerciseHistoryContext {
         let painExercises = ExercisePainReview.activeKeys(from: programs)
         var equipmentSkipExercises = Set<String>()

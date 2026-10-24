@@ -2,14 +2,20 @@ import Foundation
 import XCTest
 @testable import Transform
 
-/// Measures how much the exercise menu changes across consecutive 4-week blocks, replaying the
-/// block counter the app really passes (`ExerciseHistoryAggregator.context`):
-///   * week 1 of a new block is planned while the previous block is still active, so it sees
-///     `mesocycleIndex = max(0, block - 1)`;
-///   * weeks 2-4 are planned after that block was archived, so they see `mesocycleIndex = block`.
+/// Replays six consecutive 4-week blocks with the block counter taken from the real
+/// `ExerciseHistoryAggregator`, in the order the app calls it:
+///   * week 1 of a new block is planned while the previous block is still the active program
+///     (`planningNewBlock: true`, as `WorkoutView.generateFirstWeek` passes);
+///   * weeks 2-4 are planned after that block was archived.
 /// Synthetic profile, procedural path only (no paid AI, which cannot change a locked menu anyway).
-/// Diagnostic evidence for the owner's "same exercises for months" report; it asserts only that
-/// the replay ran, and writes the menus to TRANSFORM_BLOCK_ROTATION_OUTPUT when set.
+///
+/// Asserts the two things the owner noticed (EvidenceProfile VAR-001 / CONT-001: hold a block
+/// fixed, vary between blocks):
+///   * consecutive blocks are never identical (measured before the fix: blocks 1 and 2 shared
+///     all 29 of their week-2 exercise names);
+///   * a block does not change its lineup between week 1 and week 2 beyond 2 exercise names
+///     (measured before the fix: rotation landed there, e.g. 6 new names in block 5).
+/// Writes the menus to TRANSFORM_BLOCK_ROTATION_OUTPUT when set.
 @MainActor
 final class BlockRotationEvidenceTests: XCTestCase {
     private let service = ClaudeService.shared
@@ -46,18 +52,36 @@ final class BlockRotationEvidenceTests: XCTestCase {
         let intent = service.trainingIntentPlan(from: analysis)
 
         var report: [String] = []
-        var archivedExercises = Set<String>()
         var blockWeekTwo: [[String]] = []
+        var weekOneToTwoNew: [Int] = []
+        // The app's programs: archived blocks plus the active one. Each trained block carries a
+        // stamped session, which is what makes it archived rather than deleted.
+        var programs: [WorkoutProgram] = []
+        func trainedBlock() -> WorkoutProgram {
+            let program = WorkoutProgram(programName: "Block", programSummary: "", splitType: "PPL",
+                                         daysPerWeek: 5, focusAreas: "Chest")
+            let day = WorkoutDay(dayNumber: 1, dayName: "Push", muscleGroups: "Chest")
+            day.sessionStartedAt = Date()
+            day.program = program
+            program.days.append(day)
+            return program
+        }
 
         for block in 0..<6 {
             var previous: [WorkoutDayResponse]?
-            var blockExercises = Set<String>()
+            var weekOneNames = Set<String>()
             report.append("== Block \(block + 1)")
             for weekNumber in 1...4 {
-                let index = weekNumber == 1 ? max(0, block - 1) : block
-                let history = ClaudeService.ExerciseHistoryContext(
-                    painExercises: [], equipmentSkipExercises: [],
-                    priorMesocycleExercises: archivedExercises, mesocycleIndex: index)
+                let history: ClaudeService.ExerciseHistoryContext
+                if weekNumber == 1 {
+                    history = ExerciseHistoryAggregator.context(from: programs, planningNewBlock: true)
+                    // What generateFirstWeek does once the week is saved.
+                    programs.filter { !$0.isArchived }.forEach { $0.isArchived = true }
+                    programs.append(trainedBlock())
+                } else {
+                    history = ExerciseHistoryAggregator.context(from: programs)
+                }
+                let index = history.mesocycleIndex
                 let planned = service.preSelectedExercisePlan(
                     for: service.programBlueprint(for: intent, weekNumber: weekNumber),
                     trainingIntent: intent, weekNumber: weekNumber,
@@ -80,11 +104,13 @@ final class BlockRotationEvidenceTests: XCTestCase {
                     report.append("   d\(dayIndex + 1): " + menu.map(\.exerciseName).joined(separator: ", "))
                 }
                 let names = planned.menus.flatMap { $0.map(\.exerciseName) }
-                blockExercises.formUnion(names.map(ExerciseWeightEntry.canonicalLookupKey))
-                if weekNumber == 2 { blockWeekTwo.append(names) }
+                if weekNumber == 1 { weekOneNames = Set(names) }
+                if weekNumber == 2 {
+                    blockWeekTwo.append(names)
+                    weekOneToTwoNew.append(Set(names).subtracting(weekOneNames).count)
+                }
                 previous = days
             }
-            archivedExercises.formUnion(blockExercises)
         }
 
         report.append("== Week 2 of each block versus the block before")
@@ -96,12 +122,21 @@ final class BlockRotationEvidenceTests: XCTestCase {
         let distinct = Set(blockWeekTwo.flatMap { $0 })
         report.append(" distinct exercise names across all six blocks' week 2: \(distinct.count)")
 
+        report.append("== New exercise names between week 1 and week 2, per block: \(weekOneToTwoNew)")
+
         XCTAssertEqual(blockWeekTwo.count, 6)
         XCTAssertFalse(blockWeekTwo.contains { $0.isEmpty })
         if let path = ProcessInfo.processInfo.environment["TRANSFORM_BLOCK_ROTATION_OUTPUT"], !path.isEmpty {
             let url = URL(fileURLWithPath: path)
             try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
             try report.joined(separator: "\n").write(to: url, atomically: true, encoding: .utf8)
+        }
+        for block in 1..<blockWeekTwo.count {
+            XCTAssertFalse(Set(blockWeekTwo[block]).subtracting(blockWeekTwo[block - 1]).isEmpty,
+                           "Block \(block + 1) repeats block \(block) exactly")
+        }
+        for (block, count) in weekOneToTwoNew.enumerated() {
+            XCTAssertLessThanOrEqual(count, 2, "Block \(block + 1) changed \(count) exercises between week 1 and week 2")
         }
     }
 }

@@ -294,6 +294,35 @@ final class ExerciseHistoryRecencyTests: XCTestCase {
         XCTAssertEqual(context([archivedOne, archivedTwo]).mesocycleIndex, 1)
     }
 
+    /// Week 1 of a NEW block is planned while the previous block is still the active program,
+    /// because it is archived only after the new week is generated. Counting only archived
+    /// programs then gave the new block the OLD block's index: blocks 1 and 2 came out
+    /// identical, and every later rotation landed between week 1 and week 2 of a block instead
+    /// of at its start (measured by BlockRotationEvidenceTests).
+    func testANewBlockCountsTheBlockItIsAboutToArchive() {
+        let archived = makeProgram(archived: true, createdDaysAgo: 60)
+        let trained = makeProgram(createdDaysAgo: 30)
+        addDay(to: trained, dayNumber: 1, skips: [], daysAgo: 25)
+
+        let programs = [archived, trained]
+        XCTAssertEqual(ExerciseHistoryAggregator.context(from: programs, now: now).mesocycleIndex, 1,
+                       "the next week of the current block keeps the current block's index")
+        XCTAssertEqual(ExerciseHistoryAggregator.context(from: programs, now: now, planningNewBlock: true).mesocycleIndex, 2,
+                       "a new block is one past the block it replaces")
+        XCTAssertEqual(ExerciseHistoryAggregator.context(from: [trained], now: now, planningNewBlock: true).mesocycleIndex, 1,
+                       "the second block ever must not reuse the first block's index")
+    }
+
+    /// An untouched block is deleted, not archived, when a new one is generated, so replacing it
+    /// keeps its index rather than skipping one.
+    func testReplacingAnUntrainedBlockKeepsItsIndex() {
+        let archived = makeProgram(archived: true, createdDaysAgo: 60)
+        let untouched = makeProgram(createdDaysAgo: 1)
+        XCTAssertEqual(ExerciseHistoryAggregator.context(from: [archived, untouched], now: now, planningNewBlock: true).mesocycleIndex, 1)
+        XCTAssertEqual(ExerciseHistoryAggregator.context(from: [untouched], now: now, planningNewBlock: true).mesocycleIndex, 0)
+        XCTAssertEqual(ExerciseHistoryAggregator.context(from: [], now: now, planningNewBlock: true).mesocycleIndex, 0)
+    }
+
     // MARK: - Shape
 
     func testCompletedWorkAndRestDaysContributeNothing() {
