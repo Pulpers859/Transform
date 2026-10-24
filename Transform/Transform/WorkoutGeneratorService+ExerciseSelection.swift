@@ -4176,7 +4176,7 @@ extension ClaudeService {
         // finding occupied still sinks even when it is this block's fresh pick.
         let filtered = blockRotatedCatalog(preferenceCatalog.filter { item in
             !avoidedExercises.contains(ExerciseWeightEntry.canonicalLookupKey(item.name))
-        }, rotation: blockRotation)
+        }, rotation: blockRotation, avoidedExercises: avoidedExercises)
 
         guard filtered.count > 1 else { return filtered }
 
@@ -4219,12 +4219,19 @@ extension ClaudeService {
     /// allow them), and change happens only through `swapAccessoriesForNewBlock`.
     func blockRotatedCatalog(
         _ catalog: [(name: String, target: String)],
-        rotation: BlockRotationInput?
+        rotation: BlockRotationInput?,
+        avoidedExercises: Set<String> = []
     ) -> [(name: String, target: String)] {
         guard let rotation, !rotation.lastBlock.isEmpty else { return catalog }
         let isReference: ((name: String, target: String)) -> Bool = {
             rotation.lastBlock.contains(ExerciseWeightEntry.canonicalLookupKey($0.name))
         }
+        // The lineup itself, in its own order, so an exercise a swap brought in from outside the
+        // style catalogue is rebuilt next week instead of reverting (measured: week 2 reverted
+        // every week-1 swap in run 40135233105). Pain-avoided exercises never come back this way.
+        let lineup = rotation.lineup
+            .filter { !avoidedExercises.contains($0.key) }
+            .map { (name: $0.name, target: $0.target) }
         let isAccessory: ((name: String, target: String)) -> Bool = {
             let role = self.proceduralExerciseRole(for: $0.name, muscleTarget: $0.target)
             return role == .accessory || role == .core
@@ -4232,7 +4239,7 @@ extension ClaudeService {
         // A slot the reference lineup leaves open goes to an accessory before a compound the
         // lifter has not been doing, so filling it never reads as a main lift changing.
         let others = catalog.filter { !isReference($0) }
-        return catalog.filter(isReference) + others.filter(isAccessory) + others.filter { !isAccessory($0) }
+        return lineup + others.filter(isAccessory) + others.filter { !isAccessory($0) }
     }
 
     /// Between-block variety for week 1 of a block (owner request, 2026-10-24).
@@ -4378,7 +4385,7 @@ extension ClaudeService {
             // Weeks 2-4 never swap; with no matching day last week there is nothing to hold.
             guard !previousWeekDay.isEmpty else { return nil }
             return BlockRotationInput(
-                lastBlock: Set(previousWeekDay.map { ExerciseWeightEntry.canonicalLookupKey($0.exerciseName) }),
+                lineup: previousWeekDay.map { BlockExercise(name: $0.exerciseName, target: $0.muscleTarget) },
                 blockBefore: [], lastBlockAnyDay: [], blockBeforeAnyDay: [],
                 focusArea: focusArea, protectedKeys: [], allowsSwaps: false)
         }
@@ -4386,21 +4393,21 @@ extension ClaudeService {
         let occurrence = blueprint.dayPlans[..<dayIndex]
             .filter { !$0.isRestDay && canonicalTrainingStyle($0.style) == style }
             .count
-        func day(in block: [String: [Set<String>]]) -> Set<String> {
+        func day(in block: [String: [[BlockExercise]]]) -> [BlockExercise] {
             let days = block[style] ?? []
             return days.indices.contains(occurrence) ? days[occurrence] : []
         }
         let last = day(in: lastBlock)
         guard !last.isEmpty else { return nil }
         let previousBlock = history.recentBlockDaysByStyle.dropFirst().first
-        func everyDay(in block: [String: [Set<String>]]?) -> Set<String> {
+        func everyDay(in block: [String: [[BlockExercise]]]?) -> Set<String> {
             (block ?? [:]).values.reduce(into: Set<String>()) { result, days in
-                days.forEach { result.formUnion($0) }
+                days.forEach { result.formUnion($0.map(\.key)) }
             }
         }
         return BlockRotationInput(
-            lastBlock: last,
-            blockBefore: previousBlock.map { day(in: $0) } ?? [],
+            lineup: last,
+            blockBefore: Set((previousBlock.map { day(in: $0) } ?? []).map(\.key)),
             lastBlockAnyDay: everyDay(in: lastBlock),
             blockBeforeAnyDay: everyDay(in: previousBlock),
             focusArea: focusArea,

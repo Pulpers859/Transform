@@ -210,7 +210,7 @@ enum ExerciseHistoryAggregator {
     /// One block's lineup: its latest trained non-deload week (planned weeks only when none was
     /// trained), grouped by training style and ordered by day, as canonical keys. Replaced
     /// originals are excluded; the replacement is what was trained.
-    static func blockDaysByStyle(_ program: WorkoutProgram) -> [String: [Set<String>]] {
+    static func blockDaysByStyle(_ program: WorkoutProgram) -> [String: [[ClaudeService.BlockExercise]]] {
         let service = ClaudeService.shared
         let trainingDays = program.sortedDays.filter { !$0.isRestDay && !$0.activeExercises.isEmpty }
         // Prefer weeks that were actually trained; an abandoned block's untouched week 3 is a
@@ -220,12 +220,14 @@ enum ExerciseHistoryAggregator {
         let fullWeeks = pool.map(\.weekNumber).filter { !MesocyclePhase.isDeloadWeek($0) }
         guard let week = fullWeeks.max() ?? pool.map(\.weekNumber).max() else { return [:] }
         let days = trainingDays.filter { $0.weekNumber == week }.sorted { $0.dayNumber < $1.dayNumber }
-        var result: [String: [Set<String>]] = [:]
+        var result: [String: [[ClaudeService.BlockExercise]]] = [:]
         for day in days {
             let style = service.canonicalTrainingStyle(
                 service.inferredDayStyle(dayName: day.dayName, muscleGroups: day.muscleGroups) ?? "Unknown")
-            let keys = Set(day.activeExercises.map { ExerciseWeightEntry.canonicalLookupKey($0.exerciseName) })
-            result[style, default: []].append(keys)
+            let lineup = day.activeExercises.map {
+                ClaudeService.BlockExercise(name: $0.exerciseName, target: $0.muscleTarget)
+            }
+            result[style, default: []].append(lineup)
         }
         return result
     }

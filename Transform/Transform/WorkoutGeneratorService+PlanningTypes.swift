@@ -313,13 +313,24 @@ extension ClaudeService {
         /// exercise keys per training style and per occurrence of that style in the week. Read
         /// by `blockRotatedCatalog`, which retires some of last block's accessories and keeps the
         /// block before's retirees out for one more block.
-        var recentBlockDaysByStyle: [[String: [Set<String>]]] = []
+        var recentBlockDaysByStyle: [[String: [[BlockExercise]]]] = []
+    }
+
+    /// One exercise as it appeared in an earlier block's (or week's) lineup.
+    struct BlockExercise: Equatable {
+        let name: String
+        let target: String
+        var key: String { ExerciseWeightEntry.canonicalLookupKey(name) }
     }
 
     /// What `blockRotatedCatalog` needs for one training day.
     struct BlockRotationInput {
+        /// The reference lineup in order: last block's day (week 1) or this block's previous
+        /// week (weeks 2-4). Rebuilt from these names, not from the style catalogue, because a
+        /// swap can bring in an exercise the catalogue does not hold.
+        let lineup: [BlockExercise]
         /// This day's exercises in the last block.
-        let lastBlock: Set<String>
+        var lastBlock: Set<String> { Set(lineup.map(\.key)) }
         /// The same day in the block before that.
         let blockBefore: Set<String>
         /// Every exercise in the last block, on any day. A movement another day trained last
