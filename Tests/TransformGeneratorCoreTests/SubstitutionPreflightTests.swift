@@ -70,7 +70,7 @@ final class SubstitutionPreflightTests: XCTestCase {
         XCTAssertEqual(service.preflightFixedDoseSubstitution(proposal, baseline: base, blueprint: plan(),
             lockedPrefixCounts: [0], painExclusions: .init(history: history)), .rejected(.painHistory))
         let catalog = service.applyHistoryFilters(service.exerciseCatalog(for: "Arms"), avoidedExercises: [],
-            deprioritizedExercises: [key], catalogOffset: 0, weekNumber: 1, priorMesocycleExercises: [])
+            deprioritizedExercises: [key], weekNumber: 1, priorMesocycleExercises: [])
         XCTAssertTrue(catalog.contains { $0.name == "Cable Kickback" }, "Equipment skip is a preference, not pain")
         XCTAssertEqual(check(proposal, base, blueprint: plan(injury: "Right shoulder pain with Cable Kickback")),
             .rejected(.reportedShoulderConcern))

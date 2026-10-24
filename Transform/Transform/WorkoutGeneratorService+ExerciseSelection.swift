@@ -1831,7 +1831,6 @@ extension ClaudeService {
         // and phone distraction rather than anything about the movement, which leaves no mechanism
         // by which changing the movement could help.
         let deprioritizedExercises = exerciseHistory?.equipmentSkipExercises ?? []
-        let catalogOffset = exerciseHistory.map { variationCatalogOffset(for: $0) } ?? 0
 
         // How many leading slots each day pins for week-to-week continuity. Recorded here because
         // the final re-order runs long after this loop and cannot re-derive it, and re-sorting a
@@ -1916,10 +1915,11 @@ extension ClaudeService {
                 rawCatalog,
                 avoidedExercises: avoidedExercises,
                 deprioritizedExercises: deprioritizedExercises,
-                catalogOffset: catalogOffset,
                 weekNumber: weekNumber,
                 priorMesocycleExercises: exerciseHistory?.priorMesocycleExercises ?? [],
-                preferredReplacements: exerciseHistory?.preferredReplacements ?? [:]
+                preferredReplacements: exerciseHistory?.preferredReplacements ?? [:],
+                blockRotation: blockRotationInput(history: exerciseHistory, blueprint: blueprint,
+                                                  dayIndex: allMenus.count, focusArea: focusIntent?.area)
             )
             let focusPrimeCap = focusPrimeSlotCap(targetPrioritySlots: plan.targetPrioritySlots)
             for candidate in catalog where selected.count < targetCount {
@@ -1957,10 +1957,11 @@ extension ClaudeService {
                     rawGeneric,
                     avoidedExercises: avoidedExercises,
                     deprioritizedExercises: deprioritizedExercises,
-                    catalogOffset: catalogOffset,
                     weekNumber: weekNumber,
                     priorMesocycleExercises: exerciseHistory?.priorMesocycleExercises ?? [],
-                    preferredReplacements: exerciseHistory?.preferredReplacements ?? [:]
+                    preferredReplacements: exerciseHistory?.preferredReplacements ?? [:],
+                    blockRotation: blockRotationInput(history: exerciseHistory, blueprint: blueprint,
+                                                      dayIndex: allMenus.count, focusArea: focusIntent?.area)
                 )
                 for candidate in generic where selected.count < 5 {
                     let key = normalizeExerciseName(candidate.name)
@@ -4121,10 +4122,10 @@ extension ClaudeService {
         _ catalog: [(name: String, target: String)],
         avoidedExercises: Set<String>,
         deprioritizedExercises: Set<String>,
-        catalogOffset: Int,
         weekNumber: Int,
         priorMesocycleExercises: Set<String>,
-        preferredReplacements: [String: String] = [:]
+        preferredReplacements: [String: String] = [:],
+        blockRotation: BlockRotationInput? = nil
     ) -> [(name: String, target: String)] {
         // The replacement picker uses the full metadata catalog, while a day's seed
         // catalog is deliberately small (e.g. Push lacks Machine Lateral Raise).
@@ -4143,9 +4144,11 @@ extension ClaudeService {
                   }) else { continue }
             preferenceCatalog.insert((target.canonicalName, target.primaryAreas.joined(separator: ", ")), at: slot)
         }
-        let filtered = preferenceCatalog.filter { item in
+        // Rotation runs before equipment preference below, so a movement the lifter keeps
+        // finding occupied still sinks even when it is this block's fresh pick.
+        let filtered = blockRotatedCatalog(preferenceCatalog.filter { item in
             !avoidedExercises.contains(ExerciseWeightEntry.canonicalLookupKey(item.name))
-        }
+        }, rotation: blockRotation)
 
         guard filtered.count > 1 else { return filtered }
 
@@ -4155,14 +4158,7 @@ extension ClaudeService {
         } ?? filtered.count
 
         let anchors = Array(filtered.prefix(accessoryStartIndex))
-        var accessories = Array(filtered.dropFirst(accessoryStartIndex))
-
-        if catalogOffset > 0 && accessories.count > 1 {
-            let shift = catalogOffset % accessories.count
-            if shift > 0 {
-                accessories = Array(accessories[shift...]) + Array(accessories[..<shift])
-            }
-        }
+        let accessories = Array(filtered.dropFirst(accessoryStartIndex))
 
         // Equipment availability applies to main lifts too. Keep the compound-first
         // boundary and stable ordering; this is preference, never an equipment ban.
@@ -4188,9 +4184,116 @@ extension ClaudeService {
         return preferAvailable(anchors) + preferAvailable(accessories)
     }
 
-    func variationCatalogOffset(for history: ExerciseHistoryContext) -> Int {
-        guard history.mesocycleIndex > 0 else { return 0 }
-        return history.mesocycleIndex
+    /// Between-block exercise rotation for one day's catalogue.
+    ///
+    /// Policy (2026-10-24 council; evidence: Kassiano 2022 systematic review, some planned
+    /// variation helps regional growth while frequent random change may hurt; IUSCA 2021
+    /// consensus, keep complex lifts regular and rotate simpler ones; Baz-Valle 2019, variety
+    /// raised motivation with similar growth). The counts are heuristics:
+    ///   * only accessory and core work moves; main lifts keep their places;
+    ///   * the day's focus muscle keeps its prime and secondary exercises, and the lifter's own
+    ///     saved replacements are never retired;
+    ///   * of last block's remaining accessories, 1 is retired (2 when there are at least 4),
+    ///     the ones also in the block before first, then the lower-ranked;
+    ///   * fresh candidates fill the freed places; last block's retirees sit out one block, then
+    ///     may return, so an exercise's weight history is never far away.
+    /// The whole block reads the same history, so week 1 and weeks 2-4 agree. It only reorders
+    /// the catalogue; caps, budgets and the coverage passes downstream still decide what is
+    /// picked, so a retired movement can still be chosen when nothing fresh fits.
+    /// BlockRotationEvidenceTests pins the outcome over six blocks (at most 2 changes per day,
+    /// at least 1 where a retirable accessory existed, main lifts held, no straight return).
+    /// The saved-replacement protection and the retire-2-of-4 branch are not covered by a test.
+    func blockRotatedCatalog(
+        _ catalog: [(name: String, target: String)],
+        rotation: BlockRotationInput?
+    ) -> [(name: String, target: String)] {
+        guard let rotation, !rotation.lastBlock.isEmpty else { return catalog }
+        func key(_ item: (name: String, target: String)) -> String {
+            ExerciseWeightEntry.canonicalLookupKey(item.name)
+        }
+        let positions = catalog.indices.filter { index in
+            let role = proceduralExerciseRole(for: catalog[index].name, muscleTarget: catalog[index].target)
+            return role == .accessory || role == .core
+        }
+        guard positions.count > 1 else { return catalog }
+        let movable = positions.map { catalog[$0] }
+
+        func isProtected(_ item: (name: String, target: String)) -> Bool {
+            if rotation.protectedKeys.contains(key(item)) { return true }
+            guard let focusArea = rotation.focusArea else { return false }
+            let kind = focusStimulusKind(exerciseName: item.name, muscleTarget: item.target, focusArea: focusArea)
+            return kind == .prime || kind == .secondary
+        }
+        let previous = movable.filter { rotation.lastBlock.contains(key($0)) }
+        // Not trained anywhere last block. Those also absent from the block before come first;
+        // the ones that sat out last block may return now.
+        let unused = movable.filter { !rotation.lastBlockAnyDay.contains(key($0)) }
+        let fresh = unused.filter { !rotation.blockBeforeAnyDay.contains(key($0)) }
+        let resting = unused.filter { rotation.blockBeforeAnyDay.contains(key($0)) }
+        // Trained on another day last block: only after every genuinely new option.
+        let elsewhere = movable.filter {
+            rotation.lastBlockAnyDay.contains(key($0)) && !rotation.lastBlock.contains(key($0))
+        }
+
+        let eligible = previous.enumerated()
+            .filter { !isProtected($0.element) }
+            .sorted { lhs, rhs in
+                let lhsStale = rotation.blockBefore.contains(key(lhs.element))
+                let rhsStale = rotation.blockBefore.contains(key(rhs.element))
+                if lhsStale != rhsStale { return lhsStale }
+                return lhs.offset > rhs.offset
+            }
+            .map(\.element)
+        let wanted = eligible.count >= 4 ? 2 : min(1, eligible.count)
+        let retiring = Set(eligible.prefix(min(wanted, fresh.count + resting.count)).map(key))
+
+        let reordered = previous.filter { !retiring.contains(key($0)) }
+            + fresh
+            + resting
+            + elsewhere
+            + previous.filter { retiring.contains(key($0)) }
+        var result = catalog
+        for (position, item) in zip(positions, reordered) {
+            result[position] = item
+        }
+        return result
+    }
+
+    /// The rotation input for one day of the blueprint, or nil when there is no earlier block
+    /// for this day. Days are matched by training style and by which occurrence of that style
+    /// they are in the week, the same way `proceduralPreviousExercisesByStyle` matches weeks.
+    func blockRotationInput(
+        history: ExerciseHistoryContext?,
+        blueprint: ProgramBlueprint,
+        dayIndex: Int,
+        focusArea: String?
+    ) -> BlockRotationInput? {
+        guard let history, let lastBlock = history.recentBlockDaysByStyle.first,
+              blueprint.dayPlans.indices.contains(dayIndex) else { return nil }
+        let style = canonicalTrainingStyle(blueprint.dayPlans[dayIndex].style)
+        let occurrence = blueprint.dayPlans[..<dayIndex]
+            .filter { !$0.isRestDay && canonicalTrainingStyle($0.style) == style }
+            .count
+        func day(in block: [String: [Set<String>]]) -> Set<String> {
+            let days = block[style] ?? []
+            return days.indices.contains(occurrence) ? days[occurrence] : []
+        }
+        let last = day(in: lastBlock)
+        guard !last.isEmpty else { return nil }
+        let previousBlock = history.recentBlockDaysByStyle.dropFirst().first
+        func everyDay(in block: [String: [Set<String>]]?) -> Set<String> {
+            (block ?? [:]).values.reduce(into: Set<String>()) { result, days in
+                days.forEach { result.formUnion($0) }
+            }
+        }
+        return BlockRotationInput(
+            lastBlock: last,
+            blockBefore: previousBlock.map { day(in: $0) } ?? [],
+            lastBlockAnyDay: everyDay(in: lastBlock),
+            blockBeforeAnyDay: everyDay(in: previousBlock),
+            focusArea: focusArea,
+            protectedKeys: Set(history.preferredReplacements.values.map(ExerciseWeightEntry.canonicalLookupKey))
+        )
     }
 
 }

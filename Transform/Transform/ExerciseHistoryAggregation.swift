@@ -187,13 +187,47 @@ enum ExerciseHistoryAggregator {
             mesocycleIndex = activeCount > 0 ? archivedCount : max(0, archivedCount - 1)
         }
 
+        // The blocks before the one being planned: the trained active block when a new block
+        // is planned (it is archived only afterwards), and archived blocks either way. The same
+        // rule as `mesocycleIndex`, so week 1 and weeks 2-4 of a block read the same history
+        // and the block cannot change its lineup between week 1 and week 2.
+        let recentBlocks = programs
+            .filter { $0.isArchived || (planningNewBlock && $0.hasAthleteHistory) }
+            .sorted { $0.createdDate > $1.createdDate }
+            .prefix(2)
+            .map { blockDaysByStyle($0) }
+
         return ClaudeService.ExerciseHistoryContext(
             painExercises: painExercises,
             equipmentSkipExercises: equipmentSkipExercises,
             priorMesocycleExercises: priorMesocycleExercises,
             mesocycleIndex: mesocycleIndex,
-            preferredReplacements: preferredReplacements(from: programs)
+            preferredReplacements: preferredReplacements(from: programs),
+            recentBlockDaysByStyle: Array(recentBlocks)
         )
+    }
+
+    /// One block's lineup: its latest trained non-deload week (planned weeks only when none was
+    /// trained), grouped by training style and ordered by day, as canonical keys. Replaced
+    /// originals are excluded; the replacement is what was trained.
+    static func blockDaysByStyle(_ program: WorkoutProgram) -> [String: [Set<String>]] {
+        let service = ClaudeService.shared
+        let trainingDays = program.sortedDays.filter { !$0.isRestDay && !$0.activeExercises.isEmpty }
+        // Prefer weeks that were actually trained; an abandoned block's untouched week 3 is a
+        // plan, not what the lifter did. Fall back to planned weeks when nothing was stamped.
+        let trained = trainingDays.filter { $0.isCompleted || $0.sessionStartedAt != nil }
+        let pool = trained.isEmpty ? trainingDays : trained
+        let fullWeeks = pool.map(\.weekNumber).filter { !MesocyclePhase.isDeloadWeek($0) }
+        guard let week = fullWeeks.max() ?? pool.map(\.weekNumber).max() else { return [:] }
+        let days = trainingDays.filter { $0.weekNumber == week }.sorted { $0.dayNumber < $1.dayNumber }
+        var result: [String: [Set<String>]] = [:]
+        for day in days {
+            let style = service.canonicalTrainingStyle(
+                service.inferredDayStyle(dayName: day.dayName, muscleGroups: day.muscleGroups) ?? "Unknown")
+            let keys = Set(day.activeExercises.map { ExerciseWeightEntry.canonicalLookupKey($0.exerciseName) })
+            result[style, default: []].append(keys)
+        }
+        return result
     }
 
     static func preferredReplacements(from programs: [WorkoutProgram]) -> [String: String] {

@@ -305,8 +305,31 @@ extension ClaudeService {
         let painExercises: Set<String>
         let equipmentSkipExercises: Set<String>
         let priorMesocycleExercises: Set<String>
+        /// How many earlier blocks precede the one being planned. Informational: it no longer
+        /// drives selection (`recentBlockDaysByStyle` does), but it is pinned by tests.
         let mesocycleIndex: Int
         var preferredReplacements: [String: String] = [:]
+        /// The lineups of the most recent earlier blocks, newest first (at most two), as canonical
+        /// exercise keys per training style and per occurrence of that style in the week. Read
+        /// by `blockRotatedCatalog`, which retires some of last block's accessories and keeps the
+        /// block before's retirees out for one more block.
+        var recentBlockDaysByStyle: [[String: [Set<String>]]] = []
+    }
+
+    /// What `blockRotatedCatalog` needs for one training day.
+    struct BlockRotationInput {
+        /// This day's exercises in the last block.
+        let lastBlock: Set<String>
+        /// The same day in the block before that.
+        let blockBefore: Set<String>
+        /// Every exercise in the last block, on any day. A movement another day trained last
+        /// block is not "fresh" here: taking it would just move it between days.
+        let lastBlockAnyDay: Set<String>
+        /// Every exercise in the block before, on any day.
+        let blockBeforeAnyDay: Set<String>
+        let focusArea: String?
+        /// Exercises the lifter chose himself (saved replacements); never retired.
+        let protectedKeys: Set<String>
     }
 
     struct WeekDiffEntry: Identifiable {

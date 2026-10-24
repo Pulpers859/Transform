@@ -1212,7 +1212,9 @@ struct ExerciseCard: View {
         // Before any same-prescription verdict: those all assume the prescription held, and
         // saying "add load" under a rep range the lifter has never trained is the exact bug.
         if let translated = crossPrescriptionSuggestion { return translated }
-        guard let log = latestWeightLog else { return nil }
+        // A brand-new exercise has nothing to suggest from. Between-block rotation makes this
+        // routine rather than rare, so say how to pick the first load instead of saying nothing.
+        guard let log = latestWeightLog else { return .firstSession(targetRIR: exercise.targetRIR) }
         guard let graded = gradedSessionPrescription else { return nil }
         let suggestion = ProgressionSuggestion.evaluate(
             analysis: progressionAnalysis,
@@ -1222,6 +1224,15 @@ struct ExerciseCard: View {
             exerciseName: exercise.exerciseName,
             performanceHistory: performanceHistory
         )
+        // An exercise rotated back in after two or more blocks away: its last numbers are old,
+        // so hold them rather than build on them. Heuristic threshold (two 4-week blocks); not
+        // covered by a test, this file is outside the headless target. `loggedAt` is the date of
+        // the last log applied to the summary entry.
+        if let suggestion, suggestion.increasesLoad,
+           let weeks = Calendar.current.dateComponents([.weekOfYear], from: log.loggedAt, to: Date()).weekOfYear,
+           weeks >= 8 {
+            return .returningAfter(weeks: weeks, weight: log.weightLbs)
+        }
         // An unfinished session is not evidence that a load was easy. Before this, the
         // engine saw only the sets that exist and read "one good set" as a completed
         // prescription beaten — so stopping early was rewarded with heavier weight next
@@ -1257,7 +1268,7 @@ struct ExerciseCard: View {
     var detailedCoachingNote: String {
         detailedWorkoutInsight(
             from: cleanedCoachingNote,
-            hideProgressionCue: progressionSuggestion != nil,
+            hideProgressionCue: progressionSuggestion.map { !$0.isFirstSession } ?? false,
             hideDeloadCue: isDeloadContext
         )
     }
@@ -3194,6 +3205,30 @@ struct ProgressionSuggestion {
             icon: "hand.raised.fill",
             text: "You logged \(logged) of \(setsLabel(prescribed)) — finish the prescription at this load before adding weight",
             color: TFColor.warning
+        )
+    }
+
+    /// Shown when an exercise has no history at all, which between-block rotation makes routine.
+    /// It says how to choose a first load; it does not own progression, so it does not hide the
+    /// coaching note's own progression wording (`isFirstSession`).
+    static func firstSession(targetRIR: Int?) -> ProgressionSuggestion {
+        let spare = max(targetRIR ?? 2, 1)
+        return ProgressionSuggestion(
+            icon: firstSessionIcon,
+            text: "New exercise. Start with a load that lets you reach the rep range with about \(spare) reps to spare on your first set, then log it. Next time the app suggests the load.",
+            color: TFColor.info
+        )
+    }
+
+    static let firstSessionIcon = "sparkles"
+    var isFirstSession: Bool { icon == Self.firstSessionIcon }
+
+    static func returningAfter(weeks: Int, weight: Double) -> ProgressionSuggestion {
+        ProgressionSuggestion(
+            icon: "arrow.uturn.backward.circle.fill",
+            text: "Last done \(weeks) weeks ago. Start at \(formatLoad(weight)) and add weight once it moves well again.",
+            color: TFColor.info,
+            suggestedLoad: weight
         )
     }
 

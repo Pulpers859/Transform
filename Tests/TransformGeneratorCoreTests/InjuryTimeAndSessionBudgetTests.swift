@@ -246,7 +246,6 @@ final class InjuryTimeAndSessionBudgetTests: XCTestCase {
             catalog,
             avoidedExercises: [],
             deprioritizedExercises: unavailable,
-            catalogOffset: 0,
             weekNumber: 1,
             priorMesocycleExercises: []
         )
@@ -269,13 +268,13 @@ final class InjuryTimeAndSessionBudgetTests: XCTestCase {
         let ordered = service.applyHistoryFilters(
             catalog, avoidedExercises: [],
             deprioritizedExercises: Set(["Barbell Bench Press", "Cable Fly"].map { ExerciseWeightEntry.canonicalLookupKey($0) }),
-            catalogOffset: 0, weekNumber: 2, priorMesocycleExercises: []
+            weekNumber: 2, priorMesocycleExercises: []
         )
         XCTAssertEqual(ordered.map { $0.name }, ["Dumbbell Bench Press", "Barbell Bench Press", "Pec Deck", "Cable Fly"])
         let anchorsOnly = service.applyHistoryFilters(
             Array(catalog.prefix(2)), avoidedExercises: [],
             deprioritizedExercises: [ExerciseWeightEntry.canonicalLookupKey("Barbell Bench Press")],
-            catalogOffset: 0, weekNumber: 2, priorMesocycleExercises: []
+            weekNumber: 2, priorMesocycleExercises: []
         )
         XCTAssertEqual(anchorsOnly.map { $0.name }, ["Dumbbell Bench Press", "Barbell Bench Press"])
     }
@@ -289,7 +288,7 @@ final class InjuryTimeAndSessionBudgetTests: XCTestCase {
                        (name: target, target: "Lateral Deltoids")]
         func ordered(pain: Set<String>, equipment: Set<String> = []) -> [String] {
             service.applyHistoryFilters(catalog, avoidedExercises: pain,
-                deprioritizedExercises: equipment, catalogOffset: 0, weekNumber: 1,
+                deprioritizedExercises: equipment, weekNumber: 1,
                 priorMesocycleExercises: [], preferredReplacements: [sourceKey: target]).map { $0.name }
         }
         XCTAssertEqual(ordered(pain: []).first, target)
@@ -298,12 +297,12 @@ final class InjuryTimeAndSessionBudgetTests: XCTestCase {
         XCTAssertEqual(ordered(pain: [], equipment: [targetKey]).last, target)
         let smallCatalog = Array(catalog.prefix(2)) // Real day catalogs omit some picker alternatives.
         let expanded = service.applyHistoryFilters(smallCatalog, avoidedExercises: [sourceKey],
-            deprioritizedExercises: [], catalogOffset: 0, weekNumber: 1, priorMesocycleExercises: [],
+            deprioritizedExercises: [], weekNumber: 1, priorMesocycleExercises: [],
             preferredReplacements: [sourceKey: target])
         XCTAssertEqual(expanded.first?.name, target)
         XCTAssertFalse(expanded.contains { $0.name == source })
         XCTAssertEqual(service.applyHistoryFilters(catalog, avoidedExercises: [],
-            deprioritizedExercises: [], catalogOffset: 0, weekNumber: 1, priorMesocycleExercises: []).first?.name, source)
+            deprioritizedExercises: [], weekNumber: 1, priorMesocycleExercises: []).first?.name, source)
     }
 
     func testPainAndReplacementPreferenceReachACompleteLockedPlan() throws {
@@ -375,7 +374,6 @@ final class InjuryTimeAndSessionBudgetTests: XCTestCase {
             [(name: "Cable Crunch", target: "Abs")],
             avoidedExercises: [],
             deprioritizedExercises: [ExerciseWeightEntry.canonicalLookupKey("Cable Crunch")],
-            catalogOffset: 0,
             weekNumber: 1,
             priorMesocycleExercises: []
         )
