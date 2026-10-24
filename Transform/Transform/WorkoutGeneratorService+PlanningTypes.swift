@@ -330,6 +330,10 @@ extension ClaudeService {
         let focusArea: String?
         /// Exercises the lifter chose himself (saved replacements); never retired.
         let protectedKeys: Set<String>
+        /// True for week 1 of a block, where `lastBlock` is last block's day and 1-2 deliberate
+        /// swaps are made. False for weeks 2-4, where `lastBlock` is this block's previous week
+        /// and the lineup is simply held.
+        let allowsSwaps: Bool
     }
 
     struct WeekDiffEntry: Identifiable {

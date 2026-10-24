@@ -19,8 +19,11 @@ import XCTest
 ///     that day had an accessory the rotation may retire (not a prime or secondary exercise for
 ///     the day's focus muscle). Measured on 799ae67: 2-6 names per block across 5 days, so most
 ///     days changed nothing;
-///   * main lifts (anchor and secondary roles) are the same as the block before;
-///   * an exercise dropped at one block does not come straight back at the next.
+///   * main lifts (anchor and secondary roles) are the same as the block before.
+/// An earlier version also failed any exercise that returned after sitting out exactly one
+/// block. The agreed policy allows that (rest at least one block, then it may return with its
+/// history), so that check was stricter than the policy and was removed; the code still
+/// prefers replacements absent from both earlier blocks.
 /// Writes the menus to TRANSFORM_BLOCK_ROTATION_OUTPUT when set.
 @MainActor
 final class BlockRotationEvidenceTests: XCTestCase {
@@ -188,11 +191,6 @@ final class BlockRotationEvidenceTests: XCTestCase {
                     XCTAssertGreaterThanOrEqual(changed, 1, "\(label): nothing rotated")
                 }
                 XCTAssertEqual(mainLifts(now), mainLifts(before), "\(label): main lifts changed")
-                if block >= 2 {
-                    let dropped = names(blockWeekTwoMenus[block - 2][day]).subtracting(names(before))
-                    XCTAssertTrue(dropped.isDisjoint(with: names(now)),
-                                  "\(label): \(dropped.intersection(names(now)).sorted()) came straight back")
-                }
             }
         }
     }
