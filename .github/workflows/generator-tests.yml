@@ -54,6 +54,7 @@ jobs:
       TRANSFORM_OWNER_REPLAY_OUTPUT: ${{ github.workspace }}/owner-planning-replay.json
       TRANSFORM_SIX_SLOT_REPORT_OUTPUT: ${{ github.workspace }}/six-slot-planning-trials.txt
       TRANSFORM_BLOCK_ROTATION_OUTPUT: ${{ github.workspace }}/block-rotation-trials.txt
+      TRANSFORM_SWAP_COVERAGE_OUTPUT: ${{ github.workspace }}/swap-coverage.txt
 
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
@@ -280,6 +281,7 @@ jobs:
             core-relocation-chain.txt
             six-slot-planning-trials.txt
             block-rotation-trials.txt
+            swap-coverage.txt
           if-no-files-found: error
           retention-days: 14
 

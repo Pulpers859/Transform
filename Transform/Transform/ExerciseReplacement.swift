@@ -53,6 +53,29 @@ enum ExerciseReplacement {
                 && candidate.fatigueCost <= original.fatigueCost))
     }
 
+    /// Which of the live swap rules refuse `candidateName` as a stand-in for `originalName`
+    /// (empty when the in-session picker would offer it, ignoring which exercises are already in
+    /// the day). Diagnostic: SwapCoverageEvidenceTests uses it to measure how thin each swap
+    /// list is and which rule makes it so. Mirrors `compatible(..., returning: false, live: true)`.
+    static func liveSwapBlockers(originalName: String, candidateName: String) -> [String] {
+        guard let original = metadata(originalName), let candidate = metadata(candidateName) else { return ["unknown"] }
+        guard ExerciseWeightEntry.canonicalLookupKey(original.canonicalName)
+                != ExerciseWeightEntry.canonicalLookupKey(candidate.canonicalName) else { return ["same"] }
+        let compoundClasses: Set<String> = ["Heavy Compound", "Hypertrophy Compound"]
+        var blockers: [String] = []
+        if Set(original.primaryAreas) != Set(candidate.primaryAreas) { blockers.append("muscles") }
+        if !sameMovementFamily(original, candidate) { blockers.append("pattern") }
+        if !(original.exerciseClass == candidate.exerciseClass
+             || (compoundClasses.contains(original.exerciseClass) && compoundClasses.contains(candidate.exerciseClass))) {
+            blockers.append("class")
+        }
+        if candidate.shoulderRisk > original.shoulderRisk { blockers.append("shoulder") }
+        if candidate.systemicFatigue > original.systemicFatigue || candidate.fatigueCost > original.fatigueCost {
+            blockers.append("fatigue")
+        }
+        return blockers
+    }
+
     /// Movement patterns that are interchangeable for a swap. Identical patterns always are.
     /// A quads-only leg press ("Press") and a quads-only machine squat ("Squat") are too: both
     /// are knee-dominant compounds for the same muscles, so leg press, hack, pendulum and belt
