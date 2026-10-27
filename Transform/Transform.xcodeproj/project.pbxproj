@@ -390,12 +390,12 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_ENTITLEMENTS = Transform/Transform.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = R4L58G49L2;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				CODE_SIGN_ENTITLEMENTS = Transform/Transform.entitlements;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Transform uses the camera so you can capture physique photos for body analysis.";
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "Transform reads your sleep from Apple Health so recovery and training recommendations reflect how you actually slept.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Transform uses your photo library so you can choose physique photos for body analysis.";
@@ -429,12 +429,12 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_ENTITLEMENTS = Transform/Transform.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = R4L58G49L2;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				CODE_SIGN_ENTITLEMENTS = Transform/Transform.entitlements;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Transform uses the camera so you can capture physique photos for body analysis.";
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "Transform reads your sleep from Apple Health so recovery and training recommendations reflect how you actually slept.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Transform uses your photo library so you can choose physique photos for body analysis.";
