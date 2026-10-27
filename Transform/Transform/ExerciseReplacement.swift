@@ -42,7 +42,7 @@ enum ExerciseReplacement {
         let sameClass = original.exerciseClass == candidate.exerciseClass
             || (live && compoundClasses.contains(original.exerciseClass) && compoundClasses.contains(candidate.exerciseClass))
         return Set(original.primaryAreas) == Set(candidate.primaryAreas)
-            && original.movementPattern == candidate.movementPattern
+            && sameMovementFamily(original, candidate)
             && sameClass
             && (live || service.proceduralExerciseRole(for: original.canonicalName,
                                               muscleTarget: original.primaryAreas.joined(separator: ", "))
@@ -51,6 +51,21 @@ enum ExerciseReplacement {
             && (returning || (candidate.shoulderRisk <= original.shoulderRisk
                 && candidate.systemicFatigue <= original.systemicFatigue
                 && candidate.fatigueCost <= original.fatigueCost))
+    }
+
+    /// Movement patterns that are interchangeable for a swap. Identical patterns always are.
+    /// A quads-only leg press ("Press") and a quads-only machine squat ("Squat") are too: both
+    /// are knee-dominant compounds for the same muscles, so leg press, hack, pendulum and belt
+    /// squat can stand in for each other. Barbell squats share the family but stay out through
+    /// the fatigue rule below (fatigue cost 3 against the leg press's 2). Owner request,
+    /// 2026-10-27; pinned by OwnerWorkoutFeedbackTests.
+    private static func sameMovementFamily(_ original: ClaudeService.ExerciseMetadata,
+                                           _ candidate: ClaudeService.ExerciseMetadata) -> Bool {
+        if original.movementPattern == candidate.movementPattern { return true }
+        let kneeDominantQuads: Set<String> = ["Press", "Squat"]
+        return Set(original.primaryAreas) == ["Quads"]
+            && kneeDominantQuads.contains(original.movementPattern)
+            && kneeDominantQuads.contains(candidate.movementPattern)
     }
 
     static func identity(_ name: String) -> String {

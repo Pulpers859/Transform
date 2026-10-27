@@ -1315,7 +1315,8 @@ struct WorkoutView: View {
                 loggedAt: $0.loggedAt,
                 setLogs: $0.decodedSetLogs,
                 prescribedReps: $0.prescribedReps,
-                prescribedSets: $0.prescribedSets
+                prescribedSets: $0.prescribedSets,
+                prescribedTargetRIR: $0.recordedTargetRIR
             )
         }
 

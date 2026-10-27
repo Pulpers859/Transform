@@ -28,6 +28,29 @@ final class OwnerWorkoutFeedbackTests: XCTestCase {
         )
     }
 
+    /// With the target recorded, effort is judged against it: the same RIR 1 is on target
+    /// when 1 was asked, and harder than asked when 2 was.
+    func testEffortIsJudgedAgainstEachSessionsRecordedTarget() {
+        func targeted(_ timestamp: TimeInterval, rir: Double, target: Int) -> WorkoutPerformanceLogSnapshot {
+            var snapshot = session(timestamp, rir: rir)
+            snapshot.prescribedTargetRIR = target
+            return snapshot
+        }
+        XCTAssertEqual(WorkoutProgressionEngine.effortSignal(
+            for: "lying-leg-curl", from: [targeted(100, rir: 1, target: 1), targeted(200, rir: 1, target: 1)]), .neutral)
+        XCTAssertEqual(WorkoutProgressionEngine.effortSignal(
+            for: "lying-leg-curl", from: [targeted(100, rir: 1, target: 2), targeted(200, rir: 1, target: 2)]), .protectRecovery)
+        XCTAssertEqual(WorkoutProgressionEngine.effortSignal(
+            for: "lying-leg-curl", from: [targeted(100, rir: 3, target: 1), targeted(200, rir: 3, target: 1)]), .progressionHeadroom)
+    }
+
+    /// The log keeps the target it was given, and reports "not recorded" as nil, never as 0.
+    func testPerformanceLogRecordsItsTargetRIR() {
+        XCTAssertEqual(ExercisePerformanceLog(exerciseName: "Lying Leg Curl", weightLbs: 50,
+                                              prescribedTargetRIR: 1).recordedTargetRIR, 1)
+        XCTAssertNil(ExercisePerformanceLog(exerciseName: "Lying Leg Curl", weightLbs: 50).recordedTargetRIR)
+    }
+
     /// Leg Press offered only 45-Degree Leg Press and Single-Leg Press. Machine squats train
     /// the same muscles with the same fatigue class and belong in the list; barbell squats are
     /// a heavier, more fatiguing lift and stay out of a like-for-like swap.

@@ -56,6 +56,8 @@ struct WorkoutPerformanceLogSnapshot: Equatable {
     /// Set count the session was prescribed; 0 when it predates the recording. Rides along for
     /// the same reason as `prescribedReps` — one decode pass, not two.
     var prescribedSets: Int = 0
+    /// The reps-in-reserve target the session was prescribed; nil when not recorded.
+    var prescribedTargetRIR: Int? = nil
 }
 
 enum WorkoutExerciseEffortSignal: Equatable {
@@ -185,6 +187,15 @@ enum WorkoutProgressionEngine {
     /// Uses only explicit RIR captured on working sets. Reps and load prove whether a
     /// double-progression step is mechanically available; they do not prove proximity to
     /// failure. Two corroborating sessions are required before effort can override that step.
+    ///
+    /// Each session is judged against the RIR it was PRESCRIBED, not a fixed bar. The fixed
+    /// "average RIR <= 1" bar flagged the owner for logging exactly the RIR 1 his card asked
+    /// for (2026-10-27). A session counts as harder than asked when it averages at least half
+    /// a rep closer to failure than its target, and as having headroom when it averages two or
+    /// more reps further. Sessions without a recorded target are judged against RIR 1, the
+    /// lowest target the app sets on its own (`proceduralTargetRIR`), which keeps the old
+    /// behaviour for genuinely to-failure history. Pinned by OwnerWorkoutFeedbackTests and
+    /// GeneratorTroubleshootingTests.
     static func effortSignal(
         for canonicalExerciseKey: String,
         from snapshots: [WorkoutPerformanceLogSnapshot],
@@ -195,7 +206,7 @@ enum WorkoutProgressionEngine {
             .sorted { $0.loggedAt > $1.loggedAt }
             .prefix(max(1, lookback))
 
-        let sessionRIRs: [[Double]] = recent.compactMap { snapshot in
+        let sessions: [(rirs: [Double], target: Double)] = recent.compactMap { snapshot in
             let workingSets = WorkingSetAnalysis.analyze(snapshot.setLogs).workingSets
             let values = workingSets.compactMap { rir -> Double? in
                 guard let value = rir.rir, (0...6).contains(value) else { return nil }
@@ -204,13 +215,15 @@ enum WorkoutProgressionEngine {
             guard !workingSets.isEmpty,
                   values.count == workingSets.count || (workingSets.count == 1 && values.count == 1)
             else { return nil }
-            return values
+            return (values, Double(snapshot.prescribedTargetRIR ?? 1))
         }
 
-        guard sessionRIRs.count >= 2 else { return .insufficientEvidence }
-        let averages = sessionRIRs.map { $0.reduce(0, +) / Double($0.count) }
-        if averages.filter({ $0 <= 1 }).count >= 2 { return .protectRecovery }
-        if averages.filter({ $0 >= 3 }).count >= 2 { return .progressionHeadroom }
+        guard sessions.count >= 2 else { return .insufficientEvidence }
+        let gaps = sessions.map { session in
+            session.rirs.reduce(0, +) / Double(session.rirs.count) - session.target
+        }
+        if gaps.filter({ $0 <= -0.5 }).count >= 2 { return .protectRecovery }
+        if gaps.filter({ $0 >= 2 }).count >= 2 { return .progressionHeadroom }
         return .neutral
     }
 

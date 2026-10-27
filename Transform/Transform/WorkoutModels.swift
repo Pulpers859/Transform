@@ -727,6 +727,12 @@ class ExercisePerformanceLog {
     /// with defaults. No stored row is read, rewritten, or reinterpreted.
     var prescribedSets: Int = 0
     var prescribedReps: String = ""
+    /// The reps-in-reserve target the session was prescribed; -1 when not recorded (logged
+    /// before this existed, or the exercise had no target). Recorded so effort can be judged
+    /// against what was ASKED: logging the prescribed RIR 1 used to read as "repeated low RIR".
+    /// Same additive lightweight migration as the two fields above. Read it through
+    /// `recordedTargetRIR`.
+    var prescribedTargetRIR: Int = -1
 
     init(
         loggedAt: Date = .now,
@@ -738,6 +744,7 @@ class ExercisePerformanceLog {
         workoutDayNumber: Int = 0,
         prescribedSets: Int = 0,
         prescribedReps: String = "",
+        prescribedTargetRIR: Int? = nil,
         setLogs: [SetLogEntry] = []
     ) {
         self.loggedAt = loggedAt
@@ -751,7 +758,13 @@ class ExercisePerformanceLog {
         self.workoutDayNumber = workoutDayNumber
         self.prescribedSets = prescribedSets
         self.prescribedReps = prescribedReps
+        self.prescribedTargetRIR = prescribedTargetRIR ?? -1
         self.setLogsJSON = Self.encodeSetLogs(setLogs)
+    }
+
+    /// The prescribed reps-in-reserve target, or nil when it was not recorded.
+    var recordedTargetRIR: Int? {
+        prescribedTargetRIR >= 0 ? prescribedTargetRIR : nil
     }
 
     /// The prescribed set count, or nil when this session predates the field. Never 0: a

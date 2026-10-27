@@ -860,7 +860,8 @@ struct WorkoutDayDetailView: View {
                     loggedAt: $0.loggedAt,
                     setLogs: $0.decodedSetLogs,
                     prescribedReps: $0.prescribedReps,
-                    prescribedSets: $0.prescribedSets
+                    prescribedSets: $0.prescribedSets,
+                    prescribedTargetRIR: $0.recordedTargetRIR
                 )
             },
             by: \.canonicalExerciseKey
@@ -1477,6 +1478,26 @@ struct ExerciseCard: View {
                         SetLoggingService.clearSet(setNumber: setNumber, for: exercise, modelContext: modelContext)
                     }
                 )
+
+                // Finishing early already existed behind the empty circle beside the name: a tap
+                // there with sets missing asks "Finish 3/4 sets?". The owner did not find it
+                // (2026-10-27), so the same action is offered here, where the sets are logged.
+                // It goes through `onToggle`, so it is the identical prompt and the same
+                // "Modified" record, not a second way to finish.
+                if !exercise.isCompleted, !sessionSetLogs.isEmpty, sessionSetLogs.count < exercise.sets {
+                    Button {
+                        onToggle()
+                    } label: {
+                        Label("Finish with \(sessionSetLogs.count) of \(exercise.sets) sets", systemImage: "checkmark.circle")
+                            .font(.subheadline.weight(.semibold))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 10)
+                            .background(Color.primary.opacity(0.06))
+                            .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityHint("Marks this exercise done as modified, keeping only the sets you logged")
+                }
 
                 // Last session's loads and the personal best deliberately do NOT appear on
                 // the card face. They were a third tinted strip under the set logger saying
@@ -3774,7 +3795,8 @@ enum SetLoggingService {
             muscleTarget: exercise.muscleTarget,
             workoutDayNumber: exercise.day?.dayNumber ?? 0,
             prescribedSets: exercise.sets,
-            prescribedReps: exercise.reps
+            prescribedReps: exercise.reps,
+            prescribedTargetRIR: exercise.targetRIR
         )
         modelContext.insert(log)
         return log
@@ -3837,6 +3859,9 @@ enum SetLoggingService {
         // of history this field exists to prevent.
         if log.recordedPrescribedSets == nil {
             log.prescribedSets = exercise.sets
+        }
+        if log.recordedTargetRIR == nil, let target = exercise.targetRIR {
+            log.prescribedTargetRIR = target
         }
         if log.prescribedReps.isEmpty {
             log.prescribedReps = exercise.reps

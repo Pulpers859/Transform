@@ -582,6 +582,9 @@ struct AddExerciseWeightSheet: View {
             if existing.prescribedReps.isEmpty {
                 existing.prescribedReps = exercise.reps
             }
+            if existing.recordedTargetRIR == nil, let target = exercise.targetRIR {
+                existing.prescribedTargetRIR = target
+            }
         } else {
             let performanceLog = ExercisePerformanceLog(
                 loggedAt: loggedAt,
@@ -593,6 +596,7 @@ struct AddExerciseWeightSheet: View {
                 workoutDayNumber: exercise.day?.dayNumber ?? 0,
                 prescribedSets: exercise.sets,
                 prescribedReps: exercise.reps,
+                prescribedTargetRIR: exercise.targetRIR,
                 setLogs: validSets
             )
             modelContext.insert(performanceLog)

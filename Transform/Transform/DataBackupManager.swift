@@ -333,6 +333,8 @@ nonisolated struct ExercisePerformanceLogSnapshot: Codable {
     /// turn a session whose prescription IS known back into an ungradeable one.
     let prescribedSets: Int?
     let prescribedReps: String?
+    /// Optional for the same reason; absent in every backup written before it existed.
+    var prescribedTargetRIR: Int? = nil
 }
 
 nonisolated struct ProfileSettingsSnapshot: Codable {
@@ -1018,7 +1020,8 @@ nonisolated struct ProfileSettingsSnapshot: Codable {
             setLogsJSON: entry.setLogsJSON.isEmpty ? nil : entry.setLogsJSON,
             workoutDayNumber: entry.workoutDayNumber,
             prescribedSets: entry.recordedPrescribedSets,
-            prescribedReps: entry.prescribedReps.isEmpty ? nil : entry.prescribedReps
+            prescribedReps: entry.prescribedReps.isEmpty ? nil : entry.prescribedReps,
+            prescribedTargetRIR: entry.recordedTargetRIR
         )
     }
 
@@ -1037,7 +1040,8 @@ nonisolated struct ProfileSettingsSnapshot: Codable {
             muscleTarget: muscleTarget,
             workoutDayNumber: workoutDayNumber ?? 0,
             prescribedSets: prescribedSets ?? 0,
-            prescribedReps: prescribedReps ?? ""
+            prescribedReps: prescribedReps ?? "",
+            prescribedTargetRIR: prescribedTargetRIR
         )
         entry.canonicalExerciseKey = resolvedCanonicalKey
         entry.setLogsJSON = setLogsJSON ?? ""
