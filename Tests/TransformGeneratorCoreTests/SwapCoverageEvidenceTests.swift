@@ -75,6 +75,8 @@ final class SwapCoverageEvidenceTests: XCTestCase {
     func testSwapsThatChangeTheJobOrRaiseShoulderRiskStayRefused() {
         let pairs: [(String, String)] = [
             ("Landmine Press", "Machine Shoulder Press"),
+            ("Dumbbell Shoulder Press", "Barbell Overhead Press"),
+            ("Machine Shoulder Press", "Barbell Overhead Press"),
             ("Close-Grip Barbell Bench Press", "Dip (Assisted or Weighted)"),
             ("Incline Smith Machine Press", "Machine Shoulder Press"),
             ("Dumbbell Lateral Raise", "Machine Shoulder Press"),
@@ -97,7 +99,7 @@ final class SwapCoverageEvidenceTests: XCTestCase {
 
     /// Every catalogued exercise has a live alternative except three. Landmine Press and
     /// Close-Grip Bench: every same-job option carries more shoulder risk. Cable Upright Row:
-    /// no other upright row is catalogued, and lateral raises are isolation. On 6599156, 20
+    /// no other upright row is catalogued, and lateral raises are another job and class. On 6599156, 20
     /// exercises had none (swap-coverage.txt).
     func testOnlyShoulderProtectedExercisesHaveNoAlternative() {
         let names = Set(ClaudeService.shared.exerciseMetadataCatalog.values.map(\.canonicalName))
@@ -107,5 +109,17 @@ final class SwapCoverageEvidenceTests: XCTestCase {
             }
         }
         XCTAssertEqual(stranded, ["Cable Upright Row", "Close-Grip Barbell Bench Press", "Landmine Press"])
+    }
+
+    /// The picker labels a harder option and a shifted emphasis; a like-for-like swap carries
+    /// no note.
+    func testPickerLabelsHarderAndShiftedEmphasisSwaps() {
+        XCTAssertNil(ExerciseReplacement.liveSwapNote(originalName: "Leg Press", candidateName: "Hack Squat"))
+        XCTAssertEqual(ExerciseReplacement.liveSwapNote(originalName: "Leg Press", candidateName: "Back Squat"),
+                       "Harder: more tiring than the planned exercise")
+        XCTAssertEqual(ExerciseReplacement.liveSwapNote(originalName: "Incline Dumbbell Press", candidateName: "Dumbbell Bench Press"),
+                       "Works Chest rather than Upper Chest")
+        XCTAssertEqual(ExerciseReplacement.liveSwapNote(originalName: "Seated Cable Row", candidateName: "Barbell Bent-Over Row"),
+                       "Harder: more tiring than the planned exercise. Works Upper Back rather than Mid Back")
     }
 }

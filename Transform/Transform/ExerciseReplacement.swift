@@ -15,7 +15,7 @@ enum ExerciseReplacement {
             case .ineligibleCandidate: return "This replacement is no longer available. Choose another exercise."
             case .unsavedChanges: return "Save your current changes before replacing this exercise."
             case .incompleteHistory: return "This earlier exercise has gaps in its set numbers or only a summary log. Returning could miscount your remaining sets, so no changes were made."
-            case .preferenceUnavailable: return "You can return to this exercise today, but it does not meet the planner's future-substitution limits. Turn off the future preference to continue."
+            case .preferenceUnavailable: return "You can use this exercise today, but it does not meet the planner's stricter rules for future workouts. Turn off the future preference to continue."
             }
         }
     }
@@ -33,55 +33,141 @@ enum ExerciseReplacement {
         compatible(originalName: originalName, candidateName: candidateName, returning: false)
     }
 
+    /// `live` is the in-session picker: `liveBlockers` decides it. Otherwise this is the strict
+    /// rule the planner uses for future preferences: identical primary areas, the same movement
+    /// family, class and procedural role, and never harder.
     private static func compatible(originalName: String, candidateName: String, returning: Bool, live: Bool = false) -> Bool {
         guard let original = metadata(originalName), let candidate = metadata(candidateName),
               ExerciseWeightEntry.canonicalLookupKey(original.canonicalName)
                 != ExerciseWeightEntry.canonicalLookupKey(candidate.canonicalName) else { return false }
+        if live { return liveBlockers(original, candidate, returning: returning).isEmpty }
         let service = ClaudeService.shared
-        let compoundClasses: Set<String> = ["Heavy Compound", "Hypertrophy Compound"]
-        let sameClass = original.exerciseClass == candidate.exerciseClass
-            || (live && compoundClasses.contains(original.exerciseClass) && compoundClasses.contains(candidate.exerciseClass))
         return Set(original.primaryAreas) == Set(candidate.primaryAreas)
             && sameMovementFamily(original, candidate)
-            && sameClass
-            && (live || service.proceduralExerciseRole(for: original.canonicalName,
+            && original.exerciseClass == candidate.exerciseClass
+            && service.proceduralExerciseRole(for: original.canonicalName,
                                               muscleTarget: original.primaryAreas.joined(separator: ", "))
                 == service.proceduralExerciseRole(for: candidate.canonicalName,
-                                                  muscleTarget: candidate.primaryAreas.joined(separator: ", ")))
+                                                  muscleTarget: candidate.primaryAreas.joined(separator: ", "))
             && (returning || (candidate.shoulderRisk <= original.shoulderRisk
                 && candidate.systemicFatigue <= original.systemicFatigue
                 && candidate.fatigueCost <= original.fatigueCost))
     }
 
-    /// Which of the live swap rules refuse `candidateName` as a stand-in for `originalName`
-    /// (empty when the in-session picker would offer it, ignoring which exercises are already in
-    /// the day). Diagnostic: SwapCoverageEvidenceTests uses it to measure how thin each swap
-    /// list is and which rule makes it so. Mirrors `compatible(..., returning: false, live: true)`.
+    /// Which live swap rules refuse `candidateName` as a stand-in for `originalName` (empty when
+    /// the in-session picker would offer it, ignoring which exercises are already in the day).
+    /// SwapCoverageEvidenceTests pins the result and writes every exercise's list.
     static func liveSwapBlockers(originalName: String, candidateName: String) -> [String] {
         guard let original = metadata(originalName), let candidate = metadata(candidateName) else { return ["unknown"] }
         guard ExerciseWeightEntry.canonicalLookupKey(original.canonicalName)
                 != ExerciseWeightEntry.canonicalLookupKey(candidate.canonicalName) else { return ["same"] }
-        let compoundClasses: Set<String> = ["Heavy Compound", "Hypertrophy Compound"]
-        var blockers: [String] = []
-        if Set(original.primaryAreas) != Set(candidate.primaryAreas) { blockers.append("muscles") }
-        if !sameMovementFamily(original, candidate) { blockers.append("pattern") }
-        if !(original.exerciseClass == candidate.exerciseClass
-             || (compoundClasses.contains(original.exerciseClass) && compoundClasses.contains(candidate.exerciseClass))) {
-            blockers.append("class")
+        return liveBlockers(original, candidate, returning: false)
+    }
+
+    /// What the picker shows under an offered alternative: whether it is a step more tiring
+    /// than the planned exercise, and whether its primary areas differ (e.g. Chest instead of
+    /// Upper Chest). Nil otherwise, which includes a different pattern for the same areas
+    /// (Lat Pulldown to Single-Arm Cable Row). Pinned by SwapCoverageEvidenceTests.
+    static func liveSwapNote(originalName: String, candidateName: String) -> String? {
+        guard let original = metadata(originalName), let candidate = metadata(candidateName) else { return nil }
+        var notes: [String] = []
+        if candidate.fatigueCost > original.fatigueCost || candidate.systemicFatigue > original.systemicFatigue {
+            notes.append("Harder: more tiring than the planned exercise")
         }
-        if candidate.shoulderRisk > original.shoulderRisk { blockers.append("shoulder") }
-        if candidate.systemicFatigue > original.systemicFatigue || candidate.fatigueCost > original.fatigueCost {
+        if Set(candidate.primaryAreas) != Set(original.primaryAreas) {
+            notes.append("Works \(candidate.primaryAreas.joined(separator: ", ")) rather than \(original.primaryAreas.joined(separator: ", "))")
+        }
+        return notes.isEmpty ? nil : notes.joined(separator: ". ")
+    }
+
+    /// The training jobs the live picker swaps within: a set of primary areas (any one
+    /// qualifies) crossed with movement patterns that do the same joint action for them. The
+    /// catalog splits some areas finely (Mid Back vs Upper Back rows, Chest vs Upper Chest
+    /// presses, Biceps vs Brachialis curls); a job spans those splits. Patterns are paired
+    /// with muscles because labels are shared across unrelated muscles ("Curl" is a leg curl
+    /// and a biceps curl, "Extension" a leg extension and a triceps extension). Machine and
+    /// free-weight versions, and one- and two-sided versions, sit in the same job: a
+    /// meta-analysis found no hypertrophy difference between machine and free-weight training
+    /// (Haugen 2023, BMC Sports Sci Med Rehabil) and one found none between unilateral and
+    /// bilateral (Kassiano 2025, Sports Med). Owner, 2026-10-27: broaden the swap lists.
+    private static let liveSwapJobs: [(areas: Set<String>, patterns: Set<String>)] = [
+        (["Chest", "Upper Chest"], ["Horizontal Press", "Incline Press"]),
+        (["Chest", "Upper Chest"], ["Fly"]),
+        (["Anterior Deltoids"], ["Vertical Press", "Landmine Press"]),
+        (["Lateral Deltoids"], ["Lateral Raise"]),
+        (["Lateral Deltoids"], ["Upright Row"]),
+        (["Rear Deltoids"], ["Rear Delt Fly", "Rear Delt Row"]),
+        (["Rear Deltoids", "Shoulders"], ["Face Pull", "Scapular Raise"]),
+        (["Lats"], ["Vertical Pull", "Row"]),
+        (["Lats"], ["Pullover"]),
+        (["Lats", "Mid Back", "Upper Back"], ["Row"]),
+        (["Upper Back"], ["Shrug"]),
+        (["Quads"], ["Press", "Squat", "Lunge", "Split Squat"]),
+        (["Quads"], ["Extension", "Squat"]),
+        (["Quads", "Glutes"], ["Lunge", "Split Squat"]),
+        (["Hamstrings", "Glutes", "Posterior Chain"], ["Hinge"]),
+        (["Glutes"], ["Hip Thrust", "Hip Extension", "Hinge"]),
+        (["Hamstrings"], ["Curl"]),
+        (["Biceps", "Brachialis"], ["Curl"]),
+        (["Triceps"], ["Extension", "Pressdown"]),
+        (["Triceps"], ["Close-Grip Press", "Dip"]),
+        (["Calves"], ["Calf Raise"]),
+        (["Abs", "Lower Abs"], ["Spinal Flexion", "Leg Raise"]),
+        (["Anterior Core", "Obliques"], ["Anti-Extension", "Anti-Rotation"]),
+        (["Anterior Core", "Obliques"], ["Carry"]),
+    ]
+
+    private static func liveSwapJobIndices(_ metadata: ClaudeService.ExerciseMetadata) -> Set<Int> {
+        // Some entries hold two areas in one label ("Quads/Glutes").
+        let areas = Set(metadata.primaryAreas.flatMap { label in
+            label.split(separator: "/").map { String($0).trimmingCharacters(in: .whitespaces) }
+        })
+        return Set(liveSwapJobs.indices.filter { index in
+            liveSwapJobs[index].patterns.contains(metadata.movementPattern)
+                && !liveSwapJobs[index].areas.isDisjoint(with: areas)
+        })
+    }
+
+    /// The live picker's rules. Same job (above). Same class, where the loaded classes
+    /// (heavy, hypertrophy compound, stable accessory) count as one and a stable accessory may
+    /// step down to an isolation of the same job (Glute-Ham Raise to a leg curl), never the
+    /// reverse. Never more shoulder risk, and a harder option never on a shoulder-risk-3+ lift.
+    /// At most one step more tiring: a harder option is offered and labelled by
+    /// `liveSwapNote`, so Leg Press offers Back Squat; with today's
+    /// catalog no same-job, same-class pair differs by more than one step, so that cap does
+    /// not refuse anything yet (computed by a script that reproduces swap-coverage.txt; not
+    /// covered by a test). A returning exercise skips the shoulder and fatigue rules, as before.
+    private static func liveBlockers(_ original: ClaudeService.ExerciseMetadata,
+                                     _ candidate: ClaudeService.ExerciseMetadata,
+                                     returning: Bool) -> [String] {
+        var blockers: [String] = []
+        if liveSwapJobIndices(original).isDisjoint(with: liveSwapJobIndices(candidate)) { blockers.append("job") }
+        let loadedClasses: Set<String> = ["Heavy Compound", "Hypertrophy Compound", "Stable Accessory"]
+        let classAllowed = original.exerciseClass == candidate.exerciseClass
+            || (loadedClasses.contains(original.exerciseClass) && loadedClasses.contains(candidate.exerciseClass))
+            || (original.exerciseClass == "Stable Accessory" && candidate.exerciseClass == "Isolation")
+        if !classAllowed { blockers.append("class") }
+        guard !returning else { return blockers }
+        let harder = candidate.systemicFatigue > original.systemicFatigue || candidate.fatigueCost > original.fatigueCost
+        // A harder option never lands on a shoulder-risk-3+ lift: Dumbbell Shoulder Press does
+        // not offer Barbell Overhead Press (same risk number, but the owner reports pain
+        // pressing overhead). Pinned by SwapCoverageEvidenceTests.
+        if candidate.shoulderRisk > original.shoulderRisk || (harder && candidate.shoulderRisk >= 3) {
+            blockers.append("shoulder")
+        }
+        if candidate.systemicFatigue > original.systemicFatigue + 1 || candidate.fatigueCost > original.fatigueCost + 1 {
             blockers.append("fatigue")
         }
         return blockers
     }
 
-    /// Movement patterns that are interchangeable for a swap. Identical patterns always are.
+    /// Movement patterns the strict (planner) rule treats as interchangeable. Identical patterns are.
     /// A quads-only leg press ("Press") and a quads-only machine squat ("Squat") are too: both
     /// are knee-dominant compounds for the same muscles, so leg press, hack, pendulum and belt
-    /// squat can stand in for each other. Barbell squats share the family but stay out through
-    /// the fatigue rule below (fatigue cost 3 against the leg press's 2). Owner request,
-    /// 2026-10-27; pinned by OwnerWorkoutFeedbackTests.
+    /// squat can stand in for each other. Barbell squats share the family but stay out of the
+    /// strict rule through its fatigue check (fatigue cost 3 against the leg press's 2); the
+    /// live picker offers them as a harder option. Owner request, 2026-10-27; pinned by
+    /// OwnerWorkoutFeedbackTests.
     private static func sameMovementFamily(_ original: ClaudeService.ExerciseMetadata,
                                            _ candidate: ClaudeService.ExerciseMetadata) -> Bool {
         if original.movementPattern == candidate.movementPattern { return true }
@@ -261,12 +347,20 @@ enum ExerciseReplacement {
             day.exercises.filter { !$0.replacementName.isEmpty && identity($0.replacementName) == identity(prior.exerciseName) }
                 .map { ($0, $0.replacementName) }
         } ?? []
+        // A harder pick (Leg Press -> Back Squat) is a heavier lift with no load history in this
+        // slot: keep at least 2 reps in reserve rather than inheriting a near-failure target.
+        let harder = metadata(exercise.exerciseName).map {
+            candidate.fatigueCost > $0.fatigueCost || candidate.systemicFatigue > $0.systemicFatigue
+        } ?? false
         let replacement = returning ?? WorkoutExercise(
             order: 0, exerciseName: candidate.canonicalName,
             sets: exercise.sets - completedCount, reps: exercise.reps,
             tempo: exercise.tempo, restSeconds: exercise.restSeconds,
-            notes: "Replacement for \(exercise.exerciseName). Choose a load for this exercise; stop if it causes pain.",
-            muscleTarget: candidate.primaryAreas.joined(separator: ", "), targetRIR: exercise.targetRIR
+            notes: harder
+                ? "Replacement for \(exercise.exerciseName). Harder than the planned exercise: start lighter and stop at least 2 reps short of failure; stop if it causes pain."
+                : "Replacement for \(exercise.exerciseName). Choose a load for this exercise; stop if it causes pain.",
+            muscleTarget: candidate.primaryAreas.joined(separator: ", "),
+            targetRIR: harder ? max(exercise.targetRIR ?? 2, 2) : exercise.targetRIR
         )
         // Normalize slot order rather than adding one to a possibly noncontiguous order.
         var ordered = day.sortedExercises

@@ -97,6 +97,21 @@ final class ExerciseReplacementTests: XCTestCase {
         return (container, context, day, original)
     }
 
+    /// A harder pick keeps at least 2 reps in reserve; a like-for-like pick inherits the target.
+    func testHarderReplacementKeepsRepsInReserve() throws {
+        for (candidate, expectedRIR) in [("Back Squat", 2), ("Hack Squat", 1)] {
+            let (_, context, _, original) = try fixture()
+            original.exerciseName = "Leg Press"
+            original.muscleTarget = "Quads"
+            original.targetRIR = 1
+            try context.save()
+            let inserted = try ExerciseReplacement.replace(original, with: candidate,
+                loggedSetNumbers: [], preferFuture: false, modelContext: context)
+            XCTAssertEqual(inserted.targetRIR, expectedRIR, candidate)
+            XCTAssertEqual(inserted.notes.contains("Harder than the planned exercise"), candidate == "Back Squat", candidate)
+        }
+    }
+
     func testExactLateralSlotDoesNotOfferPressesOrRearDelts() throws {
         let (_, _, _, original) = try fixture()
         let names = ExerciseReplacement.candidates(for: original, avoidedKeys: [])

@@ -17,6 +17,20 @@ struct ExerciseReplacementView: View {
         ExerciseReplacement.candidates(for: exercise, avoidedKeys: ExercisePainReview.activeKeys(from: programs))
     }
 
+    /// Alternatives without a note first, then the ones that are harder or work different primary areas.
+    private struct Choice: Identifiable {
+        let name: String
+        let note: String?
+        var id: String { name }
+    }
+
+    private var orderedCandidates: [Choice] {
+        let all = candidates.map {
+            Choice(name: $0, note: ExerciseReplacement.liveSwapNote(originalName: exercise.exerciseName, candidateName: $0))
+        }
+        return all.filter { $0.note == nil } + all.filter { $0.note != nil }
+    }
+
     private var loggedSets: [SetLogEntry] {
         let logs = (try? modelContext.fetch(FetchDescriptor<ExercisePerformanceLog>())) ?? []
         return SetLoggingService.loggedSets(for: exercise, in: logs)
@@ -41,14 +55,20 @@ struct ExerciseReplacementView: View {
                         Text(ExerciseReplacement.emptyCandidateExplanation(for: exercise,
                             avoidedKeys: ExercisePainReview.activeKeys(from: programs)))
                     }
-                    ForEach(candidates, id: \.self) { name in
+                    ForEach(orderedCandidates) { candidate in
+                        let name = candidate.name
                         Button {
                             selection = name
                             equipmentAvailable = false
                             preferFuture = false
                         } label: {
                             HStack {
-                                Text(name)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(name)
+                                    if let note = candidate.note {
+                                        Text(note).font(.caption).foregroundStyle(.secondary)
+                                    }
+                                }
                                 Spacer()
                                 if selection == name { Image(systemName: "checkmark").foregroundStyle(TFColor.accent) }
                             }
@@ -62,7 +82,7 @@ struct ExerciseReplacementView: View {
                         Toggle("Prefer this in future workouts", isOn: $preferFuture)
                             .disabled(!canPreferFuture)
                         if !canPreferFuture {
-                            Text("Available to return to today. It does not meet the planner's future-substitution limits.")
+                            Text("Available for today only. It does not meet the planner's stricter rules for future workouts.")
                                 .font(.caption).foregroundStyle(.secondary)
                         }
                         Text(preferFuture
