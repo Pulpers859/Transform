@@ -195,7 +195,10 @@ final class ExerciseReplacementTests: XCTestCase {
         let smith = try ExerciseReplacement.replace(original, with: "Incline Smith Machine Press",
             loggedSetNumbers: [], preferFuture: false, modelContext: context)
         XCTAssertTrue(ExerciseReplacement.candidates(for: smith, avoidedKeys: []).contains("Incline Dumbbell Press"))
-        XCTAssertFalse(ExerciseReplacement.candidates(for: smith, avoidedKeys: []).contains("Incline Barbell Press"))
+        // A step harder is offered and labelled (owner, 2026-10-27, broader swaps); it is
+        // still refused as a future preference, which keeps the strict planner rule.
+        XCTAssertTrue(ExerciseReplacement.candidates(for: smith, avoidedKeys: []).contains("Incline Barbell Press"))
+        XCTAssertFalse(ExerciseReplacement.compatible(originalName: "Incline Smith Machine Press", candidateName: "Incline Barbell Press"))
         XCTAssertFalse(ExerciseReplacement.candidates(for: smith, avoidedKeys: []).contains("Machine Shoulder Press"))
         let returned = try ExerciseReplacement.replace(smith, with: "Incline Dumbbell Press",
             loggedSetNumbers: [], preferFuture: false, modelContext: context)
