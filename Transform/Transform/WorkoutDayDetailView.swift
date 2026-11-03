@@ -21,6 +21,9 @@ struct WorkoutDayDetailView: View {
     /// Guards the one-time default so re-appearing (returning from a pushed Progression
     /// view) never re-collapses cards the lifter opened by hand.
     @State private var didSeedExpansion = false
+    /// Session notes fold to three lines; notes generated before the 50-word rule run far longer
+    /// (Day 22, 2026-11-03).
+    @State private var showsFullSessionNotes = false
 
     var completedExerciseCount: Int {
         day.activeExercises.filter { $0.isCompleted }.count
@@ -339,6 +342,16 @@ struct WorkoutDayDetailView: View {
                 Text(filteredSessionSummary)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
+                    .lineLimit(showsFullSessionNotes ? nil : 3)
+                // A rough length test, not a measurement of the rendered lines: about three
+                // lines of subheadline text on a phone.
+                if filteredSessionSummary.count > 120 {
+                    Button(showsFullSessionNotes ? "Show less" : "Show more") {
+                        showsFullSessionNotes.toggle()
+                    }
+                    .font(.caption.bold())
+                    .foregroundStyle(TFColor.accent)
+                }
             }
 
             if !sessionNoteSections.warmupSteps.isEmpty {

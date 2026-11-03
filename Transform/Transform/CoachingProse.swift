@@ -276,18 +276,39 @@ struct SessionNoteSections {
     private static func splitWarmupSteps(from text: String) -> [String] {
         let cleaned = text
             .replacingOccurrences(of: "\r\n", with: "\n")
-            .replacingOccurrences(of: " then ", with: ", ", options: .caseInsensitive)
-            .replacingOccurrences(of: " plus ", with: ", ", options: .caseInsensitive)
-            .replacingOccurrences(of: " and ", with: ", ", options: .caseInsensitive)
             .replacingOccurrences(of: "\n•", with: "\n")
             .replacingOccurrences(of: "\n-", with: "\n")
 
         return cleaned
             .components(separatedBy: CharacterSet(charactersIn: ",\n"))
+            .flatMap(splitJoinedMovements)
             .map {
                 $0.replacingOccurrences(of: "Emphasis today:", with: "", options: .caseInsensitive)
                     .trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
             }
             .filter { !$0.isEmpty }
+    }
+
+    /// "band pull-aparts and face pulls" is two movements; "arm circles forward and back" is one
+    /// movement done both ways (owner screenshot, Day 22). Split on " and ", " then " or " plus "
+    /// unless a later part is only a direction or side, which belongs to the movement before it.
+    /// A leading joiner left by a serial comma (", then 2 ramp sets") is dropped. Pinned by
+    /// CoachingProseTests.
+    private static func splitJoinedMovements(_ rawItem: String) -> [String] {
+        let item = rawItem.replacingOccurrences(
+            of: #"(?i)^\s*(?:and|then|plus)\s+"#, with: "", options: .regularExpression)
+        let parts = item.replacingOccurrences(
+            of: #"(?i)\s+(?:and|then|plus)\s+"#, with: "\u{1F}", options: .regularExpression
+        ).components(separatedBy: "\u{1F}")
+        let directions: Set<String> = [
+            "back", "backward", "backwards", "forward", "forwards", "reverse", "in reverse",
+            "left", "right", "up", "down", "in", "out", "each side", "both sides", "other side",
+            "both ways", "side to side"
+        ]
+        let isDirection: (String) -> Bool = {
+            directions.contains($0.trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters)).lowercased())
+        }
+        if parts.dropFirst().contains(where: isDirection) { return [item] }
+        return parts.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     }
 }

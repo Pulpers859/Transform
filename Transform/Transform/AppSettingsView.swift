@@ -127,7 +127,12 @@ struct AppSettingsView: View {
                         showRestoreDefaultsConfirm = true
                     }
                 } footer: {
-                    Text("Replaces all profile, target, and medical settings with app defaults.")
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Replaces all profile, target, and medical settings with app defaults.")
+                        // Stamped by build-sideload-ipa.yml, so the owner can tell which commit
+                        // is installed. A build from anywhere else has no stamp.
+                        Text("Build: \(Bundle.main.object(forInfoDictionaryKey: "TransformBuildLabel") as? String ?? "not a sideload build")")
+                    }
                 }
             }
             .fileExporter(

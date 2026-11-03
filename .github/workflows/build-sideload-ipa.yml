@@ -67,6 +67,10 @@ jobs:
           fi
           mkdir -p out/Payload
           cp -R "$app" out/Payload/
+          # Stamp the build so Settings can show which commit is on the phone. Signulous
+          # re-signs after this, so editing Info.plist here is safe.
+          plutil -replace TransformBuildLabel -string "sideload ${{ github.run_number }} · ${GITHUB_SHA::7}" \
+            out/Payload/Transform.app/Info.plist
           (cd out && zip -qry "Transform.ipa" Payload)
           rm -rf out/Payload
           echo "Built out/Transform.ipa ($(du -h out/Transform.ipa | cut -f1))"

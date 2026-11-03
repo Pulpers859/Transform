@@ -115,5 +115,13 @@ final class CoachingProseTests: XCTestCase {
     func testTwoMovementsJoinedByAndStayTwoWarmupItems() {
         XCTAssertEqual(SessionNoteSections.parse("Back today.\nWarm-up: band pull-aparts and face pulls").warmupSteps,
                        ["band pull-aparts", "face pulls"])
+        XCTAssertEqual(SessionNoteSections.parse("Core today.\nWarm-up: cat-cow and bird dog").warmupSteps,
+                       ["cat-cow", "bird dog"])
+        // A serial comma leaves the joiner at the start of an item; it is dropped, not shown.
+        // The fallback warm-up cues are written this way.
+        XCTAssertEqual(SessionNoteSections.parse("Legs today.\nWarm-up: 5 min bike, then 2 ramp sets on the leg press").warmupSteps,
+                       ["5 min bike", "2 ramp sets on the leg press"])
+        XCTAssertEqual(SessionNoteSections.parse("Delts today.\nWarm-up: face pulls, then shoulder rolls up and back").warmupSteps,
+                       ["face pulls", "shoulder rolls up and back"])
     }
 }

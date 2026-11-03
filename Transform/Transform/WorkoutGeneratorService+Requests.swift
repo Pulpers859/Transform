@@ -370,18 +370,20 @@ extension ClaudeService {
     // MARK: - Prompts
 
     /// One wording for every place the model is told how long a day note may be. The owner asked
-    /// for a 3-4 sentence paragraph with no semicolons (2026-10-19), not a hard cap. It used to
+    /// for more than the old 35-word cap (2026-10-19), then found the 3-4 sentence paragraph that
+    /// replaced it far too long (Day 22, 2026-11-03: four comma-chained sentences, about 120
+    /// words). Sentence counts alone did not bound it, so the rule now caps words too. It used to
     /// say "2-3 short sentences, ideally under 70 words" in week 1 and nothing at all for weeks
     /// 2-4, which is where the owner got a 70-word briefing stitched together with semicolons.
     /// Semicolons are also split into separate sentences at display (`CoachingProse`), so this
     /// rule shapes new notes and the display rule covers notes already stored.
     var sessionNoteLengthRule: String {
         """
-        Session Notes length and style: the part before "Warm-up:" is one short paragraph of 3-4
-        sentences. Keep each sentence to one idea in plain everyday words. Never use a semicolon,
-        and never use a dash (— or –) to join clauses. Write a new sentence instead. Report
-        anything genuinely useful for today, including what last week showed (pain, effort,
-        skipped or swapped lifts), as long as it changes or informs what to do today.
+        Session Notes length and style: the part before "Warm-up:" is AT MOST 3 short sentences
+        and AT MOST 50 words in total. Each sentence carries one idea in under 18 plain everyday
+        words. Never chain several ideas into one long sentence. Never use a semicolon, and
+        never use a dash (— or –) to join clauses. Mention last week (pain, effort, skipped or
+        swapped lifts) only when it changes what to do today.
         """
     }
 
@@ -466,10 +468,8 @@ extension ClaudeService {
           prep if that lift family is not meaningfully present that day.
 
         Example of a GOOD Session Note (do not copy verbatim, match the style):
-        "Posterior chain leads today because your analysis flagged weak glute engagement. The
-         hinge comes first while you are fresh, then hamstrings and glutes finish the session.
-         Keep ribs stacked over pelvis on every hinge. Last week's low back felt fine, so the full
-         range stays in.
+        "Posterior chain leads today to build your glutes. Keep ribs stacked over pelvis on every
+         hinge. Your low back felt fine last week, so use the full range.
          Warm-up: 5 min bike, hip 90/90 openers, glute bridges 2x10, 1 light set of Romanian
          Deadlifts"
 
@@ -994,7 +994,7 @@ extension ClaudeService {
             "dayName": stringProp(),
             "muscleGroups": stringProp(),
             "isRestDay": booleanProp(),
-            "notes": stringProp("Session Notes: one short paragraph of 3-4 plain sentences (no semicolons or dashes) of intent framing, then on a new line 'Warm-up:' followed by comma-separated warm-up/mobility items for THIS day's lifts and THIS user's posture/injury. For rest days, a practical active-recovery note tailored to the user's shift-work schedule and postural needs."),
+            "notes": stringProp("Session Notes: at most 3 short plain sentences and at most 50 words (no semicolons or dashes) of intent framing, then on a new line 'Warm-up:' followed by comma-separated warm-up/mobility items for THIS day's lifts and THIS user's posture/injury. For rest days, a practical active-recovery note tailored to the user's shift-work schedule and postural needs."),
             "exercises": exercisesProp
         ]
         let required: [String] = ["dayNumber", "dayName", "muscleGroups", "isRestDay", "notes", "exercises"]
