@@ -1,0 +1,115 @@
+name: Build Sideload IPA
+
+# Builds an installable .ipa for the owner's iPhone and publishes it as a
+# release with a direct link. There is no Mac and no Apple Developer account:
+# the phone installs by re-signing this unsigned .ipa with Signulous.
+#
+# Manual, not on every push: you only want this when you intend to install.
+# Ported from the TimeCapsule, Procedures, EM-Board-Review and Sprout
+# workflows of the same name.
+on:
+  workflow_dispatch:
+
+permissions:
+  # write, because the .ipa is published as a release so it has a direct
+  # link the phone itself can open.
+  contents: write
+
+concurrency:
+  group: sideload-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ipa:
+    name: Build, package and publish
+    # The runner swift.yml already builds this app on.
+    runs-on: macos-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Report Xcode toolchain
+        run: xcodebuild -version
+
+      # Built unsigned on purpose: Signulous re-signs whatever it is given with
+      # its own certificate. The project has no shared scheme, so this builds
+      # the app target directly, as swift.yml does, rather than archiving a
+      # scheme. Transform.entitlements declares HealthKit; an unsigned build
+      # carries no entitlements, so whether Apple Health access works after
+      # re-signing depends on the profile Signulous signs with.
+      - name: Build Release for iPhone
+        shell: bash
+        working-directory: 'Transform'
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project 'Transform.xcodeproj' \
+            -target 'Transform' \
+            -configuration 'Release' \
+            -sdk iphoneos \
+            SYMROOT="$PWD/build" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" 2>&1 | tee build.log
+          status=${PIPESTATUS[0]}
+          if [[ "$status" -ne 0 ]]; then exit "$status"; fi
+
+      # An .ipa is a zip with the .app inside a folder called Payload.
+      - name: Package IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+          app="Transform/build/Release-iphoneos/Transform.app"
+          if [[ ! -d "$app" ]]; then
+            echo "No .app at $app" >&2
+            ls -R Transform/build >&2 || true
+            exit 1
+          fi
+          mkdir -p out/Payload
+          cp -R "$app" out/Payload/
+          (cd out && zip -qry "Transform.ipa" Payload)
+          rm -rf out/Payload
+          echo "Built out/Transform.ipa ($(du -h out/Transform.ipa | cut -f1))"
+
+      # Artifacts can only be downloaded as a zip from a signed-in desktop
+      # browser. A release asset has a plain link Safari on the phone can
+      # open. This repo is public, so the link works without signing in.
+      - name: Publish as a release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="sideload-${{ github.run_number }}"
+          gh release delete "$tag" --yes --cleanup-tag 2>/dev/null || true
+          gh release create "$tag" 'out/Transform.ipa' \
+            --title "Transform sideload build ${{ github.run_number }}" \
+            --notes "Unsigned build of ${{ github.sha }} for signing with Signulous." \
+            --prerelease
+          url="${{ github.server_url }}/${{ github.repository }}/releases/download/$tag/Transform.ipa"
+          echo "IPA_URL=$url" >> "$GITHUB_ENV"
+          echo "Direct link: $url"
+
+      - name: How to install this
+        shell: bash
+        run: |
+          cat <<NOTE
+          ============================================================
+          Download this straight onto the iPhone:
+
+            $IPA_URL
+
+            1. Open that link in Safari on the phone.
+            2. Give it to Signulous and sign it.
+            3. Install from Signulous.
+          ============================================================
+          NOTE
+
+      - name: Upload build log on failure
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: sideload-build-log
+          path: 'Transform/build.log'
+          if-no-files-found: warn
+          retention-days: 7

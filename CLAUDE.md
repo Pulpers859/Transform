@@ -59,6 +59,16 @@ waste. The one thing that must never happen is the same overstatement shipped tw
   - `C:\Dev\Transform`
   - `C:\Users\Patrick's Computer\OneDrive - WV School of Osteopathic Medicine\Desktop\Transform`
 
+## Installing On The Owner's iPhone
+- No Mac and no Apple Developer account: he installs by re-signing an unsigned `.ipa` with
+  Signulous, on the phone. Xcode, a cable, TestFlight and CI artifacts are no use to him.
+- Run `.github/workflows/build-sideload-ipa.yml` (manual, no inputs) on `main` and hand over
+  `https://github.com/Pulpers859/Transform/releases/download/sideload-<N>/Transform.ipa`
+  (`<N>` is the run number). He opens it in Safari, gives it to Signulous, installs.
+- Each install is signed under Signulous's team, not his. `Transform.entitlements` declares
+  HealthKit; whether Apple Health sleep import works on a re-signed build depends on Signulous's
+  profile, not on this repo. Ask him what he sees; CI cannot tell.
+
 ## Never Assume — Verify, Then State (HIGHEST PRIORITY, APPLIES TO EVERY AGENT)
 - This rule outranks speed, brevity, and every other instruction in this file except the
   data-safety and `origin/main` rules. It is permanent and has no exceptions.
