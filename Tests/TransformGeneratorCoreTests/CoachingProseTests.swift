@@ -94,4 +94,26 @@ final class CoachingProseTests: XCTestCase {
     func testNoEmptyTrailingSentence() {
         XCTAssertEqual(CoachingProse.sentences(in: "Brace hard."), ["Brace hard."])
     }
+
+    // MARK: - Warm-up checklist
+
+    /// Owner screenshot, Day 22 (2026-11-03): the checklist showed "arm circles forward" and
+    /// "back" as two items. Every " and " was turned into a list break, so one movement done
+    /// both ways was cut in half.
+    func testOneMovementDoneBothWaysStaysOneWarmupItem() {
+        let sections = SessionNoteSections.parse(
+            "Lateral delts lead today.\nWarm-up: 5 min light cardio or bike, arm circles forward and back, band pull-apart 15 reps")
+        XCTAssertEqual(sections.summary, "Lateral delts lead today.")
+        XCTAssertEqual(sections.warmupSteps,
+                       ["5 min light cardio or bike", "arm circles forward and back", "band pull-apart 15 reps"])
+        // " then " was split the same way; the stored note's exact wording is not known.
+        XCTAssertEqual(SessionNoteSections.parse("Delts today.\nWarm-up: arm circles forward then back").warmupSteps,
+                       ["arm circles forward then back"])
+    }
+
+    /// Two separate movements joined by "and" are still two checklist items.
+    func testTwoMovementsJoinedByAndStayTwoWarmupItems() {
+        XCTAssertEqual(SessionNoteSections.parse("Back today.\nWarm-up: band pull-aparts and face pulls").warmupSteps,
+                       ["band pull-aparts", "face pulls"])
+    }
 }
