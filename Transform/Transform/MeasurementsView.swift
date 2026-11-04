@@ -484,7 +484,7 @@ struct MeasurementsView: View {
                         .foregroundStyle(TFColor.measurement.opacity(0.5))
                     Text("No entries yet")
                         .font(TFTypography.cardTitle)
-                    Text("Tap + to log your first measurement and start tracking body changes.")
+                    Text("Tap + to log your first measurement.")
                         .font(TFTypography.body)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)

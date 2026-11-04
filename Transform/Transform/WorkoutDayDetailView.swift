@@ -120,7 +120,7 @@ struct WorkoutDayDetailView: View {
             Button(resetActionTitle, role: .destructive) { resetWorkoutDay() }
             Button("Keep Workout", role: .cancel) { }
         } message: {
-            Text("Clear this day's saved sets, skip and pain marks, timer, and feedback. Keep the current exercises and your exercise preferences. Other days stay unchanged. This cannot be undone.")
+            Text("Clears this day's logged sets, skips, pain marks, timer, and feedback. Exercises and preferences stay. This can't be undone.")
         }
         .alert("Workout was not reset", isPresented: Binding(get: { resetError != nil }, set: { if !$0 { resetError = nil } })) {
             Button("OK", role: .cancel) { resetError = nil }
@@ -453,9 +453,9 @@ struct WorkoutDayDetailView: View {
 
         switch WorkoutEffortGovernance.signal(from: rated) {
         case .protectRecovery:
-            return "Your recent ratings are asking for recovery — next week holds load steady."
+            return "Next week holds load steady so you can recover."
         case .progressionHeadroom:
-            return "Your recent ratings show headroom — next week keeps adding reps before load."
+            return "You have room to push — next week adds reps before load."
         case .neutral:
             return nil
         }
@@ -466,7 +466,7 @@ struct WorkoutDayDetailView: View {
         let durationPrefix = day.sessionDurationMinutes.map { "\($0) min · " } ?? ""
         let body = day.hasSessionFeedback
             ? "Effort \(day.sessionEffort)/5 · Stimulus \(day.stimulusQuality)/5 · Pain \(day.jointPain)/5 · \(day.performanceRating?.rawValue ?? "Not rated")"
-            : "Four quick ratings help calibrate next week."
+            : "Rate this session to tune next week."
         return durationPrefix + body
     }
 
@@ -524,7 +524,7 @@ struct WorkoutDayDetailView: View {
                     ForEach(replaced) { exercise in
                         VStack(alignment: .leading, spacing: 4) {
                             Text("\(exercise.exerciseName) → \(exercise.replacementName)").font(.subheadline)
-                            Text("\(sessionSetLogs(for: exercise).count) of \(exercise.sets) original sets logged. Remaining work moved to the replacement.")
+                            Text("\(sessionSetLogs(for: exercise).count) of \(exercise.sets) sets logged before the swap.")
                                 .font(.caption).foregroundStyle(.secondary)
                             if exercise.completionStatus == .skippedPain {
                                 Text("Pain was reported on the original exercise.").font(.caption).foregroundStyle(TFColor.warning)
@@ -612,13 +612,13 @@ struct WorkoutDayDetailView: View {
 
     var completionPromptMessage: String {
         guard let exercise = completionPromptExercise else {
-            return "Logging sets improves future progression cues."
+            return "Logged sets guide future weights."
         }
         let logged = sessionSetLogs(for: exercise).count
         if logged > 0 {
-            return "\(logged) of \(exercise.sets) planned sets are logged. This marks the exercise as Modified; progression will use only the sets you actually logged."
+            return "It will be marked Modified. Only logged sets count toward progress."
         }
-        return "No sets are logged yet. This marks the exercise as Modified and does not create any fake reps or volume."
+        return "It will be marked Modified with no sets recorded."
     }
 
     func toggleExercise(_ exercise: WorkoutExercise) {
@@ -1202,7 +1202,7 @@ struct ExerciseCard: View {
         guard !outcome.isImplausibleSwing else {
             return ProgressionSuggestion(
                 icon: "exclamationmark.triangle.fill",
-                text: "\(now) is a big jump from \(oldLoad) lb x \(freshest.reps)\(was) — the matching load is about \(newLoad) lb. Check that before trusting it; consider an in-between rep range instead",
+                text: "\(now) is a big jump from \(oldLoad) lb x \(freshest.reps)\(was). The estimate is about \(newLoad) lb — double-check it",
                 color: TFColor.warning
             )
         }
@@ -1372,7 +1372,7 @@ struct ExerciseCard: View {
         case .some(let value): tail = "Stop with \(value) reps still available."
         case nil: tail = "Stop before failure, leaving the listed number of reps in the tank."
         }
-        return "Reps In Reserve: how many reps you should still have left when you rack the set.\n\n\(tail)"
+        return "Reps In Reserve: reps left in the tank when you rack the set.\n\n\(tail)"
     }
 
     /// The all-time best, with its reps, marked when it was set in THIS session.
@@ -1615,17 +1615,17 @@ struct ExerciseCard: View {
             ?? progressionAnalysis.implausibleSets.first {
             notices.append(
                 implausible.role == .working
-                    ? "Check Set \(implausible.setNumber): \(formatLoad(implausible.weightLbs)) looks like a typing slip. Fix it — left as-is it becomes your best and your next target."
-                    : "Check Set \(implausible.setNumber): \(formatLoad(implausible.weightLbs)) looks like a typing slip. It's already being left out of your progression — fix it so your log reads right."
+                    ? "Check Set \(implausible.setNumber): \(formatLoad(implausible.weightLbs)) looks like a typo. If left, it becomes your best and next target."
+                    : "Check Set \(implausible.setNumber): \(formatLoad(implausible.weightLbs)) looks like a typo. It's left out of your progress."
             )
         } else if let anomaly = progressionAnalysis.anomalies.first {
             let reference = progressionAnalysis.workingWeight ?? anomaly.weightLbs
             notices.append(
-                "Check Set \(anomaly.setNumber): \(formatLoad(anomaly.weightLbs)) is well above your \(formatLoad(reference)) working sets. Confirm or fix the entry — it isn't used for progression."
+                "Check Set \(anomaly.setNumber): \(formatLoad(anomaly.weightLbs)) is well above your \(formatLoad(reference)) working sets. It isn't counted toward progress."
             )
         } else if let hist = historicalLoadAnomaly {
             notices.append(
-                "Check Set \(hist.setNumber): \(formatLoad(hist.weight)) is a big jump from last session's \(formatLoad(hist.reference)). Confirm it — a mis-log here would set a false best and skew your next target."
+                "Check Set \(hist.setNumber): \(formatLoad(hist.weight)) is a big jump from last session's \(formatLoad(hist.reference)). A typo here would set a false best."
             )
         }
 
@@ -1713,7 +1713,7 @@ struct ExerciseCard: View {
     private var detailContent: some View {
         VStack(alignment: .leading, spacing: 10) {
             if let suggestion = progressionSuggestion, suggestion.compactText != nil {
-                ExerciseGuidanceCard(suggestion: suggestion, coachingText: "Starting-load estimate, not a measured requirement. Missing effort data and equipment rounding can affect it.")
+                ExerciseGuidanceCard(suggestion: suggestion, coachingText: "An estimate — adjust if it feels off.")
             }
             if !detailedCoachingNote.isEmpty {
                 ExerciseGuidanceCard(suggestion: nil, coachingText: detailedCoachingNote)
@@ -1863,7 +1863,7 @@ struct ExerciseCard: View {
                     pendingSkip = nil
                 }
             } message: { status in
-                Text("\(status.skipEffect) Any sets already logged are kept. No replacement exercise is logged by this action.")
+                Text("\(status.skipEffect) Logged sets are kept.")
             }
 
             NavigationLink {
@@ -2666,7 +2666,7 @@ struct RestTimerFullscreen: View {
         .statusBarHidden()
         .onReceive(NotificationCenter.default.publisher(for: .persistenceSaveFailed)) { notification in
             logError = notification.userInfo?[PersistenceReporter.messageUserInfoKey] as? String
-                ?? "The set could not be saved. Your entries are still here. Please try again."
+                ?? "Your entries are still here. Try again."
         }
         .alert("Set not logged", isPresented: Binding(get: { logError != nil }, set: { if !$0 { logError = nil } })) {
             Button("OK", role: .cancel) { logError = nil }
@@ -2849,14 +2849,14 @@ struct RestTimerFullscreen: View {
         let draft = currentDraft
         guard draft.canLog, let weight = draft.parsedWeight, let reps = draft.parsedReps else {
             TFHaptics.error()
-            logError = "Enter a weight (or select Bodyweight), completed reps, and an optional RIR from 0 to 6."
+            logError = "Enter weight (or tap Bodyweight) and reps. RIR is optional, 0–6."
             return
         }
         let confirmed = currentSet
         logError = nil
         guard onLogSet(confirmed, weight, reps, draft.parsedRIR) else {
             TFHaptics.error()
-            if logError == nil { logError = "The set could not be saved. Your entries are still here. Please try again." }
+            if logError == nil { logError = "Your entries are still here. Try again." }
             return
         }
         focusedField = nil
@@ -3104,7 +3104,7 @@ struct ProgressionSuggestion {
     static func completePrescribedSets(_ count: Int) -> ProgressionSuggestion {
         ProgressionSuggestion(
             icon: "hand.raised.fill",
-            text: "Your note prescribes \(count) sets — complete all of them at this load before adding weight",
+            text: "Finish all \(count) sets at this weight before adding more",
             color: TFColor.warning
         )
     }
@@ -3117,7 +3117,7 @@ struct ProgressionSuggestion {
     static func finishPrescribedSets(logged: Int, prescribed: Int) -> ProgressionSuggestion {
         ProgressionSuggestion(
             icon: "hand.raised.fill",
-            text: "You logged \(logged) of \(setsLabel(prescribed)) — finish the prescription at this load before adding weight",
+            text: "You logged \(logged) of \(setsLabel(prescribed)) — finish all sets at this weight before adding more",
             color: TFColor.warning
         )
     }
@@ -3129,7 +3129,7 @@ struct ProgressionSuggestion {
         let spare = max(targetRIR ?? 2, 1)
         return ProgressionSuggestion(
             icon: firstSessionIcon,
-            text: "New exercise. Start with a load (or an easier version, if it is bodyweight) that lets you reach the rep range with about \(spare) reps to spare on your first set, then log it. Next time the app suggests the load.",
+            text: "New exercise. Pick a weight you can do for the target reps with about \(spare) reps to spare, then log it. Next time the app suggests one.",
             color: TFColor.info
         )
     }
@@ -3151,7 +3151,7 @@ struct ProgressionSuggestion {
     static var deloadGuidance: ProgressionSuggestion {
         ProgressionSuggestion(
             icon: "arrow.down.right.circle.fill",
-            text: "Deload week — keep load light (~10% under your last block) and leave 2–3 reps in reserve; don't chase PRs",
+            text: "Deload week: go about 10% lighter and stop 2–3 reps short of failure",
             color: TFColor.info
         )
     }
@@ -3252,7 +3252,7 @@ struct ProgressionSuggestion {
             return ProgressionSuggestion(
                 icon: "arrow.down.circle.fill",
                 text: decision.usedPerSetEvidence
-                    ? "\(holdLabel) — \(belowFloorPhrase(missed: decision.belowFloorSetCount, of: decision.workingSetCount, floor: repRange.low)) (lowest was \(reps), target \(repRange.low)-\(repRange.high)); build every set to \(repRange.low) before adding"
+                    ? "\(holdLabel) — \(belowFloorPhrase(missed: decision.belowFloorSetCount, of: decision.workingSetCount, floor: repRange.low)) (lowest \(reps)); get every set to \(repRange.low) first"
                     : "Stay \(atLoad), focus on form and full ROM",
                 color: TFColor.warning
             )
@@ -3263,7 +3263,7 @@ struct ProgressionSuggestion {
             guard !isBodyweight else {
                 return ProgressionSuggestion(
                     icon: "arrow.down.circle.fill",
-                    text: "Bodyweight has finished under \(repRange.low) reps \(decision.belowFloorStreak) sessions running — regress to an easier variation rather than repeating it",
+                    text: "Under \(repRange.low) reps \(decision.belowFloorStreak) sessions in a row — switch to an easier version",
                     color: TFColor.warning
                 )
             }
@@ -3274,20 +3274,20 @@ struct ProgressionSuggestion {
             guard easier < decision.workingWeight else {
                 return ProgressionSuggestion(
                     icon: "arrow.down.circle.fill",
-                    text: "\(weightText) lb is already the lightest step here and has finished under \(repRange.low) reps \(decision.belowFloorStreak) sessions running — switch to an easier variation rather than repeating it",
+                    text: "\(weightText) lb is the lightest step and fell under \(repRange.low) reps \(decision.belowFloorStreak) sessions in a row — switch to an easier version",
                     color: TFColor.warning
                 )
             }
             let easierText = formatWeight(easier)
             return ProgressionSuggestion(
                 icon: "arrow.down.circle.fill",
-                text: "Drop to \(easierText) lb — \(weightText) lb has finished under \(repRange.low) reps \(decision.belowFloorStreak) sessions running; holding it has not brought the reps back",
+                text: "Drop to \(easierText) lb — \(weightText) lb fell under \(repRange.low) reps \(decision.belowFloorStreak) sessions in a row",
                 color: TFColor.warning
             )
         case .holdForRecovery:
             return ProgressionSuggestion(
                 icon: "arrow.down.right.circle.fill",
-                text: "\(holdLabel) — repeated low RIR suggests protecting recovery before adding load",
+                text: "\(holdLabel) — recent sets were close to failure, so recover before adding",
                 color: TFColor.warning
             )
         case .addRepsInRange:
@@ -4102,11 +4102,11 @@ struct InlineSetLogger: View {
             return
         }
         guard var draft = drafts[n], draft.canLog else {
-            logError = "Enter a weight (or select Bodyweight), completed reps, and an optional RIR from 0 to 6."
+            logError = "Enter weight (or tap Bodyweight) and reps. RIR is optional, 0–6."
             return
         }
         guard draft.save(using: { onLog(n, $0, $1, $2) }) else {
-            logError = "The set could not be saved. Your entries are still here. Please try again."
+            logError = "Your entries are still here. Try again."
             return
         }
         focusedField = nil

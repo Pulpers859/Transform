@@ -323,7 +323,7 @@ struct ExerciseProgressionView: View {
                 .symbolEffect(.pulse.byLayer, options: .repeating.speed(0.3))
             Text("No weight logs yet")
                 .font(TFTypography.cardTitle)
-            Text("Log weights during your workout to track progression over time.")
+            Text("Log weights in a workout to see your progress here.")
                 .font(TFTypography.body)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -580,7 +580,7 @@ struct EditPerformanceLogSheet: View {
                 Button("Delete", role: .destructive) { deleteLog() }
                 Button("Cancel", role: .cancel) {}
             } message: {
-                Text("This will permanently remove this session's data and recalculate your progression summary.")
+                Text("This session's sets will be permanently deleted.")
             }
             .onAppear { loadFromLog() }
         }

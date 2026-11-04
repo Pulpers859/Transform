@@ -48,8 +48,8 @@ struct SettingsSleepImportView: View {
                 Text("Sleep Source")
             } footer: {
                 Text(isAvailable
-                    ? "Reads the sleep your iPhone already records and fills in nights you didn't log yourself. Apple Health access is read-only — Transform never writes sleep back."
-                    : "Apple Health isn't available on this device, so sleep import can't be enabled here.")
+                    ? "Fills in nights you didn't log, using the sleep your iPhone records. Transform only reads Apple Health."
+                    : "Apple Health isn't available on this device.")
             }
 
             if let statusMessage {
@@ -64,17 +64,17 @@ struct SettingsSleepImportView: View {
                 howItWorksRow(
                     "1",
                     "Set up Sleep in the Health app",
-                    "Health → Browse → Sleep → set a Sleep Schedule. Your iPhone then records when you're in bed and asleep — no Apple Watch needed."
+                    "Health → Browse → Sleep → set a Sleep Schedule. No Apple Watch needed."
                 )
                 howItWorksRow(
                     "2",
-                    "Your hand logs always win",
-                    "A night you logged yourself is never replaced by an import. Apple Health only fills days you left blank, and re-syncs update only its own entries."
+                    "Your own logs always win",
+                    "Apple Health only fills nights you left blank. It never replaces a night you logged."
                 )
                 howItWorksRow(
                     "3",
                     "Short blips are ignored",
-                    "A brief in-bed moment or a nap won't be recorded as a full night, so a 2 a.m. phone check can't fake a short night and hold back your training."
+                    "Naps and brief moments in bed don't count as a full night."
                 )
             } header: {
                 Text("How it works")
@@ -145,7 +145,7 @@ struct SettingsSleepImportView: View {
             statusMessage = message
         case .completed(let inserted, let updated):
             if inserted == 0 && updated == 0 {
-                statusMessage = "No new sleep to import. If you just turned this on, open Health → Browse → Sleep and make sure a Sleep Schedule is set up, then sync again."
+                statusMessage = "No new sleep found. Set a Sleep Schedule in Health → Browse → Sleep, then sync again."
             } else {
                 var parts: [String] = []
                 if inserted > 0 { parts.append("\(inserted) night\(inserted == 1 ? "" : "s") added") }

@@ -150,8 +150,8 @@ struct SleepQuickLogSheet: View {
 
     private var saveExplanation: String {
         creditsPreviousWakeDay
-            ? "It's after midnight, so this counts for yesterday — the sleep you woke from yesterday morning. Logging tonight's sleep? Wait until you wake up, or use the full editor."
-            : "Saved as a main sleep ending now. Use the full editor for anything that ended earlier."
+            ? "It's after midnight, so this counts for yesterday. Log tonight's sleep after you wake up."
+            : "Saves sleep ending now. Use the full editor for other times."
     }
 
     private func alreadyLoggedNotice(for existing: SleepEntry) -> some View {
@@ -163,7 +163,7 @@ struct SleepQuickLogSheet: View {
                 systemImage: "checkmark.circle.fill"
             )
             .font(.subheadline.bold())
-            Text("\(SleepFormatting.duration(existing.resolvedDurationHours)) ending \(existing.resolvedEndDate.formatted(date: .abbreviated, time: .shortened)). Logging it twice would double-count the day, so edit that entry — or add naps and post-call sleep in the full editor.")
+            Text("\(SleepFormatting.duration(existing.resolvedDurationHours)) ending \(existing.resolvedEndDate.formatted(date: .abbreviated, time: .shortened)). Edit that entry, or add naps and post-call sleep in the full editor.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Button {

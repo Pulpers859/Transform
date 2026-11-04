@@ -180,7 +180,7 @@ struct RestDayDetailView: View {
                 detailCard(
                     title: "Recovery Focus",
                     text: day.notes.isEmpty
-                    ? "No additional guidance was provided for this recovery day."
+                    ? "Rest and recover today."
                     : day.notes
                 )
 
@@ -304,7 +304,7 @@ struct WorkoutTimingInsightsCard: View {
                 }
 
                 if timedSessions.count < 10 {
-                    Text("Patterns become more reliable with more logged sessions. Keep tracking!")
+                    Text("More sessions make this more accurate.")
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
                 }

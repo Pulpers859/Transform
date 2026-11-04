@@ -77,7 +77,7 @@ struct StartupConfiguration {
             } catch {
                 maintenanceContext.rollback()
                 print("[Startup] Exercise normalization failed: \(error.localizedDescription)")
-                maintenanceWarning = "Stored progression data could not be fully normalized at startup. The app loaded, but recent entries may need review."
+                maintenanceWarning = "Some exercise history could not be cleaned up at launch. Check your recent workout entries."
             }
 
             if let recoveryMessage = DataBackupManager.shared.attemptAutomaticRecoveryIfNeeded(using: maintenanceContext) {
@@ -112,8 +112,8 @@ struct StartupConfiguration {
                 let recoveryContext = ModelContext(fallbackContainer)
                 let restored = DataBackupManager.shared.restoreFromAutomaticBackupIfAvailable(into: recoveryContext)
                 let fallbackMessage = restored
-                    ? "Persistent storage failed to initialize. Your most recent backup has been loaded for this session, but changes made now will not be saved permanently. Relaunch to retry permanent storage."
-                    : "Persistent storage failed to initialize. Running in temporary in-memory mode for this launch. Changes made now will not be saved permanently."
+                    ? "Storage failed to load, so your latest backup is shown. Changes made now won't be saved. Reopen the app to try again."
+                    : "Storage failed to load. Changes made now won't be saved."
                 return StartupConfiguration(
                     container: fallbackContainer,
                     errorMessage: fallbackMessage
@@ -121,7 +121,7 @@ struct StartupConfiguration {
             } catch {
                 return StartupConfiguration(
                     container: nil,
-                    errorMessage: "App startup failed: could not initialize data storage."
+                    errorMessage: "Your data storage could not be loaded."
                 )
             }
         }
@@ -193,7 +193,7 @@ enum DataIntegrityMonitor {
             print("[Integrity] Current: \(current.entries.debugSummary)")
             print("[Integrity] Drop: \(current.entries.dropSummary(comparedTo: previous.entries))")
             let totalDrop = previous.entries.total - current.entries.total
-            let message = "Data loss detected: \(totalDrop) entries missing since last launch. Check the rolling backup and export a manual backup before making more changes."
+            let message = "Data loss detected: \(totalDrop) entries missing since last launch. Export a backup in Settings before making more changes."
             NotificationCenter.default.post(
                 name: .dataIntegrityWarning,
                 object: nil,
@@ -256,7 +256,7 @@ struct StartupErrorView: View {
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 24)
 
-                Text("Try relaunching the app. If this persists, export/restore from backup once storage is available.")
+                Text("Try reopening the app.")
                     .font(.caption)
                     .foregroundStyle(.tertiary)
                     .multilineTextAlignment(.center)

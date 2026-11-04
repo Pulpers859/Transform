@@ -303,15 +303,15 @@ extension ExerciseSessionSummary.AdherenceFlag {
     var noticeText: String {
         switch self {
         case .repsAboveRange(let setNumber, let reps, let high):
-            return "Set \(setNumber) ran to \(reps) reps, past the \(high) you were aiming for."
+            return "Set \(setNumber): \(reps) reps, above the \(high) target."
         case .repsBelowRange(let setNumber, let reps, let low):
-            return "Set \(setNumber) stopped at \(reps) reps, under the \(low) you were aiming for."
+            return "Set \(setNumber): \(reps) reps, below the \(low) target."
         case .effortUnderTarget(let setNumber, let rir, let target):
             let rirText = rir.rounded() == rir ? String(Int(rir)) : String(format: "%.1f", rir)
-            return "Set \(setNumber) logged RIR \(rirText) against a target of \(target) — closer to a warm-up than a working set."
+            return "Set \(setNumber): RIR \(rirText) vs target \(target) — more like a warm-up."
         case .effortOverTarget(let setNumber, let rir, let target):
             let rirText = rir.rounded() == rir ? String(Int(rir)) : String(format: "%.1f", rir)
-            return "Set \(setNumber) logged RIR \(rirText) against a target of \(target) — harder than the session called for."
+            return "Set \(setNumber): RIR \(rirText) vs target \(target) — harder than planned."
         case .setsIncomplete(let logged, let planned):
             return logged == 0
                 ? "Marked done with no sets logged, so nothing from it reaches your history."

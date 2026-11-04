@@ -314,7 +314,7 @@ struct NutritionWeekDetail: View {
 
             Text("Weekly Grocery List")
                 .font(.subheadline.bold())
-            Text("Quantities scaled for 5 training + 2 rest days.")
+            Text("For 5 training + 2 rest days.")
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
             ForEach(week.weeklyGrocery) { category in
@@ -508,7 +508,7 @@ struct AdherenceSnapshotCard: View {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .font(.caption2)
                         .foregroundStyle(TFColor.accent)
-                    Text("\(metrics.incompleteDays) days look incomplete (<1000 kcal or <2 meals) — missing dinner or snacks?")
+                    Text("\(metrics.incompleteDays) days look incomplete (under 1000 kcal or under 2 meals).")
                         .font(.caption2)
                         .foregroundStyle(TFColor.accent)
                 }
@@ -560,7 +560,7 @@ struct AdherenceSnapshotCard: View {
             Image(systemName: "fork.knife")
                 .font(.caption2)
                 .foregroundStyle(TFColor.protein)
-            Text("Target: ~\(range.low)–\(range.high)g protein × 3–5 feedings")
+            Text("Aim for ~\(range.low)–\(range.high)g protein per meal, 3–5 meals a day")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

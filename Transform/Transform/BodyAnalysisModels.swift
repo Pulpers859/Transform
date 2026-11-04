@@ -1862,26 +1862,26 @@ enum NutritionAdherenceMetricsBuilder {
     ) -> String? {
         switch quality {
         case .veryLow:
-            return "Log every meal for 7 consecutive days, even rough estimates. Tracking consistency unlocks everything else."
+            return "Log every meal for 7 days in a row, even rough guesses."
         case .low:
             if incompleteDays > 0 {
-                return "Some days look incomplete — log all meals including dinner/snacks. A partial day skews your averages."
+                return "Some days look incomplete. Log every meal, including dinner and snacks."
             }
-            return "Push logging to at least 5 of the next 7 days. Focus on capturing protein amounts — calories will follow."
+            return "Log at least 5 of the next 7 days. Focus on protein."
         case .moderate:
             if incompleteDays > validDays {
-                return "Most logged days are incomplete (<1000 kcal or missing meals). Log complete days to unlock accurate compliance data."
+                return "Most logged days are incomplete. Log full days so your numbers are accurate."
             }
             if let pro = proHit, pro < 0.5 {
-                return "Protein is the gap. Add a protein source to your weakest meal and keep a backup shake available."
+                return "Protein is low. Add protein to your weakest meal, or keep a shake on hand."
             }
-            return "Logging is getting consistent. Lock in 80%+ days to enable meaningful calorie adjustments."
+            return "Logging is getting consistent. Log 80%+ of days so calories can be adjusted."
         case .good, .excellent:
             if let pro = proHit, pro < 0.6 {
                 return "Add a protein source to your lowest-protein meal or add a shake to close the gap."
             }
             if let cal = calHit, cal < 0.5 {
-                return "Calories are inconsistent. Use meal templates on work days to reduce decision fatigue."
+                return "Calories are inconsistent. Plan set meals for work days."
             }
             if direction == .gaining {
                 return "If the goal is fat loss, consider reducing daily intake by 150–200 kcal or adding 2,000 daily steps."

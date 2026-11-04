@@ -83,10 +83,10 @@ struct BodyAnalysisResultView: View {
                 // Save button
                 if let report = validationReport, !report.isUsable {
                     VStack(spacing: 6) {
-                        Label("Cannot save — critical validation issues detected", systemImage: "exclamationmark.triangle.fill")
+                        Label("Can't save — this result has errors", systemImage: "exclamationmark.triangle.fill")
                             .font(.caption.bold())
                             .foregroundStyle(TFColor.danger)
-                        Text("Long-press the result to open the debug panel and review issues. Re-run the analysis to try again.")
+                        Text("Run the analysis again.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -271,7 +271,7 @@ struct AnalysisResultContent: View {
             // Top leverage change
             if !result.topLeverageChange.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
-                    Label("Highest Leverage Change", systemImage: "arrow.up.circle.fill")
+                    Label("Biggest Change to Make", systemImage: "arrow.up.circle.fill")
                         .font(.headline)
                         .foregroundStyle(.white)
                     Text(result.topLeverageChange)
@@ -283,7 +283,7 @@ struct AnalysisResultContent: View {
                 .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
             }
 
-            CollapsibleSectionCard(title: "Photo-Based Scope", icon: "info.circle", isExpanded: $showScopeSection) {
+            CollapsibleSectionCard(title: "Limits of Photos", icon: "info.circle", isExpanded: $showScopeSection) {
                 Text(result.resolvedAnalysisLimitations)
                     .font(.body)
                     .foregroundStyle(.secondary)
@@ -292,7 +292,7 @@ struct AnalysisResultContent: View {
             if let inputContext = result.inputContext {
                 CollapsibleSectionCard(title: "Context Used", icon: "text.badge.checkmark", isExpanded: $showContextSection) {
                     CompactContextCard(
-                        intro: "The analysis used your saved profile, check-in, and recent progress context.",
+                        intro: "Your profile, check-in, and recent progress.",
                         summaryItems: inputContext.compactSummaryItems,
                         detailSections: inputContext.detailSections,
                         isExpanded: $showContextDetails
@@ -321,7 +321,7 @@ struct AnalysisResultContent: View {
             // Programming priorities
             if !result.programmingPriorityAreas.isEmpty {
                 SectionCard(title: "Top Muscle Groups to Prioritize", icon: "flame.fill") {
-                    Text("These are the main muscle groups the workout plan should prioritize with extra hypertrophy attention.")
+                    Text("Muscles that need the most extra work.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
 
@@ -340,7 +340,7 @@ struct AnalysisResultContent: View {
             // High-priority regions
             if !result.highPriorityRegionsToAddress.isEmpty {
                 SectionCard(title: "High-Priority Regions to Address", icon: "exclamationmark.circle.fill") {
-                    Text("These are the highest-need regions from the analysis overall. They may reflect body composition, posture, or presentation concerns, not just muscles that need more direct hypertrophy work.")
+                    Text("Areas needing the most attention — body fat or posture, not only muscle size.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
 

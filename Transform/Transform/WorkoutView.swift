@@ -140,7 +140,7 @@ struct WorkoutView: View {
                 }
                 Button("Cancel", role: .cancel) {}
             } message: {
-                Text("This archives your current program and generates a brand-new Week 1. Your training history (weights, sets, skip patterns) is preserved. This uses AI generation credits.")
+                Text("Archives this program and builds a new Week 1. Your training history is kept. Uses AI credits.")
             }
             .sheet(isPresented: $showGeneratorLab) {
                 WorkoutGeneratorLabView()
@@ -191,7 +191,7 @@ struct WorkoutView: View {
                 Text("No Workout Program")
                     .font(TFTypography.cardTitle)
                     .fontWeight(.bold)
-                Text("Generate a personalized 4-week program one week at a time, based on your latest body analysis.")
+                Text("Build a 4-week program from your latest body analysis, one week at a time.")
                     .font(TFTypography.body)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -241,7 +241,7 @@ struct WorkoutView: View {
                     Image(systemName: "camera.viewfinder")
                         .font(.title2)
                         .foregroundStyle(.secondary)
-                    Text("Run a body analysis first to generate a tailored program.")
+                    Text("Run a body analysis first.")
                         .font(TFTypography.body)
                         .foregroundStyle(.tertiary)
                         .multilineTextAlignment(.center)
@@ -448,10 +448,6 @@ struct WorkoutView: View {
                         .accessibilityElement(children: .combine)
                         .accessibilityLabel("\(noticeAccessibilityPrefix(notice.severity)). \(notice.displayHeadline). \(notice.detail)")
                     }
-
-                    Text("Full technical detail is in the Generator Lab.")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
                 }
                 .padding(.top, TFSpacing.tightGap)
             } label: {
@@ -801,11 +797,11 @@ struct WorkoutView: View {
             guard
                 let analysisJSONString = encodeJSONString(
                     result,
-                    failureMessage: "Could not save the generated program because the analysis context could not be encoded."
+                    failureMessage: "Could not save the program. Try again."
                 ),
                 let weekJSON = encodeJSONString(
                     response,
-                    failureMessage: "Could not save the generated program because the generated workout data could not be encoded."
+                    failureMessage: "Could not save the program. Try again."
                 )
             else {
                 return
@@ -914,7 +910,7 @@ struct WorkoutView: View {
 
             guard let weekJSON = encodeJSONString(
                 response,
-                failureMessage: "Could not save the generated week because the new workout data could not be encoded."
+                failureMessage: "Could not save the week. Try again."
             ) else {
                 return
             }

@@ -475,18 +475,18 @@ enum MacroTargetResolver {
         let resolvedCarbs = max(carbsG, floors.carbsG)
 
         if calories < floors.calories {
-            adjustments.append("Calories raised from \(calories) to \(floors.calories) (safety floor: BW×10)")
+            adjustments.append("Calories raised from \(calories) to \(floors.calories) (safe minimum)")
         }
         if proteinG < floors.proteinG {
-            adjustments.append("Protein raised from \(Int(proteinG))g to \(Int(floors.proteinG))g (safety floor: 1.4 g/kg)")
+            adjustments.append("Protein raised from \(Int(proteinG))g to \(Int(floors.proteinG))g (safe minimum)")
         }
         if fatG < floors.fatG {
-            adjustments.append("Fat raised from \(Int(fatG))g to \(Int(floors.fatG))g (safety floor: 0.35 g/kg)")
+            adjustments.append("Fat raised from \(Int(fatG))g to \(Int(floors.fatG))g (safe minimum)")
         }
         // Previously the carb floor was applied silently; surface it like the others
         // so a raised carb number is never invisible on the macro card.
         if carbsG < floors.carbsG {
-            adjustments.append("Carbs raised from \(Int(carbsG))g to \(Int(floors.carbsG))g (minimum training-fuel floor)")
+            adjustments.append("Carbs raised from \(Int(carbsG))g to \(Int(floors.carbsG))g (safe minimum)")
         }
 
         return DailyMacroTargets(
@@ -1248,7 +1248,7 @@ enum AnthropicAPIKeyStatus: Equatable {
         return """
         \(inlineHelpText)
 
-        Open Settings and choose Add API Key. The key is stored in this device's Keychain and never leaves the device.
+        Open Settings and choose Add API Key.
         """
     }
 

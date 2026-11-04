@@ -60,10 +60,7 @@ struct AddMeasurementSheet: View {
                         Text("lbs")
                             .foregroundStyle(.secondary)
                     }
-                    Toggle("Also save as weight log entry", isOn: $alsoSaveWeightEntry)
-                    Text("Weight logs are stored separately, so this stays explicit instead of creating a hidden duplicate.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    Toggle("Also add to weight log", isOn: $alsoSaveWeightEntry)
                 }
 
                 coreMeasurementsSection
@@ -167,7 +164,7 @@ struct AddMeasurementSheet: View {
         } header: {
             Text("Core Measurements (inches)")
         } footer: {
-            Text("Core measurements are enough for recomposition tracking. Waist at navel is the most important single measurement.")
+            Text("Waist matters most.")
         }
     }
 
@@ -185,7 +182,7 @@ struct AddMeasurementSheet: View {
                 MeasurementField(label: "Left Calf", text: $leftCalfText)
             }
         } footer: {
-            Text("Optional for proportion tracking. Not needed every session.")
+            Text("Optional. Not needed every time.")
         }
     }
 
@@ -202,14 +199,14 @@ struct AddMeasurementSheet: View {
             Toggle("Standard measurement", isOn: $isStandardMeasurement)
 
             if !isStandardMeasurement {
-                Text("Non-standard measurements are flagged in trend analysis so they don't create false progress or regression signals.")
+                Text("Marked so they don't skew your trends.")
                     .font(.caption)
                     .foregroundStyle(TFColor.accent)
             }
         } header: {
             Text("Measurement Context")
         } footer: {
-            Text("Timing and standardization help the trend engine filter noise from real changes.")
+            Text("Helps tell real changes from daily swings.")
         }
     }
 
@@ -271,7 +268,7 @@ struct AddMeasurementSheet: View {
 
         if alsoSaveWeightEntry {
             guard hasValidWeightInput, let weight = Double(weightText) else {
-                validationMessage = "Enter a body weight between 50 and 999 lb or turn off the separate weight-log toggle."
+                validationMessage = "Enter a weight between 50 and 999 lb, or turn off Also add to weight log."
                 showValidationAlert = true
                 return
             }

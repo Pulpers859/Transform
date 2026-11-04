@@ -382,13 +382,10 @@ struct NutritionView: View {
             MacroProgressBar(label: "Sugars", value: totalSugar, target: sugarTargetG, color: .pink)
             MacroProgressBar(label: "Protein", value: totalProtein, target: activeMacroTargets.proteinG, color: TFColor.protein)
 
-            Text("Carbs are split into fiber and sugars with analysis-aware targets.")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .padding(.top, 4)
             Text(macroTargetSourceText)
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
+                .padding(.top, 4)
             if activeMacroTargets.wasAdjustedBySafetyFloor {
                 VStack(alignment: .leading, spacing: 2) {
                     ForEach(activeMacroTargets.floorAdjustments, id: \.self) { adjustment in
@@ -405,18 +402,18 @@ struct NutritionView: View {
     var macroTargetSourceText: String {
         switch activeMacroTargets.source {
         case .analysis:
-            return "Targets source: latest AI body analysis"
+            return "Targets from your latest Body Analysis"
         case .adaptiveReview:
-            return "Targets source: applied adaptive review"
+            return "Targets from your weekly review"
         case .config:
-            return "Targets source: Config fallback (run a new Body Analysis to populate AI macro targets)"
+            return "Default targets. Run a Body Analysis for personal ones."
         }
     }
 
     var adaptiveMacroReviewCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Label("Adaptive Macro Review", systemImage: "slider.horizontal.3")
+                Label("Weekly Macro Review", systemImage: "slider.horizontal.3")
                     .font(.headline)
                 Spacer()
                 Text(macroReviewGate.isEligible ? "READY" : "LOCKED")
@@ -459,11 +456,11 @@ struct NutritionView: View {
                     }
                 }
             } else if macroReviewGate.isEligible {
-                Text("Your weight, nutrition, and measurement data are mature enough for a conservative weekly review.")
+                Text("You have enough data for a weekly review.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else {
-                Text("Unlocks only when the app has enough trustworthy data:")
+                Text("Needs:")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 ForEach(macroReviewGate.unmetRequirements, id: \.self) { requirement in
@@ -530,21 +527,14 @@ struct NutritionView: View {
                     .font(.headline)
                     .foregroundStyle(TFColor.accent)
                 Spacer()
-                Text("Body-analysis driven")
-                    .font(.caption.bold())
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
-                    .background(TFColor.accent.opacity(0.15))
-                    .foregroundStyle(TFColor.accent)
-                    .clipShape(Capsule())
             }
 
-            Text("A 7-day nutrition plan built from your latest Body Analysis. Includes Training Day + Rest Day templates (5 training / 2 rest assumed), 4 meals each, and a weekly grocery list. Reassess adherence and results before generating the next week.")
+            Text("A week of meals and a grocery list, built from your latest Body Analysis.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
             if latestAnalysis == nil {
-                Text("Run a Body Analysis first — this protocol is generated from its expert recommendations.")
+                Text("Run a Body Analysis first.")
                     .font(.caption2)
                     .foregroundStyle(TFColor.danger)
             }
@@ -619,10 +609,6 @@ struct NutritionView: View {
                         selectedTemplate: $selectedTemplate
                     )
                 }
-            } else {
-                Text("Generate a 7-day plan from your latest Body Analysis, then reassess adherence and results before planning another week.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
         }
         .dashCard()
@@ -667,7 +653,7 @@ struct NutritionView: View {
                         .symbolEffect(.pulse.byLayer, options: .repeating.speed(0.3))
                     Text("No meals logged yet")
                         .font(TFTypography.cardTitle)
-                    Text("Tap + to log your first meal and start tracking macros")
+                    Text("Tap + to log a meal.")
                         .font(TFTypography.body)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
@@ -916,7 +902,7 @@ struct NutritionView: View {
         guard !Task.isCancelled else { return }
         isGeneratingNutrition = true
         nutritionErrorMessage = ""
-        generationProgress = "Generating 7-Day Plan (Sonnet)…"
+        generationProgress = "Generating 7-day plan…"
         defer {
             if !Task.isCancelled {
                 isGeneratingNutrition = false
@@ -1023,7 +1009,7 @@ struct NutritionView: View {
     func saveNutritionProtocolToStore(program: NutritionProgramResponse, followups: [NutritionWeekResponse]) {
         guard let programJSON = encodeProgramToJSON(program),
               let followupsJSON = encodeFollowupsToJSON(followups) else {
-            nutritionErrorMessage = "Could not save the nutrition protocol because its JSON payload could not be encoded."
+            nutritionErrorMessage = "Could not save the plan. Please try again."
             return
         }
 
@@ -1104,7 +1090,7 @@ struct NutritionGenerationRunContext {
     let priorProgram: NutritionProgramResponse?
     let priorFollowups: [NutritionWeekResponse]
 
-    static let preservedFallbackMessage = "Regeneration did not produce a complete AI nutrition protocol, so your saved plan was preserved. Check the API key/network and run generation again."
+    static let preservedFallbackMessage = "Couldn't make a new plan, so your saved plan was kept. Check your API key and connection, then try again."
 
     var allowsRecoveryFallback: Bool {
         priorProgram == nil

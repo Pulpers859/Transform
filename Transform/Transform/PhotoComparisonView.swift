@@ -13,7 +13,7 @@ struct PhotoComparisonView: View {
                 ContentUnavailableView(
                     "Need More Analyses",
                     systemImage: "photo.on.rectangle",
-                    description: Text("Complete at least 2 body analyses to compare photos over time.")
+                    description: Text("Complete 2 body analyses to compare photos.")
                 )
             } else {
                 comparisonContent
@@ -100,7 +100,7 @@ struct PhotoComparisonView: View {
 
             HStack(spacing: 16) {
                 metricCard(title: "Body Fat", before: before.estimatedBodyFat, after: after.estimatedBodyFat)
-                metricCard(title: "Top Leverage Change", before: before.topLeverageChange, after: after.topLeverageChange)
+                metricCard(title: "Biggest Change to Make", before: before.topLeverageChange, after: after.topLeverageChange)
             }
             .padding(.horizontal)
 

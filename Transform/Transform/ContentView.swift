@@ -132,7 +132,7 @@ struct ContentView: View {
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .persistenceSaveFailed)) { notification in
-            let fallbackMessage = "A save operation failed. Your recent changes may not be stored."
+            let fallbackMessage = "Your recent changes may not have saved."
             let message = (notification.userInfo?[PersistenceReporter.messageUserInfoKey] as? String) ?? fallbackMessage
             appAlert = AppAlertContent(
                 title: "Save Failed",
@@ -140,7 +140,7 @@ struct ContentView: View {
             )
         }
         .onReceive(NotificationCenter.default.publisher(for: .dataIntegrityWarning)) { notification in
-            let fallbackMessage = "Stored data looks incomplete compared with the last launch. Check your rolling backup and export a manual backup before making more changes."
+            let fallbackMessage = "Some data seems to be missing since last launch. Export a backup in Settings before making more changes."
             let message = (notification.userInfo?[PersistenceReporter.messageUserInfoKey] as? String)
                 ?? (notification.userInfo?["message"] as? String)
                 ?? fallbackMessage

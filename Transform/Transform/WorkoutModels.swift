@@ -313,11 +313,11 @@ enum ExerciseCompletionStatus: String, CaseIterable, Identifiable {
     var skipEffect: String {
         switch self {
         case .skippedTime:
-            return "Records missed work today. It does not reduce future sets or replace this exercise."
+            return "Counts as missed today. Future workouts don't change."
         case .skippedEquipment:
-            return "Repeated equipment skips make this exercise less preferred in future generated workouts, including main lifts. It may still be selected if needed; today's workout is not replaced."
+            return "Frequent equipment skips make future plans use it less."
         case .skippedPain:
-            return "Records pain today. Before generating another week, you can report whether it has resolved. Until then this exercise is avoided. Existing workouts are unchanged. Clear an accidental skip on this card."
+            return "Records pain today. It stays out of new weeks until you mark it resolved; current workouts don't change. Tap Clear on this card to undo."
         default:
             return ""
         }

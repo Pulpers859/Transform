@@ -1437,12 +1437,12 @@ final class DataBackupManager {
         }
 
         guard let recovered = try? entryCounts(using: modelContext) else {
-            return "Stored data looked incomplete at startup, so Transform restored the most recent automatic backup."
+            return "Some data was missing at launch, so Transform restored your latest automatic backup."
         }
 
         guard recovered.total > current.total else { return nil }
 
-        return "Stored data looked incomplete at startup, so Transform restored the most recent automatic backup and recovered \(recovered.total - current.total) records."
+        return "Some data was missing at launch, so Transform restored \(recovered.total - current.total) entries from your latest automatic backup."
     }
 
     private func buildPayload(using modelContext: ModelContext) throws -> TransformBackupPayload {
@@ -1632,7 +1632,7 @@ nonisolated enum BackupError: LocalizedError {
             return message
         case .unsupportedVersion(let version):
             if version > BackupFormat.currentVersion {
-                return "This backup was created by a newer app version (backup format \(version)). Update Transform before importing to avoid data loss."
+                return "This backup is from a newer version of Transform. Update the app before importing it so no data is lost."
             }
             return "Unsupported backup version \(version)."
         }

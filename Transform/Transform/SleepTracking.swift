@@ -352,7 +352,7 @@ struct SleepEntryEditor: View {
                 } header: {
                     Text("Sleep Episode")
                 } footer: {
-                    Text("Log each main sleep, nap, or post-call recovery period separately. Trends combine episodes by the date you woke.")
+                    Text("Log each sleep, nap, or post-call recovery separately.")
                 }
 
                 Section("Optional Note") {
@@ -417,7 +417,7 @@ struct SleepEntryEditor: View {
             if let episode, candidate === episode { return false }
             return start < candidate.resolvedEndDate && wakeDate > candidate.resolvedStartDate
         }) {
-            validationMessage = "This time overlaps another recorded sleep episode. Edit the existing episode or adjust these times before saving."
+            validationMessage = "These times overlap another sleep entry. Change the times or edit that entry."
             showValidationAlert = true
             return
         }
@@ -503,7 +503,7 @@ struct SleepHistoryView: View {
                 ContentUnavailableView(
                     "No Sleep Episodes",
                     systemImage: "bed.double",
-                    description: Text("Log a main sleep or nap to begin seeing recovery trends.")
+                    description: Text("Log a sleep to see your trends.")
                 )
             } else {
                 ForEach(episodes) { episode in
@@ -566,7 +566,7 @@ struct SleepHistoryView: View {
             Button("Delete", role: .destructive) { deleteEpisode() }
             Button("Cancel", role: .cancel) { episodeToDelete = nil }
         } message: {
-            Text("This removes the episode from sleep trends and future analysis context.")
+            Text("This deletes the entry from your sleep history and trends.")
         }
     }
 

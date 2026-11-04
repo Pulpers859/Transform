@@ -14,8 +14,8 @@ enum ExerciseReplacement {
             case .noRemainingSets: return "There are no remaining sets to replace."
             case .ineligibleCandidate: return "This replacement is no longer available. Choose another exercise."
             case .unsavedChanges: return "Save your current changes before replacing this exercise."
-            case .incompleteHistory: return "This earlier exercise has gaps in its set numbers or only a summary log. Returning could miscount your remaining sets, so no changes were made."
-            case .preferenceUnavailable: return "You can use this exercise today, but it does not meet the planner's stricter rules for future workouts. Turn off the future preference to continue."
+            case .incompleteHistory: return "Can't switch back: this exercise's set log has gaps. Nothing was changed."
+            case .preferenceUnavailable: return "This exercise works for today only. Turn off Prefer this in future workouts to continue."
             }
         }
     }

@@ -267,7 +267,7 @@ struct BodyAnalysisView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Physique Photos")
                         .font(.headline)
-                    Text("\(displayedPhotos.count) of 4 angles · More angles = better analysis")
+                    Text("\(displayedPhotos.count) of 4 angles")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -292,7 +292,7 @@ struct BodyAnalysisView: View {
             // Add more photos if we have room
             if !analysisRunStore.isRunning && photos.count < 4 {
                 VStack(alignment: .leading, spacing: 8) {
-                    Label("Photo tip: stand relaxed and neutral (not flexing/posing) with consistent lighting for the most accurate analysis.", systemImage: "info.circle")
+                    Label("Stand relaxed, not flexing, in steady lighting.", systemImage: "info.circle")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -409,7 +409,7 @@ struct BodyAnalysisView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Current Check-In")
                         .font(.headline)
-                    Text("This sharpens the analysis beyond photos by giving the model current recovery, adherence, and training context.")
+                    Text("Notes that make the analysis more accurate.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -434,13 +434,13 @@ struct BodyAnalysisView: View {
                     prompt: "e.g. weight flat for 2 weeks, looking leaner, up 1 lb"
                 )
                 checkInField(
-                    "Additional recovery or sleep context",
+                    "Recovery or sleep notes",
                     text: $analysisCheckInRecoverySleep,
                     prompt: "e.g. waking frequently, unusually fatigued, recovery nap helped"
                 )
                 if !derivedSleepTrendSummary.isEmpty {
                     VStack(alignment: .leading, spacing: 4) {
-                        Label("Sleep episodes added automatically", systemImage: "bed.double.fill")
+                        Label("Sleep log added automatically", systemImage: "bed.double.fill")
                             .font(.caption.bold())
                             .foregroundStyle(TFColor.sleep)
                         Text(derivedSleepTrendSummary)
@@ -453,17 +453,17 @@ struct BodyAnalysisView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 10))
                 }
                 checkInField(
-                    "Stress and schedule pressure",
+                    "Stress and schedule",
                     text: $analysisCheckInStressSchedule,
                     prompt: "e.g. several overnight shifts, easier week, travel"
                 )
                 checkInField(
-                    "Soreness or pain flags",
+                    "Soreness or pain",
                     text: $analysisCheckInSorenessPain,
                     prompt: "e.g. right shoulder cranky on incline press, no major pain"
                 )
                 checkInField(
-                    "Nutrition adherence and appetite",
+                    "Eating and appetite",
                     text: $analysisCheckInNutritionAdherence,
                     prompt: "e.g. hitting protein, missing calories on shift days, appetite low"
                 )
@@ -472,7 +472,7 @@ struct BodyAnalysisView: View {
             VStack(alignment: .leading, spacing: 10) {
                 Text("Wellness Ratings")
                     .font(.subheadline.bold())
-                Text("Rate 1–10 or leave at 0 (not set). These help the analysis calibrate nutrition and recovery recommendations.")
+                Text("Rate 1–10, or leave at 0 to skip.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
@@ -481,7 +481,7 @@ struct BodyAnalysisView: View {
                 checkInRating("Cravings", value: $analysisCheckInCravingsLevel, lowLabel: "None", highLabel: "Intense")
             }
 
-            Text("This check-in persists until you clear or overwrite it, so keep it current before running a new analysis.")
+            Text("These notes stay until you clear them. Update them before each analysis.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -533,12 +533,12 @@ struct BodyAnalysisView: View {
 
     func progressContextCard(snapshot: AnalysisProgressSnapshot) -> some View {
         SectionCardLike {
-            Label("Auto Progress Context", systemImage: "arrow.trianglehead.2.clockwise")
+            Label("Recent Progress", systemImage: "arrow.trianglehead.2.clockwise")
                 .font(.headline)
                 .foregroundStyle(TFColor.accent)
 
             CompactContextCard(
-                intro: "Transform will use recent app data from since your last analysis instead of treating the new photos like an isolated snapshot.",
+                intro: "Your app data since your last analysis is included.",
                 summaryItems: snapshot.compactSummaryItems,
                 detailSections: [
                     AnalysisContextSection(
@@ -636,7 +636,7 @@ struct BodyAnalysisView: View {
                     .foregroundStyle(TFColor.measurement)
             }
 
-            Text("This measurement data will be included in the analysis prompt to sharpen body composition assessment.")
+            Text("These measurements are included in the analysis.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -710,11 +710,11 @@ struct BodyAnalysisView: View {
 
             if !missing.isEmpty {
                 let missingNames = missing.sorted().joined(separator: ", ")
-                Text("Missing: \(missingNames) — assessment will be less confident for those regions.")
+                Text("Missing: \(missingNames). Those areas will be less accurate.")
                     .font(.caption)
                     .foregroundStyle(TFColor.accent)
             } else {
-                Text("All four angles covered — full confidence available.")
+                Text("All four angles covered.")
                     .font(.caption)
                     .foregroundStyle(TFColor.success)
             }
@@ -768,7 +768,7 @@ struct BodyAnalysisView: View {
             .pressable()
             .disabled(analysisRunStore.isRunning || !canUseAI)
 
-            Text("Photo analysis is strongest for visible physique patterns and broad training priorities. It is more limited for injury, posture, metabolic, and adherence assessment without added history or check-in data.")
+            Text("Photos are best for physique and training focus. They can't judge injury, posture, or metabolism well on their own.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
@@ -789,7 +789,7 @@ struct BodyAnalysisView: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Analysis in progress")
                         .font(.caption.bold())
-                    Text("This run is locked to the \(runContext.photoCount)-photo snapshot and current check-in context you started with. It will keep running if you leave this screen.")
+                    Text("Uses the \(runContext.photoCount) photos and notes you started with. Keeps running if you leave.")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)

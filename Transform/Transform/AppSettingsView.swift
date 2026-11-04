@@ -84,7 +84,7 @@ struct AppSettingsView: View {
                             .font(.caption)
                             .foregroundStyle(TFColor.danger)
                     } else {
-                        Text("Keys are stored in this device's Keychain and never committed to GitHub.")
+                        Text("Your key is stored only on this device.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -119,7 +119,7 @@ struct AppSettingsView: View {
                 } header: {
                     Text("Data & Backup")
                 } footer: {
-                    Text("Backups include all logged data and analysis photos. Importing merges the backup with what's already on this device — nothing is deleted or overwritten, and duplicates are skipped.")
+                    Text("Backups include all your logs and analysis photos. Importing adds to your data — nothing is deleted or overwritten.")
                 }
 
                 Section {
@@ -143,7 +143,7 @@ struct AppSettingsView: View {
             ) { result in
                 switch result {
                 case .success:
-                    backupMessage = "Backup exported successfully."
+                    backupMessage = "Backup exported."
                     showBackupAlert = true
                 case .failure(let error):
                     backupMessage = "Export failed: \(error.localizedDescription)"
@@ -160,7 +160,7 @@ struct AppSettingsView: View {
                         defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
                         let data = try Data(contentsOf: url)
                         try DataBackupManager.shared.importBackup(from: data, into: modelContext)
-                        backupMessage = "Backup imported successfully."
+                        backupMessage = "Backup imported."
                     } catch {
                         backupMessage = "Import failed: \(error.localizedDescription)"
                     }
@@ -180,7 +180,7 @@ struct AppSettingsView: View {
                 }
                 Button("Cancel", role: .cancel) {}
             } message: {
-                Text("The backup is merged with your existing data. Nothing is deleted or overwritten — entries already on this device are kept and duplicates are skipped.")
+                Text("The backup is added to your data. Nothing is deleted or overwritten.")
             }
             .alert("Backup", isPresented: $showBackupAlert) {
                 Button("OK", role: .cancel) {}
@@ -197,7 +197,7 @@ struct AppSettingsView: View {
                 }
                 Button("Cancel", role: .cancel) {}
             } message: {
-                Text("This replaces all your saved profile and target settings with the app defaults.")
+                Text("Your profile, target, and medical settings will be reset to app defaults.")
             }
             .confirmationDialog(
                 "Remove API Key?",
@@ -209,7 +209,7 @@ struct AppSettingsView: View {
                 }
                 Button("Cancel", role: .cancel) {}
             } message: {
-                Text("AI features will be unavailable unless a local build configuration provides another key.")
+                Text("AI features will stop working until you add a key again.")
             }
             .sheet(item: $apiKeySetupPresentation) { presentation in
                 APIKeySetupView(presentation: presentation) {
@@ -422,7 +422,7 @@ struct SettingsProfileView: View {
     var body: some View {
         Form {
             Section {
-                Text("These fields shape the body-analysis prompt and make the assessment smarter than photos alone.")
+                Text("These details make your body analysis more accurate.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -437,7 +437,6 @@ struct SettingsProfileView: View {
                 }
 
                 presetPicker("Build", selection: buildBinding)
-                presetHint(buildBinding.wrappedValue.promptDescription)
             }
 
             Section("Body") {
@@ -554,7 +553,7 @@ struct SettingsProfileView: View {
                             Text(goal.label).tag(goal)
                         }
                     }
-                    Text("Goal changes apply to a new body analysis and workouts generated from it. Saved workouts keep their original goal.")
+                    Text("Changes apply to your next body analysis. Saved workouts keep their goal.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     if GoalCategory(rawValue: analysisPrimaryGoal) != .notSpecified {
@@ -664,7 +663,7 @@ struct SettingsTargetsView: View {
     var body: some View {
         Form {
             Section {
-                Text("Used by Dashboard and Nutrition when no fresh AI-derived macro targets exist.")
+                Text("Used when you have no recent AI macro targets.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -724,7 +723,7 @@ struct SettingsMedicalView: View {
     var body: some View {
         Form {
             Section {
-                Text("Answer these so the app can flag when medical clearance may be appropriate before high-intensity training. These are not a diagnosis — consult your physician.")
+                Text("These help the app flag when to check with a doctor before hard training. This is not a diagnosis.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -732,10 +731,10 @@ struct SettingsMedicalView: View {
             Section {
                 Toggle("Current injury", isOn: $medicalCurrentInjury)
                 Toggle("Pain during exercise", isOn: $medicalPainDuringExercise)
-                Toggle("Heart / metabolic / kidney / BP condition", isOn: $medicalCardioMetabolic)
-                Toggle("Medication affecting HR, BP, balance, or glucose", isOn: $medicalMedications)
+                Toggle("Heart, metabolic, kidney, or blood pressure condition", isOn: $medicalCardioMetabolic)
+                Toggle("Medication affecting heart rate, blood pressure, balance, or blood sugar", isOn: $medicalMedications)
                 Toggle("Pregnant, postpartum, or recent surgery", isOn: $medicalPregnancySurgery)
-                Toggle("Dizziness, chest pain, fainting, or unusual SOB", isOn: $medicalSymptoms)
+                Toggle("Dizziness, chest pain, fainting, or unusual shortness of breath", isOn: $medicalSymptoms)
             }
         }
         .navigationTitle("Medical Screening")

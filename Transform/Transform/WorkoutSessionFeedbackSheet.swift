@@ -64,7 +64,7 @@ struct WorkoutSessionFeedbackSheet: View {
                 } header: {
                     Text("Workout time")
                 } footer: {
-                    Text("Auto-tracked from ~10 min before your first logged set (warm-up) to the moment you finished — adjust only if needed. Tracking when you train helps identify your best time of day over time.")
+                    Text("Starts ~10 min before your first set. Adjust if needed.")
                 }
 
                 Section("Performance") {

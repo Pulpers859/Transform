@@ -202,7 +202,7 @@ struct AddFoodSheet: View {
 
                     if !memorySuggestions.isEmpty {
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("From your food memory")
+                            Text("Previously logged")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
 
@@ -307,7 +307,7 @@ struct AddFoodSheet: View {
                         HStack(spacing: 6) {
                             Image(systemName: showAdvancedMacros ? "chevron.up.circle.fill" : "chevron.down.circle")
                                 .foregroundStyle(TFColor.accent)
-                            Text(showAdvancedMacros ? "Hide Advanced (Fiber, Sugars)" : "Show Advanced (Fiber, Sugars)")
+                            Text(showAdvancedMacros ? "Hide Fiber & Sugars" : "Show Fiber & Sugars")
                                 .font(.caption.bold())
                                 .foregroundStyle(TFColor.accent)
                         }
@@ -362,7 +362,7 @@ struct AddFoodSheet: View {
                 } header: {
                     Text("AI Assist")
                 } footer: {
-                    Text("Describe your meal and Claude will estimate the macros. You can edit before saving.")
+                    Text("AI estimates the macros. You can edit them before saving.")
                 }
 
                 Section {
@@ -414,7 +414,7 @@ struct AddFoodSheet: View {
     var fastAddSection: some View {
         Section("Fast Add") {
             if frequentMealItems.isEmpty && recentMealItems.isEmpty {
-                Text("As you log \(selectedMeal.lowercased()), your frequent and recent items will appear here for one-tap logging.")
+                Text("Foods you log for \(selectedMeal.lowercased()) will show up here.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else {

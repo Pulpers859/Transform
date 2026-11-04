@@ -279,7 +279,7 @@ struct DashboardView: View {
             if trend.interpretation == .likelyFatLoss,
                let rate = trend.weightChangeRatePerWeek, rate < -2.0 {
                 return CoachingVerdict(
-                    message: "Fat loss is fast — consider slowing the deficit to protect performance",
+                    message: "Losing fast — eat a bit more to protect your training",
                     color: TFColor.accent,
                     action: nil,
                     actionLabel: nil
@@ -289,7 +289,7 @@ struct DashboardView: View {
 
         if let daysAgo = analysisDaysAgo, AnalysisFreshness.resolve(daysAgo: daysAgo) == .stale {
             return CoachingVerdict(
-                message: "AI targets are \(daysAgo) days old — consider re-analyzing before adjusting further",
+                message: "Targets are \(daysAgo) days old — re-analyze before changing them",
                 color: TFColor.accent,
                 action: .reanalyze,
                 actionLabel: "Open Analysis"
@@ -300,7 +300,7 @@ struct DashboardView: View {
         if let sleepTrend, sleepTrend.acuteLoggedDays >= 2 {
             if sleepTrend.threeDayAverageHours < 5 {
                 return CoachingVerdict(
-                    message: "Acute sleep restriction — keep today's training submaximal and trim low-priority fatigue",
+                    message: "Short on sleep — train lighter today and skip extra sets",
                     color: TFColor.accent,
                     action: .logSleep,
                     actionLabel: "Log sleep"
@@ -308,7 +308,7 @@ struct DashboardView: View {
             }
             if sleepTrend.hasRecentPostCallRecovery || sleepTrend.underFiveHours > 0 {
                 return CoachingVerdict(
-                    message: "Recovery is constrained — prioritize technique, hydration, and an achievable session today",
+                    message: "Recovery is low — keep today easy and focus on good form",
                     color: TFColor.accent,
                     action: .logSleep,
                     actionLabel: "Log sleep"
@@ -346,7 +346,7 @@ struct DashboardView: View {
                 )
             case .possibleNoise:
                 return CoachingVerdict(
-                    message: "Recent changes may be noise — keep logging for clarity",
+                    message: "Too early to tell — keep logging",
                     color: .secondary,
                     action: nil,
                     actionLabel: nil
@@ -354,7 +354,7 @@ struct DashboardView: View {
             case .likelyMassGain:
                 if trend.waistToWeightRatio != nil && trend.waistChangeIn.map({ $0 <= 0.1 }) == true {
                     return CoachingVerdict(
-                        message: "Weight rising but waist controlled — check training performance before adjusting",
+                        message: "Weight up, waist steady — check your lifts before changing anything",
                         color: .secondary,
                         action: nil,
                         actionLabel: nil
@@ -384,7 +384,7 @@ struct DashboardView: View {
         // Priority 7: Praise
         if proteinRate >= 0.7 && loggedDaysCount >= 5 {
             return CoachingVerdict(
-                message: "Strong week — logging consistent, protein adherence solid",
+                message: "Strong week — logging and protein on track",
                 color: TFColor.success,
                 action: nil,
                 actionLabel: nil
@@ -392,7 +392,7 @@ struct DashboardView: View {
         }
 
         return CoachingVerdict(
-            message: "Keep logging — consistency is what unlocks meaningful trends",
+            message: "Keep logging to see your trends",
             color: .secondary,
             action: nil,
             actionLabel: nil
@@ -830,18 +830,18 @@ struct DashboardView: View {
 
     var trainingCardSubtitle: String {
         guard let program = currentProgram else {
-            return "Generate your next mesocycle in the Workout tab"
+            return "Start a program in the Workout tab"
         }
         guard let day = nextTrainingDay else {
             return program.canGenerateNextWeek
                 ? "All sessions done — generate week \(program.currentWeek + 1) when ready"
-                : "Mesocycle finished — start a new program when ready"
+                : "Program finished — start a new one when ready"
         }
         if day.isRestDay {
             return "Recovery: mobility, light cardio · Week \(program.currentWeek)"
         }
         let groups = day.muscleGroups.isEmpty ? "Training" : day.muscleGroups
-        return "\(groups) · \(day.activeExercises.count) exercise slots · Week \(program.currentWeek)"
+        return "\(groups) · \(day.activeExercises.count) exercises · Week \(program.currentWeek)"
     }
 
     // MARK: - Today's Rings Card
@@ -1013,11 +1013,11 @@ struct DashboardView: View {
         let presentation: (label: String, icon: String, color: Color) = {
             switch decision.tier {
             case .ready:
-                return ("Recovery ready — full volume targets", "checkmark.circle.fill", TFColor.success)
+                return ("Next program: full sets", "checkmark.circle.fill", TFColor.success)
             case .constrained:
-                return ("Next program: volume capped mid-band", "gauge.medium", TFColor.accent)
+                return ("Next program: fewer sets", "gauge.medium", TFColor.accent)
             case .restricted:
-                return ("Next program: volume pulled to band floor", "arrow.down.circle.fill", TFColor.danger)
+                return ("Next program: minimum sets", "arrow.down.circle.fill", TFColor.danger)
             case .insufficientData:
                 return ("Recovery adjustment off — \(decision.audit)", "questionmark.circle", Color.secondary)
             }
@@ -1104,7 +1104,7 @@ struct DashboardView: View {
                     Button {
                         quickSleepLogPresented = true
                     } label: {
-                        Label("Last night not logged yet — log it in 3 taps", systemImage: "moon.stars.fill")
+                        Label("Log last night's sleep", systemImage: "moon.stars.fill")
                             .font(.caption.bold())
                             .foregroundStyle(TFColor.sleep)
                     }
@@ -1119,9 +1119,6 @@ struct DashboardView: View {
                     VStack(alignment: .leading, spacing: 3) {
                         Text("No sleep logged yet")
                             .font(TFTypography.cardTitle)
-                        Text("A 10-second daily log is enough to build useful recovery context.")
-                            .font(TFTypography.body)
-                            .foregroundStyle(.secondary)
                     }
                 }
             }
@@ -1195,7 +1192,7 @@ struct DashboardView: View {
                         Image(systemName: "ruler")
                             .font(.caption2)
                             .foregroundStyle(TFColor.measurement.opacity(0.6))
-                        Text("Add waist measurement to unlock recomp context")
+                        Text("Add a waist measurement")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                         Spacer()
@@ -1272,7 +1269,7 @@ struct DashboardView: View {
                 .accessibilityLabel("Body weight trend chart")
                 .accessibilityValue(weightChartAccessibilitySummary)
             } else {
-                Text("Log at least two entries to see your trend graph.")
+                Text("Log 2 weigh-ins to see your graph.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
@@ -1571,7 +1568,7 @@ struct DashboardView: View {
                         .foregroundStyle(TFColor.accent.opacity(0.6))
                 }
             } else {
-                Text("Config targets")
+                Text("Default targets")
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
             }

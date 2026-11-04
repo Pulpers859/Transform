@@ -42,9 +42,9 @@ struct ExercisePainReviewView: View {
             Form {
                 Section {
                     Text(beforeGeneration
-                         ? "Review each movement before generating. Painful or uncertain movements stay excluded. Cancel will not start generation."
-                         : "Change which movements are excluded from future generation. Your recorded pain and logged sets stay in your history.")
-                    Text("Resolved means you choose to lift the restriction; it is not medical clearance. Existing workouts are not changed.")
+                         ? "Set a status for each movement. Painful or unsure ones stay out of your plan."
+                         : "Choose which movements stay out of future plans. Your pain notes and logged sets are kept.")
+                    Text("Resolved is your call, not medical clearance. Current workouts don't change.")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
                 if items.isEmpty {
@@ -118,7 +118,7 @@ struct ExercisePainReviewView: View {
             // Roll back only this sheet's edits, preserving unrelated pending model changes.
             for (record, value) in previous { record.painReviewRaw = value }
             for (record, value) in previousPreferences { record.preferredReplacementName = value }
-            saveError = "Could not save this review. Nothing has been generated. Please try again."
+            saveError = "Could not save. Nothing was generated. Try again."
         }
     }
 }

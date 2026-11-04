@@ -80,7 +80,7 @@ struct ExerciseReplacementView: View {
                         Toggle("Prefer this in future workouts", isOn: $preferFuture)
                             .disabled(!canPreferFuture)
                         if !canPreferFuture {
-                            Text("Available for today only. It does not meet the planner's stricter rules for future workouts.")
+                            Text("Today only. It can't be used in future plans.")
                                 .font(.caption).foregroundStyle(.secondary)
                         }
                         Text(preferFuture
