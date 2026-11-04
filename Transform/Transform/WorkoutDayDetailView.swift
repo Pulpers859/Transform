@@ -3950,26 +3950,55 @@ struct InlineSetLogger: View {
         .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
+    /// Owner, 2026-11-04: taps meant for the weight box hit "Bodyweight", and the row closed
+    /// before RIR was entered. The old row put a 38-point RIR box directly beside "Log" (RIR
+    /// is optional, so a slightly-missed tap logged the set and closed the row) and the
+    /// bodyweight button directly under a 50-point weight box. Now the three boxes are full
+    /// tap-target height on their own line, and Bodyweight and Log sit on a separate line,
+    /// at opposite ends. UI only, not covered by a test.
     private func entryRow(_ n: Int) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .bottom, spacing: 8) {
                 setLabel(n)
-                field(text: weightBinding(n), placeholder: "lb", key: .weight(n), isReps: false, width: 50)
-                Text("\u{00D7}").font(.caption2).foregroundStyle(.tertiary)
-                field(text: repsBinding(n), placeholder: repsPlaceholder, key: .reps(n), isReps: true, width: 42)
-                Spacer(minLength: 4)
-                Text("RIR")
-                    .font(.caption2.bold())
-                    .foregroundStyle(.secondary)
-                field(text: rirBinding(n), placeholder: "—", key: .rir(n), isReps: false, width: 38)
+                    .frame(minHeight: TFTapTarget.minimum)
+                labeledField("lb", text: weightBinding(n), placeholder: "—", key: .weight(n), isReps: false)
+                labeledField("Reps", text: repsBinding(n), placeholder: repsPlaceholder, key: .reps(n), isReps: true)
+                labeledField("RIR", text: rirBinding(n), placeholder: "—", key: .rir(n), isReps: false)
+            }
+            HStack(spacing: 8) {
+                // The decimal keyboard can't type "BW", so the option is offered explicitly.
+                // It stays visible (no longer appearing only while the weight box is focused)
+                // so nothing shifts under the finger; it stands down once the row reads "BW".
+                if !isBodyweightText(weightBinding(n).wrappedValue) {
+                    Button {
+                        drafts[n, default: SetEntryDraft()].weight = "BW"
+                        // Selecting a load never asserts that any reps were performed.
+                        focusedField = .reps(n)
+                    } label: {
+                        Label("Bodyweight", systemImage: "figure.core.training")
+                            .font(.caption.bold())
+                            .foregroundStyle(TFColor.accent)
+                            .padding(.horizontal, 12)
+                            .frame(minHeight: TFTapTarget.minimum)
+                            .background(TFColor.accent.opacity(0.12))
+                            .clipShape(Capsule())
+                            .contentShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Log set \(n) as bodyweight, no external load")
+                }
+                Spacer(minLength: 8)
                 Button {
                     logRow(n)
                 } label: {
-                    Text(editing.contains(n) ? "Save" : "Log")
-                        .font(.caption.bold())
-                        .frame(minWidth: 44, minHeight: TFTapTarget.minimum)
-                        .foregroundStyle(canLog(n) ? AnyShapeStyle(TFColor.accent) : AnyShapeStyle(.tertiary))
-                        .contentShape(Rectangle())
+                    Text(editing.contains(n) ? "Save set" : "Log set")
+                        .font(.subheadline.bold())
+                        .foregroundStyle(canLog(n) ? AnyShapeStyle(Color.white) : AnyShapeStyle(.secondary))
+                        .padding(.horizontal, 22)
+                        .frame(minHeight: TFTapTarget.minimum)
+                        .background(canLog(n) ? AnyShapeStyle(TFColor.accent) : AnyShapeStyle(Color.primary.opacity(0.08)))
+                        .clipShape(Capsule())
+                        .contentShape(Capsule())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Log set \(n)")
@@ -3977,31 +4006,21 @@ struct InlineSetLogger: View {
                     Button("OK", role: .cancel) { logError = nil }
                 } message: { Text(logError ?? "") }
             }
-            // The decimal keyboard can't type "BW", so the option is offered explicitly. It
-            // shows while the weight field is empty OR while this row is the one being
-            // edited — that second case matters because the field PRE-FILLS from history, so
-            // a movement loaded last session but done with no load today would otherwise
-            // have no way in at all. It stands down once the row already reads "BW", and
-            // never appears on rows sitting idle with a prefilled load.
-            if !isBodyweightText(weightBinding(n).wrappedValue),
-               weightBinding(n).wrappedValue.trimmingCharacters(in: .whitespaces).isEmpty || focusedField == .weight(n) {
-                Button {
-                    drafts[n, default: SetEntryDraft()].weight = "BW"
-                    // Selecting a load never asserts that any reps were performed.
-                    focusedField = .reps(n)
-                } label: {
-                    Label("Bodyweight — no external load", systemImage: "figure.core.training")
-                        .font(.caption2.bold())
-                        .foregroundStyle(TFColor.accent)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Log set \(n) as bodyweight")
-            }
         }
         .padding(.horizontal, 8)
-        .padding(.vertical, 6)
+        .padding(.vertical, 8)
         .background(Color(.systemBackground).opacity(0.55))
         .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func labeledField(_ title: String, text: Binding<String>, placeholder: String, key: FieldKey, isReps: Bool) -> some View {
+        VStack(spacing: 3) {
+            Text(title)
+                .font(.caption2.bold())
+                .foregroundStyle(.secondary)
+            field(text: text, placeholder: placeholder, key: key, isReps: isReps)
+        }
+        .frame(maxWidth: .infinity)
     }
 
     private func isBodyweightText(_ text: String) -> Bool {
@@ -4015,16 +4034,20 @@ struct InlineSetLogger: View {
             .frame(width: 38, alignment: .leading)
     }
 
-    private func field(text: Binding<String>, placeholder: String, key: FieldKey, isReps: Bool, width: CGFloat) -> some View {
+    private func field(text: Binding<String>, placeholder: String, key: FieldKey, isReps: Bool) -> some View {
         TextField(placeholder, text: text)
             .keyboardType(isReps ? .numberPad : .decimalPad)
             .focused($focusedField, equals: key)
-            .font(.system(size: 16, weight: .bold, design: .rounded))
+            .font(.system(size: 18, weight: .bold, design: .rounded))
             .multilineTextAlignment(.center)
-            .frame(width: width)
-            .padding(.vertical, 6)
+            // The whole box is the target, at least 44 points tall (TFTapTarget.minimum).
+            .frame(maxWidth: .infinity, minHeight: TFTapTarget.minimum)
             .background(Color(.systemBackground))
             .clipShape(RoundedRectangle(cornerRadius: 8))
+            .overlay {
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(focusedField == key ? TFColor.accent : Color.clear, lineWidth: 1.5)
+            }
     }
 
     // MARK: Drafts & parsing

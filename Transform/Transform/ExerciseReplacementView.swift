@@ -43,12 +43,10 @@ struct ExerciseReplacementView: View {
     var body: some View {
         NavigationStack {
             Form {
+                // Owner, 2026-11-04: three paragraphs here was far too much; one line covers
+                // what changes for him. The rules they described are unchanged.
                 Section("Replacing \(exercise.exerciseName)") {
-                    Text("\(max(0, exercise.sets - Set(loggedSets.map(\.setNumber)).count)) sets remain. Logged sets stay under the original exercise. The replacement uses its own weight history; choose a new load if it has none.")
-                    Text("A compatible exercise is not a guarantee of pain-free movement. Stop if it causes pain.")
-                        .foregroundStyle(.secondary)
-                    Text("You can return to an earlier alternative in this slot. Its logged sets remain saved. Exercises skipped in this session stay excluded so their skip and pain records are preserved.")
-                        .font(.caption).foregroundStyle(.secondary)
+                    Text("\(max(0, exercise.sets - Set(loggedSets.map(\.setNumber)).count)) sets left. Sets you logged stay saved. Stop if it hurts.")
                 }
                 Section("Choose an available alternative") {
                     if candidates.isEmpty {
@@ -86,8 +84,8 @@ struct ExerciseReplacementView: View {
                                 .font(.caption).foregroundStyle(.secondary)
                         }
                         Text(preferFuture
-                             ? "A preference, not a guarantee: future plans still check muscle targets, pain flags, and set limits. Change it in Exercise Preferences."
-                             : "Just today. Future workouts keep their existing selection rules.")
+                             ? "Used in future plans when it fits. Change it in Exercise Preferences."
+                             : "Just for today.")
                             .font(.caption).foregroundStyle(.secondary)
                     }
                 }
