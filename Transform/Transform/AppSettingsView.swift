@@ -180,7 +180,7 @@ struct AppSettingsView: View {
                 }
                 Button("Cancel", role: .cancel) {}
             } message: {
-                Text("The backup is added to your data. Nothing is deleted or overwritten.")
+                Text("The backup is added to your data. Nothing is deleted, and duplicates are skipped.")
             }
             .alert("Backup", isPresented: $showBackupAlert) {
                 Button("OK", role: .cancel) {}
@@ -197,7 +197,7 @@ struct AppSettingsView: View {
                 }
                 Button("Cancel", role: .cancel) {}
             } message: {
-                Text("Your profile, target, and medical settings will be reset to app defaults.")
+                Text("Your profile, injury notes, targets, medical answers, and theme will be replaced with sample defaults.")
             }
             .confirmationDialog(
                 "Remove API Key?",

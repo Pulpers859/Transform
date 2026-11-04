@@ -199,7 +199,7 @@ struct AddMeasurementSheet: View {
             Toggle("Standard measurement", isOn: $isStandardMeasurement)
 
             if !isStandardMeasurement {
-                Text("Marked so they don't skew your trends.")
+                Text("Marked as non-standard so it won't skew your trends.")
                     .font(.caption)
                     .foregroundStyle(TFColor.accent)
             }

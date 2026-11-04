@@ -64,7 +64,7 @@ struct WorkoutSessionFeedbackSheet: View {
                 } header: {
                     Text("Workout time")
                 } footer: {
-                    Text("Starts ~10 min before your first set. Adjust if needed.")
+                    Text("Timed from ~10 min before your first set to when you finished. Adjust if needed.")
                 }
 
                 Section("Performance") {

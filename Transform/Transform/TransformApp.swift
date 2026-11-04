@@ -113,7 +113,7 @@ struct StartupConfiguration {
                 let restored = DataBackupManager.shared.restoreFromAutomaticBackupIfAvailable(into: recoveryContext)
                 let fallbackMessage = restored
                     ? "Storage failed to load, so your latest backup is shown. Changes made now won't be saved. Reopen the app to try again."
-                    : "Storage failed to load. Changes made now won't be saved."
+                    : "Storage failed to load. Changes made now won't be saved. Reopen the app to try again."
                 return StartupConfiguration(
                     container: fallbackContainer,
                     errorMessage: fallbackMessage

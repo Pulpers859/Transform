@@ -150,7 +150,7 @@ struct SleepQuickLogSheet: View {
 
     private var saveExplanation: String {
         creditsPreviousWakeDay
-            ? "It's after midnight, so this counts for yesterday. Log tonight's sleep after you wake up."
+            ? "It's after midnight, so this logs the sleep you woke from yesterday morning. Log tonight's sleep after you wake up."
             : "Saves sleep ending now. Use the full editor for other times."
     }
 

@@ -3104,7 +3104,7 @@ struct ProgressionSuggestion {
     static func completePrescribedSets(_ count: Int) -> ProgressionSuggestion {
         ProgressionSuggestion(
             icon: "hand.raised.fill",
-            text: "Finish all \(count) sets at this weight before adding more",
+            text: "Your note says \(count) sets — finish them all at this weight before adding more",
             color: TFColor.warning
         )
     }
@@ -3129,7 +3129,7 @@ struct ProgressionSuggestion {
         let spare = max(targetRIR ?? 2, 1)
         return ProgressionSuggestion(
             icon: firstSessionIcon,
-            text: "New exercise. Pick a weight you can do for the target reps with about \(spare) reps to spare, then log it. Next time the app suggests one.",
+            text: "New exercise. Pick a weight (or an easier version, if bodyweight) you can do for the target reps with about \(spare) reps to spare, then log it. Next time the app suggests one.",
             color: TFColor.info
         )
     }

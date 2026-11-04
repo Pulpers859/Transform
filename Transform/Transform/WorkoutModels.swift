@@ -313,7 +313,7 @@ enum ExerciseCompletionStatus: String, CaseIterable, Identifiable {
     var skipEffect: String {
         switch self {
         case .skippedTime:
-            return "Counts as missed today. Future workouts don't change."
+            return "Counts as missed today. Future sets and exercises don't change."
         case .skippedEquipment:
             return "Frequent equipment skips make future plans use it less."
         case .skippedPain:
