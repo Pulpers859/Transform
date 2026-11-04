@@ -86,10 +86,34 @@ jobs:
           set -euo pipefail
           tag="sideload-${{ github.run_number }}"
           gh release delete "$tag" --yes --cleanup-tag 2>/dev/null || true
-          gh release create "$tag" 'out/Transform.ipa' \
-            --title "Transform sideload build ${{ github.run_number }}" \
-            --notes "Unsigned build of ${{ github.sha }} for signing with Signulous." \
-            --prerelease
+          # Run 4 (2026-11-04) failed twice here after a good build: one combined
+          # create-and-upload got HTTP 502 from the releases API, the retry got HTTP 404
+          # uploading to the release it had just created. Create the release and upload
+          # the .ipa as separate steps, each retried with a growing wait.
+          created=""
+          for attempt in 1 2 3 4; do
+            if gh release view "$tag" >/dev/null 2>&1 || gh release create "$tag" \
+                --title "Transform sideload build ${{ github.run_number }}" \
+                --notes "Unsigned build of ${{ github.sha }} for signing with Signulous." \
+                --target "${{ github.sha }}" \
+                --prerelease; then
+              created=1
+              break
+            fi
+            echo "Creating the release failed (attempt $attempt); retrying." >&2
+            sleep $((attempt * 15))
+          done
+          if [[ -z "$created" ]]; then echo "Could not create release $tag" >&2; exit 1; fi
+          uploaded=""
+          for attempt in 1 2 3 4; do
+            sleep $((attempt * 10))
+            if gh release upload "$tag" 'out/Transform.ipa' --clobber; then
+              uploaded=1
+              break
+            fi
+            echo "Uploading the .ipa failed (attempt $attempt); retrying." >&2
+          done
+          if [[ -z "$uploaded" ]]; then echo "Could not upload Transform.ipa to $tag" >&2; exit 1; fi
           url="${{ github.server_url }}/${{ github.repository }}/releases/download/$tag/Transform.ipa"
           echo "IPA_URL=$url" >> "$GITHUB_ENV"
           echo "Direct link: $url"
