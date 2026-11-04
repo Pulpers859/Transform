@@ -46,7 +46,7 @@ struct ExerciseReplacementView: View {
                 // Owner, 2026-11-04: three paragraphs here was far too much; one line covers
                 // what changes for him. The rules they described are unchanged.
                 Section("Replacing \(exercise.exerciseName)") {
-                    Text("\(max(0, exercise.sets - Set(loggedSets.map(\.setNumber)).count)) sets left. Sets you logged stay saved. Stop if it hurts.")
+                    Text("\(max(0, exercise.sets - Set(loggedSets.map(\.setNumber)).count)) sets left on the new exercise, which keeps its own weights. Stop if it hurts.")
                 }
                 Section("Choose an available alternative") {
                     if candidates.isEmpty {

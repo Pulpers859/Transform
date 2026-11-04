@@ -3803,6 +3803,10 @@ struct InlineSetLogger: View {
     @State private var drafts: [Int: SetEntryDraft] = [:]
     @State private var activeSet: Int?
     @State private var logError: String?
+    /// Sets whose Log tap already asked for a missing RIR (`SetEntryDraft.shouldAskForRIR`).
+    /// Cleared when the set is saved or cleared, when its weight or reps change, and when any
+    /// row is opened, so the ask is never used up by an earlier visit.
+    @State private var askedForRIR: Set<Int> = []
     @FocusState private var focusedField: FieldKey?
 
     enum FieldKey: Hashable {
@@ -3888,6 +3892,8 @@ struct InlineSetLogger: View {
                 if drafts[n] == nil {
                     drafts[n] = SetEntryDraft(suggestedWeight: loggedSets.sorted { $0.setNumber < $1.setNumber }.last?.weightLbs ?? suggestedWeight)
                 }
+                // The RIR ask re-arms whenever a row is reopened (or its weight or reps change).
+                askedForRIR.removeAll()
                 activeSet = n
                 focusedField = .reps(n)
             } label: {
@@ -3929,6 +3935,7 @@ struct InlineSetLogger: View {
                 draft.rir = set.rir.map { formatRIR($0) } ?? ""
                 if drafts[n] == nil { drafts[n] = draft }
                 editing.insert(n)
+                askedForRIR.removeAll()
                 activeSet = n
             } label: {
                 Image(systemName: "pencil").font(.caption2).foregroundStyle(.secondary)
@@ -3953,11 +3960,16 @@ struct InlineSetLogger: View {
     /// Owner, 2026-11-04: taps meant for the weight box hit "Bodyweight", and the row closed
     /// before RIR was entered. The old row put a 38-point RIR box directly beside "Log" (RIR
     /// is optional, so a slightly-missed tap logged the set and closed the row) and the
-    /// bodyweight button directly under a 50-point weight box. Now the three boxes are full
-    /// tap-target height on their own line, and Bodyweight and Log sit on a separate line,
-    /// at opposite ends. UI only, not covered by a test.
+    /// bodyweight button directly under a 50-point weight box, appearing whenever that box
+    /// was focused. Now the three boxes are full tap-target height on their own line; Log sits
+    /// a line below, and its first tap with RIR empty asks for RIR instead of saving
+    /// (`SetEntryDraft.shouldAskForRIR`, tested); Bodyweight shows only while the weight box is
+    /// empty, so it never sits over a prefilled load. Layout is UI only, not covered by a test.
     private func entryRow(_ n: Int) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        let verb = editing.contains(n) ? "Save" : "Log"
+        let asking = askedForRIR.contains(n) && (drafts[n]?.rir ?? "").trimmingCharacters(in: .whitespaces).isEmpty
+        let logTitle = asking ? "\(verb) without RIR" : "\(verb) set"
+        return VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .bottom, spacing: 8) {
                 setLabel(n)
                     .frame(minHeight: TFTapTarget.minimum)
@@ -3966,10 +3978,11 @@ struct InlineSetLogger: View {
                 labeledField("RIR", text: rirBinding(n), placeholder: "—", key: .rir(n), isReps: false)
             }
             HStack(spacing: 8) {
-                // The decimal keyboard can't type "BW", so the option is offered explicitly.
-                // It stays visible (no longer appearing only while the weight box is focused)
-                // so nothing shifts under the finger; it stands down once the row reads "BW".
-                if !isBodyweightText(weightBinding(n).wrappedValue) {
+                // The decimal keyboard can't type "BW", so the option is offered explicitly,
+                // but only while the weight box is empty: a stray tap then cannot overwrite a
+                // prefilled load with 0 lb. For a load prefilled from history on a day done
+                // without one, clear the box and the option appears.
+                if weightBinding(n).wrappedValue.trimmingCharacters(in: .whitespaces).isEmpty {
                     Button {
                         drafts[n, default: SetEntryDraft()].weight = "BW"
                         // Selecting a load never asserts that any reps were performed.
@@ -3985,13 +3998,13 @@ struct InlineSetLogger: View {
                             .contentShape(Capsule())
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel("Log set \(n) as bodyweight, no external load")
+                    .accessibilityLabel("Set \(n): bodyweight, no external load")
                 }
                 Spacer(minLength: 8)
                 Button {
                     logRow(n)
                 } label: {
-                    Text(editing.contains(n) ? "Save set" : "Log set")
+                    Text(logTitle)
                         .font(.subheadline.bold())
                         .foregroundStyle(canLog(n) ? AnyShapeStyle(Color.white) : AnyShapeStyle(.secondary))
                         .padding(.horizontal, 22)
@@ -4001,7 +4014,7 @@ struct InlineSetLogger: View {
                         .contentShape(Capsule())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Log set \(n)")
+                .accessibilityLabel("\(logTitle), set \(n)")
                 .alert("Set not logged", isPresented: Binding(get: { logError != nil }, set: { if !$0 { logError = nil } })) {
                     Button("OK", role: .cancel) { logError = nil }
                 } message: { Text(logError ?? "") }
@@ -4018,13 +4031,11 @@ struct InlineSetLogger: View {
             Text(title)
                 .font(.caption2.bold())
                 .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
             field(text: text, placeholder: placeholder, key: key, isReps: isReps)
+                .accessibilityLabel(title == "lb" ? "Weight in pounds" : title)
         }
         .frame(maxWidth: .infinity)
-    }
-
-    private func isBodyweightText(_ text: String) -> Bool {
-        text.trimmingCharacters(in: .whitespaces).caseInsensitiveCompare("BW") == .orderedSame
     }
 
     private func setLabel(_ n: Int) -> some View {
@@ -4059,11 +4070,21 @@ struct InlineSetLogger: View {
     }
 
     private func weightBinding(_ n: Int) -> Binding<String> {
-        Binding(get: { drafts[n]?.weight ?? "" }, set: { drafts[n, default: SetEntryDraft()].weight = $0 })
+        Binding(get: { drafts[n]?.weight ?? "" }, set: {
+            // Only a real edit re-arms the RIR ask; a setter call with the same text (focus
+            // moving away) must not, or "Log without RIR" could never save.
+            if (drafts[n]?.weight ?? "") != $0 { askedForRIR.remove(n) }
+            drafts[n, default: SetEntryDraft()].weight = $0
+        })
     }
 
     private func repsBinding(_ n: Int) -> Binding<String> {
-        Binding(get: { drafts[n]?.reps ?? "" }, set: { drafts[n, default: SetEntryDraft()].reps = $0 })
+        Binding(get: { drafts[n]?.reps ?? "" }, set: {
+            // Only a real edit re-arms the RIR ask; a setter call with the same text (focus
+            // moving away) must not, or "Log without RIR" could never save.
+            if (drafts[n]?.reps ?? "") != $0 { askedForRIR.remove(n) }
+            drafts[n, default: SetEntryDraft()].reps = $0
+        })
     }
 
     private func rirBinding(_ n: Int) -> Binding<String> {
@@ -4075,6 +4096,11 @@ struct InlineSetLogger: View {
     }
 
     private func logRow(_ n: Int) {
+        if drafts[n]?.shouldAskForRIR(alreadyAsked: askedForRIR.contains(n)) == true {
+            askedForRIR.insert(n)
+            focusedField = .rir(n)
+            return
+        }
         guard var draft = drafts[n], draft.canLog else {
             logError = "Enter a weight (or select Bodyweight), completed reps, and an optional RIR from 0 to 6."
             return
@@ -4090,6 +4116,7 @@ struct InlineSetLogger: View {
 
     private func resetDraft(_ n: Int) {
         drafts[n] = nil
+        askedForRIR.remove(n)
         if activeSet == n { activeSet = nil }
         editing.remove(n)
     }

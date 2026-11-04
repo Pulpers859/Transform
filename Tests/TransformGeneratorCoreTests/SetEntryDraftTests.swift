@@ -106,4 +106,19 @@ final class SetEntryDraftTests: XCTestCase {
         }
         XCTAssertTrue(drafts.values.allSatisfy { $0 == SetEntryDraft() })
     }
+
+    /// A missing RIR is asked for once, then the set may be logged without it; a set that
+    /// cannot be logged, or already has RIR, is never held back by the ask.
+    func testFirstLogTapWithoutRIRAsksForItOnce() {
+        var draft = SetEntryDraft()
+        draft.weight = "150"
+        draft.reps = "10"
+        XCTAssertTrue(draft.shouldAskForRIR(alreadyAsked: false))
+        XCTAssertFalse(draft.shouldAskForRIR(alreadyAsked: true))
+        draft.rir = " 2 "
+        XCTAssertFalse(draft.shouldAskForRIR(alreadyAsked: false))
+        draft.rir = ""
+        draft.reps = ""
+        XCTAssertFalse(draft.shouldAskForRIR(alreadyAsked: false))
+    }
 }

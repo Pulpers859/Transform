@@ -41,6 +41,13 @@ struct SetEntryDraft: Equatable {
         parsedWeight != nil && parsedReps != nil && (rir.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || parsedRIR != nil)
     }
 
+    /// RIR is optional, but the first Log tap on a set with no RIR typed asks for it instead of
+    /// saving, so a tap that just missed the RIR box does not log the set and close the row
+    /// (owner, 2026-11-04). A second tap saves without RIR. Pinned by SetEntryDraftTests.
+    func shouldAskForRIR(alreadyAsked: Bool) -> Bool {
+        canLog && !alreadyAsked && rir.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     /// Failed saves must leave the actual typed results available for retry.
     mutating func save(using persist: (Double, Int, Double?) -> Bool) -> Bool {
         guard canLog, let load = parsedWeight, let count = parsedReps,
