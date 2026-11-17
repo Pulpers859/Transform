@@ -52,6 +52,15 @@ list of maybes.
   phone by **Signulous**. Settings → bottom of the page shows "Build: sideload N · <commit>".
   - CLAUDE.md's "Validation Reality" section still says he builds in Xcode. That is out of
     date; the "Installing On The Owner's iPhone" section is current.
+  - Never tell him to use Xcode, a cable, TestFlight or the Simulator. The only way an app
+    change reaches his phone is to run `build-sideload-ipa.yml` on `main` (manual, no inputs)
+    and give him `https://github.com/Pulpers859/Transform/releases/download/sideload-<N>/Transform.ipa`
+    (`<N>` is that run's number). He opens it in Safari, signs it in Signulous, and installs.
+  - This audit changes only tests and a report, so it needs **no** new build. Say so in your
+    final message. Whoever fixes the bugs later must hand him a new link this way.
+  - If you ask him to confirm a bug on his phone, first ask what his Settings build line says,
+    so you know which commit he is running. Tell him exactly which screen to open, what to tap,
+    and what a good result and a bad result look like.
   - A re-signed build may lack paid-account features (push notifications, iCloud), and
     HealthKit depends on Signulous's profile. Do not report a missing paid-account feature as
     a bug. Do report code that crashes or misleads when one of those features or permissions
@@ -264,8 +273,8 @@ Write `docs/BUG_AUDIT_<YYYY-MM-DD>.md` with these sections:
 7. **CI evidence:** the commit SHA, the run, the testcase and failure counts, and the test names
    that went red.
 
-Final chat message: the plain-language summary from item 1 and the link to the report. Nothing
-else.
+Final chat message: the plain-language summary from item 1, the link to the report, and one line
+saying that no new phone build is needed because the audit changed no app code. Nothing else.
 
 ## 8. Stop conditions
 
