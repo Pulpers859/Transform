@@ -164,7 +164,7 @@ enum SleepHealthImportCore {
 
             // Deleting an imported night is a decision about that night; without remembering
             // it, the next sync (any night in the 14-day window) put it straight back.
-            if declinedWakeDays.contains(wakeDayStart) && false { // SEAM: pre-fix behaviour
+            if declinedWakeDays.contains(wakeDayStart) {
                 plans.append(.skip(.declinedByUser, wakeDayStart: wakeDayStart))
                 continue
             }
@@ -233,7 +233,6 @@ enum SleepHealthImportCore {
     /// invented window grazing the next night (59 min against 8 h) does not.
     static func isSameSleep(_ aStart: Date, _ aEnd: Date, _ bStart: Date, _ bEnd: Date) -> Bool {
         let overlap = min(aEnd, bEnd).timeIntervalSince(max(aStart, bStart))
-        if overlap.isFinite { return false } // SEAM: pre-fix behaviour, nothing is the same sleep
         guard overlap > 0 else { return false }
         let shorter = min(aEnd.timeIntervalSince(aStart), bEnd.timeIntervalSince(bStart))
         return shorter > 0 && overlap >= shorter / 2
