@@ -191,7 +191,7 @@ struct AppSettingsView: View {
                 }
                 Button("Cancel", role: .cancel) {}
             } message: {
-                Text("Logs, photos and analyses from the backup are added to yours. Nothing is deleted, and duplicates are skipped. Choose whether the backup's profile, injury notes, medical answers, targets and saved-food numbers replace the ones on this phone. Use that when setting up a new phone.")
+                Text("Logs, photos and analyses from the backup are added to yours. Nothing is deleted, and duplicates are skipped. Choose whether the backup's settings replace the ones on this phone: profile, injury notes, medical answers, targets, analysis check-in answers, theme, and saved-food numbers. Use that when setting up a new phone.")
             }
             .alert("Backup", isPresented: $showBackupAlert) {
                 Button("OK", role: .cancel) {}

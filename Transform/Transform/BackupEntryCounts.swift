@@ -200,6 +200,6 @@ nonisolated struct BackupEntryCounts: Codable, Equatable {
     /// Subtracting `removed` from the baseline alone would loosen the guard in the first case
     /// by every record added since the baseline was taken. Pinned by BackupDropGuardTests.
     func acknowledgingDeliberateRemoval(_ removed: BackupEntryCounts, after: BackupEntryCounts) -> BackupEntryCounts {
-        self // SEAM: pre-fix behaviour, the baseline never moves
+        zipped(removed) { $0 - $1 }.zipped(after) { Swift.max($0, $1) }
     }
 }

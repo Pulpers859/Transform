@@ -943,7 +943,13 @@ final class DataBackupManager {
     /// detected". Loss the action does not account for is still caught.
     ///
     /// The baseline is saved BEFORE the backup is attempted, so a failed write cannot leave
-    /// the launch-time recovery comparing against the pre-reset count. The rotated older
+    /// the launch-time recovery comparing against the pre-reset count.
+    ///
+    /// Deliberate limit: if records had ALREADY gone missing without explanation before this
+    /// action, that gap stays in the baseline, the drop guard still skips the backup, and the
+    /// file on disk is still the pre-action one. If that unexplained gap exceeds the recovery
+    /// threshold, the next launch merges that backup back in: the lost records return, and so
+    /// do the ones this action removed. Recovering unexplained loss is judged worth that. The rotated older
     /// backups (slots 1 and 2) still hold the pre-reset data. Does nothing while the app runs
     /// on the in-memory fallback store, whose counts say nothing about the real one.
     func acknowledgeDeliberateRemoval(before: EntryCounts, using modelContext: ModelContext) {

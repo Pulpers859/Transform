@@ -15,8 +15,17 @@ struct ExerciseProgressionView: View {
         self.canonicalKey = ExerciseWeightEntry.canonicalLookupKey(exerciseName)
     }
 
+    /// Sessions with a load, which are what the weight and estimated-1RM charts plot.
     var matchingLogs: [ExercisePerformanceLog] {
         allLogs.filter { $0.canonicalExerciseKey == canonicalKey && $0.weightLbs > 0 }
+    }
+
+    /// Every session that records work, bodyweight included, oldest first. The Session History
+    /// list reads this rather than the chart's `matchingLogs`: a session done at bodyweight has
+    /// no load to plot, but it is real history and must be reachable to correct (bug audit
+    /// 2026-11-17, F1; the first fix left these off the list).
+    var historyLogs: [ExercisePerformanceLog] {
+        allLogs.filter { $0.canonicalExerciseKey == canonicalKey && $0.holdsLoggedWork }
     }
 
     var chartPoints: [ProgressionPoint] {
@@ -87,10 +96,14 @@ struct ExerciseProgressionView: View {
                     }
                 } else if chartPoints.count == 1 {
                     singleEntryCard
-                } else {
+                } else if historyLogs.isEmpty {
                     emptyState
+                } else {
+                    Text("Every session here was at bodyweight, so there is no load to chart.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
                 }
-                if !chartPoints.isEmpty {
+                if !historyLogs.isEmpty {
                     logHistory
                 }
             }
@@ -344,9 +357,12 @@ struct ExerciseProgressionView: View {
                     .foregroundStyle(.tertiary)
             }
 
-            ForEach(chartPoints.reversed()) { point in
+            ForEach(historyLogs.reversed().map { log in
+                ProgressionPoint(date: log.loggedAt, weightLbs: log.weightLbs,
+                                 repsCompleted: log.repsCompleted, setLogs: log.decodedSetLogs)
+            }) { point in
                 Button {
-                    if let log = matchingLogs.first(where: { $0.loggedAt == point.date }) {
+                    if let log = historyLogs.first(where: { $0.loggedAt == point.date }) {
                         logToEdit = log
                     }
                 } label: {
@@ -355,7 +371,7 @@ struct ExerciseProgressionView: View {
                             Text(point.date.formatted(date: .abbreviated, time: .shortened))
                                 .font(.caption.bold())
                             Spacer()
-                            Text("\(formatWeight(point.weightLbs)) lb")
+                            Text(formatLoad(point.weightLbs))
                                 .font(.caption.bold())
                                 .foregroundStyle(TFColor.accent)
                             if let reps = point.repsCompleted {
@@ -371,7 +387,7 @@ struct ExerciseProgressionView: View {
                         if !point.setLogs.isEmpty {
                             HStack(spacing: 8) {
                                 ForEach(point.setLogs) { set in
-                                    Text("\(formatWeight(set.weightLbs))\u{00D7}\(set.repsCompleted)")
+                                    Text("\(SessionSetSheetRules.weightText(for: set.weightLbs))\u{00D7}\(set.repsCompleted)")
                                         .font(.system(size: 10, weight: .medium, design: .monospaced))
                                         .foregroundStyle(.secondary)
                                         .padding(.horizontal, 6)
@@ -611,7 +627,7 @@ struct EditPerformanceLogSheet: View {
                     setNumber: set.setNumber,
                     weightText: SessionSetSheetRules.weightText(for: set.weightLbs),
                     repsText: "\(set.repsCompleted)",
-                    rirText: set.rir.map { formatRIR($0) } ?? ""
+                    rirText: set.rir.map { SessionSetSheetRules.rirText(for: $0) } ?? ""
                 )
             }
         }

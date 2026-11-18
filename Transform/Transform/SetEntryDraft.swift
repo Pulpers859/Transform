@@ -73,8 +73,11 @@ struct SetEntryDraft: Equatable {
 ///  * A row that cannot be read blocks the save and is named. It is never dropped.
 ///  * A completely empty row is ignored: nothing was entered, so nothing is lost.
 ///  * Blank or "0" reps on a row with a load save as 0 reps, which is what both sheets already
-///    did and what such a set is stored as, so a stored session always loads and saves back
-///    unchanged. The analysis ignores 0-rep sets.
+///    did and what such a set is stored as. The analysis ignores 0-rep sets.
+///  * Stored loads and RIR are shown at full precision (`weightText`, `rirText`), so opening
+///    a session and saving it without edits writes back the same weights, reps and RIR. The
+///    sheets used one-decimal display text, which turned a 22.25 lb set into 22.2 on save.
+///    (Each saved set still gets a new identifier; nothing stores those identifiers.)
 /// Pinned by SetEntryDraftTests.
 enum SessionSetSheetRules {
     struct Row: Equatable {
@@ -98,14 +101,26 @@ enum SessionSetSheetRules {
     /// and those records are reinterpreted, never rewritten
     /// (`WorkoutProgressionEngine.bodyweightEquivalentThresholdLbs`).
     static func weightText(for weightLbs: Double) -> String {
-        formatWeight(weightLbs) // SEAM: pre-fix behaviour
+        weightLbs == 0 ? "BW" : exactText(weightLbs)
+    }
+
+    /// A stored RIR at full precision.
+    static func rirText(for rir: Double) -> String {
+        exactText(rir)
+    }
+
+    /// "135" for a whole number, otherwise the shortest text that reads back as the same
+    /// number ("22.25", not the one-decimal "22.2").
+    private static func exactText(_ value: Double) -> String {
+        value.rounded() == value && abs(value) < 1e15 ? String(Int(value)) : String(value)
     }
 
     /// Bodyweight ("BW", any case, or 0) is 0. Anything else must be a finite load above 0.
     static func weight(from text: String) -> Double? {
         let value = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if value.caseInsensitiveCompare("BW") == .orderedSame { return 0 }
         guard let load = Double(value.replacingOccurrences(of: ",", with: ".")),
-              load > 0 else { return nil } // SEAM: pre-fix behaviour
+              load.isFinite, load >= 0 else { return nil }
         return load
     }
 
@@ -133,10 +148,12 @@ enum SessionSetSheetRules {
             let blank = [row.weightText, row.repsText, row.rirText]
                 .allSatisfy { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
             if blank { continue }
-            // SEAM: pre-fix behaviour, an unreadable row is silently dropped.
-            guard let weight = Self.weight(from: row.weightText) else { continue }
-            let reps = Self.reps(from: row.repsText) ?? 0
-            let rir = Self.rir(from: row.rirText) ?? nil
+            guard let weight = Self.weight(from: row.weightText),
+                  let reps = Self.reps(from: row.repsText),
+                  let rir = Self.rir(from: row.rirText) else {
+                unreadable.append(row.setNumber)
+                continue
+            }
             sets.append(SetLogEntry(setNumber: row.setNumber, weightLbs: weight, repsCompleted: reps, rir: rir))
         }
         return Outcome(sets: sets, unreadableSetNumbers: unreadable)

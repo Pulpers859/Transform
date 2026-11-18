@@ -767,10 +767,18 @@ class ExercisePerformanceLog {
     /// Load is not the test: a bodyweight set is stored as 0 lb and is real work. The history
     /// screen's summary rebuild used `weightLbs > 0`, which left a bodyweight-only exercise
     /// with nothing to rebuild from, so editing or deleting ONE of its sessions deleted the
-    /// exercise's whole last/best summary. Reps are the test: a set with at least one rep,
-    /// or a legacy summary-only log with reps. Pinned by SetEntryDraftTests.
+    /// exercise's whole last/best summary.
+    ///
+    /// So a log counts when it carries a load (`weightLbs > 0`, exactly what the old filter
+    /// kept, including a weighted session saved with blank reps, which the sheets store as
+    /// 0 reps) OR it carries reps (a set with at least one rep, or a legacy summary-only log
+    /// with reps), which is what admits bodyweight work. Only a log with neither, an empty
+    /// shell, is left out. Pinned by SetEntryDraftTests.
     var holdsLoggedWork: Bool {
-        weightLbs > 0 // SEAM: pre-fix behaviour
+        if weightLbs > 0 { return true }
+        guard weightLbs == 0 else { return false }
+        if decodedSetLogs.contains(where: { $0.weightLbs >= 0 && $0.repsCompleted > 0 }) { return true }
+        return (repsCompleted ?? 0) > 0
     }
 
     /// The prescribed reps-in-reserve target, or nil when it was not recorded.

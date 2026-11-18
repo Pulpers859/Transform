@@ -167,7 +167,7 @@ nonisolated struct ProfileSettingsSnapshot: Codable {
         if let v = derivedSleepRecoveryState { d.set(v, forKey: AppSettingsKeys.derivedSleepRecoveryState) }
         if let v = appearanceMode { d.set(v, forKey: AppSettingsKeys.appearanceMode) }
         if let v = nutritionShiftWorkMode { d.set(v, forKey: AppSettingsKeys.nutritionShiftWorkMode) }
-        // SEAM: pre-fix behaviour, the goal date is not restored.
+        if let v = bodyWeightGoalSetAt { d.set(v, forKey: AppSettingsKeys.bodyWeightGoalSetAt) }
     }
 
     // MARK: - Settings the app stores as text
@@ -184,7 +184,6 @@ nonisolated struct ProfileSettingsSnapshot: Codable {
     /// A stored whole number, from text or a number. Matches `AppSettingsStore.integer(for:)`,
     /// which parses the text with `Int(_:)`.
     static func storedInteger(_ d: UserDefaults, _ key: String) -> Int? {
-        if true { return d.object(forKey: key) as? Int } // SEAM: pre-fix behaviour
         if let text = d.object(forKey: key) as? String {
             return Int(text.trimmingCharacters(in: .whitespacesAndNewlines))
         }
@@ -194,7 +193,6 @@ nonisolated struct ProfileSettingsSnapshot: Codable {
     /// A stored decimal, from text or a number. A comma decimal is accepted because the
     /// sheets that write these allow one.
     static func storedNumber(_ d: UserDefaults, _ key: String) -> Double? {
-        if true { return d.object(forKey: key) as? Double } // SEAM: pre-fix behaviour
         if let text = d.object(forKey: key) as? String {
             let cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
                 .replacingOccurrences(of: ",", with: ".")

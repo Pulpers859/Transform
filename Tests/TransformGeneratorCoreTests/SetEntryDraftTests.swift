@@ -199,6 +199,26 @@ final class SetEntryDraftTests: XCTestCase {
         XCTAssertEqual(SessionSetSheetRules.weight(from: SessionSetSheetRules.weightText(for: 102.5)), 102.5)
     }
 
+    /// Independent audit: opening a session and saving it untouched must write back the same
+    /// numbers. One-decimal display text turned a 22.25 lb set into 22.2.
+    func testUntouchedSessionSavesBackTheSameNumbers() {
+        let stored = [
+            SetLogEntry(setNumber: 1, weightLbs: 22.25, repsCompleted: 12, rir: 2.25),
+            SetLogEntry(setNumber: 2, weightLbs: 0, repsCompleted: 10, rir: nil),
+            SetLogEntry(setNumber: 3, weightLbs: 1, repsCompleted: 0, rir: 0),
+            SetLogEntry(setNumber: 4, weightLbs: 102.5, repsCompleted: 8, rir: 1.5),
+        ]
+        let outcome = SessionSetSheetRules.evaluate(stored.map {
+            Row(setNumber: $0.setNumber, weightText: SessionSetSheetRules.weightText(for: $0.weightLbs),
+                repsText: "\($0.repsCompleted)", rirText: $0.rir.map(SessionSetSheetRules.rirText(for:)) ?? "")
+        })
+        XCTAssertTrue(outcome.canSave)
+        XCTAssertEqual(outcome.sets.map(\.setNumber), stored.map(\.setNumber))
+        XCTAssertEqual(outcome.sets.map(\.weightLbs), stored.map(\.weightLbs))
+        XCTAssertEqual(outcome.sets.map(\.repsCompleted), stored.map(\.repsCompleted))
+        XCTAssertEqual(outcome.sets.map(\.rir), stored.map(\.rir))
+    }
+
     /// Editing or deleting one session of a bodyweight-only exercise rebuilt its summary from
     /// logs above 0 lb only, found none, and deleted the exercise's last/best summary.
     @MainActor
@@ -213,10 +233,15 @@ final class SetEntryDraftTests: XCTestCase {
         let emptyShell = ExercisePerformanceLog(exerciseName: "Hanging Leg Raise", weightLbs: 0, workoutDayNumber: 1)
         let loaded = ExercisePerformanceLog(exerciseName: "Dip (Assisted or Weighted)", weightLbs: 25, repsCompleted: 8,
             workoutDayNumber: 1, setLogs: [SetLogEntry(setNumber: 1, weightLbs: 25, repsCompleted: 8)])
-        for log in [bodyweight, legacyBodyweight, emptyShell, loaded] { context.insert(log) }
+        // Independent audit: a weighted session saved with blank reps is stored as 0 reps and
+        // must still count, exactly as the old `weightLbs > 0` filter counted it.
+        let weightedNoReps = ExercisePerformanceLog(exerciseName: "Barbell Row", weightLbs: 135, repsCompleted: 0,
+            workoutDayNumber: 1, setLogs: [SetLogEntry(setNumber: 1, weightLbs: 135, repsCompleted: 0)])
+        for log in [bodyweight, legacyBodyweight, emptyShell, loaded, weightedNoReps] { context.insert(log) }
         XCTAssertTrue(bodyweight.holdsLoggedWork)
         XCTAssertTrue(legacyBodyweight.holdsLoggedWork)
         XCTAssertTrue(loaded.holdsLoggedWork)
+        XCTAssertTrue(weightedNoReps.holdsLoggedWork)
         XCTAssertFalse(emptyShell.holdsLoggedWork, "A log with no reps anywhere records no work")
     }
 }

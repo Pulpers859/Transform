@@ -203,7 +203,8 @@ nonisolated struct WorkoutDaySnapshot: Codable {
         program.id = id
         program.createdDate = createdDate
         program.isArchived = isArchived ?? false
-        // SEAM: pre-fix behaviour, warnings and week summaries are not restored.
+        program.validatorWarnings = validatorWarnings ?? ""
+        program.weekSummariesJSON = weekSummariesJSON ?? ""
 
         for daySnapshot in days {
             let day = daySnapshot.makeModel()

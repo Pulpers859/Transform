@@ -269,12 +269,16 @@ enum ExerciseReplacement {
     /// It used to be "the end is today". A session that starts at 23:30 and runs past
     /// midnight ends YESTERDAY until the first set logged after midnight moves the stamp, so
     /// for those minutes Replace showed nothing while the set logger, which uses the app's
-    /// live-session rule, kept working (bug audit 2026-11-17, F6). Same calendar day as `now`,
-    /// or no more than `SessionLogResolution.maximumLiveSessionGap` before it: the same window
-    /// the set logger uses to decide a session is still live. Never a stamp in the future.
+    /// live-session rule, kept working (bug audit 2026-11-17, F6). Accepted: the same calendar
+    /// day as `now` (the rule before this fix, kept, which on its own can span up to a whole
+    /// day), or no more than `SessionLogResolution.maximumLiveSessionGap` (12 hours) before
+    /// `now`, the gap the set logger's live-session check uses. The logger's check is gap-only,
+    /// so this is the wider of the two. Never a stamp in the future.
     /// Pinned by ExerciseReplacementTests.
     static func endBelongsToCurrentSession(_ end: Date, now: Date, calendar: Calendar = .current) -> Bool {
-        calendar.isDate(end, inSameDayAs: now) // SEAM: pre-fix behaviour
+        if calendar.isDate(end, inSameDayAs: now) { return true }
+        let elapsed = now.timeIntervalSince(end)
+        return elapsed >= 0 && elapsed <= SessionLogResolution.maximumLiveSessionGap
     }
 
     @MainActor
@@ -287,8 +291,11 @@ enum ExerciseReplacement {
             return "This workout's session ended on an earlier day and is no longer in progress, even if it appears unfinished. [R2: different-end-date]"
         }
         guard day.hasReviewableSession else { return nil }
-        // Skipping the final lift auto-closes the day. Choosing an alternative immediately
-        // afterwards is still today's training, unlike editing a historical/explicit finish.
+        // Skipping the final lift auto-closes the day. Choosing an alternative for that lift
+        // afterwards is still the same session, unlike editing a historical/explicit finish.
+        // "Afterwards" is `endBelongsToCurrentSession`: same calendar day, or within 12 hours
+        // across midnight. Before 2026-11-18 it was same calendar day only, which already
+        // allowed up to a day's gap but refused a skip at 23:58 followed by a choice at 00:03.
         if day.isCompleted && (exercise.completionStatus?.isSkipped ?? false)
             && day.sessionEndedAt.map({ endBelongsToCurrentSession($0, now: now) }) == true { return nil }
         return "This workout is stored as completed or closed, even if sets remain. [R2: completed=\(day.isCompleted), closed=\(day.isSessionClosed)]"
@@ -331,7 +338,7 @@ enum ExerciseReplacement {
         let candidateKey = ExerciseWeightEntry.canonicalLookupKey(candidateName)
         let destinationLogs = try modelContext.fetch(FetchDescriptor<ExercisePerformanceLog>())
         let returning = returningExercise(for: exercise, name: candidateName)
-        let sessionDays = [now] // SEAM: pre-fix behaviour, only now's calendar day
+        let sessionDays = day.sessionCalendarDates + [now]
         let programStart = day.program?.createdDate
         guard returning != nil || !destinationLogs.contains(where: { log in
             log.canonicalExerciseKey == candidateKey && log.workoutDayNumber == day.dayNumber

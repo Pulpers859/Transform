@@ -491,7 +491,7 @@ struct AddExerciseWeightSheet: View {
                         setNumber: $0.setNumber,
                         weightText: SessionSetSheetRules.weightText(for: $0.weightLbs),
                         repsText: "\($0.repsCompleted)",
-                        rirText: $0.rir.map(formatRIR) ?? ""
+                        rirText: $0.rir.map(SessionSetSheetRules.rirText(for:)) ?? ""
                     )
                 }
             return
