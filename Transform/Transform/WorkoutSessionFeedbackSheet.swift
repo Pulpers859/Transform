@@ -64,7 +64,12 @@ struct WorkoutSessionFeedbackSheet: View {
                 } header: {
                     Text("Workout time")
                 } footer: {
-                    Text("Timed from ~10 min before your first set to when you finished. Adjust if needed.")
+                    if timesAreOrdered {
+                        Text("Timed from ~10 min before your first set to when you finished. Adjust if needed.")
+                    } else {
+                        Text("Finished is before Started. Move one of them to save.")
+                            .foregroundStyle(TFColor.danger)
+                    }
                 }
 
                 Section("Performance") {
@@ -90,6 +95,7 @@ struct WorkoutSessionFeedbackSheet: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") { save() }
                         .fontWeight(.semibold)
+                        .disabled(!timesAreOrdered)
                 }
             }
         }
@@ -124,7 +130,15 @@ struct WorkoutSessionFeedbackSheet: View {
         }
     }
 
+    /// Moving "Started" past "Finished" used to save a session that ends before it begins,
+    /// which every duration reader then treats as unknown. The Finished picker's lower bound
+    /// follows Started, but only for new selections; the value already chosen can sit below it.
+    private var timesAreOrdered: Bool {
+        sessionEndedAt >= sessionStartedAt
+    }
+
     private func save() {
+        guard timesAreOrdered else { return }
         let priorDate = day.feedbackSubmittedAt
         let priorEffort = day.sessionEffort
         let priorStimulus = day.stimulusQuality

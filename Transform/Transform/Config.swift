@@ -718,6 +718,9 @@ nonisolated enum AppSettingsKeys {
     static let derivedSleepRecoveryState = "derived_sleep_recovery_state"
     static let healthKitSleepImportEnabled = "healthkit_sleep_import_enabled"
     static let healthKitSleepLastImport = "healthkit_sleep_last_import"
+    /// Wake-days whose Apple Health night the owner deleted, so a later sync does not bring
+    /// it back (`SleepImportDeclines`).
+    static let healthKitSleepDeclinedWakeDays = "healthkit_sleep_declined_wake_days"
 
     static let calorieTarget = "nutrition_calorie_target"
     static let proteinTarget = "nutrition_protein_target"

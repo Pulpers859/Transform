@@ -292,11 +292,19 @@ struct WorkoutView: View {
     var generationStatusCard: some View {
         if isGenerating {
             HStack(spacing: 10) {
-                TimelineView(.periodic(from: .now, by: 1.0)) { _ in
-                    Text(WorkoutGenerationDiagnostics.currentStageDescription ?? "Contacting your AI coach…")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
+                VStack(alignment: .leading, spacing: 4) {
+                    TimelineView(.periodic(from: .now, by: 1.0)) { _ in
+                        Text(WorkoutGenerationDiagnostics.currentStageDescription ?? "Contacting your AI coach…")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    // A call cut off by the phone locking can still be billed, and the retry
+                    // pays again (`BackgroundWorkGrace` covers only a few seconds away).
+                    Text("Keep Transform open until this finishes. Locking your phone can stop it, and trying again costs another AI call.")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
 
@@ -718,6 +726,8 @@ struct WorkoutView: View {
         activeGeneration = .firstWeek
         generationTask?.cancel()
         generationTask = Task {
+            let grace = BackgroundWorkGrace(name: "Week 1 generation")
+            defer { grace.end() }
             await generateFirstWeek(from: result, sourceAnalysisDate: sourceAnalysisDate)
         }
     }
@@ -729,6 +739,8 @@ struct WorkoutView: View {
         activeGeneration = .nextWeek
         generationTask?.cancel()
         generationTask = Task {
+            let grace = BackgroundWorkGrace(name: "Next week generation")
+            defer { grace.end() }
             await generateNextWeek(for: program)
         }
     }
@@ -740,6 +752,8 @@ struct WorkoutView: View {
         activeGeneration = .regenerate
         generationTask?.cancel()
         generationTask = Task {
+            let grace = BackgroundWorkGrace(name: "Program regeneration")
+            defer { grace.end() }
             await regenerateProgram(from: result, sourceAnalysisDate: sourceAnalysisDate)
         }
     }

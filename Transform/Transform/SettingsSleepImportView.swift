@@ -122,7 +122,13 @@ struct SettingsSleepImportView: View {
             guard presented else {
                 importEnabled = false
                 isWorking = false
-                statusMessage = "Apple Health isn't available on this device."
+                // `requestAuthorization` also returns false when the request itself fails,
+                // which on a re-signed (sideloaded) install usually means the signing
+                // profile lacks the HealthKit entitlement. Saying "this device" there sent
+                // the owner looking for a phone problem that does not exist.
+                statusMessage = SleepHealthKitService.shared.isHealthDataAvailable
+                    ? "Transform couldn't ask for Apple Health access. On a re-signed install this usually means its signing doesn't include Health. You can still log sleep by hand."
+                    : "Apple Health isn't available on this device."
                 return
             }
             importEnabled = true

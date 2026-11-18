@@ -110,6 +110,7 @@ final class SleepHealthKitService {
         let plan = SleepHealthImportCore.plan(
             segments: segments,
             existing: existing,
+            declinedWakeDays: SleepImportDeclines.load(),
             calendar: calendar
         )
 

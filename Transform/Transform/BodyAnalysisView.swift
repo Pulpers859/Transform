@@ -789,7 +789,7 @@ struct BodyAnalysisView: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Analysis in progress")
                         .font(.caption.bold())
-                    Text("Uses the \(runContext.photoCount) photos and notes you started with. Keeps running if you leave.")
+                    Text("Uses the \(runContext.photoCount) photos and notes you started with. Keeps running if you switch tabs. Keep Transform open until it finishes: locking your phone can stop it, and trying again costs another AI call.")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)

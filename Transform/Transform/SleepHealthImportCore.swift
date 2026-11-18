@@ -83,6 +83,13 @@ enum SleepImportSkipReason: Equatable {
     /// A wake-day had sleep segments but none formed a plausible main sleep (all too
     /// short — naps/blips — or implausibly long from overlapping sources).
     case noPlausibleMainSleep
+    /// The night is the same sleep as an entry already stored (a hand-logged nap or
+    /// post-call recovery sleep, or an imported night credited to another day): they overlap
+    /// by at least half of the shorter one (`isSameSleep`). Importing it would count the
+    /// same hours twice.
+    case overlapsExistingEntry
+    /// The owner deleted the night Apple Health supplied for this wake-day.
+    case declinedByUser
 }
 
 /// What the SwiftData layer should do for one resolved wake-day. `ID` is the caller's
@@ -128,9 +135,12 @@ enum SleepHealthImportCore {
 
     /// Build the persist plan for a batch of HealthKit segments against existing rows.
     /// Deterministic and side-effect free.
+    /// - Parameter declinedWakeDays: start-of-day dates whose imported night the owner
+    ///   deleted (`SleepImportDeclines`). Never re-imported.
     static func plan<ID: Equatable>(
         segments: [HealthSleepSegment],
         existing: [ExistingSleepProjection<ID>],
+        declinedWakeDays: Set<Date> = [],
         calendar: Calendar = .current
     ) -> [SleepImportPlan<ID>] {
         let clusters = coalesce(segments)
@@ -149,6 +159,13 @@ enum SleepHealthImportCore {
             guard let main = plausible.max(by: { $0.duration < $1.duration }) else {
                 // There was sleep data for this day but nothing formed a real night.
                 plans.append(.skip(.noPlausibleMainSleep, wakeDayStart: wakeDayStart))
+                continue
+            }
+
+            // Deleting an imported night is a decision about that night; without remembering
+            // it, the next sync (any night in the 14-day window) put it straight back.
+            if declinedWakeDays.contains(wakeDayStart) && false { // SEAM: pre-fix behaviour
+                plans.append(.skip(.declinedByUser, wakeDayStart: wakeDayStart))
                 continue
             }
 
@@ -211,6 +228,17 @@ enum SleepHealthImportCore {
 
     // MARK: - Reconciliation
 
+    /// Two intervals are the same sleep when they overlap by at least half of the shorter
+    /// one. A recovery sleep or nap logged over the same hours overlaps fully; a quick log's
+    /// invented window grazing the next night (59 min against 8 h) does not.
+    static func isSameSleep(_ aStart: Date, _ aEnd: Date, _ bStart: Date, _ bEnd: Date) -> Bool {
+        let overlap = min(aEnd, bEnd).timeIntervalSince(max(aStart, bStart))
+        if overlap.isFinite { return false } // SEAM: pre-fix behaviour, nothing is the same sleep
+        guard overlap > 0 else { return false }
+        let shorter = min(aEnd.timeIntervalSince(aStart), bEnd.timeIntervalSince(bStart))
+        return shorter > 0 && overlap >= shorter / 2
+    }
+
     private static func reconcile<ID: Equatable>(
         candidate: SleepImportCandidate,
         existing: [ExistingSleepProjection<ID>]
@@ -224,8 +252,29 @@ enum SleepHealthImportCore {
             return .skip(.manualEntryPresent, wakeDayStart: candidate.wakeDayStart)
         }
 
+        let imported = mainOnDay.first(where: { $0.source == .healthKit })
+
+        // Never import a night that is the same sleep as one already stored. Only a same-day
+        // MAIN manual night used to block an import, so a hand-logged nap or post-call
+        // recovery sleep covering the same hours was imported again as a main sleep and the
+        // day's total counted those hours twice, reading as better rested than the lifter
+        // was (bug audit 2026-11-18).
+        //
+        // "Same sleep" is `isSameSleep`, not "any overlap". The quick log stores INVENTED
+        // times (a duration counted back from when it was saved, or from 23:59 when saved
+        // shortly after midnight), so it can graze the following real night by up to an hour
+        // without being that night; refusing any overlap would have dropped real nights.
+        // The imported row this candidate would update is excluded: overlapping itself is
+        // the expected case. Pinned by SleepHealthImportCoreTests.
+        if existing.contains(where: { entry in
+            entry.id != imported?.id
+                && isSameSleep(candidate.start, candidate.end, entry.start, entry.end)
+        }) {
+            return .skip(.overlapsExistingEntry, wakeDayStart: candidate.wakeDayStart)
+        }
+
         // Update the existing imported row in place if the detected night moved.
-        if let imported = mainOnDay.first(where: { $0.source == .healthKit }) {
+        if let imported {
             let epsilon = updateEpsilonMinutes * 60
             let unchanged = abs(imported.start.timeIntervalSince(candidate.start)) <= epsilon
                 && abs(imported.end.timeIntervalSince(candidate.end)) <= epsilon
@@ -235,5 +284,31 @@ enum SleepHealthImportCore {
         }
 
         return .insert(candidate)
+    }
+}
+
+/// Remembers the wake-days whose Apple Health night the owner deleted, so the importer does
+/// not put it back on the next sync. Stored in UserDefaults as seconds-since-1970 of each
+/// wake-day's start. Entries older than `retentionDays` are dropped when a new one is
+/// recorded: the importer only looks back `SleepHealthKitService.importWindowDays`, so an
+/// older decline can never matter again. Pinned by SleepHealthImportCoreTests.
+enum SleepImportDeclines {
+    static let retentionDays = 60
+
+    static func load(_ defaults: UserDefaults = .standard) -> Set<Date> {
+        let stored = defaults.array(forKey: AppSettingsKeys.healthKitSleepDeclinedWakeDays) as? [Double] ?? []
+        return Set(stored.map { Date(timeIntervalSince1970: $0) })
+    }
+
+    static func record(
+        wakeDayOf end: Date,
+        now: Date = .now,
+        calendar: Calendar = .current,
+        defaults: UserDefaults = .standard
+    ) {
+        let cutoff = calendar.date(byAdding: .day, value: -retentionDays, to: now) ?? now
+        var days = load(defaults).filter { $0 >= cutoff }
+        days.insert(calendar.startOfDay(for: end))
+        defaults.set(days.map(\.timeIntervalSince1970).sorted(), forKey: AppSettingsKeys.healthKitSleepDeclinedWakeDays)
     }
 }

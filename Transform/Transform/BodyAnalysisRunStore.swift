@@ -63,7 +63,12 @@ final class BodyAnalysisRunStore {
     }
 
     private func run(_ runContext: AnalysisRunContext) async {
-        defer { finish(runContext) }
+        // See `BackgroundWorkGrace`: buys a few seconds if the owner glances away.
+        let grace = BackgroundWorkGrace(name: "Body analysis")
+        defer {
+            grace.end()
+            finish(runContext)
+        }
 
         do {
             let result = try await ClaudeService.shared.analyzeBody(

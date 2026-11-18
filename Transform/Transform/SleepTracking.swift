@@ -566,7 +566,9 @@ struct SleepHistoryView: View {
             Button("Delete", role: .destructive) { deleteEpisode() }
             Button("Cancel", role: .cancel) { episodeToDelete = nil }
         } message: {
-            Text("This deletes the entry from your sleep history and trends.")
+            Text(episodeToDelete?.source == .healthKit
+                ? "This deletes the night from your sleep history and trends. Apple Health won't add that night back."
+                : "This deletes the entry from your sleep history and trends.")
         }
     }
 
@@ -583,10 +585,16 @@ struct SleepHistoryView: View {
 
     private func deleteEpisode() {
         guard let episodeToDelete else { return }
+        let declinedImportEnd = episodeToDelete.source == .healthKit ? episodeToDelete.resolvedEndDate : nil
         modelContext.delete(episodeToDelete)
         guard PersistenceReporter.save(modelContext, operation: "sleep episode deletion") else {
             modelContext.rollback()
             return
+        }
+        // Deleting a night Apple Health supplied is a decision about that night; remember
+        // it so the next sync does not import it again (`SleepImportDeclines`).
+        if let declinedImportEnd {
+            SleepImportDeclines.record(wakeDayOf: declinedImportEnd)
         }
         SleepTrendStore.refresh(using: modelContext)
         DataBackupManager.shared.writeAutomaticBackup(using: modelContext)

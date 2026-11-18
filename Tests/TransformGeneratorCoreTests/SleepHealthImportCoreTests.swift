@@ -250,4 +250,110 @@ final class SleepHealthImportCoreTests: XCTestCase {
     func testEmptyInputProducesNoPlan() {
         XCTAssertTrue(plan([]).isEmpty)
     }
+
+    // MARK: - Never stack on stored sleep (bug audit 2026-11-18)
+
+    private func skipReason(_ result: [SleepImportPlan<Int>]) -> SleepImportSkipReason? {
+        guard result.count == 1, case .skip(let reason, _) = result[0] else { return nil }
+        return reason
+    }
+
+    /// Owner path: a post-call recovery sleep logged by hand, 08:00-13:00. Apple Health saw the
+    /// same five hours as a night. Importing it as a main sleep counted those hours twice.
+    func testHandLoggedRecoverySleepIsNotImportedAgainAsANight() {
+        let recovery = existing(
+            id: 5, wakeDaysAgo: 0,
+            start: date(daysAgo: 0, hour: 8),
+            end: date(daysAgo: 0, hour: 13),
+            isMainSleep: false,
+            source: .manual
+        )
+        let result = plan([seg(0, 8, 0, 13, .asleep)], existing: [recovery])
+        XCTAssertTrue(inserts(result).isEmpty, "The same hours must not be stored twice")
+        XCTAssertEqual(skipReason(result), .overlapsExistingEntry)
+    }
+
+    /// A hand-logged nap that overlaps what Health records as a night blocks it too; a nap at
+    /// another time of day still does not (testManualNapDoesNotBlockAnImportedMainSleep).
+    func testOverlappingHandLoggedNapBlocksTheImportedNight() {
+        let nap = existing(
+            id: 6, wakeDaysAgo: 0,
+            start: date(daysAgo: 0, hour: 14),
+            end: date(daysAgo: 0, hour: 17),
+            isMainSleep: false,
+            source: .manual
+        )
+        let result = plan([seg(0, 14, 0, 17, .inBed)], existing: [nap])
+        XCTAssertTrue(inserts(result).isEmpty)
+        XCTAssertEqual(skipReason(result), .overlapsExistingEntry)
+    }
+
+    /// The imported row a re-sync updates overlaps the new candidate by definition; that must
+    /// still update in place, not be refused as an overlap.
+    func testOverlapRuleStillUpdatesTheSameImportedNight() {
+        let imported = existing(
+            id: 42, wakeDaysAgo: 0,
+            start: date(daysAgo: 1, hour: 23),
+            end: date(daysAgo: 0, hour: 6),
+            source: .healthKit
+        )
+        let result = plan([seg(1, 23, 0, 7, .asleep)], existing: [imported])
+        guard result.count == 1, case .update(let id, _) = result[0] else {
+            return XCTFail("Expected an in-place update, got \(result)")
+        }
+        XCTAssertEqual(id, 42)
+    }
+
+    /// The quick log stores invented times; logged just after midnight it ends at 23:59 the
+    /// day before. The following real night grazes that window by about an hour and must
+    /// still import: a graze is not the same sleep.
+    func testQuickLogWindowGrazingTheNextNightDoesNotBlockIt() {
+        let quickLog = existing(
+            id: 9, wakeDaysAgo: 1,
+            start: date(daysAgo: 1, hour: 15, minute: 59),
+            end: date(daysAgo: 1, hour: 23, minute: 59),
+            source: .manual
+        )
+        let result = plan([seg(1, 23, 0, 7, .asleep)], existing: [quickLog])
+        XCTAssertEqual(inserts(result).count, 1, "A 59-minute graze must not drop a real 8-hour night")
+    }
+
+    // MARK: - A deleted imported night stays deleted (bug audit 2026-11-18)
+
+    /// Owner path: delete a wrong night that Apple Health supplied. The next sync, any night
+    /// in the 14-day window, put it straight back.
+    func testDeletedImportedNightIsNotImportedAgain() {
+        let declined: Set<Date> = [calendar.startOfDay(for: date(daysAgo: 0, hour: 7))]
+        let result = SleepHealthImportCore.plan(
+            segments: [seg(1, 23, 0, 7, .asleep)],
+            existing: [ExistingSleepProjection<Int>](),
+            declinedWakeDays: declined,
+            calendar: calendar
+        )
+        XCTAssertTrue(inserts(result).isEmpty)
+        XCTAssertEqual(skipReason(result), .declinedByUser)
+        // Another night is unaffected.
+        let other = SleepHealthImportCore.plan(
+            segments: [seg(2, 23, 1, 7, .asleep)],
+            existing: [ExistingSleepProjection<Int>](),
+            declinedWakeDays: declined,
+            calendar: calendar
+        )
+        XCTAssertEqual(inserts(other).count, 1)
+    }
+
+    /// The remembered deletions survive a reload, and old ones are dropped.
+    func testDeclinedNightsAreRememberedAndOldOnesPruned() throws {
+        let name = "SleepHealthImportCoreTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: name))
+        defaults.removePersistentDomain(forName: name)
+        let now = date(daysAgo: 0, hour: 12)
+        let old = date(daysAgo: SleepImportDeclines.retentionDays + 5, hour: 7)
+        SleepImportDeclines.record(wakeDayOf: old, now: old, calendar: calendar, defaults: defaults)
+        SleepImportDeclines.record(wakeDayOf: date(daysAgo: 0, hour: 7), now: now, calendar: calendar, defaults: defaults)
+        let loaded = SleepImportDeclines.load(defaults)
+        XCTAssertTrue(loaded.contains(calendar.startOfDay(for: date(daysAgo: 0, hour: 7))))
+        XCTAssertFalse(loaded.contains(calendar.startOfDay(for: old)), "Older than the retention window")
+        XCTAssertEqual(loaded.count, 1)
+    }
 }
