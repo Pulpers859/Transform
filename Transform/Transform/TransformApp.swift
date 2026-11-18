@@ -207,6 +207,22 @@ enum DataIntegrityMonitor {
         return nil
     }
 
+    /// Lowers the last-launch baseline by a deliberate, confirmed removal so the next launch
+    /// does not report the owner's own Reset Day as "Data loss detected". Same rule as the
+    /// backup baseline (`BackupEntryCounts.acknowledgingDeliberateRemoval`): loss the action
+    /// does not explain stays visible. The timestamp is kept: it still names the launch
+    /// the baseline came from.
+    static func acknowledgeDeliberateRemoval(_ removed: DataBackupManager.EntryCounts,
+                                             after: DataBackupManager.EntryCounts) {
+        guard let previous = loadPreviousCounts() else { return }
+        let adjusted = Counts(
+            entries: previous.entries.acknowledgingDeliberateRemoval(removed, after: after),
+            timestamp: previous.timestamp
+        )
+        guard let data = try? JSONEncoder().encode(adjusted) else { return }
+        UserDefaults.standard.set(data, forKey: countsKey)
+    }
+
     private static func currentCounts(using modelContext: ModelContext) -> Counts? {
         do {
             return Counts(

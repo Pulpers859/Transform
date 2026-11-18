@@ -33,8 +33,17 @@ struct AddExerciseWeightSheet: View {
         case notes
     }
 
+    /// What a save would store, under the rules both whole-session sheets share
+    /// (`SessionSetSheetRules`): a row it cannot read blocks the save instead of being dropped.
+    var sheetOutcome: SessionSetSheetRules.Outcome {
+        SessionSetSheetRules.evaluate(setLogs.map {
+            SessionSetSheetRules.Row(setNumber: $0.setNumber, weightText: $0.weightText,
+                                     repsText: $0.repsText, rirText: $0.rirText)
+        })
+    }
+
     var canSave: Bool {
-        setLogs.contains { parsedWeight(from: $0.weightText) != nil }
+        sheetOutcome.canSave
     }
 
     var isKeyboardActive: Bool {
@@ -409,16 +418,14 @@ struct AddExerciseWeightSheet: View {
     }
 
     var validSetCount: Int {
-        setLogs.filter { parsedWeight(from: $0.weightText) != nil && parsedReps(from: $0.repsText) != nil }.count
+        sheetOutcome.sets.filter { $0.repsCompleted > 0 }.count
     }
 
     /// The heaviest entry currently drafted, if it is one at all.
     var draftTopSet: (weight: Double, reps: Int)? {
-        setLogs.compactMap { draft -> (weight: Double, reps: Int)? in
-            guard let w = parsedWeight(from: draft.weightText),
-                  let r = parsedReps(from: draft.repsText) else { return nil }
-            return (weight: w, reps: r)
-        }.max(by: { $0.weight < $1.weight })
+        sheetOutcome.sets.filter { $0.repsCompleted > 0 }
+            .map { (weight: $0.weightLbs, reps: $0.repsCompleted) }
+            .max(by: { $0.weight < $1.weight })
     }
 
     /// Caught here, before the save, rather than only in the card afterwards — this sheet is
@@ -429,11 +436,12 @@ struct AddExerciseWeightSheet: View {
     }
 
     var saveSummaryText: String {
+        if let blocking = SessionSetSheetRules.blockingMessage(for: sheetOutcome) { return blocking }
         guard let top = draftTopSet else { return "Enter weight to save" }
         if topLoadLooksImplausible {
             return "\(formatWeight(top.weight)) lb — check this entry"
         }
-        return "\(formatWeight(top.weight)) lb \u{00D7} \(top.reps) top set"
+        return "\(formatLoad(top.weight)) \u{00D7} \(top.reps) top set"
     }
 
     // MARK: - Actions
@@ -481,7 +489,7 @@ struct AddExerciseWeightSheet: View {
                 .map {
                     SetLogDraft(
                         setNumber: $0.setNumber,
-                        weightText: formatWeight($0.weightLbs),
+                        weightText: SessionSetSheetRules.weightText(for: $0.weightLbs),
                         repsText: "\($0.repsCompleted)",
                         rirText: $0.rir.map(formatRIR) ?? ""
                     )
@@ -499,7 +507,7 @@ struct AddExerciseWeightSheet: View {
         setLogs = (1...count).map { num in
             SetLogDraft(
                 setNumber: num,
-                weightText: prefillWeight.map { formatWeight($0) } ?? "",
+                weightText: prefillWeight.map { SessionSetSheetRules.weightText(for: $0) } ?? "",
                 repsText: prefillReps.map { String($0) } ?? "",
                 rirText: ""
             )
@@ -535,24 +543,18 @@ struct AddExerciseWeightSheet: View {
     }
 
     func nudgeSetWeight(at index: Int, by delta: Double) {
-        let base = parsedWeight(from: setLogs[index].weightText) ?? weightSummary?.weightLbs ?? 0
+        let base = SessionSetSheetRules.weight(from: setLogs[index].weightText) ?? weightSummary?.weightLbs ?? 0
         let updated = max(0, base + delta)
         guard updated > 0 else { return }
         setLogs[index].weightText = formatWeight(updated)
     }
 
     func saveEntry() {
-        let validSets: [SetLogEntry] = setLogs.compactMap { draft in
-            guard let w = parsedWeight(from: draft.weightText) else { return nil }
-            let r = parsedReps(from: draft.repsText) ?? 0
-            return SetLogEntry(
-                setNumber: draft.setNumber,
-                weightLbs: w,
-                repsCompleted: r,
-                rir: parsedRIR(from: draft.rirText)
-            )
-        }
-        guard !validSets.isEmpty else { return }
+        // Every non-empty row must be readable: this save overwrites the session's whole set
+        // list, so a row left out here is a set deleted from history.
+        let outcome = sheetOutcome
+        guard outcome.canSave else { return }
+        let validSets = outcome.sets
         // Guard against a fast double-tap inserting duplicate logs before dismiss.
         guard !didSave else { return }
         didSave = true
@@ -650,28 +652,6 @@ struct AddExerciseWeightSheet: View {
 
     func resolvedBestReps(from summary: ExerciseWeightEntry) -> Int? {
         summary.bestRepsCompleted ?? summary.repsCompleted
-    }
-
-    func parsedWeight(from text: String) -> Double? {
-        let cleaned = text
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .replacingOccurrences(of: ",", with: ".")
-        guard let value = Double(cleaned), value > 0 else { return nil }
-        return value
-    }
-
-    func parsedReps(from text: String) -> Int? {
-        let cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !cleaned.isEmpty, let reps = Int(cleaned), reps > 0 else { return nil }
-        return reps
-    }
-
-    func parsedRIR(from text: String) -> Double? {
-        let cleaned = text
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .replacingOccurrences(of: ",", with: ".")
-        guard let value = Double(cleaned), (0...6).contains(value) else { return nil }
-        return value
     }
 
     func formatRIR(_ value: Double) -> String {

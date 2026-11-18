@@ -211,9 +211,9 @@ enum ExerciseReplacement {
     }
 
     @MainActor
-    static func candidates(for exercise: WorkoutExercise, avoidedKeys: Set<String>) -> [String] {
+    static func candidates(for exercise: WorkoutExercise, avoidedKeys: Set<String>, now: Date = .now) -> [String] {
         guard exercise.replacementName.isEmpty, let day = exercise.day,
-              sessionAllowsReplacement(exercise) else { return [] }
+              sessionAllowsReplacement(exercise, now: now) else { return [] }
         let occupied = Set(day.exercises.flatMap { item in
             [ExerciseWeightEntry.canonicalLookupKey(item.exerciseName),
              ExerciseWeightEntry.canonicalLookupKey(metadata(item.exerciseName)?.canonicalName ?? item.exerciseName)]
@@ -232,11 +232,11 @@ enum ExerciseReplacement {
     /// Visible only when the picker is empty. Do not call a session/storage gate a
     /// shortage of exercises; this report uses the same predicates as the picker.
     @MainActor
-    static func emptyCandidateExplanation(for exercise: WorkoutExercise, avoidedKeys: Set<String>) -> String {
+    static func emptyCandidateExplanation(for exercise: WorkoutExercise, avoidedKeys: Set<String>, now: Date = .now) -> String {
         if !exercise.replacementName.isEmpty {
             return "This is a previous replacement card. Open Replace on the active exercise instead. [R2: previous-card]"
         }
-        if let reason = sessionBlockReason(exercise) { return reason }
+        if let reason = sessionBlockReason(exercise, now: now) { return reason }
         guard let day = exercise.day else { return "The exercise is not linked to its workout day. [R2: missing-day]" }
         guard metadata(exercise.exerciseName) != nil else {
             return "The exercise name could not be matched to the exercise library. [R2: unknown-name]"
@@ -260,24 +260,37 @@ enum ExerciseReplacement {
     }
 
     @MainActor
-    private static func sessionAllowsReplacement(_ exercise: WorkoutExercise) -> Bool {
-        sessionBlockReason(exercise) == nil
+    private static func sessionAllowsReplacement(_ exercise: WorkoutExercise, now: Date) -> Bool {
+        sessionBlockReason(exercise, now: now) == nil
+    }
+
+    /// Whether a saved session-end stamp still belongs to the session being trained now.
+    ///
+    /// It used to be "the end is today". A session that starts at 23:30 and runs past
+    /// midnight ends YESTERDAY until the first set logged after midnight moves the stamp, so
+    /// for those minutes Replace showed nothing while the set logger, which uses the app's
+    /// live-session rule, kept working (bug audit 2026-11-17, F6). Same calendar day as `now`,
+    /// or no more than `SessionLogResolution.maximumLiveSessionGap` before it: the same window
+    /// the set logger uses to decide a session is still live. Never a stamp in the future.
+    /// Pinned by ExerciseReplacementTests.
+    static func endBelongsToCurrentSession(_ end: Date, now: Date, calendar: Calendar = .current) -> Bool {
+        calendar.isDate(end, inSameDayAs: now) // SEAM: pre-fix behaviour
     }
 
     @MainActor
-    private static func sessionBlockReason(_ exercise: WorkoutExercise) -> String? {
+    private static func sessionBlockReason(_ exercise: WorkoutExercise, now: Date) -> String? {
         guard let day = exercise.day else { return "The exercise is not linked to its workout day. [R2: missing-day]" }
         if day.isRestDay { return "This day is stored as a rest day. [R2: rest-day]" }
         if day.program?.isArchived == true { return "This workout belongs to an archived program. [R2: archived-program]" }
         if day.feedbackSubmittedAt != nil { return "This workout has submitted session feedback and is protected from replacement. [R2: rated-session]" }
-        if let end = day.sessionEndedAt, !Calendar.current.isDateInToday(end) {
-            return "This workout has a saved session-end date on a different calendar day, even if it appears unfinished. [R2: different-end-date]"
+        if let end = day.sessionEndedAt, !endBelongsToCurrentSession(end, now: now) {
+            return "This workout's session ended on an earlier day and is no longer in progress, even if it appears unfinished. [R2: different-end-date]"
         }
         guard day.hasReviewableSession else { return nil }
         // Skipping the final lift auto-closes the day. Choosing an alternative immediately
         // afterwards is still today's training, unlike editing a historical/explicit finish.
         if day.isCompleted && (exercise.completionStatus?.isSkipped ?? false)
-            && day.sessionEndedAt.map({ Calendar.current.isDateInToday($0) }) == true { return nil }
+            && day.sessionEndedAt.map({ endBelongsToCurrentSession($0, now: now) }) == true { return nil }
         return "This workout is stored as completed or closed, even if sets remain. [R2: completed=\(day.isCompleted), closed=\(day.isSessionClosed)]"
     }
 
@@ -293,9 +306,10 @@ enum ExerciseReplacement {
         preferFuture: Bool,
         avoidedKeys: Set<String> = [],
         modelContext: ModelContext,
+        now: Date = .now,
         save: @MainActor (ModelContext) throws -> Void = { try $0.save() }
     ) throws -> WorkoutExercise {
-        guard let day = exercise.day, sessionAllowsReplacement(exercise),
+        guard let day = exercise.day, sessionAllowsReplacement(exercise, now: now),
               day.exercises.contains(where: { $0 === exercise }) else { throw Failure.unavailableSession }
         guard exercise.replacementName.isEmpty else { throw Failure.alreadyReplaced }
         let completedCount = loggedSetNumbers.filter { $0 > 0 }.count
@@ -305,21 +319,27 @@ enum ExerciseReplacement {
         // Re-read exclusions when committing: a stale picker must not bypass a new pain flag.
         let programs = try modelContext.fetch(FetchDescriptor<WorkoutProgram>())
         let exclusions = avoidedKeys.union(ExercisePainReview.activeKeys(from: programs))
-        guard candidates(for: exercise, avoidedKeys: exclusions).contains(candidateName),
+        guard candidates(for: exercise, avoidedKeys: exclusions, now: now).contains(candidateName),
               let candidate = metadata(candidateName) else { throw Failure.ineligibleCandidate }
         guard !preferFuture || compatible(originalName: exercise.exerciseName, candidateName: candidateName)
         else { throw Failure.preferenceUnavailable }
         // Logs are keyed by canonical name + day number + session date, not model identity.
         // Refuse an already-logged destination even if its old card is no longer on the day.
+        // "This session" spans every calendar day it touches: a lift logged at 23:50 belongs
+        // to the same session as a replacement chosen at 00:05, so checking only `now`'s day
+        // would let that lift be added a second time.
         let candidateKey = ExerciseWeightEntry.canonicalLookupKey(candidateName)
         let destinationLogs = try modelContext.fetch(FetchDescriptor<ExercisePerformanceLog>())
         let returning = returningExercise(for: exercise, name: candidateName)
-        guard returning != nil || !destinationLogs.contains(where: {
-            $0.canonicalExerciseKey == candidateKey && $0.workoutDayNumber == day.dayNumber
-                && Calendar.current.isDateInToday($0.loggedAt)
+        let sessionDays = [now] // SEAM: pre-fix behaviour, only now's calendar day
+        let programStart = day.program?.createdDate
+        guard returning != nil || !destinationLogs.contains(where: { log in
+            log.canonicalExerciseKey == candidateKey && log.workoutDayNumber == day.dayNumber
+                && SessionLogResolution.belongsToProgram(logDate: log.loggedAt, programStart: programStart)
+                && sessionDays.contains { Calendar.current.isDate(log.loggedAt, inSameDayAs: $0) }
         }) else { throw Failure.ineligibleCandidate }
 
-        let priorLog = returning.flatMap { ExerciseSessionLog.resolve(for: $0, among: destinationLogs, on: .now) }
+        let priorLog = returning.flatMap { ExerciseSessionLog.resolve(for: $0, among: destinationLogs, on: now) }
         let priorNumbers = Set((priorLog?.decodedSetLogs ?? []).map(\.setNumber).filter { $0 > 0 })
         if returning != nil, let priorLog {
             guard !priorLog.decodedSetLogs.isEmpty,

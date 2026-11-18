@@ -106,7 +106,8 @@ struct ExerciseProgressionView: View {
     }
 
     func recalculateWeightSummary() {
-        let logs = allLogs.filter { $0.canonicalExerciseKey == canonicalKey && $0.weightLbs > 0 }
+        // Bodyweight sessions are stored at 0 lb and still count (see `holdsLoggedWork`).
+        let logs = allLogs.filter { $0.canonicalExerciseKey == canonicalKey && $0.holdsLoggedWork }
         guard let latestLog = logs.max(by: { $0.loggedAt < $1.loggedAt }) else {
             if let entry = allWeightEntries.first(where: { $0.canonicalExerciseKey == canonicalKey }) {
                 modelContext.delete(entry)
@@ -425,17 +426,17 @@ struct EditPerformanceLogSheet: View {
         var rirText: String
     }
 
-    var canSave: Bool {
-        editableSets.contains { parsedWeight(from: $0.weightText) != nil }
+    /// Shared with the card's Edit sheet (`SessionSetSheetRules`): saving rewrites this
+    /// session's whole set list, so an unreadable row blocks the save instead of being dropped.
+    var sheetOutcome: SessionSetSheetRules.Outcome {
+        SessionSetSheetRules.evaluate(editableSets.map {
+            SessionSetSheetRules.Row(setNumber: $0.setNumber, weightText: $0.weightText,
+                                     repsText: $0.repsText, rirText: $0.rirText)
+        })
     }
 
-    /// Same tolerant parsing as the logging sheet: trims and accepts comma decimals.
-    private func parsedWeight(from text: String) -> Double? {
-        let cleaned = text
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .replacingOccurrences(of: ",", with: ".")
-        guard let value = Double(cleaned), value > 0 else { return nil }
-        return value
+    var canSave: Bool {
+        sheetOutcome.canSave
     }
 
     var body: some View {
@@ -527,6 +528,12 @@ struct EditPerformanceLogSheet: View {
                                 }
                             }
                         }
+
+                        if let blocking = SessionSetSheetRules.blockingMessage(for: sheetOutcome) {
+                            Text(blocking)
+                                .font(.caption)
+                                .foregroundStyle(TFColor.warning)
+                        }
                     }
                     .padding()
                     .background(TFColor.surface)
@@ -591,7 +598,10 @@ struct EditPerformanceLogSheet: View {
         if sets.isEmpty {
             editableSets = [EditableSet(
                 setNumber: 1,
-                weightText: log.weightLbs > 0 ? formatWeight(log.weightLbs) : "",
+                // A legacy summary-only log at 0 lb with reps is a bodyweight session, not an
+                // empty one; with no reps it was never really logged, so leave the box empty.
+                weightText: log.weightLbs > 0 || log.repsCompleted != nil
+                    ? SessionSetSheetRules.weightText(for: log.weightLbs) : "",
                 repsText: log.repsCompleted.map(String.init) ?? "",
                 rirText: ""
             )]
@@ -599,7 +609,7 @@ struct EditPerformanceLogSheet: View {
             editableSets = sets.map { set in
                 EditableSet(
                     setNumber: set.setNumber,
-                    weightText: formatWeight(set.weightLbs),
+                    weightText: SessionSetSheetRules.weightText(for: set.weightLbs),
                     repsText: "\(set.repsCompleted)",
                     rirText: set.rir.map { formatRIR($0) } ?? ""
                 )
@@ -609,17 +619,9 @@ struct EditPerformanceLogSheet: View {
     }
 
     func saveEdits() {
-        let validSets: [SetLogEntry] = editableSets.compactMap { draft in
-            guard let w = parsedWeight(from: draft.weightText) else { return nil }
-            let r = Int(draft.repsText.trimmingCharacters(in: .whitespaces)) ?? 0
-            return SetLogEntry(
-                setNumber: draft.setNumber,
-                weightLbs: w,
-                repsCompleted: r,
-                rir: parsedRIR(from: draft.rirText)
-            )
-        }
-        guard !validSets.isEmpty else { return }
+        let outcome = sheetOutcome
+        guard outcome.canSave else { return }
+        let validSets = outcome.sets
 
         let top = WorkingSetAnalysis.summaryTop(from: validSets)
         let topWeight = top?.weightLbs ?? validSets[0].weightLbs
@@ -652,14 +654,6 @@ struct EditPerformanceLogSheet: View {
         for i in editableSets.indices {
             editableSets[i].setNumber = i + 1
         }
-    }
-
-    func parsedRIR(from text: String) -> Double? {
-        let cleaned = text
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .replacingOccurrences(of: ",", with: ".")
-        guard let value = Double(cleaned), (0...6).contains(value) else { return nil }
-        return value
     }
 
     func formatRIR(_ value: Double) -> String {

@@ -175,6 +175,10 @@ struct WorkoutDayDetailView: View {
     }
 
     private func resetWorkoutDay() {
+        // Counted before the reset so the backup guard can be told exactly what this
+        // confirmed action removed (`acknowledgeDeliberateRemoval` below). `reset` refuses
+        // to run with unsaved edits pending, so nothing else changes between the two counts.
+        let countsBeforeReset = try? DataBackupManager.shared.entryCounts(using: modelContext)
         do {
             try SessionLifecycle.reset(day, in: modelContext)
             feedbackDay = nil
@@ -185,7 +189,11 @@ struct WorkoutDayDetailView: View {
             expandedExerciseIDs = []
             didSeedExpansion = false
             seedExpansionIfNeeded()
-            DataBackupManager.shared.writeAutomaticBackupCoalesced(using: modelContext)
+            if let countsBeforeReset {
+                DataBackupManager.shared.acknowledgeDeliberateRemoval(before: countsBeforeReset, using: modelContext)
+            } else {
+                DataBackupManager.shared.writeAutomaticBackupCoalesced(using: modelContext)
+            }
             TFHaptics.success()
         } catch {
             resetError = error.localizedDescription

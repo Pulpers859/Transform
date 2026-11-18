@@ -762,6 +762,17 @@ class ExercisePerformanceLog {
         self.setLogsJSON = Self.encodeSetLogs(setLogs)
     }
 
+    /// Whether this log records work that the weight summary should be rebuilt from.
+    ///
+    /// Load is not the test: a bodyweight set is stored as 0 lb and is real work. The history
+    /// screen's summary rebuild used `weightLbs > 0`, which left a bodyweight-only exercise
+    /// with nothing to rebuild from, so editing or deleting ONE of its sessions deleted the
+    /// exercise's whole last/best summary. Reps are the test: a set with at least one rep,
+    /// or a legacy summary-only log with reps. Pinned by SetEntryDraftTests.
+    var holdsLoggedWork: Bool {
+        weightLbs > 0 // SEAM: pre-fix behaviour
+    }
+
     /// The prescribed reps-in-reserve target, or nil when it was not recorded.
     var recordedTargetRIR: Int? {
         prescribedTargetRIR >= 0 ? prescribedTargetRIR : nil

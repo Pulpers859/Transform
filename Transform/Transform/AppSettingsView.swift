@@ -16,6 +16,9 @@ struct AppSettingsView: View {
     @State private var showExporter = false
     @State private var showImporter = false
     @State private var showImportConfirm = false
+    /// Chosen in the import dialog before the file picker opens. Off unless the owner picks
+    /// "Add Data and Use Backup's Settings" (see `DataBackupManager.importBackup`).
+    @State private var importReplacesSettings = false
     @State private var showBackupAlert = false
     @State private var backupMessage = ""
     @State private var isPreparingExport = false
@@ -119,7 +122,7 @@ struct AppSettingsView: View {
                 } header: {
                     Text("Data & Backup")
                 } footer: {
-                    Text("Backups include all your logs and analysis photos. Importing adds to your data — nothing is deleted or overwritten.")
+                    Text("Backups include your logs, analysis photos and settings. Importing adds data and deletes nothing; it changes your settings only if you choose that.")
                 }
 
                 Section {
@@ -159,8 +162,11 @@ struct AppSettingsView: View {
                         let didAccess = url.startAccessingSecurityScopedResource()
                         defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
                         let data = try Data(contentsOf: url)
-                        try DataBackupManager.shared.importBackup(from: data, into: modelContext)
-                        backupMessage = "Backup imported."
+                        try DataBackupManager.shared.importBackup(
+                            from: data, into: modelContext, replaceSettings: importReplacesSettings)
+                        backupMessage = importReplacesSettings
+                            ? "Backup imported. Your settings now match the backup."
+                            : "Backup imported. Your settings were not changed."
                     } catch {
                         backupMessage = "Import failed: \(error.localizedDescription)"
                     }
@@ -175,12 +181,17 @@ struct AppSettingsView: View {
                 isPresented: $showImportConfirm,
                 titleVisibility: .visible
             ) {
-                Button("Choose Backup File") {
+                Button("Add Data, Keep My Settings") {
+                    importReplacesSettings = false
+                    showImporter = true
+                }
+                Button("Add Data and Use Backup's Settings") {
+                    importReplacesSettings = true
                     showImporter = true
                 }
                 Button("Cancel", role: .cancel) {}
             } message: {
-                Text("The backup is added to your data. Nothing is deleted, and duplicates are skipped.")
+                Text("Logs, photos and analyses from the backup are added to yours. Nothing is deleted, and duplicates are skipped. Choose whether the backup's profile, injury notes, medical answers, targets and saved-food numbers replace the ones on this phone. Use that when setting up a new phone.")
             }
             .alert("Backup", isPresented: $showBackupAlert) {
                 Button("OK", role: .cancel) {}

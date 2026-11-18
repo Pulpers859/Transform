@@ -79,6 +79,12 @@ let package = Package(
                 "ExercisePainReview.swift",
                 "ExerciseReplacement.swift",
                 "WorkoutExerciseSnapshot.swift",
+                // Backup pieces moved out of DataBackupManager.swift (a SwiftUI file this
+                // package cannot compile) so they have executed coverage: the data-drop guard
+                // and launch-recovery rules, and the settings half of a backup. Both are
+                // Foundation-only. Bug audit 2026-11-17, F2/F4/F5.
+                "BackupEntryCounts.swift",
+                "ProfileSettingsBackup.swift",
                 // Execution-cue authoring: movement-pattern/equipment keying plus the
                 // day-scoped uniqueness pass. Foundation-only, and the content it emits must
                 // survive the validator's execution-only rules — a banned fragment here is a

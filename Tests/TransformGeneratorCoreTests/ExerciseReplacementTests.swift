@@ -538,4 +538,46 @@ final class ExerciseReplacementTests: XCTestCase {
         let reopened = ModelContext(container)
         XCTAssertEqual(try reopened.fetchCount(FetchDescriptor<WorkoutExercise>()), 1)
     }
+
+    // MARK: - Sessions that run past midnight (bug audit 2026-11-17, F6)
+
+    /// Owner trains late: a session started at 23:30 is still being trained at 00:05, but its
+    /// end stamp sits on yesterday until the next set is logged. Replace showed nothing.
+    func testReplaceStillOffersAlternativesJustAfterMidnightInALiveSession() throws {
+        let (_, _, day, original) = try fixture()
+        let midnight = Calendar.current.startOfDay(for: Date())
+        let now = midnight.addingTimeInterval(5 * 60)
+        day.sessionStartedAt = midnight.addingTimeInterval(-30 * 60)
+        day.sessionEndedAt = midnight.addingTimeInterval(-5 * 60)
+        XCTAssertTrue(ExerciseReplacement.candidates(for: original, avoidedKeys: [], now: now).contains(cable))
+
+        // A session that ended two days ago is still protected, as before.
+        day.sessionEndedAt = now.addingTimeInterval(-48 * 60 * 60)
+        XCTAssertTrue(ExerciseReplacement.candidates(for: original, avoidedKeys: [], now: now).isEmpty)
+        XCTAssertTrue(ExerciseReplacement.emptyCandidateExplanation(for: original, avoidedKeys: [], now: now)
+            .contains("different-end-date"))
+        // A stamp in the future is never "the current session".
+        XCTAssertFalse(ExerciseReplacement.endBelongsToCurrentSession(now.addingTimeInterval(2 * 86400), now: now))
+    }
+
+    /// The lift already logged at 23:50 in this same session must not be added a second time
+    /// as a replacement chosen at 00:05.
+    func testReplaceAfterMidnightRefusesALiftAlreadyLoggedEarlierInTheSameSession() throws {
+        let (_, context, day, original) = try fixture()
+        let midnight = Calendar.current.startOfDay(for: Date())
+        let now = midnight.addingTimeInterval(5 * 60)
+        day.program?.createdDate = midnight.addingTimeInterval(-86400)
+        day.sessionStartedAt = midnight.addingTimeInterval(-30 * 60)
+        day.sessionEndedAt = midnight.addingTimeInterval(-5 * 60)
+        context.insert(ExercisePerformanceLog(loggedAt: midnight.addingTimeInterval(-10 * 60), exerciseName: cable,
+            weightLbs: 20, repsCompleted: 12, workoutDayNumber: 1,
+            setLogs: [SetLogEntry(setNumber: 1, weightLbs: 20, repsCompleted: 12)]))
+        try context.save()
+        XCTAssertTrue(ExerciseReplacement.candidates(for: original, avoidedKeys: [], now: now).contains(cable),
+                      "Precondition: the picker offers the lift, so only the logged-session check can refuse it")
+        XCTAssertThrowsError(try ExerciseReplacement.replace(original, with: cable, loggedSetNumbers: [],
+                                                             preferFuture: false, modelContext: context, now: now)) {
+            XCTAssertEqual($0 as? ExerciseReplacement.Failure, .ineligibleCandidate)
+        }
+    }
 }

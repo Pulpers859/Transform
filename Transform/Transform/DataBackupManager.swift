@@ -266,44 +266,7 @@ nonisolated struct AnalysisSnapshot: Codable {
     let dietRecommendation: String
 }
 
-nonisolated struct WorkoutProgramSnapshot: Codable {
-    let id: UUID
-    let createdDate: Date
-    let programName: String
-    let programSummary: String
-    let splitType: String
-    let daysPerWeek: Int
-    let totalDays: Int
-    let focusAreas: String
-    let sourceAnalysisDate: Date?
-    let programJSON: String
-    let currentWeek: Int
-    let maxWeeks: Int
-    let analysisJSON: String
-    let days: [WorkoutDaySnapshot]
-    let isArchived: Bool?
-}
-
-nonisolated struct WorkoutDaySnapshot: Codable {
-    let dayNumber: Int
-    let dayName: String
-    let muscleGroups: String
-    let isRestDay: Bool
-    let notes: String
-    let isCompleted: Bool
-    let feedbackSubmittedAt: Date?
-    let sessionEffort: Int?
-    let stimulusQuality: Int?
-    let jointPain: Int?
-    let performanceRatingRaw: String?
-    let sessionFeedbackNotes: String?
-    let sessionStartedAt: Date?
-    let sessionEndedAt: Date?
-    /// Optional so backups written before the session-clock close flag decode cleanly;
-    /// absent means "never closed", which is the correct reading of an older backup.
-    let isSessionClosed: Bool?
-    let exercises: [WorkoutExerciseSnapshot]
-}
+// `WorkoutProgramSnapshot` and `WorkoutDaySnapshot` live in WorkoutExerciseSnapshot.swift.
 
 nonisolated struct ExerciseWeightSnapshot: Codable {
     let loggedAt: Date
@@ -337,166 +300,8 @@ nonisolated struct ExercisePerformanceLogSnapshot: Codable {
     var prescribedTargetRIR: Int? = nil
 }
 
-nonisolated struct ProfileSettingsSnapshot: Codable {
-    let age: String?
-    let sex: String?
-    let build: String?
-    let height: String?
-    let currentWeight: String?
-    let occupation: String?
-    let trainingFrequency: String?
-    let trainingAge: String?
-    let equipmentAccess: String?
-    let averageSleep: String?
-    let painHistory: String?
-    let activityLevel: String?
-    let primaryGoal: String?
-    let lifestyleConstraints: String?
-    let weightValue: String?
-    let weightUnit: String?
-    let goalDetail: String?
-    let ageValue: Int?
-    let heightFeet: Int?
-    let heightInches: Int?
-    let heightCm: Int?
-    let heightUnit: String?
-    let trainingDays: Int?
-    let sleepHours: Double?
-    let sleepNotes: String?
-    let calorieTarget: Int?
-    let proteinTarget: Double?
-    let carbTarget: Double?
-    let fatTarget: Double?
-    let bodyWeightGoal: Double?
-    let medicalCurrentInjury: Bool?
-    let medicalPainDuringExercise: Bool?
-    let medicalCardioMetabolic: Bool?
-    let medicalMedications: Bool?
-    let medicalPregnancySurgery: Bool?
-    let medicalSymptoms: Bool?
-    let analysisCheckInTrainingContext: String?
-    let analysisCheckInBodyweightTrend: String?
-    let analysisCheckInRecoverySleep: String?
-    let analysisCheckInStressSchedule: String?
-    let analysisCheckInSorenessPain: String?
-    let analysisCheckInNutritionAdherence: String?
-    let analysisCheckInHungerLevel: Int?
-    let analysisCheckInEnergyLevel: Int?
-    let analysisCheckInCravingsLevel: Int?
-    let derivedSleepTrendSummary: String?
-    // Optional so older backups (without this key) still decode.
-    let derivedSleepRecoveryState: String?
-    let appearanceMode: Int?
-    let nutritionShiftWorkMode: String?
-
-    static func fromUserDefaults() -> ProfileSettingsSnapshot {
-        let d = UserDefaults.standard
-        return ProfileSettingsSnapshot(
-            age: d.string(forKey: AppSettingsKeys.analysisAge),
-            sex: d.string(forKey: AppSettingsKeys.analysisSex),
-            build: d.string(forKey: AppSettingsKeys.analysisBuild),
-            height: d.string(forKey: AppSettingsKeys.analysisHeight),
-            currentWeight: d.string(forKey: AppSettingsKeys.analysisCurrentWeight),
-            occupation: d.string(forKey: AppSettingsKeys.analysisOccupation),
-            trainingFrequency: d.string(forKey: AppSettingsKeys.analysisTrainingFrequency),
-            trainingAge: d.string(forKey: AppSettingsKeys.analysisTrainingAge),
-            equipmentAccess: d.string(forKey: AppSettingsKeys.analysisEquipmentAccess),
-            averageSleep: d.string(forKey: AppSettingsKeys.analysisAverageSleep),
-            painHistory: d.string(forKey: AppSettingsKeys.analysisPainHistory),
-            activityLevel: d.string(forKey: AppSettingsKeys.analysisActivityLevel),
-            primaryGoal: d.string(forKey: AppSettingsKeys.analysisPrimaryGoal),
-            lifestyleConstraints: d.string(forKey: AppSettingsKeys.analysisLifestyleConstraints),
-            weightValue: d.string(forKey: AppSettingsKeys.analysisWeightValue),
-            weightUnit: d.string(forKey: AppSettingsKeys.analysisWeightUnit),
-            goalDetail: d.string(forKey: AppSettingsKeys.analysisGoalDetail),
-            ageValue: d.object(forKey: AppSettingsKeys.analysisAgeValue) as? Int,
-            heightFeet: d.object(forKey: AppSettingsKeys.analysisHeightFeet) as? Int,
-            heightInches: d.object(forKey: AppSettingsKeys.analysisHeightInches) as? Int,
-            heightCm: d.object(forKey: AppSettingsKeys.analysisHeightCm) as? Int,
-            heightUnit: d.string(forKey: AppSettingsKeys.analysisHeightUnit),
-            trainingDays: d.object(forKey: AppSettingsKeys.analysisTrainingDays) as? Int,
-            sleepHours: d.object(forKey: AppSettingsKeys.analysisSleepHours) as? Double,
-            sleepNotes: d.string(forKey: AppSettingsKeys.analysisSleepNotes),
-            calorieTarget: d.object(forKey: AppSettingsKeys.calorieTarget) as? Int,
-            proteinTarget: d.object(forKey: AppSettingsKeys.proteinTarget) as? Double,
-            carbTarget: d.object(forKey: AppSettingsKeys.carbTarget) as? Double,
-            fatTarget: d.object(forKey: AppSettingsKeys.fatTarget) as? Double,
-            bodyWeightGoal: d.object(forKey: AppSettingsKeys.bodyWeightGoal) as? Double,
-            medicalCurrentInjury: d.object(forKey: AppSettingsKeys.medicalCurrentInjury) as? Bool,
-            medicalPainDuringExercise: d.object(forKey: AppSettingsKeys.medicalPainDuringExercise) as? Bool,
-            medicalCardioMetabolic: d.object(forKey: AppSettingsKeys.medicalCardioMetabolic) as? Bool,
-            medicalMedications: d.object(forKey: AppSettingsKeys.medicalMedications) as? Bool,
-            medicalPregnancySurgery: d.object(forKey: AppSettingsKeys.medicalPregnancySurgery) as? Bool,
-            medicalSymptoms: d.object(forKey: AppSettingsKeys.medicalSymptoms) as? Bool,
-            analysisCheckInTrainingContext: d.string(forKey: AppSettingsKeys.analysisCheckInTrainingContext),
-            analysisCheckInBodyweightTrend: d.string(forKey: AppSettingsKeys.analysisCheckInBodyweightTrend),
-            analysisCheckInRecoverySleep: d.string(forKey: AppSettingsKeys.analysisCheckInRecoverySleep),
-            analysisCheckInStressSchedule: d.string(forKey: AppSettingsKeys.analysisCheckInStressSchedule),
-            analysisCheckInSorenessPain: d.string(forKey: AppSettingsKeys.analysisCheckInSorenessPain),
-            analysisCheckInNutritionAdherence: d.string(forKey: AppSettingsKeys.analysisCheckInNutritionAdherence),
-            analysisCheckInHungerLevel: d.object(forKey: AppSettingsKeys.analysisCheckInHungerLevel) as? Int,
-            analysisCheckInEnergyLevel: d.object(forKey: AppSettingsKeys.analysisCheckInEnergyLevel) as? Int,
-            analysisCheckInCravingsLevel: d.object(forKey: AppSettingsKeys.analysisCheckInCravingsLevel) as? Int,
-            derivedSleepTrendSummary: d.string(forKey: AppSettingsKeys.derivedSleepTrendSummary),
-            derivedSleepRecoveryState: d.string(forKey: AppSettingsKeys.derivedSleepRecoveryState),
-            appearanceMode: d.object(forKey: AppSettingsKeys.appearanceMode) as? Int,
-            nutritionShiftWorkMode: d.string(forKey: AppSettingsKeys.nutritionShiftWorkMode)
-        )
-    }
-
-    func applyToUserDefaults() {
-        let d = UserDefaults.standard
-        if let v = age { d.set(v, forKey: AppSettingsKeys.analysisAge) }
-        if let v = sex { d.set(v, forKey: AppSettingsKeys.analysisSex) }
-        if let v = build { d.set(v, forKey: AppSettingsKeys.analysisBuild) }
-        if let v = height { d.set(v, forKey: AppSettingsKeys.analysisHeight) }
-        if let v = currentWeight { d.set(v, forKey: AppSettingsKeys.analysisCurrentWeight) }
-        if let v = occupation { d.set(v, forKey: AppSettingsKeys.analysisOccupation) }
-        if let v = trainingFrequency { d.set(v, forKey: AppSettingsKeys.analysisTrainingFrequency) }
-        if let v = trainingAge { d.set(v, forKey: AppSettingsKeys.analysisTrainingAge) }
-        if let v = equipmentAccess { d.set(v, forKey: AppSettingsKeys.analysisEquipmentAccess) }
-        if let v = averageSleep { d.set(v, forKey: AppSettingsKeys.analysisAverageSleep) }
-        if let v = painHistory { d.set(v, forKey: AppSettingsKeys.analysisPainHistory) }
-        if let v = activityLevel { d.set(v, forKey: AppSettingsKeys.analysisActivityLevel) }
-        if let v = primaryGoal { d.set(v, forKey: AppSettingsKeys.analysisPrimaryGoal) }
-        if let v = lifestyleConstraints { d.set(v, forKey: AppSettingsKeys.analysisLifestyleConstraints) }
-        if let v = weightValue { d.set(v, forKey: AppSettingsKeys.analysisWeightValue) }
-        if let v = weightUnit { d.set(v, forKey: AppSettingsKeys.analysisWeightUnit) }
-        if let v = goalDetail { d.set(v, forKey: AppSettingsKeys.analysisGoalDetail) }
-        if let v = ageValue { d.set(v, forKey: AppSettingsKeys.analysisAgeValue) }
-        if let v = heightFeet { d.set(v, forKey: AppSettingsKeys.analysisHeightFeet) }
-        if let v = heightInches { d.set(v, forKey: AppSettingsKeys.analysisHeightInches) }
-        if let v = heightCm { d.set(v, forKey: AppSettingsKeys.analysisHeightCm) }
-        if let v = heightUnit { d.set(v, forKey: AppSettingsKeys.analysisHeightUnit) }
-        if let v = trainingDays { d.set(v, forKey: AppSettingsKeys.analysisTrainingDays) }
-        if let v = sleepHours { d.set(v, forKey: AppSettingsKeys.analysisSleepHours) }
-        if let v = sleepNotes { d.set(v, forKey: AppSettingsKeys.analysisSleepNotes) }
-        if let v = calorieTarget { d.set(v, forKey: AppSettingsKeys.calorieTarget) }
-        if let v = proteinTarget { d.set(v, forKey: AppSettingsKeys.proteinTarget) }
-        if let v = carbTarget { d.set(v, forKey: AppSettingsKeys.carbTarget) }
-        if let v = fatTarget { d.set(v, forKey: AppSettingsKeys.fatTarget) }
-        if let v = bodyWeightGoal { d.set(v, forKey: AppSettingsKeys.bodyWeightGoal) }
-        if let v = medicalCurrentInjury { d.set(v, forKey: AppSettingsKeys.medicalCurrentInjury) }
-        if let v = medicalPainDuringExercise { d.set(v, forKey: AppSettingsKeys.medicalPainDuringExercise) }
-        if let v = medicalCardioMetabolic { d.set(v, forKey: AppSettingsKeys.medicalCardioMetabolic) }
-        if let v = medicalMedications { d.set(v, forKey: AppSettingsKeys.medicalMedications) }
-        if let v = medicalPregnancySurgery { d.set(v, forKey: AppSettingsKeys.medicalPregnancySurgery) }
-        if let v = medicalSymptoms { d.set(v, forKey: AppSettingsKeys.medicalSymptoms) }
-        if let v = analysisCheckInTrainingContext { d.set(v, forKey: AppSettingsKeys.analysisCheckInTrainingContext) }
-        if let v = analysisCheckInBodyweightTrend { d.set(v, forKey: AppSettingsKeys.analysisCheckInBodyweightTrend) }
-        if let v = analysisCheckInRecoverySleep { d.set(v, forKey: AppSettingsKeys.analysisCheckInRecoverySleep) }
-        if let v = analysisCheckInStressSchedule { d.set(v, forKey: AppSettingsKeys.analysisCheckInStressSchedule) }
-        if let v = analysisCheckInSorenessPain { d.set(v, forKey: AppSettingsKeys.analysisCheckInSorenessPain) }
-        if let v = analysisCheckInNutritionAdherence { d.set(v, forKey: AppSettingsKeys.analysisCheckInNutritionAdherence) }
-        if let v = analysisCheckInHungerLevel { d.set(v, forKey: AppSettingsKeys.analysisCheckInHungerLevel) }
-        if let v = analysisCheckInEnergyLevel { d.set(v, forKey: AppSettingsKeys.analysisCheckInEnergyLevel) }
-        if let v = analysisCheckInCravingsLevel { d.set(v, forKey: AppSettingsKeys.analysisCheckInCravingsLevel) }
-        if let v = derivedSleepTrendSummary { d.set(v, forKey: AppSettingsKeys.derivedSleepTrendSummary) }
-        if let v = derivedSleepRecoveryState { d.set(v, forKey: AppSettingsKeys.derivedSleepRecoveryState) }
-        if let v = appearanceMode { d.set(v, forKey: AppSettingsKeys.appearanceMode) }
-        if let v = nutritionShiftWorkMode { d.set(v, forKey: AppSettingsKeys.nutritionShiftWorkMode) }
-    }
-}
+// `ProfileSettingsSnapshot` lives in ProfileSettingsBackup.swift so the headless tests
+// can round-trip it.
 
 @MainActor private extension WeightSnapshot {
     init(_ entry: WeightEntry) {
@@ -775,149 +580,6 @@ nonisolated struct ProfileSettingsSnapshot: Codable {
     }
 }
 
-@MainActor private extension WorkoutExerciseSnapshot {
-    init(_ exercise: WorkoutExercise) {
-        self.init(
-            order: exercise.order,
-            exerciseName: exercise.exerciseName,
-            sets: exercise.sets,
-            reps: exercise.reps,
-            tempo: exercise.tempo,
-            restSeconds: exercise.restSeconds,
-            notes: exercise.notes,
-            muscleTarget: exercise.muscleTarget,
-            isCompleted: exercise.isCompleted,
-            completionStatusRaw: exercise.completionStatusRaw.isEmpty ? nil : exercise.completionStatusRaw,
-            targetRIR: exercise.targetRIR,
-            coachingSourceRaw: exercise.coachingSourceRaw.isEmpty ? nil : exercise.coachingSourceRaw,
-            painReviewRaw: exercise.painReviewRaw.isEmpty ? nil : exercise.painReviewRaw,
-            replacementName: exercise.replacementName.isEmpty ? nil : exercise.replacementName,
-            preferredReplacementName: exercise.preferredReplacementName.isEmpty ? nil : exercise.preferredReplacementName
-        )
-    }
-
-    func makeModel() -> WorkoutExercise {
-        let exercise = WorkoutExercise(
-            order: order,
-            exerciseName: exerciseName,
-            sets: sets,
-            reps: reps,
-            tempo: tempo ?? "",
-            restSeconds: restSeconds,
-            notes: notes,
-            muscleTarget: muscleTarget,
-            targetRIR: targetRIR
-        )
-        exercise.isCompleted = isCompleted
-        exercise.completionStatusRaw = completionStatusRaw ?? ""
-        exercise.coachingSourceRaw = coachingSourceRaw ?? ""
-        exercise.painReviewRaw = painReviewRaw ?? ""
-        exercise.replacementName = replacementName ?? ""
-        exercise.preferredReplacementName = preferredReplacementName ?? ""
-        return exercise
-    }
-}
-
-@MainActor private extension WorkoutDaySnapshot {
-    init(_ day: WorkoutDay) {
-        self.init(
-            dayNumber: day.dayNumber,
-            dayName: day.dayName,
-            muscleGroups: day.muscleGroups,
-            isRestDay: day.isRestDay,
-            notes: day.notes,
-            isCompleted: day.isCompleted,
-            feedbackSubmittedAt: day.feedbackSubmittedAt,
-            sessionEffort: day.sessionEffort,
-            stimulusQuality: day.stimulusQuality,
-            jointPain: day.jointPain,
-            performanceRatingRaw: day.performanceRatingRaw,
-            sessionFeedbackNotes: day.sessionFeedbackNotes,
-            sessionStartedAt: day.sessionStartedAt,
-            sessionEndedAt: day.sessionEndedAt,
-            isSessionClosed: day.isSessionClosed,
-            exercises: mainActorMap(day.sortedExercises, WorkoutExerciseSnapshot.init)
-        )
-    }
-
-    func makeModel() -> WorkoutDay {
-        let day = WorkoutDay(
-            dayNumber: dayNumber,
-            dayName: dayName,
-            muscleGroups: muscleGroups,
-            isRestDay: isRestDay,
-            notes: notes
-        )
-        day.isCompleted = isCompleted
-        day.feedbackSubmittedAt = feedbackSubmittedAt
-        day.sessionEffort = sessionEffort ?? 0
-        day.stimulusQuality = stimulusQuality ?? 0
-        day.jointPain = jointPain ?? 0
-        day.performanceRatingRaw = performanceRatingRaw ?? ""
-        day.sessionFeedbackNotes = sessionFeedbackNotes ?? ""
-        day.sessionStartedAt = sessionStartedAt
-        day.sessionEndedAt = sessionEndedAt
-        day.isSessionClosed = isSessionClosed ?? false
-
-        for exerciseSnapshot in exercises {
-            let exercise = exerciseSnapshot.makeModel()
-            exercise.day = day
-            day.exercises.append(exercise)
-        }
-
-        return day
-    }
-}
-
-@MainActor private extension WorkoutProgramSnapshot {
-    init(_ program: WorkoutProgram) {
-        self.init(
-            id: program.id,
-            createdDate: program.createdDate,
-            programName: program.programName,
-            programSummary: program.programSummary,
-            splitType: program.splitType,
-            daysPerWeek: program.daysPerWeek,
-            totalDays: program.totalDays,
-            focusAreas: program.focusAreas,
-            sourceAnalysisDate: program.sourceAnalysisDate,
-            programJSON: program.programJSON,
-            currentWeek: program.currentWeek,
-            maxWeeks: program.maxWeeks,
-            analysisJSON: program.analysisJSON,
-            days: mainActorMap(program.sortedDays, WorkoutDaySnapshot.init),
-            isArchived: program.isArchived
-        )
-    }
-
-    func makeModel() -> WorkoutProgram {
-        let program = WorkoutProgram(
-            programName: programName,
-            programSummary: programSummary,
-            splitType: splitType,
-            daysPerWeek: daysPerWeek,
-            totalDays: totalDays,
-            focusAreas: focusAreas,
-            sourceAnalysisDate: sourceAnalysisDate,
-            programJSON: programJSON,
-            currentWeek: currentWeek,
-            maxWeeks: maxWeeks,
-            analysisJSON: analysisJSON
-        )
-        program.id = id
-        program.createdDate = createdDate
-        program.isArchived = isArchived ?? false
-
-        for daySnapshot in days {
-            let day = daySnapshot.makeModel()
-            day.program = program
-            program.days.append(day)
-        }
-
-        return program
-    }
-}
-
 @MainActor private extension ExerciseWeightSnapshot {
     var resolvedCanonicalKey: String {
         let recomputed = ExerciseWeightEntry.canonicalLookupKey(exerciseName)
@@ -1085,7 +747,18 @@ final class DataBackupManager {
         return BackupDocument(data: data)
     }
 
-    func importBackup(from data: Data, into modelContext: ModelContext) throws {
+    /// Merges a backup into the store. Records are added and de-duplicated; nothing logged is
+    /// deleted.
+    ///
+    /// - Parameter replaceSettings: whether the backup's profile, injury note, medical answers,
+    ///   targets and theme REPLACE the ones on this phone, and whether a saved food the phone
+    ///   already has takes the backup's numbers. Off, nothing already on the phone changes.
+    ///   The owner chooses this explicitly in Settings. The automatic restores always pass
+    ///   false: settings live outside the database and survive the store failures those
+    ///   restores exist for, so applying a backup's older settings there could only replace
+    ///   newer ones, such as an injury note updated after that backup was written (bug audit
+    ///   2026-11-17, F3).
+    func importBackup(from data: Data, into modelContext: ModelContext, replaceSettings: Bool) throws {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         let payload: TransformBackupPayload
@@ -1107,7 +780,7 @@ final class DataBackupManager {
 
         do {
             try modelContext.transaction {
-                try merge(payload: payload, into: modelContext)
+                try merge(payload: payload, into: modelContext, replaceSettings: replaceSettings)
             }
             SleepTrendStore.refresh(using: modelContext)
             writeAutomaticBackup(using: modelContext)
@@ -1178,7 +851,7 @@ final class DataBackupManager {
             return false
         }
         do {
-            try importBackup(from: data, into: modelContext)
+            try importBackup(from: data, into: modelContext, replaceSettings: false)
             return true
         } catch {
             print("[Backup] Automatic backup restore failed: \(error.localizedDescription)")
@@ -1216,154 +889,8 @@ final class DataBackupManager {
         }
     }
 
-    struct EntryCounts: Codable {
-        let sleep: Int
-        let weight: Int
-        let nutrition: Int
-        let measurement: Int
-        let exerciseWeights: Int
-        let exerciseLogs: Int
-        let analyses: Int
-        let workouts: Int
-        let favorites: Int
-        let savedNutritionProtocols: Int
-        let progressPhotos: Int
-
-        private enum CodingKeys: String, CodingKey {
-            case sleep
-            case weight
-            case nutrition
-            case measurement
-            case exerciseWeights
-            case exerciseLogs
-            case analyses
-            case workouts
-            case favorites
-            case savedNutritionProtocols
-            case progressPhotos
-            case total
-        }
-
-        init(
-            sleep: Int,
-            weight: Int,
-            nutrition: Int,
-            measurement: Int = 0,
-            exerciseWeights: Int = 0,
-            exerciseLogs: Int = 0,
-            analyses: Int = 0,
-            workouts: Int = 0,
-            favorites: Int = 0,
-            savedNutritionProtocols: Int = 0,
-            progressPhotos: Int = 0
-        ) {
-            self.sleep = sleep
-            self.weight = weight
-            self.nutrition = nutrition
-            self.measurement = measurement
-            self.exerciseWeights = exerciseWeights
-            self.exerciseLogs = exerciseLogs
-            self.analyses = analyses
-            self.workouts = workouts
-            self.favorites = favorites
-            self.savedNutritionProtocols = savedNutritionProtocols
-            self.progressPhotos = progressPhotos
-        }
-
-        init(from decoder: Decoder) throws {
-            let container = try decoder.container(keyedBy: CodingKeys.self)
-            sleep = try container.decodeIfPresent(Int.self, forKey: .sleep) ?? 0
-            weight = try container.decodeIfPresent(Int.self, forKey: .weight) ?? 0
-            nutrition = try container.decodeIfPresent(Int.self, forKey: .nutrition) ?? 0
-            measurement = try container.decodeIfPresent(Int.self, forKey: .measurement) ?? 0
-            exerciseWeights = try container.decodeIfPresent(Int.self, forKey: .exerciseWeights) ?? 0
-            exerciseLogs = try container.decodeIfPresent(Int.self, forKey: .exerciseLogs) ?? 0
-            analyses = try container.decodeIfPresent(Int.self, forKey: .analyses) ?? 0
-            workouts = try container.decodeIfPresent(Int.self, forKey: .workouts) ?? 0
-            favorites = try container.decodeIfPresent(Int.self, forKey: .favorites) ?? 0
-            savedNutritionProtocols = try container.decodeIfPresent(Int.self, forKey: .savedNutritionProtocols) ?? 0
-            progressPhotos = try container.decodeIfPresent(Int.self, forKey: .progressPhotos) ?? 0
-        }
-
-        func encode(to encoder: Encoder) throws {
-            var container = encoder.container(keyedBy: CodingKeys.self)
-            try container.encode(sleep, forKey: .sleep)
-            try container.encode(weight, forKey: .weight)
-            try container.encode(nutrition, forKey: .nutrition)
-            try container.encode(measurement, forKey: .measurement)
-            try container.encode(exerciseWeights, forKey: .exerciseWeights)
-            try container.encode(exerciseLogs, forKey: .exerciseLogs)
-            try container.encode(analyses, forKey: .analyses)
-            try container.encode(workouts, forKey: .workouts)
-            try container.encode(favorites, forKey: .favorites)
-            try container.encode(savedNutritionProtocols, forKey: .savedNutritionProtocols)
-            try container.encode(progressPhotos, forKey: .progressPhotos)
-            try container.encode(total, forKey: .total)
-        }
-
-        var total: Int {
-            sleep
-                + weight
-                + nutrition
-                + measurement
-                + exerciseWeights
-                + exerciseLogs
-                + analyses
-                + workouts
-                + favorites
-                + savedNutritionProtocols
-                + progressPhotos
-        }
-
-        var debugSummary: String {
-            "sleep=\(sleep) weight=\(weight) nutrition=\(nutrition) measurement=\(measurement) exerciseWeights=\(exerciseWeights) exerciseLogs=\(exerciseLogs) analyses=\(analyses) workouts=\(workouts) favorites=\(favorites) savedProtocols=\(savedNutritionProtocols) progressPhotos=\(progressPhotos)"
-        }
-
-        func dropSummary(comparedTo previous: EntryCounts) -> String {
-            "sleep=\(previous.sleep - sleep) weight=\(previous.weight - weight) nutrition=\(previous.nutrition - nutrition) measurement=\(previous.measurement - measurement) exerciseWeights=\(previous.exerciseWeights - exerciseWeights) exerciseLogs=\(previous.exerciseLogs - exerciseLogs) analyses=\(previous.analyses - analyses) workouts=\(previous.workouts - workouts) favorites=\(previous.favorites - favorites) savedProtocols=\(previous.savedNutritionProtocols - savedNutritionProtocols) progressPhotos=\(previous.progressPhotos - progressPhotos) total=\(previous.total - total)"
-        }
-
-        func hasSignificantDrop(comparedTo previous: EntryCounts) -> Bool {
-            let measurementDrop = previous.measurement - measurement
-            let exerciseWeightDrop = previous.exerciseWeights - exerciseWeights
-            let exerciseLogDrop = previous.exerciseLogs - exerciseLogs
-            let analysesDrop = previous.analyses - analyses
-            let workoutsDrop = previous.workouts - workouts
-            let favoritesDrop = previous.favorites - favorites
-            let savedProtocolDrop = previous.savedNutritionProtocols - savedNutritionProtocols
-            let progressPhotoDrop = previous.progressPhotos - progressPhotos
-            let totalDrop = previous.total - total
-
-            return (previous.sleep - sleep) > 2
-                || (previous.weight - weight) > 2
-                || (previous.nutrition - nutrition) > 5
-                || measurementDrop > 2
-                || exerciseWeightDrop > 2
-                || exerciseLogDrop > 2
-                || analysesDrop > 1
-                || workoutsDrop > 1
-                || favoritesDrop > 10
-                || savedProtocolDrop > 1
-                || progressPhotoDrop > 1
-                || totalDrop > 10
-        }
-
-        func shouldAttemptAutomaticRecovery(comparedTo previous: EntryCounts) -> Bool {
-            let totalDrop = previous.total - total
-            let zeroedHighValueCategories = [
-                previous.exerciseLogs > 0 && exerciseLogs == 0,
-                previous.exerciseWeights > 0 && exerciseWeights == 0,
-                previous.analyses > 0 && analyses == 0,
-                previous.workouts > 0 && workouts == 0,
-                previous.savedNutritionProtocols > 0 && savedNutritionProtocols == 0
-            ].filter { $0 }.count
-
-            return totalDrop > 10
-                || (previous.exerciseLogs > 2 && exerciseLogs == 0)
-                || (previous.exerciseWeights > 2 && exerciseWeights == 0)
-                || zeroedHighValueCategories >= 2
-        }
-    }
+    /// Lives in `BackupEntryCounts.swift` so the headless tests can drive the drop guard.
+    typealias EntryCounts = BackupEntryCounts
 
     func entryCounts(using modelContext: ModelContext) throws -> EntryCounts {
         let sleep = try modelContext.fetchCount(FetchDescriptor<SleepEntry>())
@@ -1404,6 +931,29 @@ final class DataBackupManager {
     private func loadLastKnownCounts() -> EntryCounts? {
         guard let data = UserDefaults.standard.data(forKey: Self.countsKey) else { return nil }
         return try? JSONDecoder().decode(EntryCounts.self, from: data)
+    }
+
+    /// Call after a deliberate, confirmed owner action that removed records in bulk and has
+    /// already been saved (Reset Workout Day), passing the counts taken just before it.
+    ///
+    /// Moves both loss baselines down by exactly what the action removed
+    /// (`BackupEntryCounts.acknowledgingDeliberateRemoval`), then writes the automatic backup
+    /// at once. Without this the drop guard skipped that backup, and the next launch could
+    /// either merge the pre-reset backup back in (undoing the reset) or warn "Data loss
+    /// detected". Loss the action does not account for is still caught.
+    ///
+    /// The baseline is saved BEFORE the backup is attempted, so a failed write cannot leave
+    /// the launch-time recovery comparing against the pre-reset count. The rotated older
+    /// backups (slots 1 and 2) still hold the pre-reset data. Does nothing while the app runs
+    /// on the in-memory fallback store, whose counts say nothing about the real one.
+    func acknowledgeDeliberateRemoval(before: EntryCounts, using modelContext: ModelContext) {
+        guard !suppressAutomaticBackups, let after = try? entryCounts(using: modelContext) else { return }
+        let removed = EntryCounts.deliberateRemoval(before: before, after: after)
+        if let lastKnown = loadLastKnownCounts() {
+            saveLastKnownCounts(lastKnown.acknowledgingDeliberateRemoval(removed, after: after))
+        }
+        DataIntegrityMonitor.acknowledgeDeliberateRemoval(removed, after: after)
+        writeAutomaticBackup(using: modelContext)
     }
 
     @MainActor
@@ -1469,14 +1019,14 @@ final class DataBackupManager {
             savedNutritionProtocols: mainActorMap(savedNutritionProtocols, SavedNutritionProtocolSnapshot.init),
             progressPhotos: mainActorMap(progressPhotos, ProgressPhotoSnapshot.init),
             analyses: mainActorMap(analyses, AnalysisSnapshot.init),
-            workouts: mainActorMap(workouts, WorkoutProgramSnapshot.init),
+            workouts: mainActorMap(workouts) { WorkoutProgramSnapshot($0) },
             exerciseWeights: mainActorMap(exerciseWeights, ExerciseWeightSnapshot.init),
             exercisePerformanceLogs: mainActorMap(exercisePerformanceLogs, ExercisePerformanceLogSnapshot.init),
             profileSettings: ProfileSettingsSnapshot.fromUserDefaults()
         )
     }
 
-    private func merge(payload: TransformBackupPayload, into modelContext: ModelContext) throws {
+    private func merge(payload: TransformBackupPayload, into modelContext: ModelContext, replaceSettings: Bool) throws {
         let existingWeights = try modelContext.fetch(FetchDescriptor<WeightEntry>())
         let existingSleep = try modelContext.fetch(FetchDescriptor<SleepEntry>())
         let existingMeasurements = try modelContext.fetch(FetchDescriptor<MeasurementEntry>())
@@ -1539,7 +1089,7 @@ final class DataBackupManager {
                 in: existingFavorites,
                 where: { FavoriteFoodSnapshot($0).dedupeKey == key }
             ) {
-                item.apply(to: existing)
+                if replaceSettings { item.apply(to: existing) }
             } else if !favoriteKeys.contains(key) {
                 modelContext.insert(item.makeModel())
                 favoriteKeys.insert(key)
@@ -1600,7 +1150,9 @@ final class DataBackupManager {
 
         _ = try ExerciseWeightStore.normalizeAndConsolidate(in: modelContext)
 
-        payload.profileSettings?.applyToUserDefaults()
+        if replaceSettings {
+            payload.profileSettings?.applyToUserDefaults()
+        }
     }
 
     private func migrateLegacyPayload(_ legacy: LegacyTransformBackupPayload) -> TransformBackupPayload {
