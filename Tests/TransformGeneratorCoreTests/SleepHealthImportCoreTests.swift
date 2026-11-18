@@ -323,7 +323,7 @@ final class SleepHealthImportCoreTests: XCTestCase {
     /// Owner path: delete a wrong night that Apple Health supplied. The next sync, any night
     /// in the 14-day window, put it straight back.
     func testDeletedImportedNightIsNotImportedAgain() {
-        let declined: Set<Date> = [calendar.startOfDay(for: date(daysAgo: 0, hour: 7))]
+        let declined: Set<String> = [SleepImportDeclines.dayKey(for: date(daysAgo: 0, hour: 7), calendar: calendar)]
         let result = SleepHealthImportCore.plan(
             segments: [seg(1, 23, 0, 7, .asleep)],
             existing: [ExistingSleepProjection<Int>](),
@@ -352,8 +352,57 @@ final class SleepHealthImportCoreTests: XCTestCase {
         SleepImportDeclines.record(wakeDayOf: old, now: old, calendar: calendar, defaults: defaults)
         SleepImportDeclines.record(wakeDayOf: date(daysAgo: 0, hour: 7), now: now, calendar: calendar, defaults: defaults)
         let loaded = SleepImportDeclines.load(defaults)
-        XCTAssertTrue(loaded.contains(calendar.startOfDay(for: date(daysAgo: 0, hour: 7))))
-        XCTAssertFalse(loaded.contains(calendar.startOfDay(for: old)), "Older than the retention window")
+        XCTAssertTrue(loaded.contains(SleepImportDeclines.dayKey(for: date(daysAgo: 0, hour: 7), calendar: calendar)))
+        XCTAssertFalse(loaded.contains(SleepImportDeclines.dayKey(for: old, calendar: calendar)), "Older than the retention window")
         XCTAssertEqual(loaded.count, 1)
+    }
+
+    /// Independent audit: a deletion remembered as a start-of-day timestamp no longer matched
+    /// after a time-zone change, and the night came back. The date key is zone-independent.
+    func testDeclinedNightMatchesAfterATimeZoneChange() throws {
+        var eastern = Calendar(identifier: .gregorian)
+        eastern.timeZone = try XCTUnwrap(TimeZone(identifier: "America/New_York"))
+        var pacific = Calendar(identifier: .gregorian)
+        pacific.timeZone = try XCTUnwrap(TimeZone(identifier: "America/Los_Angeles"))
+        let wakeEastern = try XCTUnwrap(eastern.date(from: DateComponents(year: 2026, month: 11, day: 11, hour: 7)))
+        let key = SleepImportDeclines.dayKey(for: wakeEastern, calendar: eastern)
+        XCTAssertEqual(key, "2026-11-11")
+        let samePacificDay = try XCTUnwrap(pacific.date(from: DateComponents(year: 2026, month: 11, day: 11)))
+        XCTAssertEqual(SleepImportDeclines.dayKey(for: samePacificDay, calendar: pacific), key)
+    }
+
+    // MARK: - Independent audit, 2026-11-18: never drop a real night
+
+    /// A 30-minute nap logged just before bed sits inside the night Health joins to it. The
+    /// night must still import: half of the NIGHT is not already logged.
+    func testShortNapJoinedToTheNightDoesNotDropTheNight() {
+        let nap = existing(
+            id: 11, wakeDaysAgo: 1,
+            start: date(daysAgo: 1, hour: 22),
+            end: date(daysAgo: 1, hour: 22, minute: 30),
+            isMainSleep: false,
+            source: .manual
+        )
+        let result = plan([seg(1, 22, 0, 6, .asleep, endMinute: 30)], existing: [nap])
+        XCTAssertEqual(inserts(result).count, 1, "An 8.5-hour night must not be dropped for a 30-minute nap")
+    }
+
+    /// A short on-call night (01:00-04:00) and a hand-logged recovery sleep (09:00-14:00) on the
+    /// same day: the recovery block is skipped as already logged, and the short night is
+    /// imported instead of the day being given up on.
+    func testShortOnCallNightImportsWhenTheLongerBlockIsAlreadyLogged() {
+        let recovery = existing(
+            id: 12, wakeDaysAgo: 0,
+            start: date(daysAgo: 0, hour: 9),
+            end: date(daysAgo: 0, hour: 14),
+            isMainSleep: false,
+            source: .manual
+        )
+        let result = plan([seg(0, 1, 0, 4, .asleep), seg(0, 9, 0, 14, .asleep)], existing: [recovery])
+        let nights = inserts(result)
+        XCTAssertEqual(nights.count, 1)
+        guard let night = nights.first else { return }
+        assertSameInstant(night.start, date(daysAgo: 0, hour: 1))
+        assertSameInstant(night.end, date(daysAgo: 0, hour: 4))
     }
 }

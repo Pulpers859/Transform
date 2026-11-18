@@ -50,6 +50,12 @@ struct WorkoutSessionFeedbackSheet: View {
                 Section {
                     DatePicker("Started", selection: $sessionStartedAt, in: ...Date(), displayedComponents: [.date, .hourAndMinute])
                     DatePicker("Finished", selection: $sessionEndedAt, in: sessionStartedAt...Date(), displayedComponents: [.date, .hourAndMinute])
+                        // Moving Started past Finished pulls Finished along, so the picker never
+                        // shows a time different from the one that would be saved (the picker's
+                        // range only constrains new selections). Independent audit, 2026-11-18.
+                        .onChange(of: sessionStartedAt) { _, newStart in
+                            if sessionEndedAt < newStart { sessionEndedAt = newStart }
+                        }
                     // Rounded, not truncated: a 22:50 session reading "22 min" looks like
                     // an off-by-one against the two clock times displayed right above it.
                     let durationMinutes = Int((sessionEndedAt.timeIntervalSince(sessionStartedAt) / 60).rounded())
