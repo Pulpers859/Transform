@@ -119,8 +119,10 @@ struct ExerciseProgressionView: View {
     }
 
     func recalculateWeightSummary() {
-        // Bodyweight sessions are stored at 0 lb and still count (see `holdsLoggedWork`).
-        let logs = allLogs.filter { $0.canonicalExerciseKey == canonicalKey && $0.holdsLoggedWork }
+        // Bodyweight sessions are stored at 0 lb and still count (see `holdsLoggedWork`);
+        // all-assisted sessions do not, and assisted sets are left out of the tops
+        // (`countsTowardSummary`, `summarySetLogs`).
+        let logs = allLogs.filter { $0.canonicalExerciseKey == canonicalKey && $0.countsTowardSummary }
         guard let latestLog = logs.max(by: { $0.loggedAt < $1.loggedAt }) else {
             if let entry = allWeightEntries.first(where: { $0.canonicalExerciseKey == canonicalKey }) {
                 modelContext.delete(entry)
@@ -131,7 +133,7 @@ struct ExerciseProgressionView: View {
 
         // Re-derive summary and best from the qualified working set so a recompute can
         // never re-promote an anomaly that the save path already excluded.
-        let latestTop = WorkingSetAnalysis.summaryTop(from: latestLog.decodedSetLogs)
+        let latestTop = WorkingSetAnalysis.summaryTop(from: latestLog.summarySetLogs)
         let topWeight = latestTop?.weightLbs ?? latestLog.weightLbs
         let topReps = latestTop?.reps ?? latestLog.repsCompleted
 
@@ -140,7 +142,7 @@ struct ExerciseProgressionView: View {
         var bestReps: Int?
         var bestNotes = ""
         for log in logs {
-            let top = WorkingSetAnalysis.summaryTop(from: log.decodedSetLogs)
+            let top = WorkingSetAnalysis.summaryTop(from: log.summarySetLogs)
             let w = top?.weightLbs ?? log.weightLbs
             if w > bestWeight + 0.001 || (abs(w - bestWeight) <= 0.001 && log.loggedAt > (bestLogDate ?? .distantPast)) {
                 bestWeight = w

@@ -795,6 +795,23 @@ class ExercisePerformanceLog {
         return (repsCompleted ?? 0) > 0
     }
 
+    /// The sets the exercise's weight summary (Last/Best, and the history sent to workout
+    /// generation) may be built from: every set without machine assistance. An assisted set is
+    /// stored at 0 lb, so letting it in would rank "12 reps with 40 lb help" as a better
+    /// bodyweight best than a real unassisted 8, overwriting the real one (independent audit
+    /// of the assisted-logging feature, 2026-11-19). Pinned by AssistedProgressionTests.
+    var summarySetLogs: [SetLogEntry] {
+        AssistedProgression.summarySets(decodedSetLogs)
+    }
+
+    /// Whether this log may shape the weight summary: it records work (`holdsLoggedWork`) and
+    /// it is not a session where every set was assisted.
+    var countsTowardSummary: Bool {
+        guard holdsLoggedWork else { return false }
+        let sets = decodedSetLogs
+        return sets.isEmpty || !AssistedProgression.summarySets(sets).isEmpty
+    }
+
     /// The prescribed reps-in-reserve target, or nil when it was not recorded.
     var recordedTargetRIR: Int? {
         prescribedTargetRIR >= 0 ? prescribedTargetRIR : nil

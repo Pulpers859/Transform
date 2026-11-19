@@ -514,6 +514,19 @@ struct AddExerciseWeightSheet: View {
         let prefillWeight = analysis.workingWeight ?? weightSummary?.weightLbs
         let prefillReps = analysis.topWorkingSet?.reps ?? weightSummary?.repsCompleted
 
+        // Last session done on the assistance machine: start this session assisted at the
+        // same setting, so logging it here cannot quietly store it as plain bodyweight. The
+        // setting itself is changed in the set logger, which has the Assisted switch.
+        if AssistedProgression.supportsAssistance(exercise.exerciseName),
+           let assisted = AssistedProgression.workingSets(latestSetLogs) {
+            let reps = assisted.sets.map(\.repsCompleted).max()
+            setLogs = (1...count).map { num in
+                SetLogDraft(setNumber: num, weightText: SessionSetSheetRules.weightText(for: 0),
+                            repsText: reps.map { String($0) } ?? "", rirText: "", assistLbs: assisted.assist)
+            }
+            return
+        }
+
         setLogs = (1...count).map { num in
             SetLogDraft(
                 setNumber: num,
@@ -528,7 +541,10 @@ struct AddExerciseWeightSheet: View {
         let nextNum = (setLogs.last?.setNumber ?? 0) + 1
         let lastWeight = setLogs.last?.weightText ?? ""
         let lastReps = setLogs.last?.repsText ?? ""
-        setLogs.append(SetLogDraft(setNumber: nextNum, weightText: lastWeight, repsText: lastReps, rirText: ""))
+        // Carries the assistance with the copied text, or an added assisted set would be
+        // stored as plain bodyweight.
+        setLogs.append(SetLogDraft(setNumber: nextNum, weightText: lastWeight, repsText: lastReps, rirText: "",
+                                   assistLbs: setLogs.last?.assistLbs))
     }
 
     func removeLastSet() {
@@ -542,6 +558,7 @@ struct AddExerciseWeightSheet: View {
             setLogs[i].weightText = first.weightText
             setLogs[i].repsText = first.repsText
             setLogs[i].rirText = first.rirText
+            setLogs[i].assistLbs = first.assistLbs
         }
     }
 
@@ -614,23 +631,30 @@ struct AddExerciseWeightSheet: View {
             modelContext.insert(performanceLog)
         }
 
-        if let weightSummary {
-            weightSummary.applyLog(
-                loggedAt: loggedAt,
-                exerciseName: exercise.exerciseName,
-                weightLbs: topWeight,
-                repsCompleted: topReps,
-                notes: trimmedNotes
-            )
-        } else {
-            let entry = ExerciseWeightEntry(
-                loggedAt: loggedAt,
-                exerciseName: exercise.exerciseName,
-                weightLbs: topWeight,
-                repsCompleted: topReps,
-                notes: trimmedNotes
-            )
-            modelContext.insert(entry)
+        // The Last/Best summary is built from unassisted sets only
+        // (`ExercisePerformanceLog.summarySetLogs`); an all-assisted session leaves it alone.
+        let summarySets = AssistedProgression.summarySets(validSets)
+        let summaryTop = WorkingSetAnalysis.summaryTop(from: summarySets)
+        if let summaryWeight = summaryTop?.weightLbs ?? summarySets.first?.weightLbs {
+            let summaryReps = summaryTop?.reps
+            if let weightSummary {
+                weightSummary.applyLog(
+                    loggedAt: loggedAt,
+                    exerciseName: exercise.exerciseName,
+                    weightLbs: summaryWeight,
+                    repsCompleted: summaryReps,
+                    notes: trimmedNotes
+                )
+            } else {
+                let entry = ExerciseWeightEntry(
+                    loggedAt: loggedAt,
+                    exerciseName: exercise.exerciseName,
+                    weightLbs: summaryWeight,
+                    repsCompleted: summaryReps,
+                    notes: trimmedNotes
+                )
+                modelContext.insert(entry)
+            }
         }
 
         // This sheet writes performance logs directly instead of going through

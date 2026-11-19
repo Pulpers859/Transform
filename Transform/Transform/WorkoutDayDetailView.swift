@@ -1263,6 +1263,22 @@ struct ExerciseCard: View {
                 color: TFColor.warning
             )
         }
+        // Same rule as the load cue: after two or more blocks away (8 weeks) the old setting
+        // is not something to build on yet. Heuristic threshold copied from the load path.
+        if decision.verdict == .lessAssistance,
+           let lastAssisted = performanceHistory
+               .filter { $0.canonicalExerciseKey == ExerciseWeightEntry.canonicalLookupKey(exercise.exerciseName)
+                   && $0.loggedAt < Calendar.current.startOfDay(for: Date())
+                   && AssistedProgression.workingSets($0.setLogs) != nil }
+               .map(\.loggedAt).max(),
+           let weeks = Calendar.current.dateComponents([.weekOfYear], from: lastAssisted, to: Date()).weekOfYear,
+           weeks >= 8 {
+            return ProgressionSuggestion(
+                icon: "arrow.uturn.backward.circle.fill",
+                text: "Last done assisted \(weeks) weeks ago. Start at \(formatWeight(session.assist)) lb assistance and use less once it moves well again.",
+                color: TFColor.info
+            )
+        }
         let text = AssistedProgression.cue(for: decision, repRange: repRange)
         switch decision.verdict {
         case .lessAssistance:
@@ -1329,6 +1345,21 @@ struct ExerciseCard: View {
         if let suggestion, suggestion.increasesLoad,
            let claimed = noteClaimedSetCount, claimed > exercise.sets {
             return .completePrescribedSets(claimed)
+        }
+        // Owner, 2026-11-19: his past pull-ups and dips were logged as BW though they were
+        // done on the assistance machine (those logs stay as they are). Until an assisted set
+        // is logged, the BW cue above says to add load, which is wrong for him; say how to
+        // switch over, once, right beside it.
+        if let suggestion, suggestion.increasesLoad,
+           AssistedProgression.supportsAssistance(exercise.exerciseName),
+           WorkoutProgressionEngine.isBodyweightEquivalent(log.weightLbs) {
+            return ProgressionSuggestion(
+                icon: suggestion.icon,
+                text: suggestion.text + ". Using the assistance machine? Tap Assisted and log its help instead.",
+                color: suggestion.color,
+                compactText: suggestion.compactText,
+                suggestedLoad: suggestion.suggestedLoad
+            )
         }
         return suggestion
     }
@@ -3290,8 +3321,8 @@ struct ProgressionSuggestion {
         )
     }
 
-    /// Shown on deload days in place of a load-progression cue: the block is deliberately
-    /// lighter, so the correct coaching is to hold back, not to add weight.
+    /// The deload sentence for an assisted session: on an assistance machine "lighter" means
+    /// MORE help, so `deloadGuidance`'s "go about 10% lighter" would read backwards.
     static var assistedDeloadGuidance: ProgressionSuggestion {
         ProgressionSuggestion(
             icon: "arrow.down.right.circle.fill",
@@ -3300,6 +3331,8 @@ struct ProgressionSuggestion {
         )
     }
 
+    /// Shown on deload days in place of a load-progression cue: the block is deliberately
+    /// lighter, so the correct coaching is to hold back, not to add weight.
     static var deloadGuidance: ProgressionSuggestion {
         ProgressionSuggestion(
             icon: "arrow.down.right.circle.fill",
@@ -3916,8 +3949,17 @@ enum SetLoggingService {
             log.prescribedReps = exercise.reps
         }
 
-        let summary = summaryEntryOrCreate(for: exercise, weight: topWeight, reps: topReps, date: date, modelContext: modelContext)
-        summary.applyLog(loggedAt: date, exerciseName: exercise.exerciseName, weightLbs: topWeight, repsCompleted: topReps, notes: summary.notes)
+        // The Last/Best summary is built from unassisted sets only
+        // (`ExercisePerformanceLog.summarySetLogs`). An all-assisted session leaves it alone,
+        // so a real bodyweight best is never replaced by reps done with machine help.
+        let summarySets = AssistedProgression.summarySets(sets)
+        if !summarySets.isEmpty {
+            let summaryTop = WorkingSetAnalysis.summaryTop(from: summarySets)
+            let summaryWeight = summaryTop?.weightLbs ?? summarySets[0].weightLbs
+            let summaryReps = summaryTop?.reps
+            let summary = summaryEntryOrCreate(for: exercise, weight: summaryWeight, reps: summaryReps, date: date, modelContext: modelContext)
+            summary.applyLog(loggedAt: date, exerciseName: exercise.exerciseName, weightLbs: summaryWeight, repsCompleted: summaryReps, notes: summary.notes)
+        }
 
         if let liveClockDate {
             SessionLifecycle.noteSetLogged(for: exercise, at: liveClockDate)

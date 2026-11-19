@@ -9,13 +9,21 @@ import Foundation
 /// Assistance now has its own field (`SetLogEntry.assistLbs`), and this type grades it the way
 /// `WorkoutProgressionEngine` grades load, with every direction reversed.
 ///
-/// Deliberately NOT a negative weight. About twenty places read a set's weight as never below
-/// zero (the working-set analysis drops negatives as junk, bodyweight checks treat anything up
-/// to 1 lb as bodyweight), and each would have misread assistance silently.
+/// Deliberately NOT a negative weight. Code across the app reads a set's weight as never below
+/// zero: the working-set analysis drops negatives as junk, and the bodyweight check treats
+/// anything up to 1 lb (negatives included) as bodyweight. Each would have misread assistance
+/// silently.
 ///
 /// The machine's step size is not known, so no cue names a specific next setting; it says
-/// "one setting lighter / heavier than X lb". Pinned by AssistedProgressionTests.
+/// "one setting lighter / heavier than X lb". The decisions and both of those sentences are
+/// pinned by AssistedProgressionTests; the card, logger and sheet wiring is UI and is not.
 enum AssistedProgression {
+    /// The sets the weight summary may be built from: those without assistance. See
+    /// `ExercisePerformanceLog.summarySetLogs` for why assisted sets are kept out.
+    static func summarySets(_ sets: [SetLogEntry]) -> [SetLogEntry] {
+        sets.filter { $0.assistLbs == nil }
+    }
+
     /// Same tolerance the working-set analysis uses to call two loads "the same weight".
     static let sameSettingToleranceLbs = 0.5
 
@@ -41,7 +49,7 @@ enum AssistedProgression {
 
     struct Decision: Equatable {
         let verdict: Verdict
-        /// The working setting: the LEAST help used on a set with reps (the hardest sets).
+        /// The working setting (`workingSets`).
         let assistLbs: Double
         let workingSetCount: Int
         let ceilingSetCount: Int
@@ -50,13 +58,27 @@ enum AssistedProgression {
         let belowFloorStreak: Int
     }
 
-    /// The assisted working sets of one session: sets with assistance and at least one rep,
-    /// at the least-help setting. Nil when the session has no assisted set.
+    /// The assisted working sets of one session: sets with assistance and at least one rep, at
+    /// the setting used for the MOST sets; a tie goes to the least help (the harder setting).
+    /// Nil when the session has no assisted set.
+    ///
+    /// Not simply "least help used": one hard attempt at a lighter setting (10 lb help for 2
+    /// reps among three sets of 10 at 40 lb) then became the graded setting, the next
+    /// session's prefill and the stall-streak anchor (independent audit, 2026-11-19). The load
+    /// engine screens such sets out with `WorkingSetAnalysis`; this is the assisted equivalent.
     static func workingSets(_ sets: [SetLogEntry]) -> (assist: Double, sets: [SetLogEntry])? {
         let assisted = sets.filter { ($0.assistLbs ?? -1) >= 0 && $0.repsCompleted > 0 }
-        guard let least = assisted.compactMap(\.assistLbs).min() else { return nil }
-        let working = assisted.filter { abs(($0.assistLbs ?? least) - least) <= sameSettingToleranceLbs }
-        return (least, working)
+        let settings = assisted.compactMap(\.assistLbs)
+        guard !settings.isEmpty else { return nil }
+        func atSetting(_ help: Double) -> [SetLogEntry] {
+            assisted.filter { abs(($0.assistLbs ?? help) - help) <= sameSettingToleranceLbs }
+        }
+        let chosen = settings.min { lhs, rhs in
+            let lhsCount = atSetting(lhs).count
+            let rhsCount = atSetting(rhs).count
+            return lhsCount != rhsCount ? lhsCount > rhsCount : lhs < rhs
+        } ?? settings[0]
+        return (chosen, atSetting(chosen))
     }
 
     /// The setting to prefill for the next assisted set: the working setting of the most
@@ -127,7 +149,7 @@ enum AssistedProgression {
         switch decision.verdict {
         case .lessAssistance:
             let earned = decision.ceilingSetCount == decision.workingSetCount
-                ? "every set hit \(repRange.high)"
+                ? "every assisted set hit \(repRange.high)"
                 : "\(decision.ceilingSetCount) of \(setsLabel(decision.workingSetCount)) hit \(repRange.high)"
             return decision.assistLbs > 0
                 ? "Less help next time: \(earned) with \(help). Go one setting lighter than \(formatWeight(decision.assistLbs)) lb."

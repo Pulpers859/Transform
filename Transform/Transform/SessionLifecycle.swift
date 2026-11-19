@@ -125,8 +125,11 @@ enum SessionLifecycle {
             for summary in summaries {
                 let deletedDates = Set(removed.filter { $0.canonicalExerciseKey == summary.canonicalExerciseKey }.map(\.loggedAt))
                 guard !deletedDates.isEmpty else { continue }
-                var records = remaining.filter { $0.canonicalExerciseKey == summary.canonicalExerciseKey }.map { log in
-                    let top = WorkingSetAnalysis.summaryTop(from: log.decodedSetLogs)
+                // Assisted sets never shape the summary (`ExercisePerformanceLog.summarySetLogs`).
+                var records = remaining.filter {
+                    $0.canonicalExerciseKey == summary.canonicalExerciseKey && $0.countsTowardSummary
+                }.map { log in
+                    let top = WorkingSetAnalysis.summaryTop(from: log.summarySetLogs)
                     return ResetRecord(date: log.loggedAt, weight: top?.weightLbs ?? log.weightLbs,
                                        reps: top?.reps ?? log.repsCompleted, notes: log.notes)
                 }

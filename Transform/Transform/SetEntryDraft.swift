@@ -77,14 +77,13 @@ struct SetEntryDraft: Equatable {
         return save(assisted: { load, count, rir, _ in persist(load, count, rir) })
     }
 
-    /// Save that carries the assistance (nil unless assisted). A successful save keeps the
-    /// mode, so the next set of an assisted exercise starts assisted.
+    /// Save that carries the assistance (nil unless assisted). A successful save clears the
+    /// draft; whether the NEXT set starts assisted is decided by the loggers from the set just
+    /// stored (`InlineSetLogger.freshDraft`, `RestTimerFullscreen.isAssisted`).
     mutating func save(assisted persist: (Double, Int, Double?, Double?) -> Bool) -> Bool {
         guard canLog, let load = parsedWeight, let count = parsedReps,
               persist(load, count, parsedRIR, parsedAssist) else { return false }
-        let wasAssisted = isAssisted
         self = SetEntryDraft()
-        isAssisted = wasAssisted
         return true
     }
 }

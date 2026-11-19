@@ -1,4 +1,5 @@
 import XCTest
+import SwiftData
 @testable import Transform
 
 /// Assisted pull-ups, chin-ups and dips (owner request, 2026-11-19): the machine's number is
@@ -56,14 +57,27 @@ final class AssistedProgressionTests: XCTestCase {
         XCTAssertFalse(cue.lowercased().contains("add load"), cue)
     }
 
-    /// The working setting is the LEAST help used: those are the hardest sets.
-    func testWorkingSettingIsTheLeastHelpUsed() throws {
+    /// The working setting is the one used for the most sets; a tie goes to the least help.
+    func testWorkingSettingIsTheMostUsedSettingWithTiesToLeastHelp() throws {
         let decision = try XCTUnwrap(AssistedProgression.evaluate(
             sets: [set(1, assist: 40, reps: 12), set(2, assist: 30, reps: 9), set(3, assist: 30, reps: 8)],
             repRange: range))
         XCTAssertEqual(decision.assistLbs, 30)
         XCTAssertEqual(decision.workingSetCount, 2)
         XCTAssertEqual(decision.verdict, .buildReps)
+        let tie = try XCTUnwrap(AssistedProgression.workingSets([set(1, assist: 40, reps: 12), set(2, assist: 30, reps: 9)]))
+        XCTAssertEqual(tie.assist, 30, "A tie goes to the harder setting")
+    }
+
+    /// Independent audit: one hard attempt at a lighter setting must not become the graded
+    /// setting, the next session's prefill, or the stall anchor.
+    func testOneAttemptAtALighterSettingDoesNotTakeOverTheGrade() throws {
+        let sets = [set(1, assist: 10, reps: 2), set(2, assist: 40, reps: 10),
+                    set(3, assist: 40, reps: 10), set(4, assist: 40, reps: 10)]
+        let decision = try XCTUnwrap(AssistedProgression.evaluate(sets: sets, repRange: range))
+        XCTAssertEqual(decision.assistLbs, 40)
+        XCTAssertEqual(decision.verdict, .buildReps)
+        XCTAssertEqual(AssistedProgression.suggestedAssist(from: sets), 40)
     }
 
     func testSetsUnderTheRangeHoldThenAskForMoreHelp() throws {
@@ -73,7 +87,8 @@ final class AssistedProgressionTests: XCTestCase {
         XCTAssertEqual(first.belowFloorSetCount, 1)
         let repeated = try XCTUnwrap(AssistedProgression.evaluate(sets: sets, repRange: range, belowFloorStreak: 2))
         XCTAssertEqual(repeated.verdict, .moreAssistance)
-        XCTAssertTrue(AssistedProgression.cue(for: repeated, repRange: range).contains("more help"))
+        let moreHelp = AssistedProgression.cue(for: repeated, repRange: range)
+        XCTAssertTrue(moreHelp.contains("one setting heavier (more help) than 40 lb"), moreHelp)
     }
 
     func testStallStreakCountsOnlyConsecutiveSessionsAtTheSameSetting() {
@@ -110,7 +125,6 @@ final class AssistedProgressionTests: XCTestCase {
         XCTAssertEqual(saved?.0, 0)
         XCTAssertEqual(saved?.1, 10)
         XCTAssertEqual(saved?.3, 40)
-        XCTAssertTrue(draft.isAssisted, "The next set of an assisted exercise starts assisted")
     }
 
     /// The three-value save has nowhere to put the help; it must refuse rather than store the
@@ -143,5 +157,31 @@ final class AssistedProgressionTests: XCTestCase {
         ])
         XCTAssertNil(weighted.sets.first?.assistLbs, "A set with added load is not assisted")
         XCTAssertEqual(weighted.sets.first?.weightLbs, 25)
+    }
+
+    // MARK: - The Last/Best summary ignores assisted sets (independent audit, 2026-11-19)
+
+    /// 12 reps with 40 lb of help must never replace a real unassisted best: an all-assisted
+    /// session does not shape the summary, and a mixed one only through its unassisted sets.
+    @MainActor
+    func testAssistedSetsNeverShapeTheWeightSummary() throws {
+        let container = try ModelContainer(for: WorkoutProgram.self, ExercisePerformanceLog.self,
+                                           ExerciseWeightEntry.self,
+                                           configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+        let context = ModelContext(container)
+        let allAssisted = ExercisePerformanceLog(exerciseName: "Chin-Up", weightLbs: 0, repsCompleted: 12,
+            workoutDayNumber: 1, setLogs: [set(1, assist: 40, reps: 12), set(2, assist: 40, reps: 12)])
+        let mixed = ExercisePerformanceLog(exerciseName: "Chin-Up", weightLbs: 0, repsCompleted: 12,
+            workoutDayNumber: 1, setLogs: [set(1, assist: nil, reps: 6), set(2, assist: 40, reps: 12)])
+        let plainBodyweight = ExercisePerformanceLog(exerciseName: "Chin-Up", weightLbs: 0, repsCompleted: 8,
+            workoutDayNumber: 1, setLogs: [set(1, assist: nil, reps: 8)])
+        for log in [allAssisted, mixed, plainBodyweight] { context.insert(log) }
+
+        XCTAssertFalse(allAssisted.countsTowardSummary)
+        XCTAssertTrue(allAssisted.holdsLoggedWork, "It is still real work, listed in history")
+        XCTAssertTrue(mixed.countsTowardSummary)
+        XCTAssertEqual(mixed.summarySetLogs.map(\.repsCompleted), [6])
+        XCTAssertTrue(plainBodyweight.countsTowardSummary)
+        XCTAssertEqual(plainBodyweight.summarySetLogs.count, 1)
     }
 }
