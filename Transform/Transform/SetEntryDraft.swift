@@ -12,6 +12,9 @@ struct SetEntryDraft: Equatable {
     var weight = ""
     var reps = ""
     var rir = ""
+    /// Assisted mode (`AssistedProgression`): `weight` then holds the machine's HELP in lb,
+    /// which must be above 0, and the set is stored at 0 lb with that assistance.
+    var isAssisted = false
 
     init(suggestedWeight: Double? = nil) {
         if let load = suggestedWeight, load.isFinite, load >= 0 {
@@ -19,7 +22,25 @@ struct SetEntryDraft: Equatable {
         }
     }
 
+    /// A draft prefilled in assisted mode with the given help, e.g. last session's setting.
+    init(suggestedAssist: Double) {
+        isAssisted = true
+        if suggestedAssist.isFinite, suggestedAssist > 0 {
+            weight = suggestedAssist.rounded() == suggestedAssist ? String(format: "%.0f", suggestedAssist) : String(suggestedAssist)
+        }
+    }
+
+    /// The machine's help in lb, in assisted mode only.
+    var parsedAssist: Double? {
+        guard isAssisted else { return nil }
+        let value = weight.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: ",", with: ".")
+        guard let help = Double(value), help.isFinite, help > 0 else { return nil }
+        return help
+    }
+
     var parsedWeight: Double? {
+        // An assisted set adds no load: it is stored at 0 lb with its assistance.
+        if isAssisted { return parsedAssist == nil ? nil : 0 }
         let value = weight.trimmingCharacters(in: .whitespacesAndNewlines)
         if value.caseInsensitiveCompare("BW") == .orderedSame { return 0 }
         guard let load = Double(value.replacingOccurrences(of: ",", with: ".")), load.isFinite, load > 0 else { return nil }
@@ -49,10 +70,21 @@ struct SetEntryDraft: Equatable {
     }
 
     /// Failed saves must leave the actual typed results available for retry.
+    /// Refuses an assisted draft: this signature has nowhere to put the assistance, and
+    /// dropping it would store the set as plain bodyweight. Use `save(assisted:)`.
     mutating func save(using persist: (Double, Int, Double?) -> Bool) -> Bool {
+        guard !isAssisted else { return false }
+        return save(assisted: { load, count, rir, _ in persist(load, count, rir) })
+    }
+
+    /// Save that carries the assistance (nil unless assisted). A successful save keeps the
+    /// mode, so the next set of an assisted exercise starts assisted.
+    mutating func save(assisted persist: (Double, Int, Double?, Double?) -> Bool) -> Bool {
         guard canLog, let load = parsedWeight, let count = parsedReps,
-              persist(load, count, parsedRIR) else { return false }
+              persist(load, count, parsedRIR, parsedAssist) else { return false }
+        let wasAssisted = isAssisted
         self = SetEntryDraft()
+        isAssisted = wasAssisted
         return true
     }
 }
@@ -85,6 +117,11 @@ enum SessionSetSheetRules {
         var weightText: String
         var repsText: String
         var rirText: String
+        /// The stored set's machine assistance, carried through untouched. These sheets
+        /// rewrite the whole session, so a field they did not carry would be deleted on save
+        /// (the bodyweight bug again). Kept while the row stays bodyweight; dropped if a real
+        /// added load is typed, because the set is then weighted, not assisted.
+        var assistLbs: Double? = nil
     }
 
     struct Outcome {
@@ -154,7 +191,8 @@ enum SessionSetSheetRules {
                 unreadable.append(row.setNumber)
                 continue
             }
-            sets.append(SetLogEntry(setNumber: row.setNumber, weightLbs: weight, repsCompleted: reps, rir: rir))
+            sets.append(SetLogEntry(setNumber: row.setNumber, weightLbs: weight, repsCompleted: reps, rir: rir,
+                                    assistLbs: weight == 0 ? row.assistLbs : nil))
         }
         return Outcome(sets: sets, unreadableSetNumbers: unreadable)
     }

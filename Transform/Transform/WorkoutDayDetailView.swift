@@ -1227,10 +1227,60 @@ struct ExerciseCard: View {
         )
     }
 
+    /// Last session's assistance setting for an assisted pull-up, chin-up or dip
+    /// (`AssistedProgression`); nil when that session was not assisted.
+    var suggestedAssist: Double? {
+        guard AssistedProgression.supportsAssistance(exercise.exerciseName) else { return nil }
+        return AssistedProgression.suggestedAssist(from: latestSetLogs)
+    }
+
+    /// True when the session the cue grades was done on an assistance machine. Load-based
+    /// coaching would read those sets as plain bodyweight and say "add load".
+    var gradesAssistedSession: Bool {
+        AssistedProgression.supportsAssistance(exercise.exerciseName)
+            && AssistedProgression.workingSets(progressionReferenceSets) != nil
+    }
+
+    /// The cue for an assisted session: progress is LESS help. Pinned by
+    /// AssistedProgressionTests (the decision and its sentence); the wiring is UI.
+    func assistedSuggestion(repRange: RepRange, prescribedSets: Int?) -> ProgressionSuggestion? {
+        guard let session = AssistedProgression.workingSets(progressionReferenceSets) else { return nil }
+        let streak = AssistedProgression.belowFloorStreak(
+            for: ExerciseWeightEntry.canonicalLookupKey(exercise.exerciseName),
+            from: performanceHistory,
+            assistLbs: session.assist,
+            repFloor: repRange.low
+        )
+        guard let decision = AssistedProgression.evaluate(
+            sets: progressionReferenceSets, repRange: repRange, belowFloorStreak: streak
+        ) else { return nil }
+        // Same rule as the load cue: an unfinished session has not earned the next step.
+        if decision.verdict == .lessAssistance, let prescribedSets,
+           progressionReferenceSets.count < prescribedSets {
+            return ProgressionSuggestion(
+                icon: "hand.raised.fill",
+                text: "You logged \(progressionReferenceSets.count) of \(setsLabel(prescribedSets)). Finish all sets at this assistance before using less.",
+                color: TFColor.warning
+            )
+        }
+        let text = AssistedProgression.cue(for: decision, repRange: repRange)
+        switch decision.verdict {
+        case .lessAssistance:
+            return ProgressionSuggestion(icon: "arrow.up.circle.fill", text: text, color: TFColor.success)
+        case .buildReps:
+            return ProgressionSuggestion(icon: "arrow.right.circle.fill", text: text, color: TFColor.info)
+        case .holdAssistance, .moreAssistance:
+            return ProgressionSuggestion(icon: "arrow.down.circle.fill", text: text, color: TFColor.warning)
+        }
+    }
+
     var progressionSuggestion: ProgressionSuggestion? {
         // On a deload day, never tell the lifter to add weight — that contradicts the
         // prescription. Coach to hold the lighter load regardless of last session's reps.
-        if isDeloadContext { return .deloadGuidance }
+        // On an assistance machine "lighter" means MORE help, so it gets its own sentence.
+        if isDeloadContext {
+            return gradesAssistedSession ? .assistedDeloadGuidance : .deloadGuidance
+        }
         // Before any same-prescription verdict: those all assume the prescription held, and
         // saying "add load" under a rep range the lifter has never trained is the exact bug.
         if let translated = crossPrescriptionSuggestion { return translated }
@@ -1238,6 +1288,9 @@ struct ExerciseCard: View {
         // routine rather than rare, so say how to pick the first load instead of saying nothing.
         guard let log = latestWeightLog else { return .firstSession(targetRIR: exercise.targetRIR) }
         guard let graded = gradedSessionPrescription else { return nil }
+        if gradesAssistedSession {
+            return assistedSuggestion(repRange: graded.repRange, prescribedSets: graded.prescribedSets)
+        }
         let suggestion = ProgressionSuggestion.evaluate(
             analysis: progressionAnalysis,
             summaryRepsCompleted: log.repsCompleted,
@@ -1481,8 +1534,11 @@ struct ExerciseCard: View {
                         loggedSets: sessionSetLogs,
                         suggestedWeight: isDeloadContext ? nil : (progressionSuggestion?.suggestedLoad ?? workingSetAnalysis.workingWeight),
                         targetRepsPlaceholder: RepRange.parse(exercise.reps)?.high,
-                        onLogSet: { setNumber, weight, reps, rir in
-                            logSetFromCard(setNumber: setNumber, weight: weight, reps: reps, rir: rir)
+                        // Kept on deload days (unlike the load prefill): it decides whether the row
+                        // starts assisted, and the deload cue already says to use more help.
+                        suggestedAssist: suggestedAssist,
+                        onLogSet: { setNumber, weight, reps, rir, assist in
+                            logSetFromCard(setNumber: setNumber, weight: weight, reps: reps, rir: rir, assist: assist)
                         }
                     )
                 }
@@ -1492,8 +1548,11 @@ struct ExerciseCard: View {
                     loggedSets: sessionSetLogs,
                     suggestedWeight: isDeloadContext ? nil : (progressionSuggestion?.suggestedLoad ?? workingSetAnalysis.workingWeight),
                     targetRepsPlaceholder: RepRange.parse(exercise.reps)?.high,
-                    onLog: { setNumber, weight, reps, rir in
-                        logSetFromCard(setNumber: setNumber, weight: weight, reps: reps, rir: rir)
+                    // Kept on deload days (unlike the load prefill): it decides whether the row
+                        // starts assisted, and the deload cue already says to use more help.
+                        suggestedAssist: suggestedAssist,
+                    onLog: { setNumber, weight, reps, rir, assist in
+                        logSetFromCard(setNumber: setNumber, weight: weight, reps: reps, rir: rir, assist: assist)
                     },
                     onClear: { setNumber in
                         SetLoggingService.clearSet(setNumber: setNumber, for: exercise, modelContext: modelContext)
@@ -1558,12 +1617,13 @@ struct ExerciseCard: View {
     /// UI must never mean two ways of writing training data: they differ only in where the
     /// numbers were typed, so completion reporting and the rest-timer signal stay identical.
     @discardableResult
-    private func logSetFromCard(setNumber: Int, weight: Double, reps: Int, rir: Double?) -> Bool {
+    private func logSetFromCard(setNumber: Int, weight: Double, reps: Int, rir: Double?, assist: Double?) -> Bool {
         guard SetLoggingService.logSet(
             setNumber: setNumber,
             weightLbs: weight,
             reps: reps,
             rir: rir,
+            assistLbs: assist,
             for: exercise,
             modelContext: modelContext
         ) else { return false }
@@ -1915,10 +1975,10 @@ struct ExerciseCard: View {
                         .font(.caption2.bold())
                         .foregroundStyle(role == .anomaly ? TFColor.warning : TFColor.accent)
                         .frame(width: 38, alignment: .leading)
-                    Text(formatLoad(set.weightLbs))
+                    Text(formatSetLoad(set))
                         .font(.caption.bold())
                         .foregroundStyle(role == .anomaly ? TFColor.warning : .primary)
-                        .frame(width: 65, alignment: .trailing)
+                        .frame(minWidth: 65, alignment: .trailing)
                     Text("\u{00D7}")
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
@@ -2256,7 +2316,10 @@ struct ExerciseRestTimerView: View {
     let loggedSets: [SetLogEntry]
     let suggestedWeight: Double?
     let targetRepsPlaceholder: Int?
-    let onLogSet: (Int, Double, Int, Double?) -> Bool
+    /// Last session's assistance setting (`AssistedProgression`), handed to the full-screen panel.
+    let suggestedAssist: Double?
+    /// Last argument: machine assistance in lb for an assisted set, else nil.
+    let onLogSet: (Int, Double, Int, Double?, Double?) -> Bool
 
     /// The countdown's rules live in `RestTimerClock` (headless, pinned by
     /// RestEndAlertTests); this view only drives them and draws them.
@@ -2269,11 +2332,13 @@ struct ExerciseRestTimerView: View {
         loggedSets: [SetLogEntry],
         suggestedWeight: Double?,
         targetRepsPlaceholder: Int?,
-        onLogSet: @escaping (Int, Double, Int, Double?) -> Bool
+        suggestedAssist: Double?,
+        onLogSet: @escaping (Int, Double, Int, Double?, Double?) -> Bool
     ) {
         self.exercise = exercise
         self.loggedSets = loggedSets
         self.suggestedWeight = suggestedWeight
+        self.suggestedAssist = suggestedAssist
         self.targetRepsPlaceholder = targetRepsPlaceholder
         self.onLogSet = onLogSet
         _clock = State(initialValue: RestTimerClock(restSeconds: exercise.restSeconds))
@@ -2437,6 +2502,8 @@ struct ExerciseRestTimerView: View {
                 loggedSets: loggedSets,
                 suggestedWeight: suggestedWeight,
                 targetRepsPlaceholder: targetRepsPlaceholder,
+                suggestedAssist: suggestedAssist,
+                supportsAssistance: AssistedProgression.supportsAssistance(exercise.exerciseName),
                 onLogSet: onLogSet,
                 onToggle: { toggleRestTimer() },
                 onReset: { resetRestTimer() },
@@ -2538,7 +2605,12 @@ struct RestTimerFullscreen: View {
     let loggedSets: [SetLogEntry]
     let suggestedWeight: Double?
     let targetRepsPlaceholder: Int?
-    let onLogSet: (Int, Double, Int, Double?) -> Bool
+    /// Last session's assistance setting, prefilled in assisted mode (`AssistedProgression`).
+    let suggestedAssist: Double?
+    /// Whether this exercise offers the Assisted switch (pull-up, chin-up, dip family).
+    let supportsAssistance: Bool
+    /// Last argument: machine assistance in lb for an assisted set, else nil.
+    let onLogSet: (Int, Double, Int, Double?, Double?) -> Bool
     let onToggle: () -> Void
     let onReset: () -> Void
     let onClose: () -> Void
@@ -2552,6 +2624,8 @@ struct RestTimerFullscreen: View {
     @State private var draftWeight: [Int: String] = [:]
     @State private var draftReps: [Int: String] = [:]
     @State private var draftRIR: [Int: String] = [:]
+    /// Per-set assisted mode; absent means "derive from the stored set or last session".
+    @State private var draftAssisted: [Int: Bool] = [:]
     @FocusState private var focusedField: FieldKey?
 
     enum FieldKey: Hashable {
@@ -2713,7 +2787,7 @@ struct RestTimerFullscreen: View {
             // centred content has no slack to give back, so the fields and gaps are tighter
             // than the leading-aligned row they replaced.
             HStack(spacing: 6) {
-                entryField(text: weightBinding, placeholder: "lb", key: .weight, wholeNumbers: false, width: 72)
+                entryField(text: weightBinding, placeholder: isAssisted(currentSet) ? "help lb" : "lb", key: .weight, wholeNumbers: false, width: 72)
 
                 Text("\u{00D7}")
                     .font(.footnote)
@@ -2747,10 +2821,55 @@ struct RestTimerFullscreen: View {
                 .accessibilityLabel(isCurrentSetLogged ? "Update set \(currentSet)" : "Confirm set \(currentSet)")
             }
 
-            bodyweightToggle
+            HStack(spacing: 8) {
+                if !isAssisted(currentSet) { bodyweightToggle }
+                if supportsAssistance { assistedToggle }
+            }
+            if isAssisted(currentSet) {
+                Text("Assisted: type the machine's help in lb (more = easier).")
+                    .font(.caption2)
+                    .foregroundStyle(.white.opacity(0.6))
+            }
         }
         .frame(maxWidth: .infinity)
         .accessibilityElement(children: .contain)
+    }
+
+    /// Assisted pull-ups, chin-ups and dips (`AssistedProgression`): the weight box then takes
+    /// the assistance machine's help in lb, and the set is stored at 0 lb with that help.
+    /// Filled while on, like the Bodyweight toggle. UI only, not covered by a test.
+    private var assistedToggle: some View {
+        Button {
+            focusedField = nil
+            TFHaptics.impact(.light)
+            let turningOn = !isAssisted(currentSet)
+            draftAssisted[currentSet] = turningOn
+            // The number means something different in each mode, so it never carries over.
+            draftWeight[currentSet] = turningOn ? (suggestedAssist.map(formatWeight) ?? "") : ""
+            focusedField = .weight
+        } label: {
+            Label("Assisted", systemImage: "arrow.up.and.down.circle")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(isAssisted(currentSet) ? accent : Color.white.opacity(0.75))
+                .padding(.horizontal, 16)
+                .padding(.vertical, 9)
+                .background(isAssisted(currentSet) ? Color.white : Color.white.opacity(0.12))
+                .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Assisted, machine help in pounds")
+        .accessibilityHint(isAssisted(currentSet) ? "Turns assistance off" : "The weight box takes the machine's help")
+    }
+
+    /// Whether set `n` is being entered as assisted: the owner's choice on this screen if
+    /// made, otherwise the stored set's mode, otherwise the previous set's, otherwise last
+    /// session's (a non-nil `suggestedAssist` means last session was assisted).
+    private func isAssisted(_ n: Int) -> Bool {
+        guard supportsAssistance else { return false }
+        if let chosen = draftAssisted[n] { return chosen }
+        if let logged = loggedSet(n) { return logged.assistLbs != nil }
+        if let previous = loggedSets.last { return previous.assistLbs != nil }
+        return suggestedAssist != nil
     }
 
     /// Bodyweight is a choice you make, not a consolation prize for leaving the field blank.
@@ -2857,12 +2976,14 @@ struct RestTimerFullscreen: View {
         let draft = currentDraft
         guard draft.canLog, let weight = draft.parsedWeight, let reps = draft.parsedReps else {
             TFHaptics.error()
-            logError = "Enter weight (or tap Bodyweight) and reps. RIR is optional, 0–6."
+            logError = draft.isAssisted
+                ? "Enter the machine's help in lb (above 0) and reps. RIR is optional, 0–6."
+                : "Enter weight (or tap Bodyweight) and reps. RIR is optional, 0–6."
             return
         }
         let confirmed = currentSet
         logError = nil
-        guard onLogSet(confirmed, weight, reps, draft.parsedRIR) else {
+        guard onLogSet(confirmed, weight, reps, draft.parsedRIR, draft.parsedAssist) else {
             TFHaptics.error()
             if logError == nil { logError = "Your entries are still here. Try again." }
             return
@@ -2893,9 +3014,16 @@ struct RestTimerFullscreen: View {
         let next = firstUnloggedSet(alsoLogged: [confirmed])
         guard next != confirmed else { return }
         currentSet = next
-        // Preserve an unfinished draft. A newly selected set may reuse only the load.
+        // Preserve an unfinished draft. A newly selected set may reuse only the load (or, for
+        // an assisted set, the assistance).
         if draftWeight[next] == nil {
-            draftWeight[next] = SetEntryDraft(suggestedWeight: weight).weight
+            if let assist = draft.parsedAssist {
+                draftAssisted[next] = true
+                draftWeight[next] = SetEntryDraft(suggestedAssist: assist).weight
+            } else {
+                draftAssisted[next] = false
+                draftWeight[next] = SetEntryDraft(suggestedWeight: weight).weight
+            }
             draftReps[next] = ""
             draftRIR[next] = ""
         }
@@ -2928,6 +3056,13 @@ struct RestTimerFullscreen: View {
     }
 
     private func defaultWeightText(_ n: Int) -> String {
+        // Assisted mode shows the help, never "BW": re-saving a stored assisted set from here
+        // must not turn it into plain bodyweight.
+        if isAssisted(n) {
+            if let help = loggedSet(n)?.assistLbs { return formatWeight(help) }
+            if let help = loggedSets.last?.assistLbs ?? suggestedAssist { return formatWeight(help) }
+            return ""
+        }
         if let logged = loggedSet(n) {
             return WorkoutProgressionEngine.isBodyweightEquivalent(logged.weightLbs) ? "BW" : formatWeight(logged.weightLbs)
         }
@@ -2963,6 +3098,7 @@ struct RestTimerFullscreen: View {
 
     private var currentDraft: SetEntryDraft {
         var draft = SetEntryDraft()
+        draft.isAssisted = isAssisted(currentSet)
         draft.weight = weightBinding.wrappedValue
         draft.reps = repsBinding.wrappedValue
         draft.rir = rirBinding.wrappedValue
@@ -3156,6 +3292,14 @@ struct ProgressionSuggestion {
 
     /// Shown on deload days in place of a load-progression cue: the block is deliberately
     /// lighter, so the correct coaching is to hold back, not to add weight.
+    static var assistedDeloadGuidance: ProgressionSuggestion {
+        ProgressionSuggestion(
+            icon: "arrow.down.right.circle.fill",
+            text: "Deload week: use a bit more machine help than last time and stop 2–3 reps short of failure",
+            color: TFColor.info
+        )
+    }
+
     static var deloadGuidance: ProgressionSuggestion {
         ProgressionSuggestion(
             icon: "arrow.down.right.circle.fill",
@@ -3553,6 +3697,7 @@ enum SetLoggingService {
         weightLbs: Double,
         reps: Int,
         rir: Double? = nil,
+        assistLbs: Double? = nil,
         for exercise: WorkoutExercise,
         modelContext: ModelContext,
         on date: Date = .now
@@ -3560,6 +3705,8 @@ enum SetLoggingService {
         // Weight 0 is an explicit bodyweight set; only negative weight or
         // non-positive reps are rejected.
         guard weightLbs >= 0, reps > 0 else { return false }
+        // An assisted set (`AssistedProgression`) adds no load and needs real help.
+        if let assistLbs { guard weightLbs == 0, assistLbs > 0, assistLbs.isFinite else { return false } }
         // Fetch first: whether this is the live session depends on what is already recorded
         // here, so the log has to be resolved before anything is decided about it.
         let dayLogs = storedDayLogs(for: exercise, modelContext: modelContext)
@@ -3569,7 +3716,8 @@ enum SetLoggingService {
         let stamp = sessionStamp(existing: existing, markers: markers, date: date, isLive: isLive)
         let log = existing ?? insertSessionLog(for: exercise, at: stamp, modelContext: modelContext)
         var sets = log.decodedSetLogs.filter { $0.setNumber != setNumber }
-        sets.append(SetLogEntry(setNumber: setNumber, weightLbs: weightLbs, repsCompleted: reps, rir: rir))
+        sets.append(SetLogEntry(setNumber: setNumber, weightLbs: weightLbs, repsCompleted: reps, rir: rir,
+                                assistLbs: assistLbs))
         return apply(sets.sorted { $0.setNumber < $1.setNumber }, to: log, exercise: exercise, modelContext: modelContext, date: stamp, liveClockDate: isLive ? date : nil)
     }
 
@@ -3803,7 +3951,10 @@ struct InlineSetLogger: View {
     /// Load only, prepared after selecting a row. Reps are always entered explicitly.
     let suggestedWeight: Double?
     let targetRepsPlaceholder: Int?
-    let onLog: (Int, Double, Int, Double?) -> Bool
+    /// Last session's assistance setting, prefilled in assisted mode (`AssistedProgression`).
+    var suggestedAssist: Double? = nil
+    /// Last argument: machine assistance in lb for an assisted set, else nil.
+    let onLog: (Int, Double, Int, Double?, Double?) -> Bool
     let onClear: (Int) -> Bool
 
     @State private var expanded = false
@@ -3898,7 +4049,7 @@ struct InlineSetLogger: View {
         } else {
             Button {
                 if drafts[n] == nil {
-                    drafts[n] = SetEntryDraft(suggestedWeight: loggedSets.sorted { $0.setNumber < $1.setNumber }.last?.weightLbs ?? suggestedWeight)
+                    drafts[n] = freshDraft()
                 }
                 // The RIR ask re-arms whenever a row is reopened (or its weight or reps change).
                 askedForRIR.removeAll()
@@ -3922,10 +4073,30 @@ struct InlineSetLogger: View {
         }
     }
 
+    /// A new row's draft: chained off the last set logged today, otherwise last session.
+    /// An assisted previous set (or an assisted last session) starts the row assisted with
+    /// that setting (`AssistedProgression`).
+    private func freshDraft() -> SetEntryDraft {
+        let previous = loggedSets.sorted { $0.setNumber < $1.setNumber }.last
+        if supportsAssistance {
+            if let help = previous?.assistLbs { return SetEntryDraft(suggestedAssist: help) }
+            if previous == nil, let help = suggestedAssist { return SetEntryDraft(suggestedAssist: help) }
+        }
+        return SetEntryDraft(suggestedWeight: previous?.weightLbs ?? suggestedWeight)
+    }
+
+    private var supportsAssistance: Bool {
+        AssistedProgression.supportsAssistance(exercise.exerciseName)
+    }
+
+    private func isAssisted(_ n: Int) -> Bool {
+        drafts[n]?.isAssisted == true
+    }
+
     private func loggedRow(_ n: Int, _ set: SetLogEntry) -> some View {
         HStack(spacing: 8) {
             setLabel(n)
-            Text(formatLoad(set.weightLbs))
+            Text(formatSetLoad(set))
                 .font(.caption.bold())
             Text("\u{00D7}").font(.caption2).foregroundStyle(.tertiary)
             Text("\(set.repsCompleted) reps").font(.caption).foregroundStyle(.secondary)
@@ -3938,7 +4109,9 @@ struct InlineSetLogger: View {
                     .accessibilityLabel("Unsaved edits; shown values are saved")
             }
             Button {
-                var draft = SetEntryDraft(suggestedWeight: set.weightLbs)
+                // An assisted set reopens assisted, showing its help, so re-saving it can never
+                // turn it into plain bodyweight.
+                var draft = set.assistLbs.map { SetEntryDraft(suggestedAssist: $0) } ?? SetEntryDraft(suggestedWeight: set.weightLbs)
                 draft.reps = "\(set.repsCompleted)"
                 draft.rir = set.rir.map { formatRIR($0) } ?? ""
                 if drafts[n] == nil { drafts[n] = draft }
@@ -3981,7 +4154,7 @@ struct InlineSetLogger: View {
             HStack(alignment: .bottom, spacing: 8) {
                 setLabel(n)
                     .frame(minHeight: TFTapTarget.minimum)
-                labeledField("lb", text: weightBinding(n), placeholder: "—", key: .weight(n), isReps: false)
+                labeledField(isAssisted(n) ? "Help lb" : "lb", text: weightBinding(n), placeholder: "—", key: .weight(n), isReps: false)
                 labeledField("Reps", text: repsBinding(n), placeholder: repsPlaceholder, key: .reps(n), isReps: true)
                 labeledField("RIR", text: rirBinding(n), placeholder: "—", key: .rir(n), isReps: false)
             }
@@ -3990,7 +4163,7 @@ struct InlineSetLogger: View {
                 // but only while the weight box is empty: a stray tap then cannot overwrite a
                 // prefilled load with 0 lb. For a load prefilled from history on a day done
                 // without one, clear the box and the option appears.
-                if weightBinding(n).wrappedValue.trimmingCharacters(in: .whitespaces).isEmpty {
+                if !isAssisted(n), weightBinding(n).wrappedValue.trimmingCharacters(in: .whitespaces).isEmpty {
                     Button {
                         drafts[n, default: SetEntryDraft()].weight = "BW"
                         // Selecting a load never asserts that any reps were performed.
@@ -4007,6 +4180,29 @@ struct InlineSetLogger: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Set \(n): bodyweight, no external load")
+                }
+                if supportsAssistance {
+                    // Assisted pull-ups, chin-ups and dips (`AssistedProgression`). The box then
+                    // takes the machine's help, so its number never carries across modes.
+                    Button {
+                        var draft = drafts[n, default: SetEntryDraft()]
+                        draft.isAssisted.toggle()
+                        draft.weight = draft.isAssisted ? (suggestedAssist.map(formatWeight) ?? "") : ""
+                        drafts[n] = draft
+                        askedForRIR.remove(n)
+                        focusedField = .weight(n)
+                    } label: {
+                        Label("Assisted", systemImage: "arrow.up.and.down.circle")
+                            .font(.caption.bold())
+                            .foregroundStyle(isAssisted(n) ? Color.white : TFColor.accent)
+                            .padding(.horizontal, 12)
+                            .frame(minHeight: TFTapTarget.minimum)
+                            .background(isAssisted(n) ? AnyShapeStyle(TFColor.accent) : AnyShapeStyle(TFColor.accent.opacity(0.12)))
+                            .clipShape(Capsule())
+                            .contentShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(isAssisted(n) ? "Set \(n): assisted, turn off" : "Set \(n): assisted, machine help in pounds")
                 }
                 Spacer(minLength: 8)
                 Button {
@@ -4041,7 +4237,7 @@ struct InlineSetLogger: View {
                 .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
             field(text: text, placeholder: placeholder, key: key, isReps: isReps)
-                .accessibilityLabel(title == "lb" ? "Weight in pounds" : title)
+                .accessibilityLabel(title == "lb" ? "Weight in pounds" : (title == "Help lb" ? "Machine help in pounds" : title))
         }
         .frame(maxWidth: .infinity)
     }
@@ -4110,10 +4306,12 @@ struct InlineSetLogger: View {
             return
         }
         guard var draft = drafts[n], draft.canLog else {
-            logError = "Enter weight (or tap Bodyweight) and reps. RIR is optional, 0–6."
+            logError = isAssisted(n)
+                ? "Enter the machine's help in lb (above 0) and reps. RIR is optional, 0–6."
+                : "Enter weight (or tap Bodyweight) and reps. RIR is optional, 0–6."
             return
         }
-        guard draft.save(using: { onLog(n, $0, $1, $2) }) else {
+        guard draft.save(assisted: { onLog(n, $0, $1, $2, $3) }) else {
             logError = "Your entries are still here. Try again."
             return
         }

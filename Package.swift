@@ -136,6 +136,9 @@ let package = Package(
                 // one-way ratchet the lifter could never earn back.
                 "ExerciseHistoryAggregation.swift",
                 "WorkoutProgressionEngine.swift",
+                // Assisted pull-up/chin-up/dip progression (progress = less machine help).
+                // Foundation-only; owner request 2026-11-19.
+                "AssistedProgression.swift",
                 // Cross-prescription load translation. Here because it decides what the lifter
                 // is told to pick up when the rep range or set count CHANGES — arithmetic that
                 // is invisible to inspection and was previously nobody's job at all.

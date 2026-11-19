@@ -24,6 +24,8 @@ struct AddExerciseWeightSheet: View {
         var weightText: String
         var repsText: String
         var rirText: String
+        /// Machine assistance of the stored set this row came from (`SessionSetSheetRules.Row`).
+        var assistLbs: Double? = nil
     }
 
     enum EntryField: Hashable {
@@ -38,7 +40,7 @@ struct AddExerciseWeightSheet: View {
     var sheetOutcome: SessionSetSheetRules.Outcome {
         SessionSetSheetRules.evaluate(setLogs.map {
             SessionSetSheetRules.Row(setNumber: $0.setNumber, weightText: $0.weightText,
-                                     repsText: $0.repsText, rirText: $0.rirText)
+                                     repsText: $0.repsText, rirText: $0.rirText, assistLbs: $0.assistLbs)
         })
     }
 
@@ -301,6 +303,13 @@ struct AddExerciseWeightSheet: View {
             }
 
             HStack(spacing: 8) {
+                if let assist = draft.assistLbs {
+                    // Shown so an assisted set never reads as plain "BW" here. Kept on save
+                    // while the weight stays bodyweight (`SessionSetSheetRules.Row.assistLbs`).
+                    Text("Assisted · \(formatWeight(assist)) lb help")
+                        .font(.caption2.bold())
+                        .foregroundStyle(.secondary)
+                }
                 Spacer()
                 Text("Optional RIR")
                     .font(.caption2.bold())
@@ -491,7 +500,8 @@ struct AddExerciseWeightSheet: View {
                         setNumber: $0.setNumber,
                         weightText: SessionSetSheetRules.weightText(for: $0.weightLbs),
                         repsText: "\($0.repsCompleted)",
-                        rirText: $0.rir.map(SessionSetSheetRules.rirText(for:)) ?? ""
+                        rirText: $0.rir.map(SessionSetSheetRules.rirText(for:)) ?? "",
+                        assistLbs: $0.assistLbs
                     )
                 }
             return

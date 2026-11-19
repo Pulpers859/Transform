@@ -371,7 +371,9 @@ struct ExerciseProgressionView: View {
                             Text(point.date.formatted(date: .abbreviated, time: .shortened))
                                 .font(.caption.bold())
                             Spacer()
-                            Text(formatLoad(point.weightLbs))
+                            // An assisted session reads as its least-help setting, never "BW".
+                            Text(AssistedProgression.suggestedAssist(from: point.setLogs)
+                                .map { "\(formatWeight($0)) lb assist" } ?? formatLoad(point.weightLbs))
                                 .font(.caption.bold())
                                 .foregroundStyle(TFColor.accent)
                             if let reps = point.repsCompleted {
@@ -387,7 +389,7 @@ struct ExerciseProgressionView: View {
                         if !point.setLogs.isEmpty {
                             HStack(spacing: 8) {
                                 ForEach(point.setLogs) { set in
-                                    Text("\(SessionSetSheetRules.weightText(for: set.weightLbs))\u{00D7}\(set.repsCompleted)")
+                                    Text("\(set.assistLbs == nil ? SessionSetSheetRules.weightText(for: set.weightLbs) : formatSetLoad(set))\u{00D7}\(set.repsCompleted)")
                                         .font(.system(size: 10, weight: .medium, design: .monospaced))
                                         .foregroundStyle(.secondary)
                                         .padding(.horizontal, 6)
@@ -440,6 +442,8 @@ struct EditPerformanceLogSheet: View {
         var weightText: String
         var repsText: String
         var rirText: String
+        /// Machine assistance of the stored set this row came from (`SessionSetSheetRules.Row`).
+        var assistLbs: Double? = nil
     }
 
     /// Shared with the card's Edit sheet (`SessionSetSheetRules`): saving rewrites this
@@ -447,7 +451,7 @@ struct EditPerformanceLogSheet: View {
     var sheetOutcome: SessionSetSheetRules.Outcome {
         SessionSetSheetRules.evaluate(editableSets.map {
             SessionSetSheetRules.Row(setNumber: $0.setNumber, weightText: $0.weightText,
-                                     repsText: $0.repsText, rirText: $0.rirText)
+                                     repsText: $0.repsText, rirText: $0.rirText, assistLbs: $0.assistLbs)
         })
     }
 
@@ -529,6 +533,11 @@ struct EditPerformanceLogSheet: View {
                                 }
 
                                 HStack(spacing: 6) {
+                                    if let assist = editableSets[index].assistLbs {
+                                        Text("Assisted · \(formatWeight(assist)) lb help")
+                                            .font(.caption2.bold())
+                                            .foregroundStyle(.secondary)
+                                    }
                                     Spacer()
                                     Text("Optional RIR")
                                         .font(.caption2.bold())
@@ -627,7 +636,8 @@ struct EditPerformanceLogSheet: View {
                     setNumber: set.setNumber,
                     weightText: SessionSetSheetRules.weightText(for: set.weightLbs),
                     repsText: "\(set.repsCompleted)",
-                    rirText: set.rir.map { SessionSetSheetRules.rirText(for: $0) } ?? ""
+                    rirText: set.rir.map { SessionSetSheetRules.rirText(for: $0) } ?? "",
+                    assistLbs: set.assistLbs
                 )
             }
         }

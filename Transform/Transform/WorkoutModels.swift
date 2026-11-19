@@ -673,6 +673,12 @@ nonisolated struct SetLogEntry: Codable, Identifiable, Equatable {
     /// Optional reps-in-reserve captured after the set. This is intentionally optional so
     /// older JSON logs remain valid and legacy sessions never acquire invented effort data.
     var rir: Double? = nil
+    /// Help from an assistance machine, in lb (more = easier), for a set done ASSISTED.
+    /// `weightLbs` is 0 on such a set: no load was added to the body. Nil on every other
+    /// set, including every set logged before this existed: older JSON has no key and
+    /// decodes as nil, and a bodyweight set stays a plain bodyweight set
+    /// (`AssistedProgression`, owner decision 2026-11-19: past BW logs are left as they are).
+    var assistLbs: Double? = nil
 }
 
 /// User-facing load label. Bodyweight-equivalent loads render as "BW", not a number:
@@ -684,6 +690,14 @@ nonisolated struct SetLogEntry: Codable, Identifiable, Equatable {
 /// actual value. Declared like `formatWeight(_:)` (same isolation) since it wraps it.
 func formatLoad(_ weightLbs: Double) -> String {
     WorkoutProgressionEngine.isBodyweightEquivalent(weightLbs) ? "BW" : "\(formatWeight(weightLbs)) lb"
+}
+
+/// One logged set's load as shown anywhere a set is listed: "40 lb assist" for a set done on
+/// an assistance machine (`SetLogEntry.assistLbs`), otherwise `formatLoad` ("BW" or "135 lb").
+/// Every list of sets uses this, so an assisted set can never read as plain bodyweight.
+func formatSetLoad(_ set: SetLogEntry) -> String {
+    if let assist = set.assistLbs { return "\(formatWeight(assist)) lb assist" }
+    return formatLoad(set.weightLbs)
 }
 
 /// Grammatical set count so prescriptions and cues read "1 set" / "2 sets", never "1 sets".
