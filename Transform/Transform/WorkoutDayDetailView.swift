@@ -1265,12 +1265,16 @@ struct ExerciseCard: View {
         }
         // Same rule as the load cue: after two or more blocks away (8 weeks) the old setting
         // is not something to build on yet. Heuristic threshold copied from the load path.
+        // Computed outside the `if`: a trailing closure is not allowed in a condition list.
+        let exerciseKey = ExerciseWeightEntry.canonicalLookupKey(exercise.exerciseName)
+        let startOfToday = Calendar.current.startOfDay(for: Date())
+        let lastAssistedBeforeToday = performanceHistory.filter { snapshot in
+            snapshot.canonicalExerciseKey == exerciseKey
+                && snapshot.loggedAt < startOfToday
+                && AssistedProgression.workingSets(snapshot.setLogs) != nil
+        }.map(\.loggedAt).max()
         if decision.verdict == .lessAssistance,
-           let lastAssisted = performanceHistory
-               .filter { $0.canonicalExerciseKey == ExerciseWeightEntry.canonicalLookupKey(exercise.exerciseName)
-                   && $0.loggedAt < Calendar.current.startOfDay(for: Date())
-                   && AssistedProgression.workingSets($0.setLogs) != nil }
-               .map(\.loggedAt).max(),
+           let lastAssisted = lastAssistedBeforeToday,
            let weeks = Calendar.current.dateComponents([.weekOfYear], from: lastAssisted, to: Date()).weekOfYear,
            weeks >= 8 {
             return ProgressionSuggestion(
