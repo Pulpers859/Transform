@@ -188,13 +188,21 @@ enum MesocyclePhase {
     /// whenever at least one usable (`isUsable`) non-deload session remains; when none does
     /// (the exercise was only ever trained in a deload week) they are kept, because a light
     /// number is better than none. Order is preserved. Pinned by DeloadReferenceTests.
+    /// Known gap (reasoned, not covered by a test): the full-week session is preferred however
+    /// old it is, so an exercise trained only in the deload week of a block is graded from its
+    /// last full-week session in an earlier block, and the card's 8-week "returning" hold reads
+    /// the summary's date, which is the deload's.
     static func excludingDeloadSessions<T>(
         _ sessions: [T],
         workoutDayNumber: (T) -> Int,
         isUsable: (T) -> Bool
     ) -> [T] {
-        // SEAM: pre-fix behaviour
-        return sessions
+        let hasUsableFullWeek = sessions.contains {
+            // Day check first: `isUsable` may decode stored sets.
+            !isDeloadSession(workoutDayNumber: workoutDayNumber($0)) && isUsable($0)
+        }
+        guard hasUsableFullWeek else { return sessions }
+        return sessions.filter { !isDeloadSession(workoutDayNumber: workoutDayNumber($0)) }
     }
 }
 

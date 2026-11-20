@@ -82,7 +82,9 @@ final class DeloadReferenceTests: XCTestCase {
             session(22, daysAgo: 0, deload)
         ])
         let latest = WorkoutProgressionEngine.latestUsableSetLogs(for: key, from: history)
-        XCTAssertEqual(latest, sets(week3))
+        // Compared by load and reps: each SetLogEntry carries its own random id.
+        XCTAssertEqual(latest.map { [$0.weightLbs, Double($0.repsCompleted)] },
+                       week3.map { [$0.0, Double($0.1)] })
 
         let range = RepRange(low: 10, high: 12)
         let decision = WorkoutProgressionEngine.evaluate(
