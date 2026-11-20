@@ -58,6 +58,9 @@ struct WorkoutPerformanceLogSnapshot: Equatable {
     var prescribedSets: Int = 0
     /// The reps-in-reserve target the session was prescribed; nil when not recorded.
     var prescribedTargetRIR: Int? = nil
+    /// `ExercisePerformanceLog.workoutDayNumber`; 0 when not recorded. Lets history readers
+    /// recognise deload-week sessions (`progressionHistory`).
+    var workoutDayNumber: Int = 0
 }
 
 enum WorkoutExerciseEffortSignal: Equatable {
@@ -68,6 +71,25 @@ enum WorkoutExerciseEffortSignal: Equatable {
 }
 
 enum WorkoutProgressionEngine {
+    /// The history every progression reader should see: per exercise, deload-week sessions are
+    /// dropped when that exercise has a non-deload session with sets
+    /// (`MesocyclePhase.excludingDeloadSessions`). Applied once where snapshots are built
+    /// (generation's `makeProgressionLookup`, the day view's `performanceSnapshotsByKey`), so
+    /// the latest-session, stall, effort, rep-range and fatigue readers all agree.
+    /// Pinned by DeloadReferenceTests.
+    static func progressionHistory(_ snapshots: [WorkoutPerformanceLogSnapshot]) -> [WorkoutPerformanceLogSnapshot] {
+        let byKey = Dictionary(grouping: snapshots.indices, by: { snapshots[$0].canonicalExerciseKey })
+        var kept = Set<Int>()
+        for indices in byKey.values {
+            kept.formUnion(MesocyclePhase.excludingDeloadSessions(
+                indices,
+                workoutDayNumber: { snapshots[$0].workoutDayNumber },
+                isUsable: { !snapshots[$0].setLogs.isEmpty }
+            ))
+        }
+        return snapshots.indices.filter { kept.contains($0) }.map { snapshots[$0] }
+    }
+
     static func latestUsableSetLogs(
         for canonicalExerciseKey: String,
         from snapshots: [WorkoutPerformanceLogSnapshot]

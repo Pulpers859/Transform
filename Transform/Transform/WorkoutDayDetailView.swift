@@ -874,17 +874,20 @@ struct WorkoutDayDetailView: View {
     /// on, and the startup normalizers re-derive stored keys from names each launch — so this
     /// introduces no assumption that was not already load-bearing.
     var performanceSnapshotsByKey: [String: [WorkoutPerformanceLogSnapshot]] {
+        // Deload-week sessions drop out wherever a full-week one exists, matching
+        // `SetLoggingService.previousLog` (owner, 2026-11-20).
         Dictionary(
-            grouping: allPerformanceLogs.map {
+            grouping: WorkoutProgressionEngine.progressionHistory(allPerformanceLogs.map {
                 WorkoutPerformanceLogSnapshot(
                     canonicalExerciseKey: $0.canonicalExerciseKey,
                     loggedAt: $0.loggedAt,
                     setLogs: $0.decodedSetLogs,
                     prescribedReps: $0.prescribedReps,
                     prescribedSets: $0.prescribedSets,
-                    prescribedTargetRIR: $0.recordedTargetRIR
+                    prescribedTargetRIR: $0.recordedTargetRIR,
+                    workoutDayNumber: $0.workoutDayNumber
                 )
-            },
+            }),
             by: \.canonicalExerciseKey
         )
     }
@@ -3712,7 +3715,7 @@ enum SetLoggingService {
             sessionDates: exercise.day?.sessionCalendarDates ?? [],
             viewingDate: date
         )
-        return logs
+        let earlier = logs
             .filter {
                 $0.canonicalExerciseKey == key
                     && !$0.setLogsJSON.isEmpty
@@ -3723,7 +3726,16 @@ enum SetLoggingService {
                     && $0 !== current
                     && $0.loggedAt < cutoff
             }
-            .max { $0.loggedAt < $1.loggedAt }
+        // A deload session is not "last time" while an earlier full-week session exists: the
+        // first week of a new block used to grade, prefill and suggest from the deload
+        // (owner, 2026-11-20). The rule is `MesocyclePhase.excludingDeloadSessions`, pinned
+        // by DeloadReferenceTests; this call site is UI and not covered by a test.
+        return MesocyclePhase.excludingDeloadSessions(
+            earlier,
+            workoutDayNumber: { $0.workoutDayNumber },
+            isUsable: { !$0.decodedSetLogs.isEmpty }
+        )
+        .max { $0.loggedAt < $1.loggedAt }
     }
 
     // MARK: Writes (fetch fresh, then persist)

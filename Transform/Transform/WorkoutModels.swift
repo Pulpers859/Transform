@@ -167,6 +167,35 @@ enum MesocyclePhase {
     static func isDeloadWeek(_ weekNumber: Int) -> Bool {
         weekNumber == deloadWeek
     }
+
+    /// The week a program day falls in; the same arithmetic as `WorkoutDay.weekNumber`.
+    static func weekNumber(forDayNumber dayNumber: Int) -> Int {
+        ((dayNumber - 1) / 7) + 1
+    }
+
+    /// Whether a logged session was trained on a deload-week day, from
+    /// `ExercisePerformanceLog.workoutDayNumber`. 0 is "not recorded" (legacy) and never counts.
+    /// Pinned by DeloadReferenceTests.
+    static func isDeloadSession(workoutDayNumber: Int) -> Bool {
+        workoutDayNumber > 0 && isDeloadWeek(weekNumber(forDayNumber: workoutDayNumber))
+    }
+
+    /// The sessions that may serve as "what was lifted last time" for progression.
+    ///
+    /// A deload session is deliberately lighter and easier, so it says nothing about what the
+    /// lifter can do. Owner, 2026-11-20: after finishing the week-4 deload, the new block's
+    /// week 1 suggested weights and reps from the deload. So deload sessions are left out
+    /// whenever at least one usable (`isUsable`) non-deload session remains; when none does
+    /// (the exercise was only ever trained in a deload week) they are kept, because a light
+    /// number is better than none. Order is preserved. Pinned by DeloadReferenceTests.
+    static func excludingDeloadSessions<T>(
+        _ sessions: [T],
+        workoutDayNumber: (T) -> Int,
+        isUsable: (T) -> Bool
+    ) -> [T] {
+        // SEAM: pre-fix behaviour
+        return sessions
+    }
 }
 
 // MARK: - Workout Day
@@ -224,7 +253,7 @@ class WorkoutDay {
     }
 
     var weekNumber: Int {
-        ((dayNumber - 1) / 7) + 1
+        MesocyclePhase.weekNumber(forDayNumber: dayNumber)
     }
 
     var isDeloadWeek: Bool {

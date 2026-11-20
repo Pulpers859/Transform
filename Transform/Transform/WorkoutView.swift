@@ -1319,16 +1319,20 @@ struct WorkoutView: View {
     }
 
     func makeProgressionLookup(performanceLogs: [ExercisePerformanceLog]) -> ProgressionLookup {
-        let snapshots = performanceLogs.map {
+        // Deload-week sessions are left out wherever a full-week session exists, so the week
+        // after a deload is programmed from the last real training week, not the deload
+        // (owner, 2026-11-20). See `WorkoutProgressionEngine.progressionHistory`.
+        let snapshots = WorkoutProgressionEngine.progressionHistory(performanceLogs.map {
             WorkoutPerformanceLogSnapshot(
                 canonicalExerciseKey: $0.canonicalExerciseKey,
                 loggedAt: $0.loggedAt,
                 setLogs: $0.decodedSetLogs,
                 prescribedReps: $0.prescribedReps,
                 prescribedSets: $0.prescribedSets,
-                prescribedTargetRIR: $0.recordedTargetRIR
+                prescribedTargetRIR: $0.recordedTargetRIR,
+                workoutDayNumber: $0.workoutDayNumber
             )
-        }
+        })
 
         // Same traversal and same first-match-wins semantics the per-key scan had: `programs`
         // is newest-first and includes archived mesocycles, so the winning range is the one the
