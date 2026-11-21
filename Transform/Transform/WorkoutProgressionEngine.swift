@@ -118,6 +118,28 @@ enum WorkoutProgressionEngine {
         return snapshots.indices.filter { kept.contains($0) }.map { snapshots[$0] }
     }
 
+    /// The leading run of `newestFirst` that belongs to the newest session's block.
+    ///
+    /// Program days count 1-28 within a block and start again at 1 in the next, so walking back
+    /// in time the week number can only fall or stay level inside one block. A session whose
+    /// week is LATER than the newer one beside it belongs to an earlier block, and the run
+    /// stops there. Sessions without a recorded day (0, legacy) cannot be placed and never
+    /// end the run, which is the behaviour before blocks were considered.
+    /// Pinned by ProgrammingReviewTests.
+    static func currentBlockSessions(_ newestFirst: [WorkoutPerformanceLogSnapshot]) -> [WorkoutPerformanceLogSnapshot] {
+        var result: [WorkoutPerformanceLogSnapshot] = []
+        var newerWeek: Int?
+        for snapshot in newestFirst {
+            if snapshot.workoutDayNumber > 0 {
+                let week = MesocyclePhase.weekNumber(forDayNumber: snapshot.workoutDayNumber)
+                if let newerWeek, week > newerWeek { break }
+                newerWeek = week
+            }
+            result.append(snapshot)
+        }
+        return result
+    }
+
     static func latestUsableSetLogs(
         for canonicalExerciseKey: String,
         from snapshots: [WorkoutPerformanceLogSnapshot]
@@ -240,9 +262,12 @@ enum WorkoutProgressionEngine {
     ///
     /// Each session is judged against the RIR it was PRESCRIBED, not a fixed bar. The fixed
     /// "average RIR <= 1" bar flagged the owner for logging exactly the RIR 1 his card asked
-    /// for (2026-10-27). A session counts as harder than asked when it averages at least half
-    /// a rep closer to failure than its target, and as having headroom when it averages two or
-    /// more reps further. Sessions without a recorded target are judged against RIR 1, the
+    /// for (2026-10-27). A session counts as harder than asked when it averages at least one
+    /// full rep closer to failure than its target (half a rep until 2026-11-21: lifters misjudge
+    /// reps in reserve by about one rep on average, Halperin 2022 Sports Med 52:377-390, so
+    /// half a rep was inside the noise), and as having headroom when it averages two or more
+    /// reps further. Only sessions of the CURRENT block count (`currentBlockSessions`): the
+    /// hard week 3 before a deload must not hold the load in week 1 after it. Sessions without a recorded target are judged against RIR 1, the
     /// lowest target the app sets on its own (`proceduralTargetRIR`), which keeps the old
     /// behaviour for genuinely to-failure history. Pinned by OwnerWorkoutFeedbackTests and
     /// GeneratorTroubleshootingTests.
@@ -251,9 +276,9 @@ enum WorkoutProgressionEngine {
         from snapshots: [WorkoutPerformanceLogSnapshot],
         lookback: Int = 3
     ) -> WorkoutExerciseEffortSignal {
-        let recent = snapshots
+        let recent = currentBlockSessions(snapshots
             .filter { $0.canonicalExerciseKey == canonicalExerciseKey }
-            .sorted { $0.loggedAt > $1.loggedAt }
+            .sorted { $0.loggedAt > $1.loggedAt })
             .prefix(max(1, lookback))
 
         let sessions: [(rirs: [Double], target: Double)] = recent.compactMap { snapshot in
@@ -272,7 +297,7 @@ enum WorkoutProgressionEngine {
         let gaps = sessions.map { session in
             session.rirs.reduce(0, +) / Double(session.rirs.count) - session.target
         }
-        if gaps.filter({ $0 <= -0.5 }).count >= 2 { return .protectRecovery }
+        if gaps.filter({ $0 <= -1.0 }).count >= 2 { return .protectRecovery }
         if gaps.filter({ $0 >= 2 }).count >= 2 { return .progressionHeadroom }
         return .neutral
     }

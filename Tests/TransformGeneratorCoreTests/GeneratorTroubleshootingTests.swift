@@ -293,8 +293,10 @@ final class GeneratorTroubleshootingTests: XCTestCase {
             WorkoutPerformanceLogSnapshot(
                 canonicalExerciseKey: key,
                 loggedAt: Date(timeIntervalSince1970: timestamp),
+                // Both sets at RIR 0 against the default target of 1: a full rep closer to
+                // failure than asked, the threshold since 2026-11-21 (half a rep before).
                 setLogs: [
-                    SetLogEntry(setNumber: 1, weightLbs: 100, repsCompleted: 12, rir: 1),
+                    SetLogEntry(setNumber: 1, weightLbs: 100, repsCompleted: 12, rir: 0),
                     SetLogEntry(setNumber: 2, weightLbs: 100, repsCompleted: 12, rir: 0)
                 ]
             )

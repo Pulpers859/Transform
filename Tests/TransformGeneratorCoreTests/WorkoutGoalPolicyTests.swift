@@ -103,7 +103,8 @@ final class WorkoutGoalPolicyTests: XCTestCase {
                     (2...3).contains(week) ? base : normal)
             }
         }
-        XCTAssertEqual(service.proceduralSets(for: 2, exerciseName: "Cable Lateral Raise", muscleTarget: "Lateral Deltoids", goalPolicy: gain), 4)
+        // Since hypertrophy_v1_12 weeks 2-3 repeat week 1 for every goal, so both modes give 3.
+        XCTAssertEqual(service.proceduralSets(for: 2, exerciseName: "Cable Lateral Raise", muscleTarget: "Lateral Deltoids", goalPolicy: gain), 3)
         XCTAssertEqual(service.proceduralSets(for: 2, exerciseName: "Cable Lateral Raise", muscleTarget: "Lateral Deltoids", goalPolicy: loss), 3)
         XCTAssertFalse(service.phaseGuidance(for: 2, goalPolicy: loss).contains("Volume accumulation"))
         XCTAssertEqual(service.phaseGuidance(for: 4, goalPolicy: loss), service.phaseGuidance(for: 4))

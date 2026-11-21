@@ -581,9 +581,9 @@ struct WorkoutView: View {
         let nextWeek = program.currentWeek + 1
         let phaseLabel: String = {
             switch nextWeek {
-            case 2: return "Volume Building"
-            case 3: return "Peak Volume"
-            case 4: return "Deload / Intensity Peak"
+            case 2: return "Accumulation"
+            case 3: return "Peak Effort"
+            case 4: return "Deload"
             default: return "Week \(nextWeek)"
             }
         }()

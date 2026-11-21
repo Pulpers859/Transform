@@ -121,9 +121,8 @@ enum WorkoutLoadTranslation {
     /// Pinned by ProgrammingReviewTests.
     static func shouldTranslate(previousRange: RepRange, currentRange: RepRange,
                                 previousSets: Int?, currentSets: Int) -> Bool {
-        // SEAM: pre-fix behaviour
         if previousRange != currentRange { return true }
-        return previousSets.map { $0 != currentSets } ?? false
+        return previousSets.map { abs($0 - currentSets) >= 2 } ?? false
     }
 
     /// More than this in a single week is a leap, not an adjustment.

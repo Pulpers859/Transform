@@ -52,7 +52,7 @@ extension ClaudeService {
     }
     var evidenceProfile: HypertrophyEvidenceProfile { Self.evidenceProfileCache }
     static let evidenceProfileCache = HypertrophyEvidenceProfile(
-        version: "hypertrophy_v1_11",
+        version: "hypertrophy_v1_12",
         defaultTrainingDays: 5,
         allowedStyles: ["Push", "Pull", "Legs", "Lower", "Upper", "Arms"],
         // EvidenceProfile.md FREQ-001 / SLOT-001 [confidence: moderate]
@@ -68,8 +68,8 @@ extension ClaudeService {
         ],
         // EvidenceProfile.md VOL-001 [confidence: moderate]
         directSetTargetsByPriority: [
-            "High": 8...12,
-            "Medium": 5...8,
+            "High": 10...14,
+            "Medium": 6...10,
             "Low": 3...5
         ],
         directSetTargetsByVolumeBias: [
@@ -87,9 +87,13 @@ extension ClaudeService {
         // EvidenceProfile.md DEL-001 / PROG-001 / TEMPO-001 [confidence: low-moderate / low]
         phasePrescriptionsByWeek: [
             1: EvidencePhasePrescription(anchorSets: 4, secondarySets: 3, accessorySets: 3, coreSets: 3, anchorRepRange: "6-10", secondaryRepRange: "8-12", accessoryRepRange: "10-14", coreRepRange: "10-15"),
-            2: EvidencePhasePrescription(anchorSets: 5, secondarySets: 4, accessorySets: 4, coreSets: 3, anchorRepRange: "6-10", secondaryRepRange: "8-12", accessoryRepRange: "10-14", coreRepRange: "10-15"),
-            3: EvidencePhasePrescription(anchorSets: 5, secondarySets: 5, accessorySets: 4, coreSets: 3, anchorRepRange: "5-8", secondaryRepRange: "6-10", accessoryRepRange: "10-15", coreRepRange: "10-15"),
-            4: EvidencePhasePrescription(anchorSets: 3, secondarySets: 3, accessorySets: 3, coreSets: 2, anchorRepRange: "8-10", secondaryRepRange: "8-12", accessoryRepRange: "10-15", coreRepRange: "10-15")
+            // Weeks 2-3 repeat week 1 (review of 2026-11-21): a fixed prescription lets double
+            // progression run, and the card no longer re-derives the load every week. Week 3
+            // pushes effort through `proceduralTargetRIR` (RIR 1), not through new reps or sets.
+            2: EvidencePhasePrescription(anchorSets: 4, secondarySets: 3, accessorySets: 3, coreSets: 3, anchorRepRange: "6-10", secondaryRepRange: "8-12", accessoryRepRange: "10-14", coreRepRange: "10-15"),
+            3: EvidencePhasePrescription(anchorSets: 4, secondarySets: 3, accessorySets: 3, coreSets: 3, anchorRepRange: "6-10", secondaryRepRange: "8-12", accessoryRepRange: "10-14", coreRepRange: "10-15"),
+            // Deload: 2 sets per exercise at the block's own rep ranges, RIR 3.
+            4: EvidencePhasePrescription(anchorSets: 2, secondarySets: 2, accessorySets: 2, coreSets: 2, anchorRepRange: "6-10", secondaryRepRange: "8-12", accessoryRepRange: "10-14", coreRepRange: "10-15")
         ],
         // EvidenceProfile.md REST-001 [confidence: low-moderate]
         restSecondsByRole: [

@@ -55,14 +55,14 @@ POLICY = FILES[5]
 # (name, [(file, old, new), ...], substring the failure message must contain)
 ATTACKS = [
     ("stale version string, which is printed into the AI prompt",
-     [(SVC, 'version: "hypertrophy_v1_11"', 'version: "hypertrophy_v1_9"')],
+     [(SVC, 'version: "hypertrophy_v1_12"', 'version: "hypertrophy_v1_9"')],
      "prompt"),
     ("doc band drifts from the Swift band",
-     [(SVC, '"High": 8...12', '"High": 10...14')],
+     [(SVC, '"High": 10...14', '"High": 8...12')],
      "VOL-001 documents High"),
     ("band upper bound demands more exercise slots than VAR-001 allows",
-     [(SVC, '"High": 8...12', '"High": 8...20'),
-      (DOC, "High priority areas target `8-12`", "High priority areas target `8-20`")],
+     [(SVC, '"High": 10...14', '"High": 10...20'),
+      (DOC, "High priority areas target `10-14`", "High priority areas target `10-20`")],
      "maximumUsefulVariationCount"),
     ("maintenance floor raised above what one covering movement can deliver",
      [(POLICY, "recoveryTight ? 2 : 3", "recoveryTight ? 3 : 4"),
