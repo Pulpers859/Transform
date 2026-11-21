@@ -75,7 +75,7 @@ enum WorkoutExerciseEffortSignal: Equatable {
 /// compares the stored best BEFORE and AFTER the save, so a set the summary refuses to count
 /// (an anomaly, or assisted work) can never trigger it. A first-ever session has nothing to
 /// beat, and a tie that merely refreshes the date is not an improvement.
-/// Pinned by PersonalBestCheckTests.
+/// Pinned by WarmupAndBestTests.
 enum PersonalBestCheck {
     struct Record: Equatable {
         let weightLbs: Double
@@ -126,9 +126,15 @@ enum WorkoutProgressionEngine {
     /// stops there. Sessions without a recorded day (0, legacy) cannot be placed and never
     /// end the run, which is the behaviour before blocks were considered.
     /// Pinned by ProgrammingReviewTests.
-    static func currentBlockSessions(_ newestFirst: [WorkoutPerformanceLogSnapshot]) -> [WorkoutPerformanceLogSnapshot] {
+    ///
+    /// `startingWeek` is the week being trained or generated. Without it the run starts at the
+    /// newest logged session, which right after a deload is still the OLD block's week 3
+    /// (deload sessions are already gone from `progressionHistory`), so the first week-1 card
+    /// and the generation of week 1 must pass it for the old block to drop out.
+    static func currentBlockSessions(_ newestFirst: [WorkoutPerformanceLogSnapshot],
+                                     startingWeek: Int? = nil) -> [WorkoutPerformanceLogSnapshot] {
         var result: [WorkoutPerformanceLogSnapshot] = []
-        var newerWeek: Int?
+        var newerWeek: Int? = startingWeek
         for snapshot in newestFirst {
             if snapshot.workoutDayNumber > 0 {
                 let week = MesocyclePhase.weekNumber(forDayNumber: snapshot.workoutDayNumber)
@@ -275,11 +281,11 @@ enum WorkoutProgressionEngine {
         for canonicalExerciseKey: String,
         from snapshots: [WorkoutPerformanceLogSnapshot],
         lookback: Int = 3,
-        currentWeek: Int? = nil  // SEAM: pre-fix behaviour (ignored)
+        currentWeek: Int? = nil
     ) -> WorkoutExerciseEffortSignal {
         let recent = currentBlockSessions(snapshots
             .filter { $0.canonicalExerciseKey == canonicalExerciseKey }
-            .sorted { $0.loggedAt > $1.loggedAt })
+            .sorted { $0.loggedAt > $1.loggedAt }, startingWeek: currentWeek)
             .prefix(max(1, lookback))
 
         let sessions: [(rirs: [Double], target: Double)] = recent.compactMap { snapshot in

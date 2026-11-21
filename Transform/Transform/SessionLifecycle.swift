@@ -98,7 +98,9 @@ enum SessionLifecycle {
                 guard visited.insert(prior.persistentModelID).inserted else { throw ResetFailure.ambiguousHistory }
                 let priorLogs = removed.filter { $0.canonicalExerciseKey == ExerciseWeightEntry.canonicalLookupKey(prior.exerciseName) }
                 guard priorLogs.count <= 1 else { throw ResetFailure.ambiguousHistory }
-                if let log = priorLogs.first {
+                // A row holding only warm-ups (`warmupSetsJSON`, empty `setLogsJSON`) carries no
+                // working sets to restore, so it neither counts nor blocks the reset.
+                if let log = priorLogs.first, !(log.setLogsJSON.isEmpty && !log.decodedWarmupSets.isEmpty) {
                     let numbers = Set(log.decodedSetLogs.map(\.setNumber))
                     guard !numbers.isEmpty, numbers.count == log.decodedSetLogs.count,
                           numbers == Set(1...numbers.count), numbers.count <= prior.sets else { throw ResetFailure.ambiguousHistory }

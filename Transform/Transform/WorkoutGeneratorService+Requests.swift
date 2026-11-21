@@ -863,10 +863,9 @@ extension ClaudeService {
         // describe the phase's INTENT and the fields you actually control: reps, targetRIR,
         // tempo, rest, and what the coaching emphasizes.
         //
-        // HISTORY, from before 2026-11-21. Since then weeks 2-3 repeat week 1's sets and rep
-        // ranges and week 4 is 2 sets per exercise (`phasePrescriptionsByWeek`), so the
-        // per-exercise step and the week-3 rep change described below no longer exist; the
-        // delivered figures below were measured under the old table and are not current.
+        // Since 2026-11-21 rep ranges no longer change within the block (week 3 anchors stay
+        // 6-10 rather than 5-8), so the "week 3 intensifies through its REP ranges" sentence
+        // below is history; the set-count step it describes is unchanged.
         //
         // The numbers this note used to quote were wrong, and worth recording because they
         // read as precise. It claimed week 2 lands "~26% above week 1", week 4 drops "~46% off
@@ -894,17 +893,17 @@ extension ClaudeService {
         // stack a second deload on top of the ~46% cut already in the menu.
         case 2:
             return """
-            Week 2 — Accumulation. The menu keeps week 1's set counts and rep ranges on
-            purpose: a stable prescription is what lets double progression work, so progress this
-            week comes from load and reps, not from new ranges. Keep each exercise's rep range
-            where it was last trained unless the app verdict for it says otherwise, and target
-            RPE 7-8 (about 2 reps in reserve).
+            Week 2 — Accumulation. The menu has already raised some set counts by one; do not
+            restate that arithmetic or claim credit for it. Keep each exercise's rep range where
+            it was last trained unless the app verdict for it says otherwise: a stable range is
+            what lets double progression work, so progress comes from load and reps, not from new
+            ranges. Target RPE 7-8 (about 2 reps in reserve).
             """
         case 3:
             return """
-            Week 3 — Peak effort. The menu keeps the same set counts and rep ranges as weeks
-            1-2; this week raises EFFORT, not volume or load range. Program working sets at RPE
-            8-9 (about 1 rep in reserve) and keep each exercise's rep range unchanged. Keep
+            Week 3 — Peak effort. The menu carries the mesocycle's highest set counts; the rep
+            ranges stay the block's own. Raise EFFORT, not the load range: program working sets
+            at RPE 8-9 (about 1 rep in reserve) and keep each exercise's rep range unchanged. Keep
             postural/injury-driven warm-ups non-negotiable — this is the week form breaks down
             first, so bias the notes toward bracing and control.
             """

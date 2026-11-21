@@ -21,15 +21,18 @@ final class FasterLoggingTests: XCTestCase {
         XCTAssertNil(SetEntryDraft.repeatSource(for: 1, in: []))
     }
 
-    func testRepeatingCopiesLoadRepsAndRIRAndSavesWithoutAnRIRAsk() {
+    /// Load and reps are copied; RIR is not (audit 2026-11-21), so the RIR ask still fires and
+    /// the lifter gives this set's own effort.
+    func testRepeatingCopiesLoadAndRepsButNotRIR() {
         var draft = SetEntryDraft.repeating(set(1, 22.25, 12, rir: 1.5))
-        XCTAssertEqual([draft.weight, draft.reps, draft.rir], ["22.25", "12", "1.5"])
-        XCTAssertFalse(draft.shouldAskForRIR(alreadyAsked: false))
+        XCTAssertEqual([draft.weight, draft.reps, draft.rir], ["22.25", "12", ""])
+        XCTAssertTrue(draft.shouldAskForRIR(alreadyAsked: false))
+        draft.rir = "1"
         var stored: (Double, Int, Double?)?
         XCTAssertTrue(draft.save(using: { stored = ($0, $1, $2); return true }))
         XCTAssertEqual(stored?.0, 22.25)
         XCTAssertEqual(stored?.1, 12)
-        XCTAssertEqual(stored?.2, 1.5)
+        XCTAssertEqual(stored?.2, 1)
     }
 
     func testRepeatingAnAssistedSetStaysAssisted() {

@@ -14,9 +14,9 @@ import UIKit
 /// logged set pushes forward in `SessionLifecycle.noteSetLogged`) is within `idleLimit` of now.
 /// Pinned by ScreenAwakePolicyTests.
 enum ScreenAwakePolicy {
-    /// Longer than any rest the generator prescribes (150 s at most) plus a long set and a
-    /// chat; short enough that a forgotten session stops holding the screen within the half
-    /// hour. Heuristic, not measured.
+    /// Far longer than any rest the app accepts (the fallback plan uses up to 150 s and the
+    /// validator accepts AI rest up to 240 s) plus a long set and a chat; short enough that a
+    /// forgotten session stops holding the screen within the half hour. Heuristic, not measured.
     static let idleLimit: TimeInterval = 20 * 60
 
     static func shouldKeepAwake(

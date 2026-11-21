@@ -4,6 +4,7 @@ import Foundation
 
 struct WorkoutDayDetailView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.scenePhase) private var scenePhase
     @Query(sort: \ExerciseWeightEntry.loggedAt, order: .reverse) private var allWeightLogs: [ExerciseWeightEntry]
     @Query(sort: \ExercisePerformanceLog.loggedAt, order: .reverse) private var allPerformanceLogs: [ExercisePerformanceLog]
     let day: WorkoutDay
@@ -147,6 +148,8 @@ struct WorkoutDayDetailView: View {
         .onChange(of: day.sessionEndedAt) { _, _ in updateScreenAwake() }
         .onChange(of: day.isCompleted) { _, _ in updateScreenAwake() }
         .onChange(of: day.isSessionClosed) { _, _ in updateScreenAwake() }
+        // Coming back to the app re-checks at once rather than at the next minute tick.
+        .onChange(of: scenePhase) { _, phase in if phase == .active { updateScreenAwake() } }
         .task {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(60))
@@ -1350,7 +1353,8 @@ struct ExerciseCard: View {
             repRange: graded.repRange,
             lastWeight: log.weightLbs,
             exerciseName: exercise.exerciseName,
-            performanceHistory: performanceHistory
+            performanceHistory: performanceHistory,
+            currentWeek: exercise.day?.weekNumber
         )
         // An exercise rotated back in after two or more blocks away: its last numbers are old,
         // so hold them rather than build on them. Heuristic threshold (two 4-week blocks); not
@@ -1703,16 +1707,16 @@ struct ExerciseCard: View {
         }
     }
 
-    /// The single place a set reaches storage from this card, used by BOTH the inline
-    /// "Log sets" list and the full-screen rest timer's entry panel. Two entry points in the
-    /// UI must never mean two ways of writing training data: they differ only in where the
-    /// numbers were typed, so completion reporting and the rest-timer signal stay identical.
-    @discardableResult
     private func bestRecord(_ entry: ExerciseWeightEntry?) -> PersonalBestCheck.Record? {
         guard let entry, entry.hasBestRecord else { return nil }
         return PersonalBestCheck.Record(weightLbs: entry.bestWeightLbs, reps: entry.bestRepsCompleted)
     }
 
+    /// The single place a set reaches storage from this card, used by BOTH the inline
+    /// "Log sets" list and the full-screen rest timer's entry panel. Two entry points in the
+    /// UI must never mean two ways of writing training data: they differ only in where the
+    /// numbers were typed, so completion reporting and the rest-timer signal stay identical.
+    @discardableResult
     private func logSetFromCard(setNumber: Int, weight: Double, reps: Int, rir: Double?, assist: Double?) -> Bool {
         // Read before the save: `weightSummary` is the stored entry the save updates in place.
         let bestBefore = bestRecord(weightSummary)
@@ -3440,12 +3444,14 @@ struct ProgressionSuggestion {
         repRange: RepRange,
         lastWeight: Double,
         exerciseName: String,
-        performanceHistory: [WorkoutPerformanceLogSnapshot] = []
+        performanceHistory: [WorkoutPerformanceLogSnapshot] = [],
+        currentWeek: Int? = nil
     ) -> ProgressionSuggestion? {
         let key = ExerciseWeightEntry.canonicalLookupKey(exerciseName)
         let effortSignal = WorkoutProgressionEngine.effortSignal(
             for: key,
-            from: performanceHistory
+            from: performanceHistory,
+            currentWeek: currentWeek
         )
         // Derived from `analysis` rather than from the decision, because the decision needs
         // it: whether this session is a one-off miss or a stall is part of what the verdict
@@ -4454,7 +4460,8 @@ struct InlineSetLogger: View {
             // 2026-11-21: every set needed reps and RIR typed). It is the lifter's own action,
             // labelled with the numbers it copies, and it still needs a Log tap to save.
             if !editing.contains(n), let source = SetEntryDraft.repeatSource(for: n, in: loggedSets) {
-                let summary = "\(formatSetLoad(source)) × \(source.repsCompleted)" + (source.rir.map { ", RIR \(formatRIR($0))" } ?? "")
+                // Load and reps only: RIR is not copied (`SetEntryDraft.repeating`).
+                let summary = "\(formatSetLoad(source)) × \(source.repsCompleted)"
                 Button {
                     drafts[n] = SetEntryDraft.repeating(source)
                     askedForRIR.remove(n)
@@ -4472,7 +4479,7 @@ struct InlineSetLogger: View {
                         .contentShape(Capsule())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Fill set \(n) with set \(source.setNumber): \(summary). Then tap Log.")
+                .accessibilityLabel("Fill set \(n) with set \(source.setNumber): \(summary). Then enter RIR and tap Log.")
             }
             HStack(spacing: 8) {
                 // The decimal keyboard can't type "BW", so the option is offered explicitly,

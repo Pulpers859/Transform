@@ -69,7 +69,7 @@ extension ClaudeService {
         // EvidenceProfile.md VOL-001 [confidence: moderate]
         directSetTargetsByPriority: [
             "High": 10...14,
-            "Medium": 6...10,
+            "Medium": 5...8,
             "Low": 3...5
         ],
         directSetTargetsByVolumeBias: [
@@ -87,13 +87,17 @@ extension ClaudeService {
         // EvidenceProfile.md DEL-001 / PROG-001 / TEMPO-001 [confidence: low-moderate / low]
         phasePrescriptionsByWeek: [
             1: EvidencePhasePrescription(anchorSets: 4, secondarySets: 3, accessorySets: 3, coreSets: 3, anchorRepRange: "6-10", secondaryRepRange: "8-12", accessoryRepRange: "10-14", coreRepRange: "10-15"),
-            // Weeks 2-3 repeat week 1 (review of 2026-11-21): a fixed prescription lets double
-            // progression run, and the card no longer re-derives the load every week. Week 3
-            // pushes effort through `proceduralTargetRIR` (RIR 1), not through new reps or sets.
-            2: EvidencePhasePrescription(anchorSets: 4, secondarySets: 3, accessorySets: 3, coreSets: 3, anchorRepRange: "6-10", secondaryRepRange: "8-12", accessoryRepRange: "10-14", coreRepRange: "10-15"),
-            3: EvidencePhasePrescription(anchorSets: 4, secondarySets: 3, accessorySets: 3, coreSets: 3, anchorRepRange: "6-10", secondaryRepRange: "8-12", accessoryRepRange: "10-14", coreRepRange: "10-15"),
-            // Deload: 2 sets per exercise at the block's own rep ranges, RIR 3.
-            4: EvidencePhasePrescription(anchorSets: 2, secondarySets: 2, accessorySets: 2, coreSets: 2, anchorRepRange: "6-10", secondaryRepRange: "8-12", accessoryRepRange: "10-14", coreRepRange: "10-15")
+            // Rep ranges stay the block's own in every week (review of 2026-11-21): a stable range
+            // is what lets double progression run, and week 3 now pushes effort through
+            // `proceduralTargetRIR` (RIR 1) instead of moving anchors to 5-8. Set counts still
+            // step up by at most one per week; `WorkoutLoadTranslation.shouldTranslate` does not
+            // re-derive the load for a one-set change. Holding sets flat as well was tried
+            // (fca2fc4) and backed out: the set-budget and dose machinery is built on the
+            // week 2-3 capacity, and 16 headless tests failed on run 44921308872.
+            2: EvidencePhasePrescription(anchorSets: 5, secondarySets: 4, accessorySets: 4, coreSets: 3, anchorRepRange: "6-10", secondaryRepRange: "8-12", accessoryRepRange: "10-14", coreRepRange: "10-15"),
+            3: EvidencePhasePrescription(anchorSets: 5, secondarySets: 5, accessorySets: 4, coreSets: 3, anchorRepRange: "6-10", secondaryRepRange: "8-12", accessoryRepRange: "10-14", coreRepRange: "10-15"),
+            // Deload: the earlier set counts, now at the block's own rep ranges, RIR 3.
+            4: EvidencePhasePrescription(anchorSets: 3, secondarySets: 3, accessorySets: 3, coreSets: 2, anchorRepRange: "6-10", secondaryRepRange: "8-12", accessoryRepRange: "10-14", coreRepRange: "10-15")
         ],
         // EvidenceProfile.md REST-001 [confidence: low-moderate]
         restSecondsByRole: [

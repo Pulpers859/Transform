@@ -283,11 +283,15 @@ struct AppSettingsView: View {
         switch result {
         case .success(let url):
             do {
-                let data = try? DataBackupManager.shared.exportDocument(using: modelContext).data
+                // nil when the data shows a sudden drop: the folder is remembered, but nothing
+                // is copied off the phone until a backup passes that check.
+                let data = DataBackupManager.shared.exportDataPassingDropGuard(using: modelContext)
                 try OffPhoneBackup.shared.chooseFolder(url, data: data)
                 offPhoneStatus = OffPhoneBackup.shared.status()
                 if case .current = offPhoneStatus {
                     backupMessage = "Backup folder set. A copy was saved there."
+                } else if data == nil {
+                    backupMessage = "Backup folder set. No copy was made yet because some of your data looks like it went missing recently; the app will copy once that check passes."
                 } else {
                     backupMessage = "The folder was saved, but the first copy did not work: \(offPhoneStatusText)"
                 }

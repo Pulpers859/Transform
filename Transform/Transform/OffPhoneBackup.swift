@@ -33,8 +33,13 @@ enum OffPhoneBackupPolicy {
         return elapsed >= minimumInterval || elapsed < 0
     }
 
+    /// Always a Gregorian date, in `calendar`'s time zone: a phone set to another calendar
+    /// (Japanese era years read "0008") would otherwise write names that sort below every
+    /// older file, so pruning would delete the newest copies.
     static func fileName(for date: Date, calendar: Calendar = .current) -> String {
-        let parts = calendar.dateComponents([.year, .month, .day], from: date)
+        var gregorian = Calendar(identifier: .gregorian)
+        gregorian.timeZone = calendar.timeZone
+        let parts = gregorian.dateComponents([.year, .month, .day], from: date)
         let text = String(format: "%04d-%02d-%02d", parts.year ?? 0, parts.month ?? 0, parts.day ?? 0)
         return filePrefix + text + fileSuffix
     }

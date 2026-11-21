@@ -791,7 +791,7 @@ struct WorkoutView: View {
             // Derived once and shared: the prompt history and the validator's structured
             // verdicts read the same decision for the same entry, so building it twice was
             // both wasted work and a chance for the two halves to disagree.
-            let progressionLookup = makeProgressionLookup(performanceLogs: exercisePerformanceLogs)
+            let progressionLookup = makeProgressionLookup(performanceLogs: exercisePerformanceLogs, targetWeek: 1)
             let performanceHistory = compactPerformanceHistory(from: exerciseWeightEntries, lookup: progressionLookup)
             // A new block: the active program is archived only after this week is saved.
             let history = exerciseHistoryContext(from: programs, planningNewBlock: true)
@@ -898,7 +898,7 @@ struct WorkoutView: View {
 
         do {
             WorkoutGenerationDiagnostics.markStage("requesting week \(nextWeek) program from AI")
-            let progressionLookup = makeProgressionLookup(performanceLogs: exercisePerformanceLogs)
+            let progressionLookup = makeProgressionLookup(performanceLogs: exercisePerformanceLogs, targetWeek: nextWeek)
             let performanceHistory = compactPerformanceHistory(from: exerciseWeightEntries, lookup: progressionLookup)
             let history = exerciseHistoryContext(from: programs)
             let generationResult = try await ClaudeService.shared.generateNextWeek(
@@ -1316,9 +1316,12 @@ struct WorkoutView: View {
         /// Set count the graded session actually ran, so a load consequence is quoted for the
         /// right amount of work. Resolved from the same session the rep range came from.
         let prescribedSetsByKey: [String: Int]
+        /// The program week being generated, so the effort check counts only this block's
+        /// sessions (`WorkoutProgressionEngine.currentBlockSessions`).
+        var targetWeek: Int? = nil
     }
 
-    func makeProgressionLookup(performanceLogs: [ExercisePerformanceLog]) -> ProgressionLookup {
+    func makeProgressionLookup(performanceLogs: [ExercisePerformanceLog], targetWeek: Int? = nil) -> ProgressionLookup {
         // Deload-week sessions are left out wherever a full-week session exists, so the week
         // after a deload is programmed from the last real training week, not the deload
         // (owner, 2026-11-20). See `WorkoutProgressionEngine.progressionHistory`.
@@ -1377,7 +1380,8 @@ struct WorkoutView: View {
         return ProgressionLookup(
             snapshots: snapshots,
             repRangesByKey: repRangesByKey,
-            prescribedSetsByKey: prescribedSetsByKey
+            prescribedSetsByKey: prescribedSetsByKey,
+            targetWeek: targetWeek
         )
     }
 
@@ -1579,7 +1583,8 @@ struct WorkoutView: View {
         )
         let effortSignal = WorkoutProgressionEngine.effortSignal(
             for: key,
-            from: snapshots
+            from: snapshots,
+            currentWeek: lookup.targetWeek
         )
         // Same stall test the card runs, from the same helper, so the prompt the AI is
         // given and the banner the lifter reads cannot disagree about whether a load has

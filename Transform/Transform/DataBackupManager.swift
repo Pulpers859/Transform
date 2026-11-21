@@ -814,6 +814,18 @@ final class DataBackupManager {
         writeAutomaticBackup(using: modelContext)
     }
 
+    /// A full export, or nil when it shows the same sudden data drop that makes the automatic
+    /// backup refuse to run. Used for the first off-phone copy when a folder is chosen, so that
+    /// path cannot copy a damaged state off the phone either.
+    func exportDataPassingDropGuard(using modelContext: ModelContext) -> Data? {
+        guard let document = try? exportDocument(using: modelContext) else { return nil }
+        if let counts = try? entryCounts(using: modelContext), let lastKnown = loadLastKnownCounts(),
+           counts.hasSignificantDrop(comparedTo: lastKnown) {
+            return nil
+        }
+        return document.data
+    }
+
     func writeAutomaticBackup(using modelContext: ModelContext) {
         pendingAutomaticBackupTask?.cancel()
         pendingAutomaticBackupTask = nil

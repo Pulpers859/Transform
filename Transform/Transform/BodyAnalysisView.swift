@@ -1021,7 +1021,9 @@ struct BodyAnalysisView: View {
     }
 
     func exercisePerformanceEvents() -> [AnalysisExercisePerformanceEvent] {
-        exercisePerformanceLogs.map { entry in
+        // Rows with no logged work (e.g. a session holding only warm-ups) are not training
+        // events: `holdsLoggedWork` is the same test the history list uses.
+        exercisePerformanceLogs.filter(\.holdsLoggedWork).map { entry in
             AnalysisExercisePerformanceEvent(
                 exerciseName: entry.exerciseName,
                 canonicalExerciseKey: entry.canonicalExerciseKey,

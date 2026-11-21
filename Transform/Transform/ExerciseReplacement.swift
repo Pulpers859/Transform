@@ -348,7 +348,9 @@ enum ExerciseReplacement {
 
         let priorLog = returning.flatMap { ExerciseSessionLog.resolve(for: $0, among: destinationLogs, on: now) }
         let priorNumbers = Set((priorLog?.decodedSetLogs ?? []).map(\.setNumber).filter { $0 > 0 })
-        if returning != nil, let priorLog {
+        // A warm-up-only row (`warmupSetsJSON`, empty `setLogsJSON`) has no working sets, so
+        // there is nothing to check: switching back is allowed, with no sets carried.
+        if returning != nil, let priorLog, !(priorLog.setLogsJSON.isEmpty && !priorLog.decodedWarmupSets.isEmpty) {
             guard !priorLog.decodedSetLogs.isEmpty,
                   priorNumbers.count == priorLog.decodedSetLogs.count,
                   priorNumbers == Set(1...max(1, priorNumbers.count)) else { throw Failure.incompleteHistory }

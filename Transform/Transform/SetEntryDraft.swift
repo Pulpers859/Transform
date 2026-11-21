@@ -74,7 +74,7 @@ struct SetEntryDraft: Equatable {
     // A set used to need its reps typed and its RIR typed every time, with the row closing
     // after each save. These two helpers cut that down without breaking the two rules above:
     // reps are still only ever supplied by an explicit lifter action, and RIR still asks
-    // before a save without it. Pinned by SetEntryDraftTests.
+    // before a save without it. Pinned by FasterLoggingTests.
 
     /// The set "Same as set N" copies for row `setNumber`: the nearest logged set before it,
     /// otherwise the nearest after it (a set filled in out of order). Nil when nothing is logged.
@@ -84,14 +84,13 @@ struct SetEntryDraft: Equatable {
             ?? others.filter { $0.setNumber > setNumber }.min { $0.setNumber < $1.setNumber }
     }
 
-    /// A draft holding exactly what `set` recorded: its load (or assistance), reps and RIR.
-    /// Only built when the lifter taps "Same as set N", which is the explicit action.
+    /// A draft holding `set`'s load (or assistance) and reps. Only built when the lifter taps
+    /// "Same as set N", which is the explicit action. RIR is NOT copied (audit 2026-11-21):
+    /// effort usually rises across sets, so a copied RIR would overstate the reserve and skip
+    /// the RIR ask; the ask still applies, so the lifter gives this set's own RIR.
     static func repeating(_ set: SetLogEntry) -> SetEntryDraft {
         var draft = set.assistLbs.map { SetEntryDraft(suggestedAssist: $0) } ?? SetEntryDraft(suggestedWeight: set.weightLbs)
         draft.reps = String(set.repsCompleted)
-        if let rir = set.rir {
-            draft.rir = rir.rounded() == rir ? String(Int(rir)) : String(rir)
-        }
         return draft
     }
 
