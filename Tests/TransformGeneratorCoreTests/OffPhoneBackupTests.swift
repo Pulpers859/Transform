@@ -21,6 +21,13 @@ final class OffPhoneBackupTests: XCTestCase {
         XCTAssertTrue(OffPhoneBackupPolicy.isDue(lastCopy: now.addingTimeInterval(86_400), now: now))
     }
 
+    /// Audit 2026-11-21 (L3): names must not follow the phone's calendar setting, or a
+    /// Japanese-calendar year ("0008") would sort below every older file and be pruned.
+    func testFileNamesUseTheGregorianYearWhateverThePhonesCalendar() {
+        XCTAssertTrue(OffPhoneBackupPolicy.fileName(for: now, calendar: Calendar(identifier: .japanese))
+            .hasPrefix("Transform_Backup_2033-"))
+    }
+
     func testOneFilePerDay() {
         XCTAssertEqual(OffPhoneBackupPolicy.fileName(for: now, calendar: calendar), "Transform_Backup_2033-05-18.json")
         XCTAssertTrue(OffPhoneBackupPolicy.isOwnBackupName("Transform_Backup_2033-05-18.json"))

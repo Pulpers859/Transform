@@ -274,7 +274,8 @@ enum WorkoutProgressionEngine {
     static func effortSignal(
         for canonicalExerciseKey: String,
         from snapshots: [WorkoutPerformanceLogSnapshot],
-        lookback: Int = 3
+        lookback: Int = 3,
+        currentWeek: Int? = nil  // SEAM: pre-fix behaviour (ignored)
     ) -> WorkoutExerciseEffortSignal {
         let recent = currentBlockSessions(snapshots
             .filter { $0.canonicalExerciseKey == canonicalExerciseKey }

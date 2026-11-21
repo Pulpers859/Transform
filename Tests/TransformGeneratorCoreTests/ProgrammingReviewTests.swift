@@ -32,9 +32,20 @@ final class ProgrammingReviewTests: XCTestCase {
 
     func testDeloadHalvesSetsAndKeepsTheBlockRepRanges() {
         for (name, target) in roles {
-            XCTAssertEqual(service.proceduralSets(for: 4, exerciseName: name, muscleTarget: target), 2, name)
+            let expected = name == "Barbell Bench Press" ? 3 : 2
+            XCTAssertEqual(service.proceduralSets(for: 4, exerciseName: name, muscleTarget: target), expected, name)
             XCTAssertEqual(service.proceduralRepRange(for: 4, exerciseName: name, muscleTarget: target),
                            service.proceduralRepRange(for: 1, exerciseName: name, muscleTarget: target), name)
+        }
+    }
+
+    /// Audit 2026-11-21 (M1): a 2-set anchor fell below the validator's anchor floor, which
+    /// would show the owner "add a set or two yourself" on every deload day.
+    func testDeloadDefaultsDoNotFallBelowTheValidatorsRoleFloor() {
+        for (name, target) in roles + [("Back Squat", "Quads")] {
+            XCTAssertGreaterThanOrEqual(
+                service.proceduralSets(for: 4, exerciseName: name, muscleTarget: target),
+                service.minimumSetFloor(forExerciseName: name, muscleTarget: target), name)
         }
     }
 
@@ -100,5 +111,19 @@ final class ProgrammingReviewTests: XCTestCase {
                        session(day: 16, at: 200, rir: 0, target: 1),
                        session(day: 2, at: 900, rir: 2, target: 2)]
         XCTAssertEqual(WorkoutProgressionEngine.effortSignal(for: "barbell-row", from: history), .insufficientEvidence)
+    }
+
+    /// Audit 2026-11-21 (M3): before any new-block session exists, the newest history is the
+    /// old block's week 3 (the deload is dropped by `progressionHistory`). The week being
+    /// trained or generated has to start the block, or the old block still counts.
+    func testFirstSessionAfterTheDeloadIgnoresTheOldBlock() {
+        let history = WorkoutProgressionEngine.progressionHistory([
+            session(day: 15, at: 100, rir: 0, target: 1), session(day: 16, at: 200, rir: 0, target: 1),
+            session(day: 22, at: 300, rir: 3, target: 3)])
+        XCTAssertEqual(WorkoutProgressionEngine.effortSignal(for: "barbell-row", from: history, currentWeek: 1),
+                       .insufficientEvidence)
+        // Generating week 4 of the SAME block still sees weeks 1-3.
+        XCTAssertEqual(WorkoutProgressionEngine.effortSignal(for: "barbell-row", from: history, currentWeek: 4),
+                       .protectRecovery)
     }
 }

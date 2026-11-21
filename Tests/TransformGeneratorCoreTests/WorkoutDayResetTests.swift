@@ -76,6 +76,19 @@ final class WorkoutDayResetTests: XCTestCase {
         XCTAssertEqual(day.sessionFeedbackNotes, "")
     }
 
+    /// Audit 2026-11-21 (M2): a row holding only warm-ups (no working sets) on a replaced
+    /// exercise made reset throw `.ambiguousHistory`.
+    func testWarmupOnlyLogOnReplacedExerciseDoesNotBlockReset() throws {
+        let (_, context, day, original) = try fixture()
+        let warm = ExercisePerformanceLog(exerciseName: original.exerciseName, weightLbs: 0, workoutDayNumber: 1)
+        warm.warmupSetsJSON = ExercisePerformanceLog.encodeSetLogs([SetLogEntry(setNumber: 1, weightLbs: 10, repsCompleted: 10)])
+        context.insert(warm)
+        try context.save()
+        let replacement = try ExerciseReplacement.replace(original, with: "Machine Lateral Raise", loggedSetNumbers: [], preferFuture: false, modelContext: context)
+        XCTAssertNoThrow(try SessionLifecycle.reset(day, in: context))
+        XCTAssertEqual(replacement.sets, 3)
+    }
+
     func testPartialReplacementRestartsFullBudgetAndRetainsAlternative() throws {
         let (_, context, day, original) = try fixture()
         let log = ExercisePerformanceLog(exerciseName: original.exerciseName, weightLbs: 20, repsCompleted: 12,
