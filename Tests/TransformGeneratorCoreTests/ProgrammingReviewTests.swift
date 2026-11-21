@@ -35,6 +35,22 @@ final class ProgrammingReviewTests: XCTestCase {
         }
     }
 
+    /// Second audit 2026-11-21 (F1): the next block's week 1 is graded against the old week 3
+    /// (deloads are excluded). Secondaries go 5 -> 3 sets, and re-deriving the load for that
+    /// told a 100 lb x 10 lifter to start at 95 lb. Fewer sets is never a reason to go lighter.
+    func testNewBlockWeekOneNeverReDerivesFromTheOldWeekThree() throws {
+        for (name, target) in roles + [("Lat Pulldown", "Lats"), ("Leg Press", "Quads")] {
+            let range = try XCTUnwrap(RepRange.parse(service.proceduralRepRange(for: 1, exerciseName: name, muscleTarget: target)))
+            XCTAssertFalse(WorkoutLoadTranslation.shouldTranslate(
+                previousRange: range, currentRange: range,
+                previousSets: service.proceduralSets(for: 3, exerciseName: name, muscleTarget: target),
+                currentSets: service.proceduralSets(for: 1, exerciseName: name, muscleTarget: target)), name)
+        }
+        XCTAssertFalse(try WorkoutLoadTranslation.shouldTranslate(
+            previousRange: XCTUnwrap(RepRange.parse("8-12")), currentRange: XCTUnwrap(RepRange.parse("8-12")),
+            previousSets: 5, currentSets: 3))
+    }
+
     func testDeloadKeepsTheBlockRepRangesWithFewerSets() {
         for (name, target) in roles {
             XCTAssertLessThan(service.proceduralSets(for: 4, exerciseName: name, muscleTarget: target),
