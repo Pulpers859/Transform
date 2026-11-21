@@ -150,16 +150,16 @@ final class RecoveryModulationTests: XCTestCase {
     // MARK: - Band-anchored volume caps (SLEEP-002)
 
     func testRecoveryCapsAreWholeSetBandAnchors() throws {
-        // VOL-001 High band is 10...14 (hypertrophy_v1_12): restricted caps at the floor, constrained at midpoint.
+        // VOL-001 High band is 8...12: restricted caps at the floor, constrained at midpoint.
         let intent = highPriorityIntent(directSets: 12.5, stimulus: 15.0)
 
         let restricted = service.adjustedPriorityIntent(intent, using: calibration(tier: .restricted))
-        XCTAssertEqual(restricted.weeklyDirectSetTarget, 10.0, accuracy: 0.001,
+        XCTAssertEqual(restricted.weeklyDirectSetTarget, 8.0, accuracy: 0.001,
                        "Restricted must cap a High priority at the band floor")
         XCTAssertGreaterThanOrEqual(restricted.weeklyStimulusTarget, restricted.weeklyDirectSetTarget + 1.0)
 
         let constrained = service.adjustedPriorityIntent(intent, using: calibration(tier: .constrained))
-        XCTAssertEqual(constrained.weeklyDirectSetTarget, 12.0, accuracy: 0.001,
+        XCTAssertEqual(constrained.weeklyDirectSetTarget, 10.0, accuracy: 0.001,
                        "Constrained must cap a High priority at the band midpoint")
 
         let ready = service.adjustedPriorityIntent(intent, using: calibration(tier: .ready))

@@ -7,7 +7,8 @@ import XCTest
 ///    progression can run (a changing prescription made the card translate the load, and a
 ///    200 lb x 10 success was told to start the next week at 195 lb);
 ///  * the deload keeps the block's rep ranges, with fewer sets than week 3;
-///  * the High weekly direct-set band rises one step (Medium's raise was backed out);
+///  * the priority-volume raise was tried twice and backed out (see VOL-001), so the bands
+///    are pinned unchanged until the menu-sizing fix lands;
 ///  * a one-set change no longer re-derives the load;
 ///  * the effort check needs a full rep below target (RIR is misjudged by about one rep,
 ///    Halperin 2022) and only counts sessions of the current block.
@@ -61,11 +62,11 @@ final class ProgrammingReviewTests: XCTestCase {
 
     // MARK: - Priority volume
 
-    func testHighPriorityBandRisesOneStep() {
+    func testPriorityBandsWaitForTheMenuSizingFix() {
         let bands = service.evidenceProfile.directSetTargetsByPriority
-        XCTAssertEqual(bands["High"], 10...14)
-        // Raising Medium to 6-10 left a Medium Calves priority short in the user-journey
-        // simulation (run 44921308872); backed out until the menu-sizing fix (MAINT-001).
+        // High 10-14 and Medium 6-10 were tried on 2026-11-21 and broke planning fixtures
+        // (runs 44921308872, 44923740239); see EvidenceProfile.md VOL-001.
+        XCTAssertEqual(bands["High"], 8...12)
         XCTAssertEqual(bands["Medium"], 5...8)
         XCTAssertEqual(bands["Low"], 3...5)
     }

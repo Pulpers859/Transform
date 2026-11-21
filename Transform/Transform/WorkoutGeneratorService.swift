@@ -68,7 +68,7 @@ extension ClaudeService {
         ],
         // EvidenceProfile.md VOL-001 [confidence: moderate]
         directSetTargetsByPriority: [
-            "High": 10...14,
+            "High": 8...12,
             "Medium": 5...8,
             "Low": 3...5
         ],
