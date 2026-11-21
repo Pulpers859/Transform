@@ -22,6 +22,8 @@ struct AppSettingsView: View {
     @State private var showBackupAlert = false
     @State private var backupMessage = ""
     @State private var isPreparingExport = false
+    @State private var showBackupFolderPicker = false
+    @State private var offPhoneStatus = OffPhoneBackup.shared.status()
     @AppStorage(AppSettingsKeys.appearanceMode) private var appearanceMode = 0
 
     var body: some View {
@@ -119,10 +121,35 @@ struct AppSettingsView: View {
                     } label: {
                         Label("Import Backup", systemImage: "square.and.arrow.down")
                     }
+
+                    LabeledContent("Off-phone copy") {
+                        Text(offPhoneStatusText)
+                            .foregroundStyle(offPhoneStatus.needsAttention ? TFColor.warning : .secondary)
+                            .multilineTextAlignment(.trailing)
+                    }
+
+                    // Its own file picker, attached to this button: a second `.fileImporter`
+                    // on the same view as the import picker would replace it.
+                    Button {
+                        showBackupFolderPicker = true
+                    } label: {
+                        Label(OffPhoneBackup.shared.hasFolder ? "Change Backup Folder" : "Choose Backup Folder",
+                              systemImage: "folder.badge.plus")
+                    }
+                    .fileImporter(isPresented: $showBackupFolderPicker, allowedContentTypes: [.folder]) { result in
+                        chooseBackupFolder(result)
+                    }
+
+                    if OffPhoneBackup.shared.hasFolder {
+                        Button("Stop Off-Phone Copies", role: .destructive) {
+                            OffPhoneBackup.shared.forgetFolder()
+                            offPhoneStatus = OffPhoneBackup.shared.status()
+                        }
+                    }
                 } header: {
                     Text("Data & Backup")
                 } footer: {
-                    Text("Backups include your logs, analysis photos and settings. Importing adds data and deletes nothing; it changes your settings only if you choose that.")
+                    Text("Backups include your logs, analysis photos and settings. Importing adds data and deletes nothing; it changes your settings only if you choose that. Automatic backups are kept on this phone. To survive losing the phone, choose a backup folder such as one in iCloud Drive: a copy is saved there at most every 6 hours, one file per day, keeping the last 7 days. Those files hold your body photos and health details, so pick a folder only you can open.")
                 }
 
                 Section {
@@ -239,6 +266,38 @@ struct AppSettingsView: View {
                 }
             }
         }
+    }
+
+    private var offPhoneStatusText: String {
+        let folder = OffPhoneBackup.shared.folderName.map { " in \($0)" } ?? ""
+        switch offPhoneStatus {
+        case .noFolder: return "Not set up"
+        case .neverCopied: return "No copy yet"
+        case .current(let days): return (days == 0 ? "Today" : "\(days) days ago") + folder
+        case .stale(let days): return "\(days) days ago\(folder)"
+        case .failing(let reason, _): return "Failing: \(reason) Choose the folder again."
+        }
+    }
+
+    private func chooseBackupFolder(_ result: Result<URL, Error>) {
+        switch result {
+        case .success(let url):
+            do {
+                let data = try? DataBackupManager.shared.exportDocument(using: modelContext).data
+                try OffPhoneBackup.shared.chooseFolder(url, data: data)
+                offPhoneStatus = OffPhoneBackup.shared.status()
+                if case .current = offPhoneStatus {
+                    backupMessage = "Backup folder set. A copy was saved there."
+                } else {
+                    backupMessage = "The folder was saved, but the first copy did not work: \(offPhoneStatusText)"
+                }
+            } catch {
+                backupMessage = "Could not use that folder: \(error.localizedDescription)"
+            }
+        case .failure(let error):
+            backupMessage = "Could not open the folder picker: \(error.localizedDescription)"
+        }
+        showBackupAlert = true
     }
 
     private var lastAutomaticBackupText: String {

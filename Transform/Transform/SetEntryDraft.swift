@@ -69,6 +69,39 @@ struct SetEntryDraft: Equatable {
         canLog && !alreadyAsked && rir.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    // MARK: Faster logging (review of 2026-11-21)
+    //
+    // A set used to need its reps typed and its RIR typed every time, with the row closing
+    // after each save. These two helpers cut that down without breaking the two rules above:
+    // reps are still only ever supplied by an explicit lifter action, and RIR still asks
+    // before a save without it. Pinned by SetEntryDraftTests.
+
+    /// The set "Same as set N" copies for row `setNumber`: the nearest logged set before it,
+    /// otherwise the nearest after it (a set filled in out of order). Nil when nothing is logged.
+    static func repeatSource(for setNumber: Int, in logged: [SetLogEntry]) -> SetLogEntry? {
+        let others = logged.filter { $0.setNumber != setNumber }
+        return others.filter { $0.setNumber < setNumber }.max { $0.setNumber < $1.setNumber }
+            ?? others.filter { $0.setNumber > setNumber }.min { $0.setNumber < $1.setNumber }
+    }
+
+    /// A draft holding exactly what `set` recorded: its load (or assistance), reps and RIR.
+    /// Only built when the lifter taps "Same as set N", which is the explicit action.
+    static func repeating(_ set: SetLogEntry) -> SetEntryDraft {
+        var draft = set.assistLbs.map { SetEntryDraft(suggestedAssist: $0) } ?? SetEntryDraft(suggestedWeight: set.weightLbs)
+        draft.reps = String(set.repsCompleted)
+        if let rir = set.rir {
+            draft.rir = rir.rounded() == rir ? String(Int(rir)) : String(rir)
+        }
+        return draft
+    }
+
+    /// After set `justLogged` is saved, the row to open next: the first unlogged set after it,
+    /// otherwise the first unlogged set at all, otherwise nil (every programmed set is logged).
+    static func nextSetToOpen(after justLogged: Int, loggedSetNumbers: Set<Int>, programmedCount: Int) -> Int? {
+        let open = (1...max(programmedCount, 1)).filter { !loggedSetNumbers.contains($0) && $0 != justLogged }
+        return open.first { $0 > justLogged } ?? open.first
+    }
+
     /// Failed saves must leave the actual typed results available for retry.
     /// Refuses an assisted draft: this signature has nowhere to put the assistance, and
     /// dropping it would store the set as plain bodyweight. Use `save(assisted:)`.

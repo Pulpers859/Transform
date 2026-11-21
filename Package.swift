@@ -144,6 +144,10 @@ let package = Package(
                 // is invisible to inspection and was previously nobody's job at all.
                 "WorkoutLoadTranslation.swift",
                 "SetEntryDraft.swift",
+                // When a workout day keeps the screen from auto-locking (owner, 2026-11-21).
+                "ScreenAwakePolicy.swift",
+                // Off-phone backup copy rules (owner, 2026-11-21).
+                "OffPhoneBackup.swift",
                 "WorkoutEffortGovernance.swift",
 
                 // Deterministic workout generator (the menu-locked planning core).

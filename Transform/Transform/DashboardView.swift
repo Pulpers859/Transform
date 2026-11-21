@@ -661,17 +661,16 @@ struct DashboardView: View {
     /// automatic backup is and deep-links to Settings, where the export/import
     /// actions now live. Turns amber when the newest backup is old enough to
     /// matter in a recovery.
+    ///
+    /// Since 2026-11-21 it reports the OFF-PHONE copy (`OffPhoneBackup`): a backup that sits
+    /// on the same phone as the data does not survive losing the phone, so "Backed up today"
+    /// for that copy alone overstated how safe the data was. `lastBackupDate` is still read
+    /// so the chip re-renders when Settings closes.
     var backupStatusChip: some View {
-        let staleAfterDays = 3
-        let daysAgo = lastBackupDate.map {
-            Calendar.current.dateComponents([.day], from: $0, to: Date()).day ?? 0
-        }
-        let isStale = daysAgo.map { $0 >= staleAfterDays } ?? true
-        let text: String = {
-            guard let daysAgo else { return "No backup yet" }
-            if daysAgo == 0 { return "Backed up today" }
-            return "Backup \(daysAgo)d ago"
-        }()
+        _ = lastBackupDate
+        let status = OffPhoneBackup.shared.status()
+        let isStale = status.needsAttention
+        let text = status.chipText
 
         return Button {
             showSettings = true

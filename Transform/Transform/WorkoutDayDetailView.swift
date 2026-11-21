@@ -139,6 +139,21 @@ struct WorkoutDayDetailView: View {
         .sheet(item: $exerciseForReplacement) { exercise in
             ExerciseReplacementView(exercise: exercise)
         }
+        // Keep the phone from auto-locking between sets while this session is active
+        // (`ScreenAwakePolicy`). Re-checked on every stamp change and once a minute, so an
+        // abandoned session releases the screen; always released when the day is left.
+        .onAppear(perform: updateScreenAwake)
+        .onChange(of: day.sessionStartedAt) { _, _ in updateScreenAwake() }
+        .onChange(of: day.sessionEndedAt) { _, _ in updateScreenAwake() }
+        .onChange(of: day.isCompleted) { _, _ in updateScreenAwake() }
+        .onChange(of: day.isSessionClosed) { _, _ in updateScreenAwake() }
+        .task {
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(60))
+                updateScreenAwake()
+            }
+        }
+        .onDisappear { ScreenAwakePolicy.apply(false) }
         .alert(
             partialCompletionPromptTitle,
             isPresented: Binding(
@@ -323,6 +338,16 @@ struct WorkoutDayDetailView: View {
                 .accessibilityLabel("Start session timer")
             }
         }
+    }
+
+    private func updateScreenAwake() {
+        ScreenAwakePolicy.apply(ScreenAwakePolicy.shouldKeepAwake(
+            dayIsCompleted: day.isCompleted,
+            sessionIsClosed: day.isSessionClosed,
+            sessionStartedAt: day.sessionStartedAt,
+            sessionEndedAt: day.sessionEndedAt,
+            now: Date()
+        ))
     }
 
     private func startSessionManually() {
@@ -4216,6 +4241,30 @@ struct InlineSetLogger: View {
                 labeledField("Reps", text: repsBinding(n), placeholder: repsPlaceholder, key: .reps(n), isReps: true)
                 labeledField("RIR", text: rirBinding(n), placeholder: "—", key: .rir(n), isReps: false)
             }
+            // One tap fills this row with exactly what an earlier set recorded (review of
+            // 2026-11-21: every set needed reps and RIR typed). It is the lifter's own action,
+            // labelled with the numbers it copies, and it still needs a Log tap to save.
+            if !editing.contains(n), let source = SetEntryDraft.repeatSource(for: n, in: loggedSets) {
+                let summary = "\(formatSetLoad(source)) × \(source.repsCompleted)" + (source.rir.map { ", RIR \(formatRIR($0))" } ?? "")
+                Button {
+                    drafts[n] = SetEntryDraft.repeating(source)
+                    askedForRIR.remove(n)
+                    focusedField = nil
+                } label: {
+                    Label("Same as set \(source.setNumber): \(summary)", systemImage: "arrow.uturn.down")
+                        .font(.caption.bold())
+                        .foregroundStyle(TFColor.accent)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                        .padding(.horizontal, 12)
+                        .frame(maxWidth: .infinity, minHeight: TFTapTarget.minimum)
+                        .background(TFColor.accent.opacity(0.12))
+                        .clipShape(Capsule())
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Fill set \(n) with set \(source.setNumber): \(summary). Then tap Log.")
+            }
             HStack(spacing: 8) {
                 // The decimal keyboard can't type "BW", so the option is offered explicitly,
                 // but only while the weight box is empty: a stray tap then cannot overwrite a
@@ -4369,6 +4418,8 @@ struct InlineSetLogger: View {
                 : "Enter weight (or tap Bodyweight) and reps. RIR is optional, 0–6."
             return
         }
+        let saved = draft
+        let wasNewSet = !editing.contains(n)
         guard draft.save(assisted: { onLog(n, $0, $1, $2, $3) }) else {
             logError = "Your entries are still here. Try again."
             return
@@ -4376,6 +4427,19 @@ struct InlineSetLogger: View {
         focusedField = nil
         TFHaptics.impact(.light)
         resetDraft(n)
+        // Open the next unlogged row straight away, without the keyboard (it would cover the
+        // rest timer), with the load chained off the set just saved, as `freshDraft` would.
+        // `loggedSets` has not been refreshed with set n yet, so it is added here.
+        if wasNewSet, let next = SetEntryDraft.nextSetToOpen(
+            after: n, loggedSetNumbers: Set(loggedSets.map(\.setNumber)).union([n]), programmedCount: programmedCount) {
+            if drafts[next] == nil {
+                drafts[next] = saved.isAssisted
+                    ? SetEntryDraft(suggestedAssist: saved.parsedAssist ?? 0)
+                    : SetEntryDraft(suggestedWeight: saved.parsedWeight)
+            }
+            askedForRIR.removeAll()
+            activeSet = next
+        }
     }
 
     private func resetDraft(_ n: Int) {

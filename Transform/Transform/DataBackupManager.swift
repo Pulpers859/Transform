@@ -833,6 +833,9 @@ final class DataBackupManager {
             if let counts {
                 saveLastKnownCounts(counts)
             }
+            // Only a backup that passed the drop guard above leaves the phone, so a sudden
+            // data loss can never be copied over the off-phone history (`OffPhoneBackup`).
+            OffPhoneBackup.shared.copyIfDue(document.data)
         } catch {
             print("[Backup] Automatic backup failed: \(error.localizedDescription)")
         }
