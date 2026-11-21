@@ -111,6 +111,21 @@ enum WorkoutLoadTranslation {
         abs(band(for: next).rawValue - band(for: previous).rawValue)
     }
 
+    /// Whether a change of prescription since the graded session should re-derive the load.
+    ///
+    /// A rep-range change always does. A set-count change does only when it is two or more
+    /// sets (review of 2026-11-21): one extra set at the same reps and effort is not a reason
+    /// to lower the weight, and the per-set fatigue model (`defaultFatigueDecayPerSet`) turned
+    /// a 200 lb x 10 success at 4 sets into "start at 195 lb" for 5. The 2-set to 4-set case
+    /// that motivated translating set changes at all is still translated.
+    /// Pinned by ProgrammingReviewTests.
+    static func shouldTranslate(previousRange: RepRange, currentRange: RepRange,
+                                previousSets: Int?, currentSets: Int) -> Bool {
+        // SEAM: pre-fix behaviour
+        if previousRange != currentRange { return true }
+        return previousSets.map { $0 != currentSets } ?? false
+    }
+
     /// More than this in a single week is a leap, not an adjustment.
     static let maximumBandJumpPerWeek = 1
 

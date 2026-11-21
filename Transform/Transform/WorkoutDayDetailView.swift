@@ -1198,8 +1198,8 @@ struct ExerciseCard: View {
         let previousRange = previousPrescription.repRange ?? currentRange
         let previousSets = previousPrescription.sets ?? (observedSets > 0 ? observedSets : nil)
 
-        let setsChanged = previousSets.map { $0 != exercise.sets } ?? false
-        guard previousRange != currentRange || setsChanged else { return nil }
+        guard WorkoutLoadTranslation.shouldTranslate(previousRange: previousRange, currentRange: currentRange,
+                                                     previousSets: previousSets, currentSets: exercise.sets) else { return nil }
         // Bodyweight has no load to translate, and the legacy "1 lb" stand-in is not a real
         // load either — every other load path in the app consults this, so this one must too.
         guard let referenceLoad = analysis.workingWeight,
