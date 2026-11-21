@@ -533,6 +533,7 @@ struct WorkoutDayDetailView: View {
                     weightSummary: entry,
                     latestSetLogs: previous,
                     sessionSetLogs: today,
+                    sessionWarmupSets: SetLoggingService.loggedWarmups(for: exercise, in: allPerformanceLogs),
                     // Only this exercise's history. The card's single consumer
                     // (`WorkoutProgressionEngine.effortSignal`) filters to one canonical key
                     // and keeps three sessions, so handing it the whole database was work
@@ -945,6 +946,8 @@ struct ExerciseCard: View {
     let latestSetLogs: [SetLogEntry]
     /// Sets already logged for today's in-progress session — drives the inline logger.
     let sessionSetLogs: [SetLogEntry]
+    /// Warm-ups on today's session (`ExercisePerformanceLog.warmupSetsJSON`); never working sets.
+    var sessionWarmupSets: [SetLogEntry] = []
     /// All decoded performance sessions, used for the exercise-specific effort signal.
     let performanceHistory: [WorkoutPerformanceLogSnapshot]
     /// What the PREVIOUS session was prescribed, from that session's own record.
@@ -972,6 +975,8 @@ struct ExerciseCard: View {
     let onClearStatus: () -> Void
     @State private var showDetails = false
     @State private var pendingSkip: ExerciseCompletionStatus?
+    /// "New best" banner after a set beats the stored best (`PersonalBestCheck`).
+    @State private var newBestText: String?
 
     var latestWeightLog: ExerciseWeightEntry? {
         weightSummary
@@ -1619,8 +1624,31 @@ struct ExerciseCard: View {
                     },
                     onClear: { setNumber in
                         SetLoggingService.clearSet(setNumber: setNumber, for: exercise, modelContext: modelContext)
+                    },
+                    warmupSets: sessionWarmupSets,
+                    onLogWarmup: { weight, reps in
+                        SetLoggingService.logWarmup(weightLbs: weight, reps: reps, for: exercise, modelContext: modelContext)
+                    },
+                    onClearWarmup: { number in
+                        SetLoggingService.clearWarmup(number: number, for: exercise, modelContext: modelContext)
                     }
                 )
+                if let newBestText {
+                    Label(newBestText, systemImage: "trophy.fill")
+                        .font(.caption.bold())
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(TFColor.success)
+                        .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
+                        .transition(.opacity)
+                        .accessibilityAddTraits(.isStaticText)
+                        .task(id: newBestText) {
+                            try? await Task.sleep(for: .seconds(5))
+                            withAnimation { self.newBestText = nil }
+                        }
+                }
 
                 // Last session's loads and the personal best deliberately do NOT appear on
                 // the card face. They were a third tinted strip under the set logger saying
@@ -1680,7 +1708,14 @@ struct ExerciseCard: View {
     /// UI must never mean two ways of writing training data: they differ only in where the
     /// numbers were typed, so completion reporting and the rest-timer signal stay identical.
     @discardableResult
+    private func bestRecord(_ entry: ExerciseWeightEntry?) -> PersonalBestCheck.Record? {
+        guard let entry, entry.hasBestRecord else { return nil }
+        return PersonalBestCheck.Record(weightLbs: entry.bestWeightLbs, reps: entry.bestRepsCompleted)
+    }
+
     private func logSetFromCard(setNumber: Int, weight: Double, reps: Int, rir: Double?, assist: Double?) -> Bool {
+        // Read before the save: `weightSummary` is the stored entry the save updates in place.
+        let bestBefore = bestRecord(weightSummary)
         guard SetLoggingService.logSet(
             setNumber: setNumber,
             weightLbs: weight,
@@ -1697,6 +1732,11 @@ struct ExerciseCard: View {
             object: exercise.persistentModelID
         )
         reportFinalSetIfComplete(setNumber: setNumber)
+        if let bestBefore, let bestAfter = bestRecord(weightSummary),
+           PersonalBestCheck.isImprovement(bestAfter, over: bestBefore) {
+            withAnimation { newBestText = PersonalBestCheck.text(bestAfter, over: bestBefore) }
+            TFHaptics.success()
+        }
         return true
     }
 
@@ -3806,7 +3846,9 @@ enum SetLoggingService {
         guard let log = sessionLog(for: exercise, among: dayLogs, on: date) else { return true }
         let sets = log.decodedSetLogs.filter { $0.setNumber != setNumber }.sorted { $0.setNumber < $1.setNumber }
         if sets.isEmpty {
-            modelContext.delete(log)
+            // A session that still holds warm-ups keeps its row, emptied of working sets,
+            // so clearing the last working set does not silently delete them too.
+            if log.decodedWarmupSets.isEmpty { modelContext.delete(log) } else { emptyWorkingSets(of: log) }
             return persist(modelContext)
         }
         let markers = sessionMarkers(for: exercise, dayLogs: dayLogs)
@@ -3837,9 +3879,76 @@ enum SetLoggingService {
 
     private static func clearAllSessionSets(for exercise: WorkoutExercise, modelContext: ModelContext, date: Date) -> Bool {
         if let log = storedSessionLog(for: exercise, modelContext: modelContext, date: date) {
+            if log.decodedWarmupSets.isEmpty { modelContext.delete(log) } else { emptyWorkingSets(of: log) }
+        }
+        return persist(modelContext)
+    }
+
+    /// A row with no working sets reads exactly like no row to every working-set reader:
+    /// empty `setLogsJSON` (skipped by `previousLog` and `latestUsableSetLogs`), 0 lb and no
+    /// reps (so `holdsLoggedWork` is false and the history list leaves it out).
+    private static func emptyWorkingSets(of log: ExercisePerformanceLog) {
+        log.setLogsJSON = ""
+        log.weightLbs = 0
+        log.repsCompleted = nil
+    }
+
+    // MARK: Warm-ups (`ExercisePerformanceLog.warmupSetsJSON`)
+
+    /// Records a warm-up set on this card's session. Warm-ups live in their own column, so
+    /// nothing that counts or grades working sets sees them. Like a working set, the first
+    /// one of a live session starts the session clock.
+    @discardableResult
+    static func logWarmup(
+        weightLbs: Double,
+        reps: Int,
+        for exercise: WorkoutExercise,
+        modelContext: ModelContext,
+        on date: Date = .now
+    ) -> Bool {
+        guard weightLbs >= 0, weightLbs.isFinite, reps > 0 else { return false }
+        let dayLogs = storedDayLogs(for: exercise, modelContext: modelContext)
+        let existing = sessionLog(for: exercise, among: dayLogs, on: date)
+        let markers = sessionMarkers(for: exercise, dayLogs: dayLogs)
+        let isLive = sessionIsLive(for: exercise, markers: markers, date: date)
+        let stamp = sessionStamp(existing: existing, markers: markers, date: date, isLive: isLive)
+        let log = existing ?? insertSessionLog(for: exercise, at: stamp, modelContext: modelContext)
+        var warmups = log.decodedWarmupSets
+        let number = (warmups.map(\.setNumber).max() ?? 0) + 1
+        warmups.append(SetLogEntry(setNumber: number, weightLbs: weightLbs, repsCompleted: reps))
+        log.warmupSetsJSON = ExercisePerformanceLog.encodeSetLogs(warmups)
+        if isLive {
+            SessionLifecycle.noteSetLogged(for: exercise, at: date)
+        }
+        return persist(modelContext)
+    }
+
+    /// Removes one warm-up. A row left with neither warm-ups nor working sets is deleted.
+    @discardableResult
+    static func clearWarmup(
+        number: Int,
+        for exercise: WorkoutExercise,
+        modelContext: ModelContext,
+        on date: Date = .now
+    ) -> Bool {
+        let dayLogs = storedDayLogs(for: exercise, modelContext: modelContext)
+        guard let log = sessionLog(for: exercise, among: dayLogs, on: date) else { return true }
+        let warmups = log.decodedWarmupSets.filter { $0.setNumber != number }
+        log.warmupSetsJSON = ExercisePerformanceLog.encodeSetLogs(warmups)
+        if warmups.isEmpty && log.setLogsJSON.isEmpty {
             modelContext.delete(log)
         }
         return persist(modelContext)
+    }
+
+    /// Warm-ups recorded on this card's session.
+    static func loggedWarmups(
+        for exercise: WorkoutExercise,
+        in logs: [ExercisePerformanceLog],
+        on date: Date = .now
+    ) -> [SetLogEntry] {
+        (sessionLog(for: exercise, among: logs, on: date)?.decodedWarmupSets ?? [])
+            .sorted { $0.setNumber < $1.setNumber }
     }
 
     /// Everything already recorded against this exercise's DAY, fetched fresh from the context
@@ -4039,8 +4148,15 @@ struct InlineSetLogger: View {
     /// Last argument: machine assistance in lb for an assisted set, else nil.
     let onLog: (Int, Double, Int, Double?, Double?) -> Bool
     let onClear: (Int) -> Bool
+    /// Warm-ups (`SetLoggingService.logWarmup`): stored apart from working sets, so they never
+    /// count toward the prescription, the progress cue or bests. Review of 2026-11-21.
+    var warmupSets: [SetLogEntry] = []
+    var onLogWarmup: (Double, Int) -> Bool = { _, _ in false }
+    var onClearWarmup: (Int) -> Bool = { _ in false }
 
     @State private var expanded = false
+    /// The open warm-up entry, if any. Weight and reps only; no RIR.
+    @State private var warmupDraft: SetEntryDraft?
     @State private var editing: Set<Int> = []
     @State private var drafts: [Int: SetEntryDraft] = [:]
     @State private var activeSet: Int?
@@ -4055,6 +4171,8 @@ struct InlineSetLogger: View {
         case weight(Int)
         case reps(Int)
         case rir(Int)
+        case warmupWeight
+        case warmupReps
     }
 
     private var programmedCount: Int {
@@ -4076,6 +4194,7 @@ struct InlineSetLogger: View {
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                warmupSection
                 VStack(spacing: 6) {
                     ForEach(1...programmedCount, id: \.self) { n in
                         setRow(n)
@@ -4154,6 +4273,96 @@ struct InlineSetLogger: View {
             .buttonStyle(.plain)
             .accessibilityLabel("Set \(n), not logged. Tap to enter results")
         }
+    }
+
+    // MARK: Warm-ups
+
+    @ViewBuilder
+    private var warmupSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Text("Warm-up")
+                    .font(.caption2.bold())
+                    .foregroundStyle(.secondary)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(warmupSets) { set in
+                            Button {
+                                _ = onClearWarmup(set.setNumber)
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Text("\(formatSetLoad(set)) × \(set.repsCompleted)")
+                                    Image(systemName: "xmark")
+                                        .font(.system(size: 9, weight: .bold))
+                                }
+                                .font(.caption2.bold())
+                                .foregroundStyle(.secondary)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 5)
+                                .background(Color.primary.opacity(0.06))
+                                .clipShape(Capsule())
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Warm-up \(set.setNumber): \(formatSetLoad(set)) for \(set.repsCompleted). Tap to remove")
+                        }
+                    }
+                }
+                if warmupDraft == nil {
+                    Button {
+                        warmupDraft = SetEntryDraft(suggestedWeight: nil)
+                        focusedField = .warmupWeight
+                    } label: {
+                        Label("Add", systemImage: "plus")
+                            .font(.caption2.bold())
+                            .foregroundStyle(TFColor.accent)
+                            .padding(.horizontal, 10)
+                            .frame(minHeight: TFTapTarget.minimum)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Add a warm-up set. Warm-ups do not count toward your working sets")
+                }
+            }
+            if warmupDraft != nil {
+                HStack(alignment: .bottom, spacing: 8) {
+                    labeledField("lb", text: Binding(get: { warmupDraft?.weight ?? "" }, set: { warmupDraft?.weight = $0 }),
+                                 placeholder: "—", key: .warmupWeight, isReps: false)
+                    labeledField("Reps", text: Binding(get: { warmupDraft?.reps ?? "" }, set: { warmupDraft?.reps = $0 }),
+                                 placeholder: "reps", key: .warmupReps, isReps: true)
+                    Button("Cancel") {
+                        warmupDraft = nil
+                        focusedField = nil
+                    }
+                    .font(.caption)
+                    .frame(minHeight: TFTapTarget.minimum)
+                    Button {
+                        logWarmup()
+                    } label: {
+                        Text("Log")
+                            .font(.subheadline.bold())
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 16)
+                            .frame(minHeight: TFTapTarget.minimum)
+                            .background(warmupDraft?.canLog == true ? TFColor.accent : Color.secondary.opacity(0.4))
+                            .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(warmupDraft?.canLog != true)
+                    .accessibilityLabel("Log warm-up set")
+                }
+            }
+        }
+    }
+
+    private func logWarmup() {
+        guard let draft = warmupDraft, let weight = draft.parsedWeight, let reps = draft.parsedReps else { return }
+        guard onLogWarmup(weight, reps) else {
+            logError = "Your warm-up entries are still here. Try again."
+            return
+        }
+        TFHaptics.impact(.light)
+        warmupDraft = nil
+        focusedField = nil
     }
 
     /// A new row's draft: chained off the last set logged today, otherwise last session.

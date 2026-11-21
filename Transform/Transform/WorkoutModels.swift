@@ -784,6 +784,16 @@ class ExercisePerformanceLog {
     /// Same additive lightweight migration as the two fields above. Read it through
     /// `recordedTargetRIR`.
     var prescribedTargetRIR: Int = -1
+    /// Warm-up sets, kept apart from `setLogsJSON` on purpose (review of 2026-11-21).
+    ///
+    /// Every reader of a session's work (set counts, completion, progression, stall and
+    /// effort checks, the Last/Best summary, history, generation input) reads
+    /// `setLogsJSON`. A warm-up logged there would count as a working set: the card would tick
+    /// itself done a set early and a light ramp set could be graded as a failed working set.
+    /// Keeping warm-ups in their own column means none of those readers can see them, so none
+    /// of them needed changing. Same additive lightweight migration as the fields above;
+    /// "" means none. Carried in backups by `ExercisePerformanceLogSnapshot.warmupSetsJSON`.
+    var warmupSetsJSON: String = ""
 
     init(
         loggedAt: Date = .now,
@@ -876,6 +886,11 @@ class ExercisePerformanceLog {
             print("[ExerciseLog] Failed to decode set logs for '\(exerciseName)': \(error.localizedDescription)")
             return []
         }
+    }
+
+    var decodedWarmupSets: [SetLogEntry] {
+        guard !warmupSetsJSON.isEmpty else { return [] }
+        return (try? JSONDecoder().decode([SetLogEntry].self, from: Data(warmupSetsJSON.utf8))) ?? []
     }
 
     static func encodeSetLogs(_ logs: [SetLogEntry]) -> String {

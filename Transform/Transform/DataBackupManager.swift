@@ -298,6 +298,8 @@ nonisolated struct ExercisePerformanceLogSnapshot: Codable {
     let prescribedReps: String?
     /// Optional for the same reason; absent in every backup written before it existed.
     var prescribedTargetRIR: Int? = nil
+    /// Warm-up sets (`ExercisePerformanceLog.warmupSetsJSON`); absent in older backups.
+    var warmupSetsJSON: String? = nil
 }
 
 // `ProfileSettingsSnapshot` lives in ProfileSettingsBackup.swift so the headless tests
@@ -683,7 +685,8 @@ nonisolated struct ExercisePerformanceLogSnapshot: Codable {
             workoutDayNumber: entry.workoutDayNumber,
             prescribedSets: entry.recordedPrescribedSets,
             prescribedReps: entry.prescribedReps.isEmpty ? nil : entry.prescribedReps,
-            prescribedTargetRIR: entry.recordedTargetRIR
+            prescribedTargetRIR: entry.recordedTargetRIR,
+            warmupSetsJSON: entry.warmupSetsJSON.isEmpty ? nil : entry.warmupSetsJSON
         )
     }
 
@@ -707,6 +710,7 @@ nonisolated struct ExercisePerformanceLogSnapshot: Codable {
         )
         entry.canonicalExerciseKey = resolvedCanonicalKey
         entry.setLogsJSON = setLogsJSON ?? ""
+        entry.warmupSetsJSON = warmupSetsJSON ?? ""
         return entry
     }
 }

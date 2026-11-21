@@ -70,6 +70,34 @@ enum WorkoutExerciseEffortSignal: Equatable {
     case insufficientEvidence
 }
 
+/// Whether a save just beat the exercise's stored best (review of 2026-11-21: Transform never
+/// marked a personal best). Uses the exact record rule of `ExerciseWeightEntry.applyLog`, and
+/// compares the stored best BEFORE and AFTER the save, so a set the summary refuses to count
+/// (an anomaly, or assisted work) can never trigger it. A first-ever session has nothing to
+/// beat, and a tie that merely refreshes the date is not an improvement.
+/// Pinned by PersonalBestCheckTests.
+enum PersonalBestCheck {
+    struct Record: Equatable {
+        let weightLbs: Double
+        let reps: Int?
+    }
+
+    static func isImprovement(_ after: Record?, over before: Record?) -> Bool {
+        guard let before, let after else { return false }
+        if after.weightLbs > before.weightLbs + 0.001 { return true }
+        guard abs(after.weightLbs - before.weightLbs) <= 0.001 else { return false }
+        return (after.reps ?? 0) > (before.reps ?? 0)
+    }
+
+    static func text(_ after: Record, over before: Record) -> String {
+        func describe(_ record: Record) -> String {
+            let load = record.weightLbs == 0 ? "BW" : "\(formatWeight(record.weightLbs)) lb"
+            return record.reps.map { "\(load) × \($0)" } ?? load
+        }
+        return "New best: \(describe(after)) (was \(describe(before)))"
+    }
+}
+
 enum WorkoutProgressionEngine {
     /// The history every progression reader should see: per exercise, deload-week sessions are
     /// dropped when that exercise has a non-deload session with sets
