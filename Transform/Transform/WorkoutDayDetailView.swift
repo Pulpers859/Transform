@@ -4456,14 +4456,17 @@ struct InlineSetLogger: View {
                 labeledField("Reps", text: repsBinding(n), placeholder: repsPlaceholder, key: .reps(n), isReps: true)
                 labeledField("RIR", text: rirBinding(n), placeholder: "—", key: .rir(n), isReps: false)
             }
-            // One tap fills this row with exactly what an earlier set recorded (review of
-            // 2026-11-21: every set needed reps and RIR typed). It is the lifter's own action,
-            // labelled with the numbers it copies, and it still needs a Log tap to save.
+            // One tap fills this row with an earlier set's load and reps (review of 2026-11-21:
+            // every set needed reps and RIR typed). It is the lifter's own action, labelled with
+            // the numbers it copies; RIR is not copied, and a Log tap still saves.
             if !editing.contains(n), let source = SetEntryDraft.repeatSource(for: n, in: loggedSets) {
                 // Load and reps only: RIR is not copied (`SetEntryDraft.repeating`).
                 let summary = "\(formatSetLoad(source)) × \(source.repsCompleted)"
                 Button {
-                    drafts[n] = SetEntryDraft.repeating(source)
+                    // Keep an RIR the lifter already typed in this row.
+                    var filled = SetEntryDraft.repeating(source)
+                    filled.rir = drafts[n]?.rir ?? ""
+                    drafts[n] = filled
                     askedForRIR.remove(n)
                     focusedField = nil
                 } label: {

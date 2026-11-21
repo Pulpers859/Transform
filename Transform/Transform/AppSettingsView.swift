@@ -282,10 +282,17 @@ struct AppSettingsView: View {
     private func chooseBackupFolder(_ result: Result<URL, Error>) {
         switch result {
         case .success(let url):
+            // nil when the data shows a sudden drop: the folder is remembered, but nothing is
+            // copied off the phone until a backup passes that check.
+            let data: Data?
             do {
-                // nil when the data shows a sudden drop: the folder is remembered, but nothing
-                // is copied off the phone until a backup passes that check.
-                let data = DataBackupManager.shared.exportDataPassingDropGuard(using: modelContext)
+                data = try DataBackupManager.shared.exportDataPassingDropGuard(using: modelContext)
+            } catch {
+                backupMessage = "Could not prepare a backup to copy, so the folder was not saved: \(error.localizedDescription)"
+                showBackupAlert = true
+                return
+            }
+            do {
                 try OffPhoneBackup.shared.chooseFolder(url, data: data)
                 offPhoneStatus = OffPhoneBackup.shared.status()
                 if case .current = offPhoneStatus {
