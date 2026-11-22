@@ -63,8 +63,10 @@ waste. The one thing that must never happen is the same overstatement shipped tw
 - No Mac and no Apple Developer account: he installs by re-signing an unsigned `.ipa` with
   Signulous, on the phone. Xcode, a cable, TestFlight and CI artifacts are no use to him.
 - Run `.github/workflows/build-sideload-ipa.yml` (manual, no inputs) on `main` and hand over
-  `https://github.com/Pulpers859/Transform/releases/download/sideload-<N>/Transform.ipa`
-  (`<N>` is the run number). He opens it in Safari, gives it to Signulous, installs.
+  `https://github.com/Pulpers859/Transform/releases/download/sideload-<N>/Transform-<N>.ipa`
+  (`<N>` is the run number; builds up to 10 were named plain `Transform.ipa`). He opens it in
+  Safari, gives it to Signulous, installs. The file is numbered because a repeat download of
+  the same name is saved as "Transform.ipa 2", which Signulous refuses as not an IPA.
 - Each install is signed under Signulous's team, not his. `Transform.entitlements` declares
   HealthKit; whether Apple Health sleep import works on a re-signed build depends on Signulous's
   profile, not on this repo. Ask him what he sees; CI cannot tell.

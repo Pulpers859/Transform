@@ -71,9 +71,12 @@ jobs:
           # re-signs after this, so editing Info.plist here is safe.
           plutil -replace TransformBuildLabel -string "sideload ${{ github.run_number }} · ${GITHUB_SHA::7}" \
             out/Payload/Transform.app/Info.plist
-          (cd out && zip -qry "Transform.ipa" Payload)
+          # Numbered per build (owner, 2026-11-22): a second "Transform.ipa" in the phone's
+          # Downloads folder is saved as "Transform.ipa 2", which no longer ends in .ipa, and
+          # Signulous refuses it. Transform-<N>.ipa never collides and keeps the extension.
+          (cd out && zip -qry "Transform-${{ github.run_number }}.ipa" Payload)
           rm -rf out/Payload
-          echo "Built out/Transform.ipa ($(du -h out/Transform.ipa | cut -f1))"
+          echo "Built out/Transform-${{ github.run_number }}.ipa ($(du -h "out/Transform-${{ github.run_number }}.ipa" | cut -f1))"
 
       # Artifacts can only be downloaded as a zip from a signed-in desktop
       # browser. A release asset has a plain link Safari on the phone can
@@ -107,14 +110,14 @@ jobs:
           uploaded=""
           for attempt in 1 2 3 4; do
             sleep $((attempt * 10))
-            if gh release upload "$tag" 'out/Transform.ipa' --clobber; then
+            if gh release upload "$tag" "out/Transform-${{ github.run_number }}.ipa" --clobber; then
               uploaded=1
               break
             fi
             echo "Uploading the .ipa failed (attempt $attempt); retrying." >&2
           done
-          if [[ -z "$uploaded" ]]; then echo "Could not upload Transform.ipa to $tag" >&2; exit 1; fi
-          url="${{ github.server_url }}/${{ github.repository }}/releases/download/$tag/Transform.ipa"
+          if [[ -z "$uploaded" ]]; then echo "Could not upload Transform-${{ github.run_number }}.ipa to $tag" >&2; exit 1; fi
+          url="${{ github.server_url }}/${{ github.repository }}/releases/download/$tag/Transform-${{ github.run_number }}.ipa"
           echo "IPA_URL=$url" >> "$GITHUB_ENV"
           echo "Direct link: $url"
 
