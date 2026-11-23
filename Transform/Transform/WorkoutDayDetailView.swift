@@ -135,7 +135,7 @@ struct WorkoutDayDetailView: View {
             )
         }
         .sheet(item: $feedbackDay) { selectedDay in
-            WorkoutSessionFeedbackSheet(day: selectedDay)
+            WorkoutSessionFeedbackSheet(day: selectedDay, recap: sessionRecap(for: selectedDay))
         }
         .sheet(item: $exerciseForReplacement) { exercise in
             ExerciseReplacementView(exercise: exercise)
@@ -475,26 +475,14 @@ struct WorkoutDayDetailView: View {
         // neutral, while an all-weeks read pulls in the tail of the previous week, crosses the
         // recovery threshold, and promises load changes nobody requested. It also let an old
         // day's card describe ratings recorded weeks AFTER the session being viewed.
-        let rated = (day.program?.days ?? [])
-            .filter { $0.weekNumber == day.weekNumber && $0.hasSessionFeedback }
-            .sorted { $0.dayNumber < $1.dayNumber }
-            .map {
-                WorkoutSessionFeedbackSnapshot(
-                    effort: $0.sessionEffort,
-                    stimulus: $0.stimulusQuality,
-                    jointPain: $0.jointPain,
-                    performanceRawValue: $0.performanceRatingRaw
-                )
-            }
-
-        switch WorkoutEffortGovernance.signal(from: rated) {
-        case .protectRecovery:
-            return "Next week holds load steady so you can recover."
-        case .progressionHeadroom:
-            return "You have room to push — next week adds reps before load."
-        case .neutral:
-            return nil
-        }
+        // Reads exactly the sessions that govern next week's weight suggestions
+        // (`WorkoutEffortGovernance.signal(governingWeek:)`), so the line and the suggestions
+        // cannot disagree (council review 2026-11-23: this line used to promise a hold that the
+        // weight suggestions never applied).
+        let rated = (day.program?.days ?? []).compactMap(\.ratedSessionFeedback)
+        return WorkoutEffortGovernance.cardLine(
+            for: WorkoutEffortGovernance.signal(governingWeek: day.weekNumber + 1, rated: rated)
+        )
     }
 
     /// Duration first (it's the auto-tracked highlight), then ratings or the prompt.
@@ -743,8 +731,17 @@ struct WorkoutDayDetailView: View {
         // row too. So: resolved AND something to show for it collapses; resolved and empty
         // stays open holding its own fix.
         if exercise.isCompleted && (knownToHaveLoggedWork || !sessionSetLogs(for: exercise).isEmpty) {
+            // ...and the next lift opens in its place (council review 2026-11-23: finishing one
+            // exercise left every card closed, so each new lift began with a tap to open it).
+            // The next unfinished lift after this one in day order, else the first unfinished
+            // one. Not when the day just finished: that collapses everything below.
+            let order = day.sortedExercises
+            let after = order.drop(while: { $0.persistentModelID != exercise.persistentModelID }).dropFirst()
+            let next = transition == .justFinished ? nil
+                : (after.first(where: { !$0.isCompleted }) ?? order.first(where: { !$0.isCompleted }))
             withAnimation(.easeInOut(duration: 0.2)) {
                 expandedExerciseIDs.remove(exercise.persistentModelID)
+                if let next { _ = expandedExerciseIDs.insert(next.persistentModelID) }
             }
         }
 
@@ -857,6 +854,40 @@ struct WorkoutDayDetailView: View {
         }
         exercise.completionStatus = nil
         commitDisposition(of: exercise, operation: "clear exercise status", restoring: snapshot)
+    }
+
+    /// What the session did, shown above the ratings when it ends (council review 2026-11-23:
+    /// finishing opened a sheet that only asked for ratings and said nothing back). A best is
+    /// claimed only when the stored best was set on the session's day AND beats every earlier
+    /// session for that exercise (`PersonalBestCheck.isImprovement`): a first-ever session or a
+    /// tie is not a new best. Not covered by a test (view code over `@Query` data).
+    func sessionRecap(for day: WorkoutDay) -> [WorkoutSessionFeedbackSheet.RecapLine] {
+        let sessionDay = day.sessionEndedAt ?? day.sessionStartedAt ?? .now
+        let calendar = Calendar.current
+        return day.sortedExercises.map { exercise in
+            var newBest: String?
+            if let entry = weightSummary(for: exercise), let bestDate = entry.bestLoggedAt,
+               calendar.isDate(bestDate, inSameDayAs: sessionDay) {
+                let key = ExerciseWeightEntry.canonicalLookupKey(exercise.exerciseName)
+                let earlier = ExerciseBestRule.best(of: allPerformanceLogs
+                    .filter { $0.canonicalExerciseKey == key && !calendar.isDate($0.loggedAt, inSameDayAs: bestDate) }
+                    .compactMap(\.summaryCandidate))
+                let after = PersonalBestCheck.Record(weightLbs: entry.bestWeightLbs, reps: entry.bestRepsCompleted)
+                if let earlier {
+                    let before = PersonalBestCheck.Record(weightLbs: earlier.weightLbs, reps: earlier.reps)
+                    if PersonalBestCheck.isImprovement(after, over: before) {
+                        newBest = PersonalBestCheck.text(after, over: before)
+                    }
+                }
+            }
+            return WorkoutSessionFeedbackSheet.RecapLine(
+                name: exercise.exerciseName,
+                loggedSets: sessionSetLogs(for: exercise).count,
+                plannedSets: exercise.sets,
+                skipped: exercise.completionStatus?.isSkipped ?? false,
+                newBest: newBest
+            )
+        }
     }
 
     func weightSummary(for exercise: WorkoutExercise) -> ExerciseWeightEntry? {
@@ -1354,7 +1385,11 @@ struct ExerciseCard: View {
             lastWeight: log.weightLbs,
             exerciseName: exercise.exerciseName,
             performanceHistory: performanceHistory,
-            currentWeek: exercise.day?.weekNumber
+            currentWeek: exercise.day?.weekNumber,
+            sessionRatings: exercise.day.map { day in
+                WorkoutEffortGovernance.signal(governingWeek: day.weekNumber,
+                                               rated: (day.program?.days ?? []).compactMap(\.ratedSessionFeedback))
+            } ?? .neutral
         )
         // An exercise rotated back in after two or more blocks away: its last numbers are old,
         // so hold them rather than build on them. Heuristic threshold (two 4-week blocks); not
@@ -1526,8 +1561,30 @@ struct ExerciseCard: View {
             if isExpanded {
                 expandedBody
             } else {
-                collapsedRow
+                VStack(spacing: 0) {
+                    collapsedRow
+                    // A best set on the LAST set closes the card in the same moment (the
+                    // exercise finishes itself), so the banner inside the open card was never
+                    // seen; it is shown on the closed row instead (council review 2026-11-23).
+                    if let newBestText {
+                        Label(newBestText, systemImage: "trophy.fill")
+                            .font(.caption.bold())
+                            .foregroundStyle(TFColor.success)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 14)
+                            .padding(.bottom, 12)
+                            .transition(.opacity)
+                            .accessibilityAddTraits(.isStaticText)
+                    }
+                }
             }
+        }
+        // Owned here rather than by the banner, so the banner clears itself whether the card is
+        // open or closed when it fires.
+        .task(id: newBestText) {
+            guard newBestText != nil else { return }
+            try? await Task.sleep(for: .seconds(5))
+            withAnimation { newBestText = nil }
         }
         // Green fill is earned by performed work, not by the day being settled. A lift skipped
         // for pain or ticked off with nothing logged keeps the neutral surface.
@@ -1648,10 +1705,6 @@ struct ExerciseCard: View {
                         .clipShape(RoundedRectangle(cornerRadius: TFRadius.cardCompact))
                         .transition(.opacity)
                         .accessibilityAddTraits(.isStaticText)
-                        .task(id: newBestText) {
-                            try? await Task.sleep(for: .seconds(5))
-                            withAnimation { self.newBestText = nil }
-                        }
                 }
 
                 // Last session's loads and the personal best deliberately do NOT appear on
@@ -1790,7 +1843,7 @@ struct ExerciseCard: View {
             ?? progressionAnalysis.implausibleSets.first {
             notices.append(
                 implausible.role == .working
-                    ? "Check Set \(implausible.setNumber): \(formatLoad(implausible.weightLbs)) looks like a typo. If left, it becomes your best and next target."
+                    ? "Check Set \(implausible.setNumber): \(formatLoad(implausible.weightLbs)) looks like a typo. If left, it counts as your best and next target."
                     : "Check Set \(implausible.setNumber): \(formatLoad(implausible.weightLbs)) looks like a typo. It's left out of your progress."
             )
         } else if let anomaly = progressionAnalysis.anomalies.first {
@@ -3445,14 +3498,17 @@ struct ProgressionSuggestion {
         lastWeight: Double,
         exerciseName: String,
         performanceHistory: [WorkoutPerformanceLogSnapshot] = [],
-        currentWeek: Int? = nil
+        currentWeek: Int? = nil,
+        sessionRatings: WorkoutEffortGovernance.Signal = .neutral
     ) -> ProgressionSuggestion? {
         let key = ExerciseWeightEntry.canonicalLookupKey(exerciseName)
-        let effortSignal = WorkoutProgressionEngine.effortSignal(
+        let repsSignal = WorkoutProgressionEngine.effortSignal(
             for: key,
             from: performanceHistory,
             currentWeek: currentWeek
         )
+        // Last week's session ratings can hold the weight too (SessionRatingHoldTests).
+        let effortSignal = WorkoutEffortGovernance.mergedEffortSignal(repsSignal, sessionRatings: sessionRatings)
         // Derived from `analysis` rather than from the decision, because the decision needs
         // it: whether this session is a one-off miss or a stall is part of what the verdict
         // IS, not a detail added afterwards.
@@ -3550,7 +3606,7 @@ struct ProgressionSuggestion {
         case .holdForRecovery:
             return ProgressionSuggestion(
                 icon: "arrow.down.right.circle.fill",
-                text: "\(holdLabel) — recent sets were close to failure, so recover before adding",
+                text: "\(holdLabel) — \(WorkoutEffortGovernance.holdReason(repsSignal: repsSignal, sessionRatings: sessionRatings))",
                 color: TFColor.warning
             )
         case .addRepsInRange:
@@ -3854,7 +3910,7 @@ enum SetLoggingService {
         if sets.isEmpty {
             // A session that still holds warm-ups keeps its row, emptied of working sets,
             // so clearing the last working set does not silently delete them too.
-            if log.decodedWarmupSets.isEmpty { modelContext.delete(log) } else { emptyWorkingSets(of: log) }
+            removeWorkingSets(of: log, modelContext: modelContext)
             return persist(modelContext)
         }
         let markers = sessionMarkers(for: exercise, dayLogs: dayLogs)
@@ -3885,9 +3941,75 @@ enum SetLoggingService {
 
     private static func clearAllSessionSets(for exercise: WorkoutExercise, modelContext: ModelContext, date: Date) -> Bool {
         if let log = storedSessionLog(for: exercise, modelContext: modelContext, date: date) {
-            if log.decodedWarmupSets.isEmpty { modelContext.delete(log) } else { emptyWorkingSets(of: log) }
+            removeWorkingSets(of: log, modelContext: modelContext)
         }
         return persist(modelContext)
+    }
+
+    /// Deletes the session row, or empties it when it still holds warm-ups, and then takes back
+    /// a best (and a "Last" record) that this session had set: a typo cleared away must not stay
+    /// behind as the exercise's best.
+    private static func removeWorkingSets(of log: ExercisePerformanceLog, modelContext: ModelContext) {
+        let key = log.canonicalExerciseKey
+        let previousStamp = log.loggedAt
+        let logID = log.persistentModelID
+        let deleted = log.decodedWarmupSets.isEmpty
+        if deleted { modelContext.delete(log) } else { emptyWorkingSets(of: log) }
+        reviseBestIfThisSessionSetIt(key: key, session: deleted ? nil : log, excluding: logID,
+                                     previousStamp: previousStamp, modelContext: modelContext)
+    }
+
+    /// When this session set the exercise's stored best (or its "Last" record) and has just
+    /// been corrected or cleared, rebuilds them from the session as it now stands plus every
+    /// other session (`ExerciseBestRule.revisedBest`, BestRecordRuleTests). A best set by
+    /// anything else is left alone: the write above has already given this session its chance
+    /// to beat it. Council review 2026-11-23: before this, the card's path only ever raised the
+    /// best, so a typo of 250 for 25 stayed the best after it was corrected.
+    ///
+    /// "Set it" is recognised by date: whenever a session raises the best, the best's date is
+    /// the session's stamp, and every later write to that session runs through here and keeps
+    /// the two equal. Not covered by a test (SwiftData + view-file code); the rule it applies is.
+    private static func reviseBestIfThisSessionSetIt(
+        key: String,
+        session: ExercisePerformanceLog?,
+        excluding excludedID: PersistentIdentifier? = nil,
+        previousStamp: Date,
+        modelContext: ModelContext
+    ) {
+        let summaryDescriptor = FetchDescriptor<ExerciseWeightEntry>(predicate: #Predicate { $0.canonicalExerciseKey == key })
+        guard let summary = (try? modelContext.fetch(summaryDescriptor))?.max(by: { $0.loggedAt < $1.loggedAt }) else { return }
+        let ownsBest = summary.bestLoggedAt == previousStamp
+        let ownsLast = summary.loggedAt == previousStamp && session?.summaryCandidate == nil
+        guard ownsBest || ownsLast else { return }
+
+        let excluded = excludedID ?? session?.persistentModelID
+        let logDescriptor = FetchDescriptor<ExercisePerformanceLog>(predicate: #Predicate { $0.canonicalExerciseKey == key })
+        let others = ((try? modelContext.fetch(logDescriptor)) ?? [])
+            .filter { $0.persistentModelID != excluded }
+            .compactMap(\.summaryCandidate)
+        let revised = session?.summaryCandidate
+
+        if ownsBest {
+            let best = ExerciseBestRule.revisedBest(storedBest: summary.bestCandidate, sessionPreviousDate: previousStamp,
+                                                    revisedSession: revised, otherSessions: others)
+            // A session's notes are not the summary's best notes; keep the stored text when the
+            // same record survives.
+            summary.setBest(best.map { ExerciseBestCandidate(date: $0.date, weightLbs: $0.weightLbs, reps: $0.reps,
+                                                             notes: $0.date == summary.bestLoggedAt ? summary.bestNotes : $0.notes) })
+        }
+        if ownsLast {
+            if let latest = others.max(by: { $0.date < $1.date }) {
+                summary.loggedAt = latest.date
+                summary.weightLbs = latest.weightLbs
+                summary.repsCompleted = latest.reps
+                summary.notes = latest.notes
+            }
+        }
+        // Nothing left that counts: the summary describes no work at all (the day reset and the
+        // history screen remove it in the same case).
+        if others.isEmpty && ownsBest && ownsLast {
+            modelContext.delete(summary)
+        }
     }
 
     /// A row with no working sets reads exactly like no row to every working-set reader:
@@ -4086,6 +4208,7 @@ enum SetLoggingService {
         let top = WorkingSetAnalysis.summaryTop(from: sets)
         let topWeight = top?.weightLbs ?? sets.first?.weightLbs ?? 0
         let topReps = top?.reps
+        let previousStamp = log.loggedAt
 
         log.loggedAt = date
         log.weightLbs = topWeight
@@ -4116,6 +4239,7 @@ enum SetLoggingService {
             let summary = summaryEntryOrCreate(for: exercise, weight: summaryWeight, reps: summaryReps, date: date, modelContext: modelContext)
             summary.applyLog(loggedAt: date, exerciseName: exercise.exerciseName, weightLbs: summaryWeight, repsCompleted: summaryReps, notes: summary.notes)
         }
+        reviseBestIfThisSessionSetIt(key: log.canonicalExerciseKey, session: log, previousStamp: previousStamp, modelContext: modelContext)
 
         if let liveClockDate {
             SessionLifecycle.noteSetLogged(for: exercise, at: liveClockDate)
@@ -4160,7 +4284,11 @@ struct InlineSetLogger: View {
     var onLogWarmup: (Double, Int) -> Bool = { _, _ in false }
     var onClearWarmup: (Int) -> Bool = { _ in false }
 
-    @State private var expanded = false
+    /// nil until the lifter taps the header: then the set list starts OPEN for an exercise that
+    /// is not finished yet (council review 2026-11-23: it started folded, so every exercise began
+    /// with a "Log sets" tap) and closed for a finished one.
+    @State private var expandedChoice: Bool?
+    private var expanded: Bool { expandedChoice ?? !exercise.isCompleted }
     /// The open warm-up entry, if any. Weight and reps only; no RIR.
     @State private var warmupDraft: SetEntryDraft?
     @State private var editing: Set<Int> = []
@@ -4215,7 +4343,7 @@ struct InlineSetLogger: View {
 
     private var header: some View {
         Button {
-            withAnimation(.easeOut(duration: 0.18)) { expanded.toggle() }
+            withAnimation(.easeOut(duration: 0.18)) { expandedChoice = !expanded }
         } label: {
             HStack(spacing: 8) {
                 Image(systemName: "checklist")

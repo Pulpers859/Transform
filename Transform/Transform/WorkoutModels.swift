@@ -292,6 +292,18 @@ class WorkoutDay {
         feedbackSubmittedAt != nil
     }
 
+    /// This day's session rating in the form `WorkoutEffortGovernance` reads, or nil when the
+    /// session was never rated (its fields are then zeroed defaults, not ratings).
+    var ratedSessionFeedback: (week: Int, dayNumber: Int, feedback: WorkoutSessionFeedbackSnapshot)? {
+        guard hasSessionFeedback else { return nil }
+        return (weekNumber, dayNumber, WorkoutSessionFeedbackSnapshot(
+            effort: sessionEffort,
+            stimulus: stimulusQuality,
+            jointPain: jointPain,
+            performanceRawValue: performanceRatingRaw
+        ))
+    }
+
     /// Elapsed training time from the auto-tracked stamps: first logged set (minus the
     /// warm-up lead) → the moment the session was finished. nil until both exist and are
     /// ordered, so callers can fall back to a manual estimate rather than show "0 min".
@@ -549,10 +561,14 @@ nonisolated struct ExerciseBestCandidate: Equatable {
     var notes: String = ""
 }
 
-/// Which record is an exercise's best, and how one session's correction changes it.
-/// RED-TEST STUB (council review 2026-11-23): reproduces the current behaviour of the card's
-/// raise-only path and the history screen's newest-wins tie-break, so BestRecordRuleTests can
-/// be seen failing before the rule is fixed.
+/// Which record is an exercise's best, and how one session's correction changes it. Pinned by
+/// BestRecordRuleTests.
+///
+/// One ordering for every path (council review 2026-11-23): heavier wins; at equal load more
+/// reps wins (the only way a bodyweight best, always 0 lb, can improve); on a full tie the newer
+/// record wins. `ExerciseWeightEntry.applyLog`, the history screen's rebuild and the day reset
+/// all use it. The history screen used to break equal-load ties by date alone, so an edit there
+/// could swap BW x 20 for BW x 12 and let the next ordinary session announce a false best.
 nonisolated enum ExerciseBestRule {
     static func isBetter(_ a: ExerciseBestCandidate, than b: ExerciseBestCandidate) -> Bool {
         if a.weightLbs > b.weightLbs + 0.001 { return true }
@@ -563,26 +579,34 @@ nonisolated enum ExerciseBestRule {
     }
 
     static func best(of candidates: [ExerciseBestCandidate]) -> ExerciseBestCandidate? {
-        var best: ExerciseBestCandidate?
-        for candidate in candidates {
-            guard let current = best else { best = candidate; continue }
-            if candidate.weightLbs > current.weightLbs + 0.001
-                || (abs(candidate.weightLbs - current.weightLbs) <= 0.001 && candidate.date > current.date) {
-                best = candidate
-            }
+        candidates.reduce(nil) { best, candidate in
+            guard let best else { return candidate }
+            return isBetter(candidate, than: best) ? candidate : best
         }
-        return best
     }
 
+    /// The best after ONE session's sets were corrected (`revisedSession`) or stopped counting
+    /// (`revisedSession` nil).
+    ///
+    /// The card's path used to only ever raise the best, so a typo (250 typed for 25) became a
+    /// permanent best that the very warning on the card told the lifter to fix. Now, when the
+    /// stored best was set by this session (its date is the session's stamp before this write,
+    /// `sessionPreviousDate`), it is rebuilt from this session as corrected plus every other
+    /// session. A best set by anything else, including a legacy summary with no log row behind
+    /// it, is never lowered here: it can only be beaten.
+    ///
+    /// Known limit: a legacy best with no log row that this session overtook was overwritten
+    /// when it was overtaken, so it cannot come back if this session is then corrected below it.
     static func revisedBest(
         storedBest: ExerciseBestCandidate?,
         sessionPreviousDate: Date,
         revisedSession: ExerciseBestCandidate?,
         otherSessions: [ExerciseBestCandidate]
     ) -> ExerciseBestCandidate? {
-        guard let storedBest else { return revisedSession }
-        guard let revisedSession else { return storedBest }
-        return isBetter(revisedSession, than: storedBest) ? revisedSession : storedBest
+        guard let storedBest, storedBest.date == sessionPreviousDate else {
+            return best(of: [storedBest, revisedSession].compactMap { $0 })
+        }
+        return best(of: otherSessions + [revisedSession].compactMap { $0 })
     }
 }
 
@@ -627,6 +651,19 @@ class ExerciseWeightEntry {
         self.bestNotes = notes
     }
 
+    /// The stored best as a rule candidate; nil when there is no best date.
+    var bestCandidate: ExerciseBestCandidate? {
+        bestLoggedAt.map { ExerciseBestCandidate(date: $0, weightLbs: bestWeightLbs, reps: bestRepsCompleted, notes: bestNotes) }
+    }
+
+    /// Writes `candidate` as the best (nil clears it, which `hasBestRecord` then reports).
+    func setBest(_ candidate: ExerciseBestCandidate?) {
+        bestWeightLbs = candidate?.weightLbs ?? 0
+        bestLoggedAt = candidate?.date
+        bestRepsCompleted = candidate?.reps
+        bestNotes = candidate?.notes ?? ""
+    }
+
     var hasBestRecord: Bool {
         // Rep-only records count: a bodyweight exercise's best lives in its reps
         // (weight 0 = bodyweight, not "no data").
@@ -648,23 +685,13 @@ class ExerciseWeightEntry {
         self.repsCompleted = repsCompleted
         self.notes = notes
 
-        let shouldReplaceBest: Bool
-        if !hasBestRecord {
-            shouldReplaceBest = true
-        } else if weightLbs > bestWeightLbs + 0.001 {
-            shouldReplaceBest = true
-        } else if abs(weightLbs - bestWeightLbs) <= 0.001 {
-            // At equal load, more reps is the better record (this is also how a
-            // bodyweight best — always weight 0 — can improve at all). Tie on
-            // reps keeps the old newest-wins behavior.
-            let newReps = repsCompleted ?? 0
-            let oldReps = bestRepsCompleted ?? 0
-            shouldReplaceBest = newReps != oldReps
-                ? newReps > oldReps
-                : (bestLoggedAt ?? .distantPast) <= loggedAt
-        } else {
-            shouldReplaceBest = false
-        }
+        // At equal load, more reps is the better record (this is also how a bodyweight best,
+        // always weight 0, can improve at all); a full tie goes to the newer record. The one
+        // ordering lives in `ExerciseBestRule` so every path agrees (BestRecordRuleTests).
+        let shouldReplaceBest = !hasBestRecord || ExerciseBestRule.isBetter(
+            ExerciseBestCandidate(date: loggedAt, weightLbs: weightLbs, reps: repsCompleted),
+            than: ExerciseBestCandidate(date: bestLoggedAt ?? .distantPast, weightLbs: bestWeightLbs, reps: bestRepsCompleted)
+        )
 
         if shouldReplaceBest {
             bestWeightLbs = weightLbs
@@ -905,6 +932,15 @@ class ExercisePerformanceLog {
         guard holdsLoggedWork else { return false }
         let sets = decodedSetLogs
         return sets.isEmpty || !AssistedProgression.summarySets(sets).isEmpty
+    }
+
+    /// This session as a best-rule candidate (its qualified summary top), or nil when it does
+    /// not count toward the summary. The same reading the day reset and the history rebuild use.
+    var summaryCandidate: ExerciseBestCandidate? {
+        guard countsTowardSummary else { return nil }
+        let top = WorkingSetAnalysis.summaryTop(from: summarySetLogs)
+        return ExerciseBestCandidate(date: loggedAt, weightLbs: top?.weightLbs ?? weightLbs,
+                                     reps: top?.reps ?? repsCompleted, notes: notes)
     }
 
     /// The prescribed reps-in-reserve target, or nil when it was not recorded.

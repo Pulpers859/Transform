@@ -21,7 +21,6 @@ struct AddMeasurementSheet: View {
     @State private var bodyFatText = ""
     @State private var notes = ""
     @State private var selectedDate = Date()
-    @State private var alsoSaveWeightEntry = false
     @State private var validationMessage = ""
     @State private var showValidationAlert = false
     @State private var showAdvanced = false
@@ -43,8 +42,15 @@ struct AddMeasurementSheet: View {
         return (50...999).contains(weight)
     }
 
+    /// Whether a body weight was typed at all. A typed weight is always saved to the weight log
+    /// (council review 2026-11-23): it used to be saved only when a switch that started OFF was
+    /// turned on, so a weight typed beside a waist measurement was silently thrown away.
+    var hasWeightInput: Bool {
+        !weightText.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
     var canSave: Bool {
-        !allMeasurementsEmpty || (alsoSaveWeightEntry && hasValidWeightInput)
+        !allMeasurementsEmpty || hasValidWeightInput
     }
 
     var body: some View {
@@ -53,14 +59,17 @@ struct AddMeasurementSheet: View {
                 protocolSection
                 dateSection
 
-                Section("Body Weight") {
+                Section {
                     HStack {
                         TextField("e.g. 192.4", text: $weightText)
                             .keyboardType(.decimalPad)
                         Text("lbs")
                             .foregroundStyle(.secondary)
                     }
-                    Toggle("Also add to weight log", isOn: $alsoSaveWeightEntry)
+                } header: {
+                    Text("Body Weight")
+                } footer: {
+                    Text("Saved to your weight log, replacing that day's weigh-in if there is one.")
                 }
 
                 coreMeasurementsSection
@@ -199,7 +208,7 @@ struct AddMeasurementSheet: View {
             Toggle("Standard measurement", isOn: $isStandardMeasurement)
 
             if !isStandardMeasurement {
-                Text("Marked as non-standard so it won't skew your trends.")
+                Text("Marked as non-standard: left out of the charts and number cards. The trend still uses it but does not count it toward its data quality.")
                     .font(.caption)
                     .foregroundStyle(TFColor.accent)
             }
@@ -266,9 +275,9 @@ struct AddMeasurementSheet: View {
         let normalizedDate = Calendar.current.startOfDay(for: selectedDate)
         var weightToSave: Double?
 
-        if alsoSaveWeightEntry {
+        if hasWeightInput {
             guard hasValidWeightInput, let weight = Double(weightText) else {
-                validationMessage = "Enter a weight between 50 and 999 lb, or turn off Also add to weight log."
+                validationMessage = "Enter a weight between 50 and 999 lb, or leave it blank."
                 showValidationAlert = true
                 return
             }
@@ -286,7 +295,8 @@ struct AddMeasurementSheet: View {
         if let weightToSave {
             if let existing = weightEntries.first(where: { Calendar.current.isDate($0.date, inSameDayAs: normalizedDate) }) {
                 existing.weightLbs = weightToSave
-                existing.notes = trimmedNotes
+                // An empty notes box must not wipe the note already on that day's weigh-in.
+                if !trimmedNotes.isEmpty { existing.notes = trimmedNotes }
             } else {
                 let entry = WeightEntry(date: normalizedDate, weightLbs: weightToSave, notes: trimmedNotes)
                 modelContext.insert(entry)

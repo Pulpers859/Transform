@@ -137,20 +137,14 @@ struct ExerciseProgressionView: View {
         let topWeight = latestTop?.weightLbs ?? latestLog.weightLbs
         let topReps = latestTop?.reps ?? latestLog.repsCompleted
 
-        var bestWeight = 0.0
-        var bestLogDate: Date?
-        var bestReps: Int?
-        var bestNotes = ""
-        for log in logs {
-            let top = WorkingSetAnalysis.summaryTop(from: log.summarySetLogs)
-            let w = top?.weightLbs ?? log.weightLbs
-            if w > bestWeight + 0.001 || (abs(w - bestWeight) <= 0.001 && log.loggedAt > (bestLogDate ?? .distantPast)) {
-                bestWeight = w
-                bestLogDate = log.loggedAt
-                bestReps = top?.reps ?? log.repsCompleted
-                bestNotes = log.notes
-            }
-        }
+        // Same ordering as every other path (ExerciseBestRule, BestRecordRuleTests): heavier,
+        // then more reps, then newer. This loop used to break equal-load ties by date alone, so
+        // an edit here could swap a bodyweight best of 20 reps for a newer 12.
+        let best = ExerciseBestRule.best(of: logs.compactMap(\.summaryCandidate))
+        let bestWeight = best?.weightLbs ?? 0
+        let bestLogDate = best?.date
+        let bestReps = best?.reps
+        let bestNotes = best?.notes ?? ""
 
         if let entry = allWeightEntries.first(where: { $0.canonicalExerciseKey == canonicalKey }) {
             entry.loggedAt = latestLog.loggedAt

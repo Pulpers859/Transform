@@ -1947,21 +1947,31 @@ nonisolated struct MeasurementTrendSnapshot: Codable {
     let progressConfidence: ProgressConfidence
     let confidenceReason: String
 
+    /// One sentence that explains the verdict. It is derived FROM the verdict, with the same
+    /// thresholds, so the badge and the sentence can never disagree (council review
+    /// 2026-11-23: a hard-coded 0.3 lb here once read "strong recomposition" beside a badge that
+    /// called the same weight stable). Pinned by BodyTrendHonestyTests.
     var waistToWeightRatio: String? {
         guard let waistChange = waistChangeIn, let weightChange = weightChangeLbs else { return nil }
-        if abs(weightChange) < 0.3 && abs(waistChange) > 0.3 {
-            return waistChange < 0 ? "Waist decreasing while weight stable — recomposition signal" : "Waist increasing while weight stable — possible fat gain or bloat"
+        let weightLimit = MeasurementTrendSnapshotBuilder.meaningfulWeightChangeLbs
+        let waistLimit = MeasurementTrendSnapshotBuilder.meaningfulWaistChangeIn
+        switch interpretation {
+        case .likelyRecomposition:
+            return weightChange > weightLimit
+                ? "Weight up, waist down — strong recomposition signal"
+                : "Waist decreasing while weight stable — recomposition signal"
+        case .likelyFatLoss:
+            return waistChange <= -MeasurementTrendSnapshotBuilder.noiseWaistChangeIn
+                ? "Both decreasing — fat loss pattern" : nil
+        case .likelyMassGain:
+            return waistChange >= MeasurementTrendSnapshotBuilder.noiseWaistChangeIn
+                ? "Both increasing — surplus/mass gain pattern" : nil
+        case .stableNoChange:
+            return abs(weightChange) <= weightLimit && waistChange >= waistLimit
+                ? "Waist increasing while weight stable — possible fat gain or bloat" : nil
+        case .possibleNoise, .insufficientData:
+            return nil
         }
-        if weightChange < -0.3 && waistChange < -0.3 {
-            return "Both decreasing — fat loss pattern"
-        }
-        if weightChange > 0.3 && waistChange < -0.3 {
-            return "Weight up, waist down — strong recomposition signal"
-        }
-        if weightChange > 0.3 && waistChange > 0.3 {
-            return "Both increasing — surplus/mass gain pattern"
-        }
-        return nil
     }
 }
 
@@ -2162,7 +2172,21 @@ enum MeasurementTrendSnapshotBuilder {
         nutritionDayCount: Int = 0,
         lookbackDays: Int = 90
     ) -> MeasurementTrendSnapshot {
-        let sorted = entries.sorted { $0.date < $1.date }
+        // Council review 2026-11-23 (pinned by BodyTrendHonestyTests). The trend covers the
+        // entries within `lookbackDays` before the LATEST entry; when that leaves only one, the
+        // previous entry is added so someone who measures rarely still gets a comparison. The
+        // snapshot's `lookbackDays` is then the real span between the first and last entry used,
+        // so every label and prompt that prints "over N days" states the truth. Before this,
+        // every entry ever logged was compared and the label always said 90.
+        let allSorted = entries.sorted { $0.date < $1.date }
+        let sorted: [MeasurementTrendInput] = {
+            guard let latest = allSorted.last,
+                  let windowStart = Calendar.current.date(byAdding: .day, value: -lookbackDays, to: latest.date)
+            else { return allSorted }
+            let inWindow = allSorted.filter { $0.date >= windowStart }
+            if inWindow.count >= 2 { return inWindow }
+            return Array(allSorted.suffix(2))
+        }()
 
         guard sorted.count >= 2 else {
             let latest = sorted.last
@@ -2205,10 +2229,22 @@ enum MeasurementTrendSnapshotBuilder {
         let armChange = averageArmDelta(first: first, last: last)
         let thighChange = averageThighDelta(first: first, last: last)
 
+        // The weight change covers the SAME span as the waist change: the 7-day trend near the
+        // first entry to the 7-day trend near the last. It used to be the trend's change over
+        // the last week only, judged against a waist change over the whole span, which read a
+        // steady 10-week gain as "Stable" and a loss-then-stall as "Recomposition". Missing at
+        // either end means unknown (nil), never zero.
         let smoothedWeight = WeightTrendBuilder.build(from: weightPoints)
         let latestWeight = smoothedWeight.currentTrendWeightLbs ?? last.bodyweightLbs
-        let weightChange = smoothedWeight.weeklyChangeLbs
-        let weightRate = smoothedWeight.weeklyChangeLbs
+        let weightChange: Double? = {
+            if let start = trendWeight(near: first.date, in: smoothedWeight.points),
+               let end = trendWeight(near: last.date, in: smoothedWeight.points) {
+                return end - start
+            }
+            if let start = first.bodyweightLbs, let end = last.bodyweightLbs { return end - start }
+            return nil
+        }()
+        let weightRate = weightChange.map { $0 / Double(elapsedDays) * 7.0 }
 
         let quality = classifyDataQuality(
             sessions: sorted.count,
@@ -2236,7 +2272,7 @@ enum MeasurementTrendSnapshotBuilder {
         )
 
         return MeasurementTrendSnapshot(
-            lookbackDays: lookbackDays,
+            lookbackDays: elapsedDays,
             sessionsCount: sorted.count,
             standardSessionsCount: standardCount,
             latestWaistIn: last.waistIn,
@@ -2260,6 +2296,19 @@ enum MeasurementTrendSnapshotBuilder {
             progressConfidence: confidence,
             confidenceReason: reason
         )
+    }
+
+    /// The 7-day trend weight nearest `date`: the newest smoothed point in the 7 days up to it,
+    /// else the oldest in the 7 days after it, else nil.
+    private static func trendWeight(near date: Date, in points: [SmoothedWeightPoint]) -> Double? {
+        let calendar = Calendar.current
+        let day = calendar.startOfDay(for: date)
+        guard let weekBefore = calendar.date(byAdding: .day, value: -7, to: day),
+              let weekAfter = calendar.date(byAdding: .day, value: 7, to: day) else { return nil }
+        if let before = points.last(where: { $0.date >= weekBefore && $0.date <= day }) {
+            return before.trendWeightLbs
+        }
+        return points.first(where: { $0.date > day && $0.date <= weekAfter })?.trendWeightLbs
     }
 
     private static func delta(from first: Double?, to last: Double?) -> Double? {
@@ -2303,9 +2352,14 @@ enum MeasurementTrendSnapshotBuilder {
         return .limited
     }
 
-    private static let meaningfulWaistChangeIn = 0.5
-    private static let noiseWaistChangeIn = 0.25
-    private static let meaningfulWeightChangeLbs = 0.5
+    // Heuristics, not measured. The weight figure is a change over the measured span of a
+    // 7-day-averaged trend (since 2026-11-23); the scientist consult kept 0.5 lb flat rather than
+    // scaling it with the span, which would call a 0.2 lb/week gain "stable".
+    // `nonisolated`: read by `MeasurementTrendSnapshot.waistToWeightRatio`, a nonisolated type,
+    // while this enum is main-actor isolated by the app target's default.
+    nonisolated static let meaningfulWaistChangeIn = 0.5
+    nonisolated static let noiseWaistChangeIn = 0.25
+    nonisolated static let meaningfulWeightChangeLbs = 0.5
     private static let minimumElapsedDaysForTrend = 14
     private static let minimumStandardSessionsForTrend = 2
 
@@ -2324,7 +2378,11 @@ enum MeasurementTrendSnapshotBuilder {
             return .stableNoChange
         }
 
-        let weight = weightChange ?? 0
+        // No weight over the measured span: the waist alone cannot tell fat loss from
+        // recomposition, so only "no change" can be said.
+        guard let weight = weightChange else {
+            return abs(waist) < noiseWaistChangeIn ? .stableNoChange : .insufficientData
+        }
 
         if abs(waist) < noiseWaistChangeIn && abs(weight) < meaningfulWeightChangeLbs {
             return .stableNoChange

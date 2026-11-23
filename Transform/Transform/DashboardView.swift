@@ -189,6 +189,19 @@ struct DashboardView: View {
 
     // MARK: - Measurement Trend
 
+    /// "Add a waist measurement" until there is one, then when the last one was taken.
+    var measurementLinkText: String {
+        guard measurementEntries.contains(where: { $0.waistIn != nil }),
+              let last = measurementEntries.first?.date else { return "Add a waist measurement" }
+        let days = Calendar.current.dateComponents([.day], from: Calendar.current.startOfDay(for: last),
+                                                   to: Calendar.current.startOfDay(for: .now)).day ?? 0
+        switch days {
+        case ...0: return "Measurements · last measured today"
+        case 1: return "Measurements · last measured yesterday"
+        default: return "Measurements · last measured \(days) days ago"
+        }
+    }
+
     var dashboardMeasurementTrend: MeasurementTrendSnapshot? {
         let entries = measurementEntries.map { m in
             MeasurementTrendInput(
@@ -264,20 +277,18 @@ struct DashboardView: View {
     }
 
     var coachingVerdict: CoachingVerdict {
-        // Priority 1: Insufficient data
-        if loggedDaysCount < 3 {
-            return CoachingVerdict(
-                message: "Log meals consistently — only \(loggedDaysCount)/7 days tracked this week",
-                color: TFColor.accent,
-                action: .logMeal,
-                actionLabel: "Log a meal"
-            )
-        }
+        // The meal-logging nudge used to be Priority 1, so for a lifter who does not log
+        // meals most days it was the ONLY headline the dashboard ever showed, hiding sleep, body
+        // trend and analysis warnings (owner, council review 2026-11-23). It is now the last
+        // thing said, just before the generic fallback.
 
         // Priority 2: Risk flags
         if let trend = dashboardMeasurementTrend {
+            // The recent 7-day-trend rate, not the snapshot's average over the whole measured
+            // span: a fast drop in the last fortnight must not be diluted by stable weeks before
+            // it (council review 2026-11-23).
             if trend.interpretation == .likelyFatLoss,
-               let rate = trend.weightChangeRatePerWeek, rate < -2.0 {
+               let rate = weightTrend.weeklyChangeLbs, rate < -2.0 {
                 return CoachingVerdict(
                     message: "Losing fast — eat a bit more to protect your training",
                     color: TFColor.accent,
@@ -300,7 +311,10 @@ struct DashboardView: View {
         if let sleepTrend, sleepTrend.acuteLoggedDays >= 2 {
             if sleepTrend.threeDayAverageHours < 5 {
                 return CoachingVerdict(
-                    message: "Short on sleep — train lighter today and skip extra sets",
+                    // Same advice the program follows on short sleep (EvidenceProfile SLEEP-002:
+                    // whole sets come off back-off/accessory work; loads are NOT reduced). It used
+                    // to say "train lighter", contradicting the program (council review 2026-11-23).
+                    message: "Short on sleep — keep your weights, trim an accessory set if you're dragging",
                     color: TFColor.accent,
                     action: .logSleep,
                     actionLabel: "Log sleep"
@@ -308,7 +322,7 @@ struct DashboardView: View {
             }
             if sleepTrend.hasRecentPostCallRecovery || sleepTrend.underFiveHours > 0 {
                 return CoachingVerdict(
-                    message: "Recovery is low — keep today easy and focus on good form",
+                    message: "Recovery is low — keep your weights, focus on clean reps, skip extra sets",
                     color: TFColor.accent,
                     action: .logSleep,
                     actionLabel: "Log sleep"
@@ -391,6 +405,15 @@ struct DashboardView: View {
             )
         }
 
+        if loggedDaysCount < 3 {
+            return CoachingVerdict(
+                message: "Log meals consistently — only \(loggedDaysCount)/7 days tracked this week",
+                color: TFColor.accent,
+                action: .logMeal,
+                actionLabel: "Log a meal"
+            )
+        }
+
         return CoachingVerdict(
             message: "Keep logging to see your trends",
             color: .secondary,
@@ -444,9 +467,11 @@ struct DashboardView: View {
                             .padding(.bottom, 24)
 
                         VStack(spacing: TFSpacing.cardGap) {
-                            coachingHeadlineCard
-                                .cardEntrance(index: 0)
+                            // Training first (owner, council review 2026-11-23): the app's main
+                            // job, and he does not log meals most days.
                             trainingTodayCard
+                                .cardEntrance(index: 0)
+                            coachingHeadlineCard
                                 .cardEntrance(index: 1)
                             todayRingsCard
                                 .cardEntrance(index: 2)
@@ -1172,6 +1197,12 @@ struct DashboardView: View {
             }
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("Current weight: \(currentWeight.map { String(format: "%.1f", $0) } ?? "no data") pounds")
+            if let lastWeighIn = weightEntries.first?.date, !Calendar.current.isDateInToday(lastWeighIn) {
+                // The big number is the latest weigh-in, whenever that was; say when.
+                Text("Last weighed \(lastWeighIn.formatted(.dateTime.month(.abbreviated).day()))")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
             if let trend = weightTrend.currentTrendWeightLbs {
                 Text("7-day trend \(String(format: "%.1f", trend)) lb · \(weightTrend.dataQuality.rawValue) data")
                     .font(.caption2)
@@ -1182,26 +1213,28 @@ struct DashboardView: View {
 
             if let trend = dashboardMeasurementTrend, trend.latestWaistIn != nil {
                 recompContextSection(trend: trend)
-            } else if dashboardMeasurementTrend == nil || dashboardMeasurementTrend?.latestWaistIn == nil {
+            } else {
                 Divider().padding(.vertical, 2)
-                NavigationLink {
-                    MeasurementsView()
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "ruler")
-                            .font(.caption2)
-                            .foregroundStyle(TFColor.measurement.opacity(0.6))
-                        Text("Add a waist measurement")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
-                    }
-                }
-                .buttonStyle(.plain)
             }
+            // Always reachable (council review 2026-11-23): the link used to vanish after the
+            // first waist entry, leaving the Analysis tab as the only way to Measurements.
+            NavigationLink {
+                MeasurementsView()
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "ruler")
+                        .font(.caption2)
+                        .foregroundStyle(TFColor.measurement.opacity(0.6))
+                    Text(measurementLinkText)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            .buttonStyle(.plain)
 
             if displayedWeightPoints.count > 1 {
                 HStack {
@@ -1625,7 +1658,7 @@ struct DashboardView: View {
         return HStack(spacing: 3) {
             Image(systemName: icon)
                 .font(.system(size: 8, weight: .bold))
-            Text("\(sign)\(String(format: "%.1f", delta)) lbs")
+            Text("\(sign)\(String(format: "%.1f", delta)) lb/wk")
                 .font(.system(size: 11, weight: .bold))
         }
         .padding(.horizontal, 8)

@@ -23,14 +23,41 @@ struct MeasurementsView: View {
     }
 
     var latestWeight: WeightEntry? { weightEntries.first }
-    var previousWeight: WeightEntry? { weightEntries.dropFirst().first }
-    var latestMeasurement: MeasurementEntry? { measurements.first }
-    var previousMeasurement: MeasurementEntry? { measurements.dropFirst().first }
 
-    var weightDelta: Double? {
-        guard let current = latestWeight?.weightLbs,
-              let previous = previousWeight?.weightLbs else { return nil }
-        return current - previous
+    /// Entries the number cards and charts use. A measurement marked non-standard (taken at an
+    /// unusual time) is kept in the history list but left out here, as the entry form promises
+    /// (council review 2026-11-23: the cards and charts used to include them).
+    var standardMeasurements: [MeasurementEntry] { measurements.filter(\.isStandardMeasurement) }
+    var latestMeasurement: MeasurementEntry? { standardMeasurements.first }
+    var previousMeasurement: MeasurementEntry? { standardMeasurements.dropFirst().first }
+
+    /// The same 7-day trend the Dashboard shows (council review 2026-11-23). This card used to
+    /// show the last weigh-in minus the one before it, which jumps with water weight and
+    /// disagreed with the Dashboard.
+    var weightTrend: WeightTrendSnapshot {
+        WeightTrendBuilder.build(from: weightEntries.map {
+            AnalysisLoggedWeightPoint(date: $0.date, weightLbs: $0.weightLbs)
+        })
+    }
+
+    /// Average of whichever sides were measured.
+    static func bothSides(_ right: Double?, _ left: Double?) -> Double? {
+        switch (right, left) {
+        case let (r?, l?): return (r + l) / 2
+        case let (r?, nil): return r
+        case let (nil, l?): return l
+        case (nil, nil): return nil
+        }
+    }
+
+    /// Change in the two-side average, using only the sides measured BOTH times, so adding a
+    /// left-arm number for the first time does not show up as growth.
+    static func bothSidesChange(now: (Double?, Double?), before: (Double?, Double?)) -> Double? {
+        let deltas = [(now.0, before.0), (now.1, before.1)].compactMap { pair -> Double? in
+            guard let a = pair.0, let b = pair.1 else { return nil }
+            return a - b
+        }
+        return deltas.isEmpty ? nil : deltas.reduce(0, +) / Double(deltas.count)
     }
 
     var measurementTrend: MeasurementTrendSnapshot? {
@@ -149,12 +176,15 @@ struct MeasurementsView: View {
                 }
 
                 if let weight = trend.latestWeightLbs {
+                    // Same span as the waist row above it (since 2026-11-23); shown without a
+                    // good/bad colour because whether a gain is good depends on the phase.
                     trendRow(
                         label: "Weight",
                         value: String(format: "%.1f lb", weight),
                         change: trend.weightChangeLbs,
                         unit: "lb",
-                        invertDelta: true
+                        invertDelta: true,
+                        neutral: true
                     )
                 }
 
@@ -172,7 +202,7 @@ struct MeasurementsView: View {
             HStack(spacing: 8) {
                 interpretationBadge(trend.interpretation)
                 Spacer()
-                Text("\(trend.sessionsCount) session(s) over \(trend.lookbackDays) days")
+                Text("\(trend.sessionsCount) session(s) over \(trend.lookbackDays) day(s)")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
@@ -191,7 +221,7 @@ struct MeasurementsView: View {
         .dashCard()
     }
 
-    func trendRow(label: String, value: String?, change: Double?, unit: String, invertDelta: Bool) -> some View {
+    func trendRow(label: String, value: String?, change: Double?, unit: String, invertDelta: Bool, neutral: Bool = false) -> some View {
         HStack {
             Text(label)
                 .font(.caption.bold())
@@ -204,6 +234,7 @@ struct MeasurementsView: View {
             if let change, abs(change) > 0.05 {
                 let sign = change > 0 ? "+" : ""
                 let color: Color = {
+                    if neutral { return .secondary }
                     if invertDelta {
                         return change < 0 ? TFColor.success : TFColor.danger
                     }
@@ -213,7 +244,8 @@ struct MeasurementsView: View {
                     .font(.caption.bold())
                     .foregroundStyle(color)
             } else {
-                Text("No change")
+                // nil is "no data for this span", which is not the same claim as "no change".
+                Text(change == nil ? "No data" : "No change")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -267,10 +299,13 @@ struct MeasurementsView: View {
                     title: "Weight",
                     value: latestWeight.map { String(format: "%.1f", $0.weightLbs) } ?? "--",
                     unit: "lbs",
-                    delta: weightDelta,
-                    deltaUnit: "lbs",
+                    delta: weightTrend.weeklyChangeLbs,
+                    deltaUnit: "lb/wk",
                     icon: "scalemass.fill",
-                    color: .orange
+                    color: .orange,
+                    // Coloured by the current phase, like the Dashboard's badge: a gain is good
+                    // while gaining and bad while cutting.
+                    deltaJudgement: TrainingPhase.resolve(currentTrendWeightLbs: weightTrend.currentTrendWeightLbs).isWeeklyChangeGood
                 )
 
                 MetricCard(
@@ -314,12 +349,12 @@ struct MeasurementsView: View {
                 }
 
                 HStack(spacing: 12) {
-                    if let arm = m.rightArmIn {
+                    if let arm = Self.bothSides(m.rightArmIn, m.leftArmIn) {
                         MetricCard(
-                            title: "Arm",
+                            title: m.rightArmIn != nil && m.leftArmIn != nil ? "Arms (avg)" : "Arm",
                             value: String(format: "%.1f", arm),
                             unit: "in",
-                            delta: prev.rightArmIn.map { arm - $0 },
+                            delta: Self.bothSidesChange(now: (m.rightArmIn, m.leftArmIn), before: (prev.rightArmIn, prev.leftArmIn)),
                             deltaUnit: "in",
                             icon: "figure.strengthtraining.traditional",
                             color: TFColor.danger
@@ -387,9 +422,9 @@ struct MeasurementsView: View {
         case .chest:
             measurementChart(keyPath: \.chestIn, label: "Chest (in)")
         case .arms:
-            measurementChart(keyPath: \.rightArmIn, label: "Arm (in)")
+            pairedMeasurementChart(right: \.rightArmIn, left: \.leftArmIn, label: "Arm (in)")
         case .thighs:
-            measurementChart(keyPath: \.rightThighIn, label: "Thigh (in)")
+            pairedMeasurementChart(right: \.rightThighIn, left: \.leftThighIn, label: "Thigh (in)")
         }
     }
 
@@ -428,8 +463,53 @@ struct MeasurementsView: View {
         .chartYScale(domain: .automatic(includesZero: false))
     }
 
+    /// Right and left as two lines (the arm and thigh charts used to plot the right side only).
+    func pairedMeasurementChart(right: KeyPath<MeasurementEntry, Double?>, left: KeyPath<MeasurementEntry, Double?>, label: String) -> some View {
+        let sorted = standardMeasurements.sorted { $0.date < $1.date }
+        var points: [SidePoint] = []
+        for entry in sorted {
+            if let value = entry[keyPath: right] { points.append(SidePoint(date: entry.date, side: "Right", value: value)) }
+            if let value = entry[keyPath: left] { points.append(SidePoint(date: entry.date, side: "Left", value: value)) }
+        }
+        let summary: String = {
+            let parts = ["Right", "Left"].compactMap { side -> String? in
+                let values = points.filter { $0.side == side }.map(\.value)
+                guard let first = values.first, let last = values.last else { return nil }
+                return "\(side.lowercased()) latest \(String(format: "%.1f", last)), \(String(format: "%+.1f", last - first)) since the first entry"
+            }
+            return parts.isEmpty ? "Not enough data yet" : parts.joined(separator: "; ")
+        }()
+
+        return Chart(points) { point in
+            LineMark(
+                x: .value("Date", point.date),
+                y: .value(label, point.value)
+            )
+            .foregroundStyle(by: .value("Side", point.side))
+            .interpolationMethod(.catmullRom)
+
+            PointMark(
+                x: .value("Date", point.date),
+                y: .value(label, point.value)
+            )
+            .foregroundStyle(by: .value("Side", point.side))
+            .symbolSize(30)
+        }
+        .chartForegroundStyleScale(["Right": TFColor.measurement, "Left": TFColor.accent])
+        .chartXAxis {
+            AxisMarks(values: .automatic(desiredCount: 4)) { _ in
+                AxisValueLabel(format: .dateTime.month().day())
+                    .font(.caption2)
+            }
+        }
+        .chartYScale(domain: .automatic(includesZero: false))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(label) trend chart, right and left")
+        .accessibilityValue(summary)
+    }
+
     func measurementChart(keyPath: KeyPath<MeasurementEntry, Double?>, label: String) -> some View {
-        let sorted = measurements
+        let sorted = standardMeasurements
             .sorted { $0.date < $1.date }
             .compactMap { entry -> (Date, Double)? in
                 guard let val = entry[keyPath: keyPath] else { return nil }
@@ -553,6 +633,14 @@ struct MeasurementsView: View {
 
 // MARK: - Metric Card
 
+/// One side's value on one date, for the right/left measurement charts.
+struct SidePoint: Identifiable {
+    let date: Date
+    let side: String
+    let value: Double
+    var id: String { "\(date.timeIntervalSinceReferenceDate)-\(side)" }
+}
+
 struct MetricCard: View {
     let title: String
     let value: String
@@ -562,9 +650,18 @@ struct MetricCard: View {
     let icon: String
     let color: Color
     var invertDelta: Bool = false
+    /// When set, decides the colour instead of `invertDelta`: true good, false bad, nil neutral.
+    var deltaJudgement: ((Double) -> Bool?)? = nil
 
     var deltaColor: Color {
         guard let d = delta else { return .secondary }
+        if let deltaJudgement {
+            switch deltaJudgement(d) {
+            case .some(true): return TFColor.success
+            case .some(false): return TFColor.danger
+            case .none: return .secondary
+            }
+        }
         let isPositive = d > 0
         return (isPositive == !invertDelta) ? TFColor.success : TFColor.danger
     }

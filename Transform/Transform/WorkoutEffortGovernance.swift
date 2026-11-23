@@ -52,4 +52,31 @@ enum WorkoutEffortGovernance {
             return "Governance signal: neutral. Use actual per-set performance and the prescribed rep range as the primary progression evidence."
         }
     }
+
+    // MARK: - Session ratings and weight suggestions (council review 2026-11-23)
+    //
+    // RED-TEST STUB: reproduces today's behaviour (ratings never reach the weight suggestion;
+    // the card lines promise more than the app does) so SessionRatingHoldTests can be seen
+    // failing before the fix.
+
+    static func signal(governingWeek targetWeek: Int,
+                       rated: [(week: Int, dayNumber: Int, feedback: WorkoutSessionFeedbackSnapshot)]) -> Signal {
+        signal(from: rated.filter { $0.week == targetWeek - 1 }.sorted { $0.dayNumber < $1.dayNumber }.map(\.feedback))
+    }
+
+    static func mergedEffortSignal(_ repsSignal: WorkoutExerciseEffortSignal, sessionRatings: Signal) -> WorkoutExerciseEffortSignal {
+        repsSignal
+    }
+
+    static func holdReason(repsSignal: WorkoutExerciseEffortSignal, sessionRatings: Signal) -> String {
+        "recent sets were close to failure, so recover before adding"
+    }
+
+    static func cardLine(for signal: Signal) -> String? {
+        switch signal {
+        case .protectRecovery: return "Next week holds load steady so you can recover."
+        case .progressionHeadroom: return "You have room to push — next week adds reps before load."
+        case .neutral: return nil
+        }
+    }
 }

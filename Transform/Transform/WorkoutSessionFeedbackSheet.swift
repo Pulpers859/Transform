@@ -6,6 +6,18 @@ struct WorkoutSessionFeedbackSheet: View {
     @Environment(\.modelContext) private var modelContext
 
     let day: WorkoutDay
+    /// What the session did, shown above the ratings (`WorkoutDayDetailView.sessionRecap`).
+    var recap: [RecapLine] = []
+
+    struct RecapLine: Identifiable {
+        let name: String
+        let loggedSets: Int
+        let plannedSets: Int
+        let skipped: Bool
+        let newBest: String?
+        /// A day can hold the same exercise twice, so the name is not an identity.
+        let id = UUID()
+    }
 
     @State private var effort: Int
     @State private var stimulus: Int
@@ -15,10 +27,15 @@ struct WorkoutSessionFeedbackSheet: View {
     @State private var sessionStartedAt: Date
     @State private var sessionEndedAt: Date
 
-    init(day: WorkoutDay) {
+    init(day: WorkoutDay, recap: [RecapLine] = []) {
         self.day = day
-        _effort = State(initialValue: day.sessionEffort > 0 ? day.sessionEffort : 3)
-        _stimulus = State(initialValue: day.stimulusQuality > 0 ? day.stimulusQuality : 3)
+        self.recap = recap
+        // Unrated sessions start with NO effort or stimulus chosen (council review 2026-11-23).
+        // Both used to start at 3, so tapping Save without touching them stored 3/3 as if the
+        // lifter had chosen it, and those ratings feed next week's weight hold and the Workout
+        // Timing card. 0 is "not chosen"; Save waits for a real choice.
+        _effort = State(initialValue: day.sessionEffort)
+        _stimulus = State(initialValue: day.stimulusQuality)
         _pain = State(initialValue: day.jointPain)
         _performance = State(initialValue: day.performanceRating ?? .same)
         _notes = State(initialValue: day.sessionFeedbackNotes)
@@ -43,8 +60,32 @@ struct WorkoutSessionFeedbackSheet: View {
                         .foregroundStyle(.secondary)
                 }
 
-                ratingSection("Session effort", detail: "1 easy · 5 maximal", value: $effort, range: 1...5)
-                ratingSection("Stimulus quality", detail: "How well the target muscles worked", value: $stimulus, range: 1...5)
+                if !recap.isEmpty {
+                    Section("Today") {
+                        ForEach(recap) { line in
+                            VStack(alignment: .leading, spacing: 2) {
+                                HStack {
+                                    Text(line.name)
+                                        .font(.subheadline)
+                                        .lineLimit(1)
+                                    Spacer()
+                                    Text(line.skipped ? "Skipped" : "\(line.loggedSets)/\(line.plannedSets) sets")
+                                        .font(.caption.bold())
+                                        .foregroundStyle(line.skipped || line.loggedSets < line.plannedSets ? Color.secondary : TFColor.success)
+                                }
+                                if let best = line.newBest {
+                                    Label(best, systemImage: "trophy.fill")
+                                        .font(.caption.bold())
+                                        .foregroundStyle(TFColor.success)
+                                }
+                            }
+                            .accessibilityElement(children: .combine)
+                        }
+                    }
+                }
+
+                ratingSection("Session effort", detail: effort == 0 ? "1 easy · 5 maximal. Pick one to save." : "1 easy · 5 maximal", value: $effort, range: 1...5)
+                ratingSection("Stimulus quality", detail: stimulus == 0 ? "How well the target muscles worked. Pick one to save." : "How well the target muscles worked", value: $stimulus, range: 1...5)
                 ratingSection("Joint pain", detail: "0 none · 5 severe", value: $pain, range: 0...5)
 
                 Section {
@@ -101,7 +142,7 @@ struct WorkoutSessionFeedbackSheet: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") { save() }
                         .fontWeight(.semibold)
-                        .disabled(!timesAreOrdered)
+                        .disabled(!timesAreOrdered || !ratingsChosen)
                 }
             }
         }
@@ -143,8 +184,12 @@ struct WorkoutSessionFeedbackSheet: View {
         sessionEndedAt >= sessionStartedAt
     }
 
+    private var ratingsChosen: Bool {
+        effort > 0 && stimulus > 0
+    }
+
     private func save() {
-        guard timesAreOrdered else { return }
+        guard timesAreOrdered, ratingsChosen else { return }
         let priorDate = day.feedbackSubmittedAt
         let priorEffort = day.sessionEffort
         let priorStimulus = day.stimulusQuality

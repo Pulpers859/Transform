@@ -222,42 +222,36 @@ struct RestDayDetailView: View {
 struct WorkoutTimingInsightsCard: View {
     @Query(sort: \WorkoutDay.dayNumber) private var allDays: [WorkoutDay]
 
-    private var timedSessions: [(hour: Int, effort: Int, stimulus: Int, performance: WorkoutPerformanceRating?)] {
-        allDays.compactMap { day in
+    /// Rated sessions outside deload weeks; the rules live in `WorkoutTimingInsights`.
+    private var timedSessions: [WorkoutTimingInsights.Session] {
+        WorkoutTimingInsights.counted(allDays.compactMap { day in
             guard let start = day.sessionStartedAt, day.hasSessionFeedback else { return nil }
-            let hour = Calendar.current.component(.hour, from: start)
-            return (hour, day.sessionEffort, day.stimulusQuality, day.performanceRating)
-        }
+            let performance: Int
+            switch day.performanceRating {
+            case .better: performance = 1
+            case .worse: performance = -1
+            default: performance = 0
+            }
+            return WorkoutTimingInsights.Session(
+                hour: Calendar.current.component(.hour, from: start),
+                effort: day.sessionEffort,
+                stimulus: day.stimulusQuality,
+                performance: performance,
+                isDeload: day.isDeloadWeek
+            )
+        })
     }
 
-    private var hourBuckets: [TimeBucket] {
-        guard timedSessions.count >= 3 else { return [] }
-        let bucketRanges: [(label: String, range: ClosedRange<Int>)] = [
-            ("Early AM\n5-8", 5...8),
-            ("Morning\n9-11", 9...11),
-            ("Midday\n12-14", 12...14),
-            ("Afternoon\n15-17", 15...17),
-            ("Evening\n18-20", 18...20),
-            ("Night\n21+", 21...23)
-        ]
-        return bucketRanges.compactMap { bucket in
-            let sessions = timedSessions.filter { bucket.range.contains($0.hour) }
-            guard !sessions.isEmpty else { return nil }
-            let avgStimulus = Double(sessions.map(\.stimulus).reduce(0, +)) / Double(sessions.count)
-            let avgEffort = Double(sessions.map(\.effort).reduce(0, +)) / Double(sessions.count)
-            let betterCount = sessions.filter { $0.performance == .better }.count
-            let worseCount = sessions.filter { $0.performance == .worse }.count
-            let score = avgStimulus * 0.5 + (5.0 - avgEffort) * 0.2 + Double(betterCount - worseCount) * 0.3
-            return TimeBucket(label: bucket.label, sessionCount: sessions.count, avgStimulus: avgStimulus, avgEffort: avgEffort, score: score)
-        }
+    private var hourBuckets: [WorkoutTimingInsights.Bucket] {
+        WorkoutTimingInsights.buckets(timedSessions)
     }
 
-    private var bestBucket: TimeBucket? {
-        hourBuckets.max(by: { $0.score < $1.score })
+    private var bestBucket: WorkoutTimingInsights.Bucket? {
+        WorkoutTimingInsights.best(hourBuckets)
     }
 
     var body: some View {
-        if timedSessions.count >= 3 {
+        if timedSessions.count >= WorkoutTimingInsights.minimumSessions {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 6) {
                     Image(systemName: "clock.arrow.circlepath")
@@ -275,7 +269,7 @@ struct WorkoutTimingInsightsCard: View {
                         VStack(spacing: 4) {
                             RoundedRectangle(cornerRadius: 4)
                                 .fill(bucket.label == bestBucket?.label ? Color.orange : TFColor.accent.opacity(0.3))
-                                .frame(height: max(8, CGFloat(bucket.score / 5.0) * 60))
+                                .frame(height: max(8, CGFloat(min(bucket.score / WorkoutTimingInsights.maximumScore, 1)) * 60))
 
                             Text("\(bucket.sessionCount)")
                                 .font(.system(size: 9, weight: .bold, design: .rounded))
@@ -297,7 +291,7 @@ struct WorkoutTimingInsightsCard: View {
                         Image(systemName: "star.fill")
                             .font(.caption2)
                             .foregroundStyle(.yellow)
-                        Text("Best results: **\(best.label.replacingOccurrences(of: "\n", with: " "))** — avg stimulus \(String(format: "%.1f", best.avgStimulus))/5, effort \(String(format: "%.1f", best.avgEffort))/5")
+                        Text("Best results so far: **\(best.label.replacingOccurrences(of: "\n", with: " "))** — \(best.sessionCount) sessions, avg stimulus \(String(format: "%.1f", best.avgStimulus))/5")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                     }
@@ -314,10 +308,4 @@ struct WorkoutTimingInsightsCard: View {
     }
 }
 
-private struct TimeBucket {
-    let label: String
-    let sessionCount: Int
-    let avgStimulus: Double
-    let avgEffort: Double
-    let score: Double
-}
+

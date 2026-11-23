@@ -614,9 +614,11 @@ struct BodyAnalysisView: View {
                             .font(.caption)
                         if let change = trend.weightChangeLbs, abs(change) > 0.1 {
                             let sign = change > 0 ? "+" : ""
+                            // Change over the measured span; no good/bad colour, because a gain
+                            // is the goal while gaining (council review 2026-11-23).
                             Text("\(sign)\(String(format: "%.1f", change))")
                                 .font(.caption.bold())
-                                .foregroundStyle(change < 0 ? TFColor.success : TFColor.danger)
+                                .foregroundStyle(.secondary)
                         }
                     }
                 }

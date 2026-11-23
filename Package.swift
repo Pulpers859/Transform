@@ -149,6 +149,8 @@ let package = Package(
                 // Off-phone backup copy rules (owner, 2026-11-21).
                 "OffPhoneBackup.swift",
                 "WorkoutEffortGovernance.swift",
+                // Dashboard "Workout Timing" card rules (council review 2026-11-23).
+                "WorkoutTimingInsights.swift",
 
                 // Deterministic workout generator (the menu-locked planning core).
                 "WorkoutGeneratorDebugModels.swift",

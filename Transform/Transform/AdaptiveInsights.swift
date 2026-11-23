@@ -31,6 +31,9 @@ struct WeightTrendSnapshot {
 }
 
 enum WeightTrendBuilder {
+    static let maximumComparisonGapDays = 14
+    static let minimumWindowWeighIns = 3
+
     static func build(from input: [AnalysisLoggedWeightPoint], calendar: Calendar = .current) -> WeightTrendSnapshot {
         let daily = Dictionary(grouping: input.filter { $0.weightLbs > 0 }) {
             calendar.startOfDay(for: $0.date)
@@ -59,6 +62,19 @@ enum WeightTrendBuilder {
             elapsedDays = 0
         }
 
+        // Weekly change (council review 2026-11-23, pinned by BodyTrendHonestyTests).
+        // The prior point is the newest one at least 7 days back. Before this, the whole
+        // difference to that point was reported as one week however far back it was: 200 lb on
+        // Oct 1 and 194 lb on Oct 31 read "-6.0 lb / week". Now the change is scaled by the real
+        // gap, and there is no weekly rate at all when that gap is over
+        // `maximumComparisonGapDays` or either 7-day average holds fewer than
+        // `minimumWindowWeighIns` weigh-ins (a "trend" of one reading is a raw reading). Both
+        // limits are heuristics, not measured. Downstream readers already treat nil as
+        // "unknown" (the nutrition pace check, the dashboard badge).
+        func weighIns(endingOn end: Date) -> Int {
+            let windowStart = calendar.date(byAdding: .day, value: -6, to: end) ?? end
+            return daily.filter { $0.date >= windowStart && $0.date <= end }.count
+        }
         let current = smoothed.last
         let comparisonDate = current.flatMap {
             calendar.date(byAdding: .day, value: -7, to: $0.date)
@@ -66,11 +82,15 @@ enum WeightTrendBuilder {
         let prior = comparisonDate.flatMap { target in
             smoothed.last(where: { $0.date <= target })
         }
-        let weeklyChange: Double? = if let current, let prior {
-            current.trendWeightLbs - prior.trendWeightLbs
-        } else {
-            nil
-        }
+        let weeklyChange: Double? = {
+            guard let current, let prior,
+                  weighIns(endingOn: current.date) >= minimumWindowWeighIns,
+                  weighIns(endingOn: prior.date) >= minimumWindowWeighIns,
+                  let gapDays = calendar.dateComponents([.day], from: prior.date, to: current.date).day,
+                  gapDays >= 7, gapDays <= maximumComparisonGapDays
+            else { return nil }
+            return (current.trendWeightLbs - prior.trendWeightLbs) / Double(gapDays) * 7
+        }()
         let weeklyPct: Double? = if let weeklyChange, let current, current.trendWeightLbs > 0 {
             weeklyChange / current.trendWeightLbs * 100
         } else {

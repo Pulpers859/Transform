@@ -898,7 +898,8 @@ struct WorkoutView: View {
 
         do {
             WorkoutGenerationDiagnostics.markStage("requesting week \(nextWeek) program from AI")
-            let progressionLookup = makeProgressionLookup(performanceLogs: exercisePerformanceLogs, targetWeek: nextWeek)
+            let progressionLookup = makeProgressionLookup(performanceLogs: exercisePerformanceLogs, targetWeek: nextWeek,
+                                                          ratedDays: program.days)
             let performanceHistory = compactPerformanceHistory(from: exerciseWeightEntries, lookup: progressionLookup)
             let history = exerciseHistoryContext(from: programs)
             let generationResult = try await ClaudeService.shared.generateNextWeek(
@@ -1319,9 +1320,14 @@ struct WorkoutView: View {
         /// The program week being generated, so the effort check counts only this block's
         /// sessions (`WorkoutProgressionEngine.currentBlockSessions`).
         var targetWeek: Int? = nil
+        /// What the previous week's session ratings say (`WorkoutEffortGovernance`
+        /// `signal(governingWeek:)`); "protect recovery" holds every weight suggestion for this
+        /// one week, the same rule the day cards apply.
+        var sessionRatings: WorkoutEffortGovernance.Signal = .neutral
     }
 
-    func makeProgressionLookup(performanceLogs: [ExercisePerformanceLog], targetWeek: Int? = nil) -> ProgressionLookup {
+    func makeProgressionLookup(performanceLogs: [ExercisePerformanceLog], targetWeek: Int? = nil,
+                               ratedDays: [WorkoutDay] = []) -> ProgressionLookup {
         // Deload-week sessions are left out wherever a full-week session exists, so the week
         // after a deload is programmed from the last real training week, not the deload
         // (owner, 2026-11-20). See `WorkoutProgressionEngine.progressionHistory`.
@@ -1381,7 +1387,10 @@ struct WorkoutView: View {
             snapshots: snapshots,
             repRangesByKey: repRangesByKey,
             prescribedSetsByKey: prescribedSetsByKey,
-            targetWeek: targetWeek
+            targetWeek: targetWeek,
+            sessionRatings: targetWeek.map {
+                WorkoutEffortGovernance.signal(governingWeek: $0, rated: ratedDays.compactMap(\.ratedSessionFeedback))
+            } ?? .neutral
         )
     }
 
@@ -1562,7 +1571,10 @@ struct WorkoutView: View {
                 : "no smaller load step is available; this does not authorize an exercise substitution"
             return "stalled under the \(range.low)-\(range.high) rep target at \(weight) lb across repeated sessions — \(action)"
         case .holdForRecovery:
-            return "repeated low RIR at \(weight) lb — app action: retain load for recovery"
+            let repsSignal = WorkoutProgressionEngine.effortSignal(
+                for: entry.canonicalExerciseKey, from: lookup.snapshots, currentWeek: lookup.targetWeek)
+            let cause = repsSignal == .protectRecovery ? "repeated low RIR" : "last week's session ratings flagged pain or a tough week"
+            return "\(cause) at \(weight) lb — app action: retain load for recovery"
         case .addRepsInRange:
             return "inside the \(range.low)-\(range.high) rep target at \(weight) lb — app action: progress within the existing rep range before increasing load"
         }
@@ -1581,10 +1593,9 @@ struct WorkoutView: View {
             for: key,
             from: snapshots
         )
-        let effortSignal = WorkoutProgressionEngine.effortSignal(
-            for: key,
-            from: snapshots,
-            currentWeek: lookup.targetWeek
+        let effortSignal = WorkoutEffortGovernance.mergedEffortSignal(
+            WorkoutProgressionEngine.effortSignal(for: key, from: snapshots, currentWeek: lookup.targetWeek),
+            sessionRatings: lookup.sessionRatings
         )
         // Same stall test the card runs, from the same helper, so the prompt the AI is
         // given and the banner the lifter reads cannot disagree about whether a load has
