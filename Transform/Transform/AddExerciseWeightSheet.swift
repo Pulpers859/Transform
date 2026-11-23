@@ -595,7 +595,11 @@ struct AddExerciseWeightSheet: View {
 
         // Resume the session already recorded for this card if one exists (e.g. started via the
         // inline logger) instead of inserting a duplicate log for the same exercise and day.
+        let sessionLog: ExercisePerformanceLog
+        let previousStamp: Date
         if let existing = resolvedSessionLog(on: loggedAt) {
+            sessionLog = existing
+            previousStamp = existing.loggedAt
             existing.loggedAt = loggedAt
             existing.weightLbs = topWeight
             existing.repsCompleted = topReps
@@ -629,6 +633,8 @@ struct AddExerciseWeightSheet: View {
                 setLogs: validSets
             )
             modelContext.insert(performanceLog)
+            sessionLog = performanceLog
+            previousStamp = loggedAt
         }
 
         // The Last/Best summary is built from unassisted sets only
@@ -656,6 +662,15 @@ struct AddExerciseWeightSheet: View {
                 modelContext.insert(entry)
             }
         }
+
+        // A typo corrected HERE must take back the best it set, exactly as on the card
+        // (council review 2026-11-23: this sheet's path only ever raised the best).
+        SetLoggingService.reviseBestIfThisSessionSetIt(
+            key: sessionLog.canonicalExerciseKey,
+            session: sessionLog,
+            previousStamp: previousStamp,
+            modelContext: modelContext
+        )
 
         // This sheet writes performance logs directly instead of going through
         // SetLoggingService, so it has to advance the session clock itself — otherwise

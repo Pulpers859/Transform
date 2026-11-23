@@ -320,6 +320,15 @@ struct MeasurementsView: View {
                 )
             }
 
+            // Say so when the newest entry is not what the cards show, so a waist just measured
+            // at an unusual time is not mistaken for a lost entry.
+            if let newest = measurements.first, !newest.isStandardMeasurement {
+                Text("Your latest entry is marked non-standard, so these cards show your last standard one.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
             if let m = latestMeasurement, let prev = previousMeasurement {
                 HStack(spacing: 12) {
                     if let waist = m.waistIn {

@@ -3968,8 +3968,10 @@ enum SetLoggingService {
     ///
     /// "Set it" is recognised by date: whenever a session raises the best, the best's date is
     /// the session's stamp, and every later write to that session runs through here and keeps
-    /// the two equal. Not covered by a test (SwiftData + view-file code); the rule it applies is.
-    private static func reviseBestIfThisSessionSetIt(
+    /// the two equal. Also called by the bulk "Log/Edit sets" sheet (`AddExerciseWeightSheet`),
+    /// which writes sessions on its own path. Not covered by a test (SwiftData + view-file code);
+    /// the rule it applies is.
+    static func reviseBestIfThisSessionSetIt(
         key: String,
         session: ExercisePerformanceLog?,
         excluding excludedID: PersistentIdentifier? = nil,
