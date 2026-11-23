@@ -479,7 +479,11 @@ struct WorkoutDayDetailView: View {
         // (`WorkoutEffortGovernance.signal(governingWeek:)`), so the line and the suggestions
         // cannot disagree (council review 2026-11-23: this line used to promise a hold that the
         // weight suggestions never applied).
-        let rated = (day.program?.days ?? []).compactMap(\.ratedSessionFeedback)
+        // The last week of a block (the deload) is followed by a NEW program whose week 1 reads
+        // its own program's ratings only, so nothing would act on this week's: say nothing
+        // rather than promise a hold that will not happen.
+        guard let program = day.program, day.weekNumber < program.maxWeeks else { return nil }
+        let rated = program.days.compactMap(\.ratedSessionFeedback)
         return WorkoutEffortGovernance.cardLine(
             for: WorkoutEffortGovernance.signal(governingWeek: day.weekNumber + 1, rated: rated)
         )
