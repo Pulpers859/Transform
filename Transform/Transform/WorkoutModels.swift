@@ -538,6 +538,54 @@ class WorkoutExercise {
     }
 }
 
+// MARK: - Best record rule
+
+/// One candidate for an exercise's best: a session's summary top, or a legacy summary record
+/// that has no performance-log row behind it.
+nonisolated struct ExerciseBestCandidate: Equatable {
+    var date: Date
+    var weightLbs: Double
+    var reps: Int?
+    var notes: String = ""
+}
+
+/// Which record is an exercise's best, and how one session's correction changes it.
+/// RED-TEST STUB (council review 2026-11-23): reproduces the current behaviour of the card's
+/// raise-only path and the history screen's newest-wins tie-break, so BestRecordRuleTests can
+/// be seen failing before the rule is fixed.
+nonisolated enum ExerciseBestRule {
+    static func isBetter(_ a: ExerciseBestCandidate, than b: ExerciseBestCandidate) -> Bool {
+        if a.weightLbs > b.weightLbs + 0.001 { return true }
+        if a.weightLbs < b.weightLbs - 0.001 { return false }
+        let aReps = a.reps ?? 0, bReps = b.reps ?? 0
+        if aReps != bReps { return aReps > bReps }
+        return a.date >= b.date
+    }
+
+    static func best(of candidates: [ExerciseBestCandidate]) -> ExerciseBestCandidate? {
+        var best: ExerciseBestCandidate?
+        for candidate in candidates {
+            guard let current = best else { best = candidate; continue }
+            if candidate.weightLbs > current.weightLbs + 0.001
+                || (abs(candidate.weightLbs - current.weightLbs) <= 0.001 && candidate.date > current.date) {
+                best = candidate
+            }
+        }
+        return best
+    }
+
+    static func revisedBest(
+        storedBest: ExerciseBestCandidate?,
+        sessionPreviousDate: Date,
+        revisedSession: ExerciseBestCandidate?,
+        otherSessions: [ExerciseBestCandidate]
+    ) -> ExerciseBestCandidate? {
+        guard let storedBest else { return revisedSession }
+        guard let revisedSession else { return storedBest }
+        return isBetter(revisedSession, than: storedBest) ? revisedSession : storedBest
+    }
+}
+
 // MARK: - Logged Exercise Weight (for progression tracking)
 
 @Model
