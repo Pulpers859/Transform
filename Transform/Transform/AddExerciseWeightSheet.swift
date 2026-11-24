@@ -649,7 +649,8 @@ struct AddExerciseWeightSheet: View {
                     exerciseName: exercise.exerciseName,
                     weightLbs: summaryWeight,
                     repsCompleted: summaryReps,
-                    notes: trimmedNotes
+                    notes: trimmedNotes,
+                    record: ExerciseBestRule.recordTop(from: summarySets)
                 )
             } else {
                 let entry = ExerciseWeightEntry(

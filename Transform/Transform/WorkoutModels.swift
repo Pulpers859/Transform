@@ -590,8 +590,12 @@ nonisolated enum ExerciseBestRule {
     /// lone load more than 40% over the median) flags a real 100x3 top set followed by 70x10
     /// back-offs, and the estimated-max top ranks 195x10 over 200x6; either way a real record was
     /// taken back seconds after its banner. The one exclusion kept is a likely typo: with 3 or
-    /// more sets, a lone load (no other set within 2%) at 2x the session median or more
-    /// (250 among 25s, 180 among 90s). Pinned by BestRecordRuleTests.
+    /// more sets, a lone load (no other set within 2%) at 2x the session median or more AND at
+    /// least `typoMinimumExcessLbs` over it (250 among 25s, 180 among 90s, 25 among 2.5s); the
+    /// excess rule (round 3) keeps one ordinary light-dumbbell step, 5 -> 10 lb, a real record.
+    /// The 20 lb figure is the consult's heuristic, not evidence. Pinned by BestRecordRuleTests.
+    static let typoMinimumExcessLbs = 20.0
+
     static func recordTop(from sets: [SetLogEntry]) -> (weightLbs: Double, reps: Int?)? {
         let valid = sets.filter { $0.weightLbs >= 0 && $0.repsCompleted > 0 }
         guard !valid.isEmpty else { return nil }
@@ -600,7 +604,8 @@ nonisolated enum ExerciseBestRule {
             ? weights[weights.count / 2]
             : (weights[weights.count / 2 - 1] + weights[weights.count / 2]) / 2
         func isLikelyTypo(_ set: SetLogEntry) -> Bool {
-            guard valid.count >= 3, median > 0, set.weightLbs >= median * 2 else { return false }
+            guard valid.count >= 3, median > 0, set.weightLbs >= median * 2,
+                  set.weightLbs - median >= typoMinimumExcessLbs else { return false }
             let repeated = valid.contains { $0.id != set.id && abs($0.weightLbs - set.weightLbs) <= max(0.5, set.weightLbs * 0.02) }
             return !repeated
         }
@@ -701,7 +706,10 @@ class ExerciseWeightEntry {
         bestWeightLbs > 0 || (bestRepsCompleted ?? 0) > 0
     }
 
-    /// `record`: RED-TEST STUB parameter (round 3), not yet used.
+    /// `record`: the session's record set (`ExerciseBestRule.recordTop`) when it differs from the
+    /// working-set top passed as `weightLbs`/`repsCompleted`. The best is raised by the record
+    /// and "Last" keeps the working-set top (auditor round 3: raising the best by one reading and
+    /// rebuilding it by the other fired a "New best" and then withdrew it). Nil: one reading.
     func applyLog(
         loggedAt: Date,
         exerciseName: String,
@@ -725,15 +733,17 @@ class ExerciseWeightEntry {
         // At equal load, more reps is the better record (this is also how a bodyweight best,
         // always weight 0, can improve at all); a full tie keeps the record where it was first
         // set. The ordering lives in `ExerciseBestRule` (BestRecordRuleTests).
+        let bestWeight = record?.weightLbs ?? weightLbs
+        let bestReps = record.map { $0.reps } ?? repsCompleted
         let shouldReplaceBest = !hasBestRecord || ExerciseBestRule.isBetter(
-            ExerciseBestCandidate(date: loggedAt, weightLbs: weightLbs, reps: repsCompleted),
+            ExerciseBestCandidate(date: loggedAt, weightLbs: bestWeight, reps: bestReps),
             than: ExerciseBestCandidate(date: bestLoggedAt ?? .distantPast, weightLbs: bestWeightLbs, reps: bestRepsCompleted)
         )
 
         if shouldReplaceBest {
-            bestWeightLbs = weightLbs
+            bestWeightLbs = bestWeight
             bestLoggedAt = loggedAt
-            bestRepsCompleted = repsCompleted
+            bestRepsCompleted = bestReps
             bestNotes = notes
         }
     }
@@ -969,6 +979,15 @@ class ExercisePerformanceLog {
         guard holdsLoggedWork else { return false }
         let sets = decodedSetLogs
         return sets.isEmpty || !AssistedProgression.summarySets(sets).isEmpty
+    }
+
+    /// This session as a "Last" record: its working-set (progression) top, the reading every
+    /// "Last" path uses; nil when it does not count toward the summary.
+    var lastCandidate: ExerciseBestCandidate? {
+        guard countsTowardSummary else { return nil }
+        let top = WorkingSetAnalysis.summaryTop(from: summarySetLogs)
+        return ExerciseBestCandidate(date: loggedAt, weightLbs: top?.weightLbs ?? weightLbs,
+                                     reps: top?.reps ?? repsCompleted, notes: notes)
     }
 
     /// This session as a best-rule candidate (its record set, `ExerciseBestRule.recordTop`), or

@@ -42,16 +42,35 @@ enum WorkoutEffortGovernance {
         return .neutral
     }
 
-    /// The AI's governance sentence for a week of ratings. RED-TEST STUB (round 3): the old
-    /// reading, `guidance(for: signal(from:))`.
+    /// The AI's governance sentence for a week of ratings (exercise-evidence consult
+    /// 2026-11-24, round 3). It must agree with what the app does to loads: a week that is hard
+    /// on effort alone does NOT hold weights (`signal(governingWeek:)`, pick c), so telling the
+    /// AI "hold load progression" there contradicted the app's own "increase load" verdicts in
+    /// the same request. Pinned by SessionRatingHoldTests.
     static func guidance(forWeek feedback: [WorkoutSessionFeedbackSnapshot]) -> String {
-        guidance(for: signal(from: feedback))
+        if holdsWeights(feedback) { return guidance(for: .protectRecovery) }
+        if signal(from: feedback) == .protectRecovery {
+            return "Governance signal: hard sessions without pain or a performance drop. The app's load verdicts below stand; keep every set at its prescribed reps in reserve and do not push sets closer to failure."
+        }
+        return guidance(for: signal(from: feedback))
+    }
+
+    /// The weight-hold rule: 2 of the last 3 with joint pain >= 3 or a "Worse" performance.
+    static func holdsWeights(_ feedback: [WorkoutSessionFeedbackSnapshot]) -> Bool {
+        let recent = feedback.suffix(3)
+        let flags = recent.filter {
+            $0.jointPain >= 3 || $0.performanceRawValue.caseInsensitiveCompare("Worse") == .orderedSame
+        }.count
+        return recent.count >= 2 && flags >= 2
     }
 
     static func guidance(for signal: Signal) -> String {
         switch signal {
         case .protectRecovery:
-            return "Governance signal: protect recovery. Hold load progression this week; if pain or performance remains poor, reduce the lowest-priority isolation set and keep compounds inside the prescribed effort cap. This is a conservative session-level signal, not a diagnosis."
+            // No longer asks the AI to cut a set (consult round 3): the menu-locked prompt forbids
+            // changing set counts (WorkoutGeneratorService+Requests.swift), and obeying this
+            // tripped the menu check and cost a second paid call.
+            return "Governance signal: protect recovery. The app is holding load progression this week; keep compounds inside the prescribed effort cap. This is a conservative session-level signal, not a diagnosis."
         case .progressionHeadroom:
             return "Governance signal: progression headroom. Keep the double-progression ladder: add reps before load, and add load only when all working sets meet the rep ceiling."
         case .neutral:
@@ -81,11 +100,7 @@ enum WorkoutEffortGovernance {
     static func signal(governingWeek targetWeek: Int,
                        rated: [(week: Int, dayNumber: Int, feedback: WorkoutSessionFeedbackSnapshot)]) -> Signal {
         let week = rated.filter { $0.week == targetWeek - 1 }.sorted { $0.dayNumber < $1.dayNumber }.map(\.feedback)
-        let recent = week.suffix(3)
-        let flags = recent.filter {
-            $0.jointPain >= 3 || $0.performanceRawValue.caseInsensitiveCompare("Worse") == .orderedSame
-        }.count
-        if recent.count >= 2 && flags >= 2 { return .protectRecovery }
+        if holdsWeights(week) { return .protectRecovery }
         return signal(from: week) == .progressionHeadroom ? .progressionHeadroom : .neutral
     }
 

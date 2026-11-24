@@ -1124,9 +1124,7 @@ struct WorkoutView: View {
             return feedbackLines.joined(separator: "\n")
         }
 
-        let governance = WorkoutEffortGovernance.guidance(
-            for: WorkoutEffortGovernance.signal(from: feedbackSnapshots)
-        )
+        let governance = WorkoutEffortGovernance.guidance(forWeek: feedbackSnapshots)
         return (feedbackLines + [governance]).joined(separator: "\n")
     }
 

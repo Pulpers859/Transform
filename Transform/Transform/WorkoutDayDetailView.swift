@@ -81,8 +81,9 @@ struct WorkoutDayDetailView: View {
     }
 
     var body: some View {
+        // The reader wraps the scroll view (its proxy scrolls the views it contains).
+        ScrollViewReader { proxy in
         ScrollView {
-            ScrollViewReader { proxy in
             VStack(alignment: .leading, spacing: 20) {
                 dayHeader
                 sessionTimingBadge
@@ -99,14 +100,13 @@ struct WorkoutDayDetailView: View {
                     .id(resetRevision)
             }
             .padding()
-            // The lift that opened after the last one finished is brought into view (design
-            // review 2026-11-24: the card above shrinking could leave it half off screen).
-            .onChange(of: scrollTarget) { _, target in
-                guard let target else { return }
-                withAnimation(.easeInOut(duration: 0.25)) { proxy.scrollTo(target, anchor: .top) }
-                scrollTarget = nil
-            }
-            }
+        }
+        // The lift that opened after the last one finished is brought into view (design
+        // review 2026-11-24: the card above shrinking could leave it half off screen).
+        .onChange(of: scrollTarget) { _, target in
+            guard let target else { return }
+            withAnimation(.easeInOut(duration: 0.25)) { proxy.scrollTo(target, anchor: .top) }
+            scrollTarget = nil
         }
         .scrollDismissesKeyboard(.interactively)
         // The default soft scroll edge leaves card text readable straight through the
@@ -193,6 +193,7 @@ struct WorkoutDayDetailView: View {
             }
         } message: {
             Text(completionPromptMessage)
+        }
         }
     }
 
@@ -4023,8 +4024,12 @@ enum SetLoggingService {
         let summaryDescriptor = FetchDescriptor<ExerciseWeightEntry>(predicate: #Predicate { $0.canonicalExerciseKey == key })
         guard let summary = (try? modelContext.fetch(summaryDescriptor))?.max(by: { $0.loggedAt < $1.loggedAt }) else { return }
         let revised = session?.summaryCandidate
+        let sessionLast = session?.lastCandidate
         let ownsBest = summary.bestLoggedAt == previousStamp
-        let ownsLast = summary.loggedAt == previousStamp && revised == nil
+        // "Last" was this session's and the session no longer counts, or moved EARLIER (the bulk
+        // sheet's date picker; `applyLog` never rewinds "Last", so it would otherwise keep numbers
+        // stamped with a date no log has: auditor round 3).
+        let ownsLast = summary.loggedAt == previousStamp && (sessionLast.map { $0.date < previousStamp } ?? true)
 
         // A best set by something else can only be beaten. `applyLog` above raised it with the
         // session's progression top; the RECORD set (`ExerciseBestRule.recordTop`, the heaviest
@@ -4039,9 +4044,8 @@ enum SetLoggingService {
 
         let excluded = excludedID ?? session?.persistentModelID
         let logDescriptor = FetchDescriptor<ExercisePerformanceLog>(predicate: #Predicate { $0.canonicalExerciseKey == key })
-        let others = ((try? modelContext.fetch(logDescriptor)) ?? [])
-            .filter { $0.persistentModelID != excluded }
-            .compactMap(\.summaryCandidate)
+        let otherLogs = ((try? modelContext.fetch(logDescriptor)) ?? []).filter { $0.persistentModelID != excluded }
+        let others = otherLogs.compactMap(\.summaryCandidate)
 
         if ownsBest {
             let best = ExerciseBestRule.revisedBest(storedBest: summary.bestCandidate, sessionPreviousDate: previousStamp,
@@ -4052,9 +4056,11 @@ enum SetLoggingService {
                                                              notes: $0.date == summary.bestLoggedAt ? summary.bestNotes : $0.notes) })
         }
         if ownsLast {
-            // The newest remaining session, else the stored best (a legacy record with no row)
-            // rather than leaving the cleared session's numbers behind as "Last".
-            if let latest = others.max(by: { $0.date < $1.date }) ?? (ownsBest ? nil : summary.bestCandidate) {
+            // The newest session (this one if it still counts), read as every "Last" path reads it
+            // (`lastCandidate`, the working-set top), else the stored best (a legacy record with no
+            // row) rather than leaving the cleared session's numbers behind as "Last".
+            let lastCandidates = otherLogs.compactMap(\.lastCandidate) + [sessionLast].compactMap { $0 }
+            if let latest = lastCandidates.max(by: { $0.date < $1.date }) ?? (ownsBest ? nil : summary.bestCandidate) {
                 summary.loggedAt = latest.date
                 summary.weightLbs = latest.weightLbs
                 summary.repsCompleted = latest.reps
@@ -4063,7 +4069,7 @@ enum SetLoggingService {
         }
         // Nothing left that counts: the summary describes no work at all (the day reset and the
         // history screen remove it in the same case).
-        if others.isEmpty && ownsBest && ownsLast && summary.bestCandidate == nil {
+        if others.isEmpty && revised == nil && ownsBest && ownsLast && summary.bestCandidate == nil {
             modelContext.delete(summary)
         }
     }
@@ -4293,7 +4299,8 @@ enum SetLoggingService {
             let summaryWeight = summaryTop?.weightLbs ?? summarySets[0].weightLbs
             let summaryReps = summaryTop?.reps
             let summary = summaryEntryOrCreate(for: exercise, weight: summaryWeight, reps: summaryReps, date: date, modelContext: modelContext)
-            summary.applyLog(loggedAt: date, exerciseName: exercise.exerciseName, weightLbs: summaryWeight, repsCompleted: summaryReps, notes: summary.notes)
+            summary.applyLog(loggedAt: date, exerciseName: exercise.exerciseName, weightLbs: summaryWeight, repsCompleted: summaryReps, notes: summary.notes,
+                             record: ExerciseBestRule.recordTop(from: summarySets))
         }
         reviseBestIfThisSessionSetIt(key: log.canonicalExerciseKey, session: log, previousStamp: previousStamp, modelContext: modelContext)
 

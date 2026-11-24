@@ -265,7 +265,9 @@ final class GeneratorTroubleshootingTests: XCTestCase {
             .protectRecovery
         )
         XCTAssertTrue(
-            WorkoutEffortGovernance.guidance(for: .protectRecovery).contains("Hold load progression")
+            // Wording changed 2026-11-24 (exercise-evidence consult, round 3): the app holds the
+            // loads itself, and the AI is no longer asked to cut a set.
+            WorkoutEffortGovernance.guidance(for: .protectRecovery).contains("The app is holding load progression")
         )
     }
 

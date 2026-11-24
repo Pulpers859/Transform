@@ -927,7 +927,7 @@ enum AnalysisProgressSnapshotBuilder {
             return "No bodyweight logs were recorded since the last analysis."
         }
         guard let weeklyChange = trend.weeklyChangeLbs else {
-            return "\(trend.loggedDays) bodyweight log(s) were recorded. Current 7-day trend is \(formatWeight(current)) lb; no weekly rate, because the weigh-ins are too sparse (fewer than 3 in a 7-day window), too far apart (over 14 days) or older than a week."
+            return "\(trend.loggedDays) bodyweight log(s) were recorded. Current 7-day trend is \(formatWeight(current)) lb; no weekly rate yet: it needs a 7-day average at least a week before the latest one, at most 14 days before it, with 3 or more weigh-ins in each, and a weigh-in within the last week."
         }
 
         let direction = directionPhrase(for: weeklyChange)
@@ -1903,8 +1903,9 @@ nonisolated enum MeasurementInterpretation: String, Codable {
     /// Waist up at least the meaningful amount while weight held steady or fell (scientist
     /// consult 2026-11-24). Fat gain, bloating or tape drift; re-measure before acting.
     case waistUpWeightSteady = "Waist Up, Weight Steady"
-    /// Waist up while weight fell (scientist consult 2026-11-24, round 3). RED-TEST STUB: not
-    /// yet produced by the builder.
+    /// Waist up at least the meaningful amount while weight FELL by more than the meaningful
+    /// amount (scientist consult 2026-11-24, round 3). Fat gain is unlikely with falling weight;
+    /// a measuring difference or bloating is the likelier cause.
     case waistUpWeightDown = "Waist Up, Weight Down"
 }
 
@@ -1981,7 +1982,7 @@ nonisolated struct MeasurementTrendSnapshot: Codable {
         case .waistUpWeightSteady:
             return "Waist up while weight steady — possible fat gain, bloating or tape drift"
         case .waistUpWeightDown:
-            return nil
+            return "Waist up while weight fell — more likely tape placement or bloating than fat gain"
         case .possibleNoise, .insufficientData:
             return nil
         }
@@ -2068,6 +2069,9 @@ nonisolated struct AnalysisMeasurementSnapshot: Codable {
         }
         if trend.interpretation == .waistUpWeightSteady, let waist = trend.waistChangeIn {
             lines.append("- Waist rose \(signedInches(waist)) in over \(trend.lookbackDays) days with weight steady. This may be fat gain, bloating or measurement drift. Do not change calories on this alone; ask for a repeat standard-timing measurement.")
+        }
+        if trend.interpretation == .waistUpWeightDown, let waist = trend.waistChangeIn, let weight = trend.weightChangeLbs {
+            lines.append("- Waist rose \(signedInches(waist)) in over \(trend.lookbackDays) days while smoothed weight fell \(signedWeight(weight)) lb. Fat gain is unlikely with falling weight. Treat it as measurement drift or bloating, ask for a repeat standard-timing measurement, and do not change calories on it.")
         }
 
         lines.append("")
@@ -2469,8 +2473,11 @@ enum MeasurementTrendSnapshotBuilder {
                 return .likelyMassGain
             }
             // Waist up with weight steady or falling had no verdict and fell through to
-            // "Stable" (scientist consult 2026-11-24).
-            if weight <= meaningfulWeightChangeLbs && waist >= meaningfulWaistChangeIn {
+            // "Stable" (scientist consult 2026-11-24); falling weight is its own case (round 3).
+            if weight < -meaningfulWeightChangeLbs && waist >= meaningfulWaistChangeIn {
+                return .waistUpWeightDown
+            }
+            if abs(weight) <= meaningfulWeightChangeLbs && waist >= meaningfulWaistChangeIn {
                 return .waistUpWeightSteady
             }
         }
@@ -2664,7 +2671,10 @@ enum BodyTrendHeadline {
         case .waistUpWeightSteady:
             return Headline(message: "Waist up, weight steady — re-measure at your usual time before changing anything",
                             tone: .attention, suggestsMealLog: false)
-        case .stableNoChange, .insufficientData, .waistUpWeightDown:
+        case .waistUpWeightDown:
+            return Headline(message: "Waist up while weight fell — likely a measuring difference; re-measure at your usual time",
+                            tone: .neutral, suggestsMealLog: false)
+        case .stableNoChange, .insufficientData:
             return nil
         }
     }
