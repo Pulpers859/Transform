@@ -927,7 +927,7 @@ enum AnalysisProgressSnapshotBuilder {
             return "No bodyweight logs were recorded since the last analysis."
         }
         guard let weeklyChange = trend.weeklyChangeLbs else {
-            return "\(trend.loggedDays) bodyweight log(s) were recorded. Current 7-day trend is \(formatWeight(current)) lb; no weekly rate yet: it needs a 7-day average at least a week before the latest one, at most 14 days before it, with 3 or more weigh-ins in each, and a weigh-in within the last week."
+            return "\(trend.loggedDays) bodyweight log(s) were recorded. Current 7-day trend is \(formatWeight(current)) lb; no weekly rate yet: it needs a 7-day average at least a week before the latest one, at most 14 days before it, with 3 or more weigh-ins in each, and a weigh-in within the last week. Only weigh-ins since the last analysis are counted here, so a short gap since that analysis is enough to leave no rate."
         }
 
         let direction = directionPhrase(for: weeklyChange)
@@ -1900,8 +1900,9 @@ nonisolated enum MeasurementInterpretation: String, Codable {
     case possibleNoise = "Possible Water/Bloat Noise"
     case insufficientData = "Insufficient Data"
     case stableNoChange = "Stable — No Meaningful Change"
-    /// Waist up at least the meaningful amount while weight held steady or fell (scientist
-    /// consult 2026-11-24). Fat gain, bloating or tape drift; re-measure before acting.
+    /// Waist up at least the meaningful amount while weight stayed within the meaningful amount
+    /// either way (scientist consult 2026-11-24; falling weight is `waistUpWeightDown`). Fat
+    /// gain, bloating or tape drift; re-measure before acting.
     case waistUpWeightSteady = "Waist Up, Weight Steady"
     /// Waist up at least the meaningful amount while weight FELL by more than the meaningful
     /// amount (scientist consult 2026-11-24, round 3). Fat gain is unlikely with falling weight;
@@ -2071,7 +2072,7 @@ nonisolated struct AnalysisMeasurementSnapshot: Codable {
             lines.append("- Waist rose \(signedInches(waist)) in over \(trend.lookbackDays) days with weight steady. This may be fat gain, bloating or measurement drift. Do not change calories on this alone; ask for a repeat standard-timing measurement.")
         }
         if trend.interpretation == .waistUpWeightDown, let waist = trend.waistChangeIn, let weight = trend.weightChangeLbs {
-            lines.append("- Waist rose \(signedInches(waist)) in over \(trend.lookbackDays) days while smoothed weight fell \(signedWeight(weight)) lb. Fat gain is unlikely with falling weight. Treat it as measurement drift or bloating, ask for a repeat standard-timing measurement, and do not change calories on it.")
+            lines.append("- Waist rose \(signedInches(waist)) in over \(trend.lookbackDays) days while smoothed weight fell \(String(format: "%.1f", abs(weight))) lb. Fat gain is unlikely with falling weight. Treat it as measurement drift or bloating, ask for a repeat standard-timing measurement, and do not change calories on it.")
         }
 
         lines.append("")
@@ -2216,6 +2217,9 @@ enum MeasurementTrendSnapshotBuilder {
         // so every label and prompt that prints "over N days" states the truth. Before this,
         // every entry ever logged was compared and the label always said 90.
         let allSorted = entries.sorted { $0.date < $1.date }
+        // The newest measurement of ANY kind keeps the trend current (devil's advocate, round 3:
+        // a non-standard entry taken today is left out of the span but is still a measurement).
+        let newestEntryDate = allSorted.last?.date
         let sorted: [MeasurementTrendInput] = {
             guard let latest = allSorted.last,
                   let windowStart = Calendar.current.date(byAdding: .day, value: -lookbackDays, to: latest.date)
@@ -2256,7 +2260,7 @@ enum MeasurementTrendSnapshotBuilder {
                 interpretation: .insufficientData,
                 progressConfidence: .insufficient,
                 confidenceReason: sorted.isEmpty ? "No measurement sessions recorded" : "Only one measurement session — need at least two for trend analysis",
-                latestEntryDate: latest?.date
+                latestEntryDate: newestEntryDate
             )
         }
 
@@ -2284,10 +2288,14 @@ enum MeasurementTrendSnapshotBuilder {
         // weigh-ins (follow-up review 2026-11-24): a lone first weigh-in used to stand in for the
         // starting trend, turning a 1 lb day-to-day swing into "fat loss".
         let weighInDays = Set(weightPoints.filter { $0.weightLbs > 0 }.map { Calendar.current.startOfDay(for: $0.date) })
+        // ...and the two averages must be at least a week apart (scientist, round 3 check): on a
+        // short span both ends could land mid-span days apart and call weight "steady".
         let weightChange: Double? = {
             if let start = trendWeight(near: first.date, in: smoothedWeight.points, weighInDays: weighInDays),
                let end = trendWeight(near: last.date, in: smoothedWeight.points, weighInDays: weighInDays) {
-                return ((end - start) * 100).rounded() / 100
+                let apart = Calendar.current.dateComponents([.day], from: start.date, to: end.date).day ?? 0
+                guard apart >= 7 else { return nil }
+                return ((end.weight - start.weight) * 100).rounded() / 100
             }
             if let start = first.bodyweightLbs, let end = last.bodyweightLbs { return end - start }
             return nil
@@ -2343,14 +2351,14 @@ enum MeasurementTrendSnapshotBuilder {
             interpretation: interpretation,
             progressConfidence: confidence,
             confidenceReason: reason,
-            latestEntryDate: last.date
+            latestEntryDate: newestEntryDate
         )
     }
 
     /// The 7-day trend weight nearest `date` whose 7-day window holds at least
     /// `WeightTrendBuilder.minimumWindowWeighIns` weigh-ins: the newest such point in the 7 days
     /// up to it, else the oldest in the 7 days after it, else nil.
-    private static func trendWeight(near date: Date, in points: [SmoothedWeightPoint], weighInDays: Set<Date>) -> Double? {
+    private static func trendWeight(near date: Date, in points: [SmoothedWeightPoint], weighInDays: Set<Date>) -> (date: Date, weight: Double)? {
         let calendar = Calendar.current
         let day = calendar.startOfDay(for: date)
         guard let weekBefore = calendar.date(byAdding: .day, value: -7, to: day),
@@ -2360,9 +2368,9 @@ enum MeasurementTrendSnapshotBuilder {
             return weighInDays.filter { $0 >= start && $0 <= point.date }.count >= WeightTrendBuilder.minimumWindowWeighIns
         }
         if let before = points.last(where: { $0.date >= weekBefore && $0.date <= day && isAverage($0) }) {
-            return before.trendWeightLbs
+            return (before.date, before.trendWeightLbs)
         }
-        return points.first(where: { $0.date > day && $0.date <= weekAfter && isAverage($0) })?.trendWeightLbs
+        return points.first(where: { $0.date > day && $0.date <= weekAfter && isAverage($0) }).map { ($0.date, $0.trendWeightLbs) }
     }
 
     private static func delta(from first: Double?, to last: Double?) -> Double? {
@@ -2657,12 +2665,18 @@ enum BodyTrendHeadline {
                 ? good("Waist down, weight up", " — stay the course")
                 : good("Waist trending down, weight stable", " — stay the course")
         case .likelyFatLoss:
+            // A weight-only verdict (no waist at one end) must not claim anything about the waist
+            // (design review and devil's advocate, round 3 check).
+            if trend.waistChangeIn == nil { return good("Weight trending down (no waist comparison)", "") }
             return waistDown
                 ? good("Fat loss tracking well", " — waist and weight both down")
                 : good("Weight trending down, waist steady", "")
         case .possibleNoise:
             return Headline(message: "Too early to tell — keep logging", tone: .neutral, suggestsMealLog: false)
         case .likelyMassGain:
+            if trend.waistChangeIn == nil {
+                return Headline(message: "Weight trending up (no waist comparison)", tone: .neutral, suggestsMealLog: false)
+            }
             return waistUp
                 ? Headline(message: "Weight and waist both rising — review targets if fat loss is the goal",
                            tone: .attention, suggestsMealLog: false)

@@ -603,9 +603,14 @@ nonisolated enum ExerciseBestRule {
         let median = weights.count % 2 == 1
             ? weights[weights.count / 2]
             : (weights[weights.count / 2 - 1] + weights[weights.count / 2]) / 2
+        // Both rules must agree (data review; consult approved 2026-11-24): the progression
+        // filter must also call the set an outlier. Without that, a ramp to one heavy top set
+        // (45, 85, 185) showed 185 as "Last" but never counted it as a best.
+        let progressionOutliers = Set(WorkingSetAnalysis.analyze(valid).anomalies.map(\.id))
         func isLikelyTypo(_ set: SetLogEntry) -> Bool {
             guard valid.count >= 3, median > 0, set.weightLbs >= median * 2,
-                  set.weightLbs - median >= typoMinimumExcessLbs else { return false }
+                  set.weightLbs - median >= typoMinimumExcessLbs,
+                  progressionOutliers.contains(set.id) else { return false }
             let repeated = valid.contains { $0.id != set.id && abs($0.weightLbs - set.weightLbs) <= max(0.5, set.weightLbs * 0.02) }
             return !repeated
         }

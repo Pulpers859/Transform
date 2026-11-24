@@ -50,7 +50,14 @@ enum WorkoutEffortGovernance {
     static func guidance(forWeek feedback: [WorkoutSessionFeedbackSnapshot]) -> String {
         if holdsWeights(feedback) { return guidance(for: .protectRecovery) }
         if signal(from: feedback) == .protectRecovery {
-            return "Governance signal: hard sessions without pain or a performance drop. The app's load verdicts below stand; keep every set at its prescribed reps in reserve and do not push sets closer to failure."
+            // A week with SOME pain or "Worse" reports, but too few to hold loads, must not be
+            // described as pain-free (consult check, round 3).
+            let anyFlag = feedback.suffix(3).contains {
+                $0.jointPain >= 3 || $0.performanceRawValue.caseInsensitiveCompare("Worse") == .orderedSame
+            }
+            return anyFlag
+                ? "Governance signal: hard sessions, but too few pain or performance-drop reports to pause load progression. The app's load verdicts below stand; keep every set at its prescribed reps in reserve and do not push sets closer to failure."
+                : "Governance signal: hard sessions without pain or a performance drop. The app's load verdicts below stand; keep every set at its prescribed reps in reserve and do not push sets closer to failure."
         }
         return guidance(for: signal(from: feedback))
     }

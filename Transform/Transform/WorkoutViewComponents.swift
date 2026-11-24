@@ -304,7 +304,7 @@ struct WorkoutTimingInsightsCard: View {
                     // Say why there is no best, so the card never just sits there.
                     let comparable = WorkoutTimingInsights.eligibleBuckets(hourBuckets).count
                     Text(comparable >= 2 ? "No time of day stands out yet."
-                         : comparable == 1 ? "Most of your sessions fall in one time of day, so there is nothing to compare yet."
+                         : comparable == 1 ? "Only one time of day has enough sessions to compare so far."
                          : "Not enough sessions at any one time of day to compare yet.")
                         .font(.caption2)
                         .foregroundStyle(.secondary)

@@ -660,6 +660,11 @@ struct AddExerciseWeightSheet: View {
                     repsCompleted: summaryReps,
                     notes: trimmedNotes
                 )
+                // A new summary's best starts from the record set, as on the card.
+                if let record = ExerciseBestRule.recordTop(from: summarySets) {
+                    entry.setBest(ExerciseBestCandidate(date: loggedAt, weightLbs: record.weightLbs,
+                                                        reps: record.reps, notes: trimmedNotes))
+                }
                 modelContext.insert(entry)
             }
         }

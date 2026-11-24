@@ -1875,10 +1875,12 @@ struct ExerciseCard: View {
     /// weaker evidence, so saying all three would be saying it three times.
     ///
     /// The consequence differs by case and the copy must not overstate it. With 3+ sets the
-    /// mis-log is ALSO an anomaly, so it is already excluded from the working load and does
-    /// NOT become the best — only a set that survived as `.working` is actually driving
-    /// progression. Prefer that one when it exists so the sentence and the set it points at
-    /// agree.
+    /// mis-log is ALSO an anomaly, so it is excluded from the working load that drives the next
+    /// target — only a set that survived as `.working` is actually driving progression. Prefer
+    /// that one when it exists so the sentence and the set it points at agree. Whether an
+    /// anomaly counts toward the BEST is a separate rule since 2026-11-24
+    /// (`ExerciseBestRule.recordTop`): a heavy top set flagged here can still be a record, so the
+    /// anomaly sentence says which (design review wording, round 3 check).
     private var setNotices: [String] {
         var notices: [String] = []
 
@@ -1891,8 +1893,11 @@ struct ExerciseCard: View {
             )
         } else if let anomaly = progressionAnalysis.anomalies.first {
             let reference = progressionAnalysis.workingWeight ?? anomaly.weightLbs
+            let recordWeight = ExerciseBestRule.recordTop(from: progressionReferenceSets)?.weightLbs ?? reference
             notices.append(
-                "Check Set \(anomaly.setNumber): \(formatLoad(anomaly.weightLbs)) is well above your \(formatLoad(reference)) working sets. It isn't counted toward progress."
+                anomaly.weightLbs > recordWeight + 0.001
+                    ? "Check Set \(anomaly.setNumber): \(formatLoad(anomaly.weightLbs)) looks like a typo next to your \(formatLoad(reference)) sets. It's left out of your best and your progress."
+                    : "Set \(anomaly.setNumber): \(formatLoad(anomaly.weightLbs)) is well above your \(formatLoad(reference)) working sets. It counts toward your best, but next targets use the \(formatLoad(reference)) sets. If it's a typo, fix it."
             )
         } else if let hist = historicalLoadAnomaly {
             notices.append(
@@ -4031,13 +4036,14 @@ enum SetLoggingService {
         // stamped with a date no log has: auditor round 3).
         let ownsLast = summary.loggedAt == previousStamp && (sessionLast.map { $0.date < previousStamp } ?? true)
 
-        // A best set by something else can only be beaten. `applyLog` above raised it with the
-        // session's progression top; the RECORD set (`ExerciseBestRule.recordTop`, the heaviest
-        // set as lifted) can be heavier, e.g. a 100x3 top set before 70x10 back-offs.
+        // A best set by something else can only be beaten. Callers have already raised it by
+        // the record set (`applyLog(record:)`), so this is a safety net for any caller that did
+        // not; it keeps the summary's own notes as `applyLog` does.
         if !ownsBest {
             if let revised, ExerciseBestRule.isBetter(revised, than: summary.bestCandidate
                 ?? ExerciseBestCandidate(date: .distantPast, weightLbs: summary.bestWeightLbs, reps: summary.bestRepsCompleted)) {
-                summary.setBest(revised)
+                summary.setBest(ExerciseBestCandidate(date: revised.date, weightLbs: revised.weightLbs,
+                                                      reps: revised.reps, notes: summary.notes))
             }
             guard ownsLast else { return }
         }
@@ -4224,13 +4230,22 @@ enum SetLoggingService {
         return log
     }
 
-    private static func summaryEntryOrCreate(for exercise: WorkoutExercise, weight: Double, reps: Int?, date: Date, modelContext: ModelContext) -> ExerciseWeightEntry {
+    /// A NEW summary's best starts from the session's record set when one is given (auditor
+    /// round 3 check: the init copies the working-set top into the best, and `applyLog` can only
+    /// raise it, so a first session of 20/40/60/100 started with a best of 100 the record rule
+    /// excludes).
+    private static func summaryEntryOrCreate(for exercise: WorkoutExercise, weight: Double, reps: Int?,
+                                             record: (weightLbs: Double, reps: Int?)? = nil,
+                                             date: Date, modelContext: ModelContext) -> ExerciseWeightEntry {
         let key = ExerciseWeightEntry.canonicalLookupKey(exercise.exerciseName)
         let descriptor = FetchDescriptor<ExerciseWeightEntry>(predicate: #Predicate { $0.canonicalExerciseKey == key })
         if let existing = (try? modelContext.fetch(descriptor))?.max(by: { $0.loggedAt < $1.loggedAt }) {
             return existing
         }
         let entry = ExerciseWeightEntry(loggedAt: date, exerciseName: exercise.exerciseName, weightLbs: weight, repsCompleted: reps)
+        if let record {
+            entry.setBest(ExerciseBestCandidate(date: date, weightLbs: record.weightLbs, reps: record.reps))
+        }
         modelContext.insert(entry)
         return entry
     }
@@ -4298,9 +4313,11 @@ enum SetLoggingService {
             let summaryTop = WorkingSetAnalysis.summaryTop(from: summarySets)
             let summaryWeight = summaryTop?.weightLbs ?? summarySets[0].weightLbs
             let summaryReps = summaryTop?.reps
-            let summary = summaryEntryOrCreate(for: exercise, weight: summaryWeight, reps: summaryReps, date: date, modelContext: modelContext)
+            let record = ExerciseBestRule.recordTop(from: summarySets)
+            let summary = summaryEntryOrCreate(for: exercise, weight: summaryWeight, reps: summaryReps, record: record,
+                                               date: date, modelContext: modelContext)
             summary.applyLog(loggedAt: date, exerciseName: exercise.exerciseName, weightLbs: summaryWeight, repsCompleted: summaryReps, notes: summary.notes,
-                             record: ExerciseBestRule.recordTop(from: summarySets))
+                             record: record)
         }
         reviseBestIfThisSessionSetIt(key: log.canonicalExerciseKey, session: log, previousStamp: previousStamp, modelContext: modelContext)
 
