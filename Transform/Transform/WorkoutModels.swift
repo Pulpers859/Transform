@@ -550,6 +550,36 @@ class WorkoutExercise {
     }
 }
 
+// MARK: - Load outlier rule
+
+/// A lone load far above the session's robust centre: the progression filter's outlier test
+/// (`WorkingSetAnalysis.analyze`), shared with the record-set rule (`ExerciseBestRule.recordTop`).
+/// Requires >= 3 sets to establish a centre. Uses the MAD-based spread when it has signal,
+/// otherwise a relative gap so an even split like 90/90/180/90 (MAD = 0) still flags 180. A load
+/// is not an outlier when another set used (about) the same weight. Arithmetic unchanged from
+/// `analyze` (moved 2026-11-24).
+nonisolated enum LoadOutlierRule {
+    /// `valid`: sets with weight >= 0 and reps > 0. Returns a test for one load.
+    static func detector(for valid: [SetLogEntry]) -> (Double) -> Bool {
+        let weights = valid.map(\.weightLbs).sorted()
+        let median = medianOfSorted(weights)
+        let mad = medianOfSorted(weights.map { abs($0 - median) }.sorted())
+        let anomalyGap = max(mad * 3.0, median * 0.4)
+        let count = valid.count
+        return { w in
+            let corroborated = valid.filter { abs($0.weightLbs - w) <= max(0.5, w * 0.02) }.count > 1
+            return count >= 3 && w > median && (w - median) > anomalyGap && !corroborated
+        }
+    }
+
+    private static func medianOfSorted(_ sorted: [Double]) -> Double {
+        guard !sorted.isEmpty else { return 0 }
+        let n = sorted.count
+        if n % 2 == 1 { return sorted[n / 2] }
+        return (sorted[n / 2 - 1] + sorted[n / 2]) / 2.0
+    }
+}
+
 // MARK: - Best record rule
 
 /// One candidate for an exercise's best: a session's summary top, or a legacy summary record
@@ -606,11 +636,11 @@ nonisolated enum ExerciseBestRule {
         // Both rules must agree (data review; consult approved 2026-11-24): the progression
         // filter must also call the set an outlier. Without that, a ramp to one heavy top set
         // (45, 85, 185) showed 185 as "Last" but never counted it as a best.
-        let progressionOutliers = Set(WorkingSetAnalysis.analyze(valid).anomalies.map(\.id))
+        let isProgressionOutlier = LoadOutlierRule.detector(for: valid)
         func isLikelyTypo(_ set: SetLogEntry) -> Bool {
             guard valid.count >= 3, median > 0, set.weightLbs >= median * 2,
                   set.weightLbs - median >= typoMinimumExcessLbs,
-                  progressionOutliers.contains(set.id) else { return false }
+                  isProgressionOutlier(set.weightLbs) else { return false }
             let repeated = valid.contains { $0.id != set.id && abs($0.weightLbs - set.weightLbs) <= max(0.5, set.weightLbs * 0.02) }
             return !repeated
         }
@@ -1129,23 +1159,11 @@ struct WorkingSetAnalysis {
                                       workingWeight: nil, topWorkingSet: nil)
         }
 
-        let weights = valid.map(\.weightLbs).sorted()
-        let median = medianOfSorted(weights)
-        let deviations = weights.map { abs($0 - median) }.sorted()
-        let mad = medianOfSorted(deviations)
-
-        // A load is "corroborated" if more than one set used (about) the same weight.
-        func corroborated(_ w: Double) -> Bool {
-            valid.filter { abs($0.weightLbs - w) <= max(0.5, w * 0.02) }.count > 1
-        }
-
-        // Anomaly: a lone load far above the robust center. Requires >= 3 sets to
-        // establish a center. Use the MAD-based spread when it has signal, otherwise a
-        // relative gap so an even split like 90/90/180/90 (MAD = 0) still flags 180.
-        let anomalyGap = max(mad * 3.0, median * 0.4)
-        func isAnomaly(_ w: Double) -> Bool {
-            valid.count >= 3 && w > median && (w - median) > anomalyGap && !corroborated(w)
-        }
+        // The outlier rule lives in `LoadOutlierRule` so the record-set rule
+        // (`ExerciseBestRule.recordTop`, nonisolated) can share it without calling into this
+        // main-actor type (auditor 2026-11-24).
+        let outlier = LoadOutlierRule.detector(for: valid)
+        func isAnomaly(_ w: Double) -> Bool { outlier(w) }
 
         let workingWeight = valid.filter { !isAnomaly($0.weightLbs) }.map(\.weightLbs).max()
         let band = (workingWeight ?? 0) * 0.025
@@ -1178,12 +1196,6 @@ struct WorkingSetAnalysis {
         )
     }
 
-    private static func medianOfSorted(_ sorted: [Double]) -> Double {
-        guard !sorted.isEmpty else { return 0 }
-        let n = sorted.count
-        if n % 2 == 1 { return sorted[n / 2] }
-        return (sorted[n / 2 - 1] + sorted[n / 2]) / 2.0
-    }
 }
 
 extension WorkingSetAnalysis {
