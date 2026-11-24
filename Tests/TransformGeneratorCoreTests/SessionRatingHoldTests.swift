@@ -82,4 +82,52 @@ final class SessionRatingHoldTests: XCTestCase {
                        "Good week — keep building reps at your current weights, then add weight once every set reaches the top of its range.")
         XCTAssertNil(WorkoutEffortGovernance.cardLine(for: .neutral))
     }
+
+    // MARK: - Follow-up review 2026-11-24
+
+    /// The assisted cue held too: "use less help" becomes "hold this setting" in a protected week.
+    func testAProtectedWeekHoldsTheAssistanceSetting() {
+        let assisted = (1...3).map { SetLogEntry(setNumber: $0, weightLbs: 0, repsCompleted: 12, assistLbs: 40) }
+        let range = RepRange(low: 8, high: 12)
+        XCTAssertEqual(AssistedProgression.evaluate(sets: assisted, repRange: range)?.verdict, .lessAssistance)
+        XCTAssertEqual(AssistedProgression.evaluate(sets: assisted, repRange: range, protectRecovery: true)?.verdict, .holdAssistance)
+        // A setting twice missed still gets more help.
+        let missed = (1...3).map { SetLogEntry(setNumber: $0, weightLbs: 0, repsCompleted: 5, assistLbs: 40) }
+        XCTAssertEqual(AssistedProgression.evaluate(sets: missed, repRange: range, belowFloorStreak: 2, protectRecovery: true)?.verdict, .moreAssistance)
+    }
+
+    /// A rep-range change may translate the load; in a protected week it may not go UP.
+    func testAProtectedWeekCapsAnUpwardTranslation() {
+        XCTAssertEqual(WorkoutEffortGovernance.cappedTranslatedLoad(210, lastWorkingWeight: 200, sessionRatings: .protectRecovery), 200)
+        XCTAssertEqual(WorkoutEffortGovernance.cappedTranslatedLoad(185, lastWorkingWeight: 200, sessionRatings: .protectRecovery), 185)
+        XCTAssertEqual(WorkoutEffortGovernance.cappedTranslatedLoad(210, lastWorkingWeight: 200, sessionRatings: .neutral), 210)
+    }
+
+    /// No promise for a week the ratings cannot govern: the week before the deload (the deload
+    /// says go lighter) and the deload week itself (a new block follows).
+    func testCardLineOnlyWhereTheNextWeekIsAnOrdinaryWeek() {
+        XCTAssertNotNil(WorkoutEffortGovernance.cardLine(for: .protectRecovery, ratedWeek: 1, blockWeeks: 4))
+        XCTAssertNotNil(WorkoutEffortGovernance.cardLine(for: .protectRecovery, ratedWeek: 2, blockWeeks: 4))
+        XCTAssertNil(WorkoutEffortGovernance.cardLine(for: .protectRecovery, ratedWeek: 3, blockWeeks: 4))
+        XCTAssertNil(WorkoutEffortGovernance.cardLine(for: .progressionHeadroom, ratedWeek: 3, blockWeeks: 4))
+        XCTAssertNil(WorkoutEffortGovernance.cardLine(for: .protectRecovery, ratedWeek: 4, blockWeeks: 4))
+    }
+
+    /// Exercise-evidence consult 2026-11-24, pick (c): effort 5 is what week 3 asks for, so
+    /// effort alone does not hold weights. It still reaches the AI's instructions.
+    func testHardSessionsAloneDoNotHoldWeights() {
+        let hard = WorkoutSessionFeedbackSnapshot(effort: 5, stimulus: 4, jointPain: 1, performanceRawValue: "Same")
+        let rated = [(week: 2, dayNumber: 8, feedback: hard), (week: 2, dayNumber: 9, feedback: hard)]
+        XCTAssertEqual(WorkoutEffortGovernance.signal(from: [hard, hard]), .protectRecovery)
+        XCTAssertNotEqual(WorkoutEffortGovernance.signal(governingWeek: 3, rated: rated), .protectRecovery)
+        XCTAssertNil(WorkoutEffortGovernance.cardLine(for: WorkoutEffortGovernance.signal(governingWeek: 3, rated: rated),
+                                                      ratedWeek: 2, blockWeeks: 4))
+    }
+
+    /// "Worse" twice holds, as pain does.
+    func testTwoWorseSessionsHoldWeights() {
+        let worse = WorkoutSessionFeedbackSnapshot(effort: 3, stimulus: 3, jointPain: 0, performanceRawValue: "Worse")
+        let rated = [(week: 1, dayNumber: 1, feedback: worse), (week: 1, dayNumber: 2, feedback: worse)]
+        XCTAssertEqual(WorkoutEffortGovernance.signal(governingWeek: 2, rated: rated), .protectRecovery)
+    }
 }

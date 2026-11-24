@@ -86,6 +86,17 @@ enum WorkoutEffortGovernance {
         return "recent sets were close to failure, so recover before adding"
     }
 
+    /// RED-TEST STUB (follow-up 2026-11-24): ignores the week.
+    static func cardLine(for signal: Signal, ratedWeek: Int, blockWeeks: Int) -> String? {
+        cardLine(for: signal)
+    }
+
+    /// A rep-range or set-count change can translate the load. RED-TEST STUB (RATE-001
+    /// follow-up 2026-11-24): returns the translated load unchanged.
+    static func cappedTranslatedLoad(_ load: Double, lastWorkingWeight: Double, sessionRatings: Signal) -> Double {
+        load
+    }
+
     /// The line under a rated session describing what the ratings do to next week.
     static func cardLine(for signal: Signal) -> String? {
         switch signal {

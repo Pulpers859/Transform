@@ -34,7 +34,8 @@ enum WeightTrendBuilder {
     static let maximumComparisonGapDays = 14
     static let minimumWindowWeighIns = 3
 
-    static func build(from input: [AnalysisLoggedWeightPoint], calendar: Calendar = .current) -> WeightTrendSnapshot {
+    /// `now`: RED-TEST STUB parameter (follow-up review 2026-11-24), not yet used.
+    static func build(from input: [AnalysisLoggedWeightPoint], calendar: Calendar = .current, now: Date = Date()) -> WeightTrendSnapshot {
         let daily = Dictionary(grouping: input.filter { $0.weightLbs > 0 }) {
             calendar.startOfDay(for: $0.date)
         }

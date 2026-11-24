@@ -668,7 +668,7 @@ struct BodyAnalysisView: View {
             case .likelyFatLoss: return TFColor.success
             case .likelyRecomposition: return TFColor.info
             case .likelyMassGain: return TFColor.accent
-            case .possibleNoise: return TFColor.warning
+            case .possibleNoise, .waistUpWeightSteady: return TFColor.warning
             case .insufficientData: return .secondary
             case .stableNoChange: return .secondary
             }

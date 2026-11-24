@@ -47,7 +47,7 @@ final class BodyTrendHonestyTests: XCTestCase {
     /// Daily weigh-ins: unchanged behaviour (the comparison point is exactly 7 days back).
     func testDailyWeighInsGiveTheTrueWeeklyRate() throws {
         let points = weights((0...14).map { ($0, 200 - 0.2 * Double($0)) })
-        let trend = WeightTrendBuilder.build(from: points)
+        let trend = WeightTrendBuilder.build(from: points, now: day(14))
         XCTAssertEqual(try XCTUnwrap(trend.weeklyChangeLbs), -1.4, accuracy: 0.01)
     }
 
@@ -55,14 +55,14 @@ final class BodyTrendHonestyTests: XCTestCase {
     /// change is scaled to a week instead of being reported as one.
     func testMissedDaysScaleTheChangeToAWeek() throws {
         let points = weights((0...6).map { ($0, 200.0) } + (10...16).map { ($0, 198.0) })
-        let trend = WeightTrendBuilder.build(from: points)
+        let trend = WeightTrendBuilder.build(from: points, now: day(16))
         XCTAssertEqual(try XCTUnwrap(trend.weeklyChangeLbs), -2.0 / 10.0 * 7.0, accuracy: 0.01)
         XCTAssertEqual(try XCTUnwrap(trend.weeklyChangePct), (-1.4 / 198.0) * 100, accuracy: 0.01)
     }
 
     /// A month between weigh-ins is not a weekly rate at all.
     func testAMonthGapGivesNoWeeklyRate() {
-        let trend = WeightTrendBuilder.build(from: weights([(0, 200), (30, 194)]))
+        let trend = WeightTrendBuilder.build(from: weights([(0, 200), (30, 194)]), now: day(30))
         XCTAssertNil(trend.weeklyChangeLbs)
         XCTAssertNil(trend.weeklyChangePct)
     }
@@ -71,13 +71,13 @@ final class BodyTrendHonestyTests: XCTestCase {
         let before = (0...6).map { ($0, 200.0) }
         let after = (15...21).map { ($0, 198.0) }
         // Newest point on or before day 14 is day 6: 15 days back.
-        XCTAssertNil(WeightTrendBuilder.build(from: weights(before + after)).weeklyChangeLbs)
+        XCTAssertNil(WeightTrendBuilder.build(from: weights(before + after), now: day(21)).weeklyChangeLbs)
     }
 
     /// A "7-day average" holding one or two weigh-ins is a raw reading, not a trend.
     func testSparseWindowsGiveNoWeeklyRate() {
         let everyFourthDay = stride(from: 0, through: 16, by: 4).map { ($0, 200 - Double($0) * 0.2) }
-        XCTAssertNil(WeightTrendBuilder.build(from: weights(everyFourthDay)).weeklyChangeLbs)
+        XCTAssertNil(WeightTrendBuilder.build(from: weights(everyFourthDay), now: day(16)).weeklyChangeLbs)
     }
 
     // MARK: - 2. Waist-versus-weight verdict
@@ -93,8 +93,11 @@ final class BodyTrendHonestyTests: XCTestCase {
             weightPoints: dailyWeights(through: 70) { 180 + 0.45 / 7 * Double($0) }
         )
         XCTAssertEqual(snapshot.interpretation, .likelyMassGain)
-        // Change of the smoothed trend between the first and last measurement days.
-        XCTAssertEqual(try XCTUnwrap(snapshot.weightChangeLbs), 0.45 / 7 * 67, accuracy: 0.05)
+        // Change of the smoothed trend between the first and last measurement days. Each end
+        // needs a 7-day average of at least 3 weigh-ins (follow-up review 2026-11-24), so the
+        // start is day 2's average (days 0-2, centre day 1) and the end day 70's (days 64-70,
+        // centre day 67): 66 days of 0.45/7 lb.
+        XCTAssertEqual(try XCTUnwrap(snapshot.weightChangeLbs), 0.45 / 7 * 66, accuracy: 0.01)
         XCTAssertEqual(snapshot.lookbackDays, 70)
     }
 
@@ -113,7 +116,8 @@ final class BodyTrendHonestyTests: XCTestCase {
             weightPoints: dailyWeights(through: 70) { $0 <= 56 ? 200 - 3.0 * Double($0) / 56 : 197 }
         )
         XCTAssertEqual(snapshot.interpretation, .likelyFatLoss)
-        XCTAssertEqual(try XCTUnwrap(snapshot.weightChangeLbs), -3.0, accuracy: 0.05)
+        // Start: day 2's average of days 0-2 (200 - 3/56); end: 197.
+        XCTAssertEqual(try XCTUnwrap(snapshot.weightChangeLbs), -(3.0 - 3.0 / 56), accuracy: 0.01)
         XCTAssertEqual(snapshot.waistToWeightRatio, "Both decreasing — fat loss pattern")
     }
 
@@ -170,5 +174,119 @@ final class BodyTrendHonestyTests: XCTestCase {
         XCTAssertEqual(snapshot.sessionsCount, 2)
         XCTAssertEqual(try XCTUnwrap(snapshot.waistChangeIn), -0.5, accuracy: 0.001)
         XCTAssertEqual(snapshot.lookbackDays, 150)
+    }
+
+    // MARK: - Follow-up review 2026-11-24 (scientist and auditor findings)
+
+    private func entry(_ offset: Int, waist: Double, standard: Bool) -> MeasurementTrendInput {
+        MeasurementTrendInput(date: day(offset), waistIn: waist, neckIn: nil, hipsIn: nil, chestIn: nil,
+                              rightArmIn: nil, leftArmIn: nil, rightThighIn: nil, leftThighIn: nil,
+                              isStandard: standard, bodyweightLbs: nil)
+    }
+
+    /// Waist up 0.6 in with weight flat used to read "Stable — No Meaningful Change".
+    func testWaistUpWeightFlatHasItsOwnVerdict() {
+        let snapshot = MeasurementTrendSnapshotBuilder.build(
+            entries: [entry(0, waist: 32.0), entry(28, waist: 32.3), entry(56, waist: 32.6)],
+            weightPoints: dailyWeights(through: 56) { _ in 180 }
+        )
+        XCTAssertEqual(snapshot.interpretation, .waistUpWeightSteady)
+    }
+
+    /// A half-inch tape step lands exactly on the threshold, and must count.
+    func testExactlyHalfAnInchCounts() {
+        let down = MeasurementTrendSnapshotBuilder.build(
+            entries: [entry(0, waist: 32.5), entry(28, waist: 32.2), entry(56, waist: 32.0)],
+            weightPoints: dailyWeights(through: 56) { _ in 180 }
+        )
+        XCTAssertEqual(down.interpretation, .likelyRecomposition)
+        // 32.3 - 31.8 is just under 0.5 in floating point; rounding to 0.01 in makes it 0.5.
+        let up = MeasurementTrendSnapshotBuilder.build(
+            entries: [entry(0, waist: 31.8), entry(28, waist: 32.0), entry(56, waist: 32.3)],
+            weightPoints: dailyWeights(through: 56) { _ in 180 }
+        )
+        XCTAssertEqual(up.interpretation, .waistUpWeightSteady)
+    }
+
+    /// The first weigh-in alone must not stand in for a 7-day average.
+    func testASingleEarlyWeighInIsNotTheStartingTrend() {
+        let snapshot = MeasurementTrendSnapshotBuilder.build(
+            entries: [entry(0, waist: 33.0), entry(28, waist: 32.7), entry(56, waist: 32.4)],
+            weightPoints: weights([(0, 181)] + (1...56).map { ($0, 180.0) })
+        )
+        XCTAssertEqual(snapshot.interpretation, .likelyRecomposition)
+    }
+
+    /// With two or more standard entries, a non-standard one does not decide the trend.
+    func testNonStandardEntriesStayOutWhenTwoStandardOnesExist() throws {
+        let snapshot = MeasurementTrendSnapshotBuilder.build(
+            entries: [entry(0, waist: 34.0, standard: true), entry(28, waist: 34.0, standard: true),
+                      entry(56, waist: 35.0, standard: false)],
+            weightPoints: dailyWeights(through: 56) { _ in 180 }
+        )
+        XCTAssertEqual(snapshot.sessionsCount, 2)
+        XCTAssertEqual(try XCTUnwrap(snapshot.waistChangeIn), 0, accuracy: 0.001)
+    }
+
+    /// Measurements older than 30 days stop being presented as the current trend.
+    func testATrendGoesStaleAfterThirtyDays() {
+        let snapshot = MeasurementTrendSnapshotBuilder.build(
+            entries: [entry(0, waist: 33.0), entry(28, waist: 32.7), entry(56, waist: 32.4)],
+            weightPoints: dailyWeights(through: 56) { _ in 180 }
+        )
+        XCTAssertEqual(snapshot.latestEntryDate, day(56))
+        XCTAssertFalse(snapshot.isStale(now: day(56 + 29)))
+        XCTAssertTrue(snapshot.isStale(now: day(56 + 31)))
+        XCTAssertNil(BodyTrendHeadline.headline(for: snapshot, proteinCaveat: nil, now: day(56 + 31)))
+        XCTAssertNotNil(BodyTrendHeadline.headline(for: snapshot, proteinCaveat: nil, now: day(56)))
+    }
+
+    /// No weekly rate when the last weigh-in is more than a week old.
+    func testWeeklyRateNeedsARecentWeighIn() {
+        let points = weights((0...14).map { ($0, 200 - 0.2 * Double($0)) })
+        XCTAssertNotNil(WeightTrendBuilder.build(from: points, now: day(21)).weeklyChangeLbs)
+        XCTAssertNil(WeightTrendBuilder.build(from: points, now: day(22)).weeklyChangeLbs)
+    }
+
+    // MARK: - The Dashboard headline says what the verdict says
+
+    func testFatLossWithASteadyWaistDoesNotClaimBothDown() throws {
+        let snapshot = MeasurementTrendSnapshotBuilder.build(
+            entries: [entry(0, waist: 33.0), entry(28, waist: 33.0), entry(56, waist: 32.9)],
+            weightPoints: dailyWeights(through: 56) { 182 - 2.0 * Double($0) / 56 }
+        )
+        XCTAssertEqual(snapshot.interpretation, .likelyFatLoss)
+        let headline = try XCTUnwrap(BodyTrendHeadline.headline(for: snapshot, proteinCaveat: nil, now: day(56)))
+        XCTAssertFalse(headline.message.contains("both down"), headline.message)
+    }
+
+    func testRecompositionWithWeightUpDoesNotClaimWeightStable() throws {
+        let snapshot = MeasurementTrendSnapshotBuilder.build(
+            entries: [entry(0, waist: 33.0), entry(28, waist: 32.7), entry(56, waist: 32.4)],
+            weightPoints: dailyWeights(through: 56) { 180 + 1.5 * Double($0) / 56 }
+        )
+        XCTAssertEqual(snapshot.interpretation, .likelyRecomposition)
+        let headline = try XCTUnwrap(BodyTrendHeadline.headline(for: snapshot, proteinCaveat: nil, now: day(56)))
+        XCTAssertFalse(headline.message.contains("weight stable"), headline.message)
+    }
+
+    func testMassGainWithASteadyWaistSaysSo() throws {
+        let snapshot = MeasurementTrendSnapshotBuilder.build(
+            entries: [entry(0, waist: 33.0), entry(28, waist: 33.0), entry(56, waist: 33.1)],
+            weightPoints: dailyWeights(through: 56) { 180 + 2.0 * Double($0) / 56 }
+        )
+        XCTAssertEqual(snapshot.interpretation, .likelyMassGain)
+        let headline = try XCTUnwrap(BodyTrendHeadline.headline(for: snapshot, proteinCaveat: nil, now: day(56)))
+        XCTAssertEqual(headline.message, "Weight up, waist steady — check your lifts before changing anything")
+    }
+
+    func testWaistUpWeightSteadyHeadlineAsksForARemeasure() throws {
+        let snapshot = MeasurementTrendSnapshotBuilder.build(
+            entries: [entry(0, waist: 32.0), entry(28, waist: 32.3), entry(56, waist: 32.6)],
+            weightPoints: dailyWeights(through: 56) { _ in 180 }
+        )
+        let headline = try XCTUnwrap(BodyTrendHeadline.headline(for: snapshot, proteinCaveat: nil, now: day(56)))
+        XCTAssertEqual(headline.message, "Waist up, weight steady — re-measure at your usual time before changing anything")
+        XCTAssertEqual(headline.tone, .attention)
     }
 }

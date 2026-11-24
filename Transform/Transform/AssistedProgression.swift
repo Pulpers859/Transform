@@ -116,7 +116,9 @@ enum AssistedProgression {
     /// `WorkoutProgressionEngine.evaluate`: every working set at the ceiling, or at least
     /// two-thirds of them, earns the progression step; any set under the floor holds; two
     /// such sessions in a row at the same setting reverse it.
-    static func evaluate(sets: [SetLogEntry], repRange: RepRange, belowFloorStreak: Int = 0) -> Decision? {
+    /// `protectRecovery`: RED-TEST STUB parameter (RATE-001 follow-up 2026-11-24), not yet used.
+    static func evaluate(sets: [SetLogEntry], repRange: RepRange, belowFloorStreak: Int = 0,
+                         protectRecovery: Bool = false) -> Decision? {
         guard let session = workingSets(sets) else { return nil }
         let reps = session.sets.map(\.repsCompleted)
         guard let minimum = reps.min() else { return nil }

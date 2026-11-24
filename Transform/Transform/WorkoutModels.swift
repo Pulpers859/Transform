@@ -578,6 +578,12 @@ nonisolated enum ExerciseBestRule {
         return a.date >= b.date
     }
 
+    /// The session's record set. RED-TEST STUB (follow-up review 2026-11-24): today's reading,
+    /// the outlier-filtered progression top.
+    static func recordTop(from sets: [SetLogEntry]) -> (weightLbs: Double, reps: Int?)? {
+        WorkingSetAnalysis.summaryTop(from: sets)
+    }
+
     static func best(of candidates: [ExerciseBestCandidate]) -> ExerciseBestCandidate? {
         candidates.reduce(nil) { best, candidate in
             guard let best else { return candidate }

@@ -1900,6 +1900,9 @@ nonisolated enum MeasurementInterpretation: String, Codable {
     case possibleNoise = "Possible Water/Bloat Noise"
     case insufficientData = "Insufficient Data"
     case stableNoChange = "Stable — No Meaningful Change"
+    /// Waist up at least the meaningful amount while weight held steady or fell (scientist
+    /// consult 2026-11-24). Fat gain, bloating or tape drift; re-measure before acting.
+    case waistUpWeightSteady = "Waist Up, Weight Steady"
 }
 
 nonisolated enum MeasurementDataQuality: String, Codable {
@@ -1969,10 +1972,16 @@ nonisolated struct MeasurementTrendSnapshot: Codable {
         case .stableNoChange:
             return abs(weightChange) <= weightLimit && waistChange >= waistLimit
                 ? "Waist increasing while weight stable — possible fat gain or bloat" : nil
-        case .possibleNoise, .insufficientData:
+        case .possibleNoise, .insufficientData, .waistUpWeightSteady:
             return nil
         }
     }
+
+    /// When the newest entry in the trend was taken; nil on snapshots saved before 2026-11-24.
+    /// RED-TEST STUB: not yet recorded or checked.
+    var latestEntryDate: Date? { nil }
+
+    func isStale(now: Date = Date()) -> Bool { false }
 }
 
 nonisolated struct AnalysisMeasurementSnapshot: Codable {
@@ -2551,5 +2560,45 @@ enum MeasurementValidator {
             message: "\(label) of \(String(format: "%.1f", v)) — did you enter centimeters? That would be \(String(format: "%.1f", possibleInches)) in.",
             severity: .warning
         )]
+    }
+}
+
+// MARK: - Body-trend headline
+
+/// The Dashboard's body-trend headline for a measurement verdict. Lives here, not in the view,
+/// so the sentence can be tested against the numbers it describes (follow-up review
+/// 2026-11-24: three headlines contradicted the verdict beside them).
+/// RED-TEST STUB: reproduces the view's previous wording rules.
+enum BodyTrendHeadline {
+    enum Tone: Equatable { case good, attention, neutral }
+
+    struct Headline: Equatable {
+        let message: String
+        let tone: Tone
+        /// The headline carries a protein caveat, so its action is "Log a meal".
+        let suggestsMealLog: Bool
+    }
+
+    static func headline(for trend: MeasurementTrendSnapshot, proteinCaveat: String?, now: Date = Date()) -> Headline? {
+        let caveat = proteinCaveat.map { " — \($0)" } ?? ""
+        switch trend.interpretation {
+        case .likelyRecomposition:
+            return Headline(message: "Waist trending down, weight stable\(caveat.isEmpty ? " — stay the course" : caveat)",
+                            tone: caveat.isEmpty ? .good : .attention, suggestsMealLog: !caveat.isEmpty)
+        case .likelyFatLoss:
+            return Headline(message: "Fat loss tracking well\(caveat.isEmpty ? " — waist and weight both down" : caveat)",
+                            tone: caveat.isEmpty ? .good : .attention, suggestsMealLog: !caveat.isEmpty)
+        case .possibleNoise:
+            return Headline(message: "Too early to tell — keep logging", tone: .neutral, suggestsMealLog: false)
+        case .likelyMassGain:
+            if trend.waistToWeightRatio != nil && trend.waistChangeIn.map({ $0 <= 0.1 }) == true {
+                return Headline(message: "Weight up, waist steady — check your lifts before changing anything",
+                                tone: .neutral, suggestsMealLog: false)
+            }
+            return Headline(message: "Weight and waist both rising — review targets if fat loss is the goal",
+                            tone: .attention, suggestsMealLog: false)
+        default:
+            return nil
+        }
     }
 }

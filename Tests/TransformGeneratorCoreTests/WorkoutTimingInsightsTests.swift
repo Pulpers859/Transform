@@ -39,6 +39,12 @@ final class WorkoutTimingInsightsTests: XCTestCase {
         XCTAssertEqual(buckets.map(\.score), [buckets[0].score, buckets[0].score])
     }
 
+    /// Equal scores name no best (follow-up review 2026-11-24: the earliest slot always won).
+    func testATieNamesNoBest() {
+        let sessions = Array(repeating: session(10), count: 3) + Array(repeating: session(19), count: 3)
+        XCTAssertNil(WorkoutTimingInsights.best(WorkoutTimingInsights.buckets(sessions)))
+    }
+
     func testAfterMidnightSessionsLandInTheNightSlot() {
         let sessions = [session(1), session(2), session(23)]
         let night = WorkoutTimingInsights.buckets(sessions).first { $0.label.hasPrefix("Night") }
