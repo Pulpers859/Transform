@@ -148,4 +148,14 @@ final class SessionRatingHoldTests: XCTestCase {
         XCTAssertTrue(text.contains("The app is holding load progression this week"), text)
         XCTAssertFalse(text.contains("isolation set"), text)
     }
+
+    /// A week with one painful session and one hard pain-free session does not hold loads, and
+    /// the AI must not be told it was "without pain" (exercise-evidence consult, round 3 check).
+    func testAMixedWeekIsNotDescribedAsPainFree() {
+        let hard = WorkoutSessionFeedbackSnapshot(effort: 5, stimulus: 4, jointPain: 1, performanceRawValue: "Same")
+        let text = WorkoutEffortGovernance.guidance(forWeek: [pain, hard])
+        XCTAssertFalse(text.contains("without pain"), text)
+        XCTAssertFalse(text.localizedCaseInsensitiveContains("hold load"), text)
+        XCTAssertTrue(text.contains("The app's load verdicts below stand"), text)
+    }
 }
