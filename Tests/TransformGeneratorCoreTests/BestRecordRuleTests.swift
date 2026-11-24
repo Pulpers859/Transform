@@ -211,4 +211,17 @@ final class BestRecordRuleTests: XCTestCase {
         XCTAssertEqual(entry.weightLbs, 100)
         XCTAssertEqual(entry.bestWeightLbs, 80)
     }
+
+    /// A ramp to one heavy top set is a record: a set is a likely typo for records only when the
+    /// progression filter (`WorkingSetAnalysis.analyze`) flags it too (data review; consult
+    /// approved 2026-11-24). A big typo in a spread-out session is still caught.
+    func testARampToATopSetIsARecord() throws {
+        func record(_ pairs: [(Double, Int)]) throws -> Double {
+            try XCTUnwrap(ExerciseBestRule.recordTop(from: sets(pairs))).weightLbs
+        }
+        XCTAssertEqual(try record([(45, 10), (85, 5), (185, 3)]), 185)
+        XCTAssertEqual(try record([(10, 15), (20, 10), (40, 6)]), 40)
+        XCTAssertEqual(try record([(60, 10), (100, 6), (200, 3)]), 200)
+        XCTAssertEqual(try record([(20, 10), (40, 8), (250, 8)]), 40)
+    }
 }

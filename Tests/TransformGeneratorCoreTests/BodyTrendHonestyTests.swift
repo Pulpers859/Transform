@@ -303,4 +303,48 @@ final class BodyTrendHonestyTests: XCTestCase {
         XCTAssertFalse(headline.message.contains("weight steady"), headline.message)
         XCTAssertEqual(headline.message, "Waist up while weight fell — likely a measuring difference; re-measure at your usual time")
     }
+
+    // MARK: - Round 3 checks (scientist and design reviews)
+
+    /// The AI line must not read "fell -2.79 lb".
+    func testTheAILineHasNoDoubleMinus() {
+        let snapshot = MeasurementTrendSnapshotBuilder.build(
+            entries: [entry(0, waist: 32.0), entry(28, waist: 32.3), entry(56, waist: 32.6)],
+            weightPoints: dailyWeights(through: 56) { 183 - 3.0 * Double($0) / 56 }
+        )
+        let prompt = AnalysisMeasurementSnapshot(trend: snapshot).promptDescription
+        XCTAssertFalse(prompt.contains("fell -"), prompt)
+    }
+
+    /// Two weight averages only days apart are not a change over the span.
+    func testWeightEndsMustBeAWeekApart() {
+        let snapshot = MeasurementTrendSnapshotBuilder.build(
+            entries: [entry(0, waist: 32.0), entry(7, waist: 32.3), entry(14, waist: 32.6)],
+            weightPoints: weights([(5, 180), (6, 179.5), (7, 179), (8, 178.5), (9, 178)])
+        )
+        XCTAssertNil(snapshot.weightChangeLbs)
+        XCTAssertNotEqual(snapshot.interpretation, .waistUpWeightSteady)
+    }
+
+    /// With no waist comparison the headline must not claim the waist was steady.
+    func testNoWaistComparisonIsNotCalledSteady() throws {
+        let snapshot = MeasurementTrendSnapshotBuilder.build(
+            entries: [entry(0, waist: nil), entry(28, waist: 33.0), entry(56, waist: 33.0)],
+            weightPoints: dailyWeights(through: 56) { 182 - 2.0 * Double($0) / 56 }
+        )
+        XCTAssertNil(snapshot.waistChangeIn)
+        let headline = try XCTUnwrap(BodyTrendHeadline.headline(for: snapshot, proteinCaveat: nil, now: day(56)))
+        XCTAssertFalse(headline.message.contains("waist steady"), headline.message)
+    }
+
+    /// A measurement taken today keeps the trend current even when it is non-standard and so
+    /// left out of the trend's span (devil's advocate, round 3 check).
+    func testAFreshNonStandardEntryKeepsTheTrendCurrent() {
+        let snapshot = MeasurementTrendSnapshotBuilder.build(
+            entries: [entry(0, waist: 33.0, standard: true), entry(40, waist: 32.8, standard: true),
+                      entry(80, waist: 33.5, standard: false)],
+            weightPoints: dailyWeights(through: 80) { _ in 180 }
+        )
+        XCTAssertFalse(snapshot.isStale(now: day(80)))
+    }
 }
