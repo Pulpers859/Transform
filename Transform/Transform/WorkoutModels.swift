@@ -701,12 +701,14 @@ class ExerciseWeightEntry {
         bestWeightLbs > 0 || (bestRepsCompleted ?? 0) > 0
     }
 
+    /// `record`: RED-TEST STUB parameter (round 3), not yet used.
     func applyLog(
         loggedAt: Date,
         exerciseName: String,
         weightLbs: Double,
         repsCompleted: Int?,
-        notes: String
+        notes: String,
+        record: (weightLbs: Double, reps: Int?)? = nil
     ) {
         self.exerciseName = exerciseName
         self.normalizedExerciseName = ExerciseWeightEntry.normalize(exerciseName)

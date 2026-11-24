@@ -1406,7 +1406,7 @@ struct DashboardView: View {
             case .likelyFatLoss: return TFColor.success
             case .likelyRecomposition: return TFColor.info
             case .likelyMassGain: return TFColor.accent
-            case .possibleNoise, .waistUpWeightSteady: return TFColor.warning
+            case .possibleNoise, .waistUpWeightSteady, .waistUpWeightDown: return TFColor.warning
             case .insufficientData, .stableNoChange: return .secondary
             }
         }()

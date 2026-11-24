@@ -130,4 +130,22 @@ final class SessionRatingHoldTests: XCTestCase {
         let rated = [(week: 1, dayNumber: 1, feedback: worse), (week: 1, dayNumber: 2, feedback: worse)]
         XCTAssertEqual(WorkoutEffortGovernance.signal(governingWeek: 2, rated: rated), .protectRecovery)
     }
+
+    // MARK: - Round 3: what the AI is told (exercise-evidence consult 2026-11-24)
+
+    /// A hard week without pain must not tell the AI to hold loads the app is raising.
+    func testAHardWeekWithoutPainDoesNotTellTheAIToHold() {
+        let hard = WorkoutSessionFeedbackSnapshot(effort: 5, stimulus: 4, jointPain: 1, performanceRawValue: "Same")
+        let text = WorkoutEffortGovernance.guidance(forWeek: [hard, hard])
+        XCTAssertTrue(text.hasPrefix("Governance signal: hard sessions without pain or a performance drop."), text)
+        XCTAssertFalse(text.localizedCaseInsensitiveContains("hold load"), text)
+    }
+
+    /// A painful week keeps the protect text, without asking the AI to cut sets (which the
+    /// menu-locked prompt forbids and which cost a second paid call).
+    func testAPainfulWeekTellsTheAIThatTheAppIsHolding() {
+        let text = WorkoutEffortGovernance.guidance(forWeek: [pain, pain])
+        XCTAssertTrue(text.contains("The app is holding load progression this week"), text)
+        XCTAssertFalse(text.contains("isolation set"), text)
+    }
 }

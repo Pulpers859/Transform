@@ -1903,6 +1903,9 @@ nonisolated enum MeasurementInterpretation: String, Codable {
     /// Waist up at least the meaningful amount while weight held steady or fell (scientist
     /// consult 2026-11-24). Fat gain, bloating or tape drift; re-measure before acting.
     case waistUpWeightSteady = "Waist Up, Weight Steady"
+    /// Waist up while weight fell (scientist consult 2026-11-24, round 3). RED-TEST STUB: not
+    /// yet produced by the builder.
+    case waistUpWeightDown = "Waist Up, Weight Down"
 }
 
 nonisolated enum MeasurementDataQuality: String, Codable {
@@ -1977,6 +1980,8 @@ nonisolated struct MeasurementTrendSnapshot: Codable {
                 ? "Waist increasing while weight stable — possible fat gain or bloat" : nil
         case .waistUpWeightSteady:
             return "Waist up while weight steady — possible fat gain, bloating or tape drift"
+        case .waistUpWeightDown:
+            return nil
         case .possibleNoise, .insufficientData:
             return nil
         }
@@ -2659,7 +2664,7 @@ enum BodyTrendHeadline {
         case .waistUpWeightSteady:
             return Headline(message: "Waist up, weight steady — re-measure at your usual time before changing anything",
                             tone: .attention, suggestsMealLog: false)
-        case .stableNoChange, .insufficientData:
+        case .stableNoChange, .insufficientData, .waistUpWeightDown:
             return nil
         }
     }

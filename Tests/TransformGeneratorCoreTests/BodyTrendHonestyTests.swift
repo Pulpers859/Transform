@@ -289,4 +289,18 @@ final class BodyTrendHonestyTests: XCTestCase {
         XCTAssertEqual(headline.message, "Waist up, weight steady — re-measure at your usual time before changing anything")
         XCTAssertEqual(headline.tone, .attention)
     }
+
+    // MARK: - Round 3 (scientist consult 2026-11-24)
+
+    /// Waist up while weight fell is its own verdict, worded as a likely measuring difference.
+    func testWaistUpWhileWeightFellIsNotCalledSteady() throws {
+        let snapshot = MeasurementTrendSnapshotBuilder.build(
+            entries: [entry(0, waist: 32.0), entry(28, waist: 32.3), entry(56, waist: 32.6)],
+            weightPoints: dailyWeights(through: 56) { 183 - 3.0 * Double($0) / 56 }
+        )
+        XCTAssertEqual(snapshot.interpretation, .waistUpWeightDown)
+        let headline = try XCTUnwrap(BodyTrendHeadline.headline(for: snapshot, proteinCaveat: nil, now: day(56)))
+        XCTAssertFalse(headline.message.contains("weight steady"), headline.message)
+        XCTAssertEqual(headline.message, "Waist up while weight fell — likely a measuring difference; re-measure at your usual time")
+    }
 }

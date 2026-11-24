@@ -182,4 +182,33 @@ final class BestRecordRuleTests: XCTestCase {
         XCTAssertNil(ExerciseBestRule.revisedBest(storedBest: only, sessionPreviousDate: only.date,
                                                   revisedSession: nil, otherSessions: []))
     }
+
+    // MARK: - Round 3 (exercise-evidence consult 2026-11-24)
+
+    /// A lone set is a likely typo only at >= 2x the median AND >= 20 lb over it, so one
+    /// ordinary dumbbell step (5 -> 10, 10 -> 20) is a real record.
+    func testTheTypoRuleNeedsTwiceTheMedianAndTwentyPoundsMore() throws {
+        func record(_ pairs: [(Double, Int)]) throws -> Double {
+            try XCTUnwrap(ExerciseBestRule.recordTop(from: sets(pairs))).weightLbs
+        }
+        XCTAssertEqual(try record([(5, 20), (5, 20), (10, 10)]), 10)
+        XCTAssertEqual(try record([(10, 15), (10, 15), (20, 8)]), 20)
+        XCTAssertEqual(try record([(25, 10), (25, 10), (250, 10)]), 25)
+        XCTAssertEqual(try record([(90, 8), (90, 8), (180, 8)]), 90)
+        XCTAssertEqual(try record([(2.5, 15), (2.5, 15), (25, 15)]), 2.5)
+        XCTAssertEqual(try record([(70, 10), (70, 10), (100, 3)]), 100)
+    }
+
+    /// `applyLog` raises the best by the session's RECORD set, while "Last" keeps the working-set
+    /// top: auditor round 3 (sets 20/40/60/100: the progression top keeps 100, the record rule
+    /// calls it a typo, and the best was raised by one reading and withdrawn by the other).
+    func testApplyLogRaisesTheBestByTheRecordSet() throws {
+        let ctx = try context()
+        let entry = ExerciseWeightEntry(loggedAt: at(-7), exerciseName: "Cable Row", weightLbs: 80, repsCompleted: 8)
+        ctx.insert(entry)
+        entry.applyLog(loggedAt: at(0), exerciseName: "Cable Row", weightLbs: 100, repsCompleted: 5, notes: "",
+                       record: (weightLbs: 60, reps: 10))
+        XCTAssertEqual(entry.weightLbs, 100)
+        XCTAssertEqual(entry.bestWeightLbs, 80)
+    }
 }

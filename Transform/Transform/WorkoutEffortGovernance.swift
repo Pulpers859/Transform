@@ -42,6 +42,12 @@ enum WorkoutEffortGovernance {
         return .neutral
     }
 
+    /// The AI's governance sentence for a week of ratings. RED-TEST STUB (round 3): the old
+    /// reading, `guidance(for: signal(from:))`.
+    static func guidance(forWeek feedback: [WorkoutSessionFeedbackSnapshot]) -> String {
+        guidance(for: signal(from: feedback))
+    }
+
     static func guidance(for signal: Signal) -> String {
         switch signal {
         case .protectRecovery:
