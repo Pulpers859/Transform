@@ -214,6 +214,13 @@ struct MeasurementsView: View {
                     .padding(.top, 2)
             }
 
+            // Past 30 days the verdict stays, labelled with its age (scientist consult 2026-11-24).
+            if trend.isStale(), let date = trend.latestEntryDate {
+                Text("As of \(date.formatted(.dateTime.month(.abbreviated).day())) — measure again to update")
+                    .font(.caption2)
+                    .foregroundStyle(TFColor.warning)
+            }
+
             Text(trend.confidenceReason)
                 .font(.caption2)
                 .foregroundStyle(.secondary)

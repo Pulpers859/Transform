@@ -208,7 +208,7 @@ struct AddMeasurementSheet: View {
             Toggle("Standard measurement", isOn: $isStandardMeasurement)
 
             if !isStandardMeasurement {
-                Text("Marked as non-standard: left out of the charts and number cards. The trend still uses it but does not count it toward its data quality.")
+                Text("Marked as non-standard: left out of the charts and number cards, and out of the trend whenever its 90 days hold at least two standard entries.")
                     .font(.caption)
                     .foregroundStyle(TFColor.accent)
             }

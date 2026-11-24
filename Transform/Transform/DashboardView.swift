@@ -340,49 +340,24 @@ struct DashboardView: View {
             )
         }
 
-        // Priority 5: Body trends (with protein caveat when applicable)
-        if let trend = dashboardMeasurementTrend {
-            let caveat = proteinCaveat.map { " — \($0)" } ?? ""
-            switch trend.interpretation {
-            case .likelyRecomposition:
-                return CoachingVerdict(
-                    message: "Waist trending down, weight stable\(caveat.isEmpty ? " — stay the course" : caveat)",
-                    color: caveat.isEmpty ? TFColor.success : TFColor.accent,
-                    action: caveat.isEmpty ? nil : .logMeal,
-                    actionLabel: caveat.isEmpty ? nil : "Log a meal"
-                )
-            case .likelyFatLoss:
-                return CoachingVerdict(
-                    message: "Fat loss tracking well\(caveat.isEmpty ? " — waist and weight both down" : caveat)",
-                    color: caveat.isEmpty ? TFColor.success : TFColor.accent,
-                    action: caveat.isEmpty ? nil : .logMeal,
-                    actionLabel: caveat.isEmpty ? nil : "Log a meal"
-                )
-            case .possibleNoise:
-                return CoachingVerdict(
-                    message: "Too early to tell — keep logging",
-                    color: .secondary,
-                    action: nil,
-                    actionLabel: nil
-                )
-            case .likelyMassGain:
-                if trend.waistToWeightRatio != nil && trend.waistChangeIn.map({ $0 <= 0.1 }) == true {
-                    return CoachingVerdict(
-                        message: "Weight up, waist steady — check your lifts before changing anything",
-                        color: .secondary,
-                        action: nil,
-                        actionLabel: nil
-                    )
+        // Priority 5: Body trends (with protein caveat when applicable). The sentence comes from
+        // `BodyTrendHeadline` so it can be tested against the verdict it describes, and a trend
+        // whose newest measurement is over 30 days old says nothing here (follow-up 2026-11-24).
+        if let trend = dashboardMeasurementTrend,
+           let headline = BodyTrendHeadline.headline(for: trend, proteinCaveat: proteinCaveat) {
+            let color: Color = {
+                switch headline.tone {
+                case .good: return TFColor.success
+                case .attention: return TFColor.accent
+                case .neutral: return .secondary
                 }
-                return CoachingVerdict(
-                    message: "Weight and waist both rising — review targets if fat loss is the goal",
-                    color: TFColor.accent,
-                    action: nil,
-                    actionLabel: nil
-                )
-            default:
-                break
-            }
+            }()
+            return CoachingVerdict(
+                message: headline.message,
+                color: color,
+                action: headline.suggestsMealLog ? .logMeal : nil,
+                actionLabel: headline.suggestsMealLog ? "Log a meal" : nil
+            )
         }
 
         // Priority 6: Moderate protein gap (no body trend to attach to)

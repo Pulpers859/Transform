@@ -56,6 +56,9 @@ enum AssistedProgression {
         let belowFloorSetCount: Int
         let minimumReps: Int
         let belowFloorStreak: Int
+        /// The setting is held because last week's session ratings asked to protect recovery,
+        /// not because a set fell short; the cue says so.
+        var heldForRecovery: Bool = false
     }
 
     /// The assisted working sets of one session: sets with assistance and at least one rep, at
@@ -116,7 +119,9 @@ enum AssistedProgression {
     /// `WorkoutProgressionEngine.evaluate`: every working set at the ceiling, or at least
     /// two-thirds of them, earns the progression step; any set under the floor holds; two
     /// such sessions in a row at the same setting reverse it.
-    /// `protectRecovery`: RED-TEST STUB parameter (RATE-001 follow-up 2026-11-24), not yet used.
+    /// `protectRecovery`: last week's session ratings asked to protect recovery (RATE-001), so
+    /// "less assistance" becomes "hold this setting" for the week; a setting twice missed still
+    /// gets more help. Pinned by SessionRatingHoldTests.
     static func evaluate(sets: [SetLogEntry], repRange: RepRange, belowFloorStreak: Int = 0,
                          protectRecovery: Bool = false) -> Decision? {
         guard let session = workingSets(sets) else { return nil }
@@ -126,13 +131,17 @@ enum AssistedProgression {
         let belowFloor = reps.filter { $0 < repRange.low }.count
         let majority = max(1, Int(ceil(Double(reps.count) * 0.67)))
 
-        let verdict: Verdict
+        var verdict: Verdict
         if minimum >= repRange.high {
             verdict = .lessAssistance
         } else if minimum < repRange.low {
             verdict = belowFloorStreak >= 2 ? .moreAssistance : .holdAssistance
         } else {
             verdict = ceiling >= majority ? .lessAssistance : .buildReps
+        }
+        let heldForRecovery = protectRecovery && verdict == .lessAssistance
+        if heldForRecovery {
+            verdict = .holdAssistance
         }
         return Decision(
             verdict: verdict,
@@ -141,7 +150,8 @@ enum AssistedProgression {
             ceilingSetCount: ceiling,
             belowFloorSetCount: belowFloor,
             minimumReps: minimum,
-            belowFloorStreak: belowFloorStreak
+            belowFloorStreak: belowFloorStreak,
+            heldForRecovery: heldForRecovery
         )
     }
 
@@ -158,6 +168,8 @@ enum AssistedProgression {
                 : "\(earned.prefix(1).uppercased() + earned.dropFirst()) with no assistance. Try it without the machine next time."
         case .buildReps:
             return "On track with \(help): build all sets to \(repRange.high) reps (lowest was \(decision.minimumReps))."
+        case .holdAssistance where decision.heldForRecovery:
+            return "Keep \(help): your recent session ratings flagged pain or a tough week, so recover before using less help."
         case .holdAssistance:
             return "Keep \(help): \(decision.belowFloorSetCount) of \(setsLabel(decision.workingSetCount)) finished under \(repRange.low). Get every set to \(repRange.low) first."
         case .moreAssistance:

@@ -66,9 +66,17 @@ enum WorkoutTimingInsights {
         }
     }
 
+    /// A tie at the top names no best (follow-up review 2026-11-24: `max(by:)` handed every tie
+    /// to the earliest slot, and 1-5 ratings tie often).
     static func best(_ buckets: [Bucket]) -> Bucket? {
-        let eligible = buckets.filter { $0.sessionCount >= minimumSessions }
-        guard eligible.count >= 2 else { return nil }
-        return eligible.max(by: { $0.score < $1.score })
+        let eligible = eligibleBuckets(buckets)
+        guard eligible.count >= 2, let top = eligible.max(by: { $0.score < $1.score }) else { return nil }
+        let tied = eligible.filter { abs($0.score - top.score) < 0.001 }
+        return tied.count == 1 ? top : nil
+    }
+
+    /// Slots with enough sessions to be compared.
+    static func eligibleBuckets(_ buckets: [Bucket]) -> [Bucket] {
+        buckets.filter { $0.sessionCount >= minimumSessions }
     }
 }

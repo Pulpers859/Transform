@@ -69,7 +69,9 @@ struct WorkoutSessionFeedbackSheet: View {
                                         .font(.subheadline)
                                         .lineLimit(1)
                                     Spacer()
-                                    Text(line.skipped ? "Skipped" : "\(line.loggedSets)/\(line.plannedSets) sets")
+                                    Text(line.skipped
+                                         ? (line.loggedSets > 0 ? "Skipped after \(line.loggedSets)/\(line.plannedSets) sets" : "Skipped")
+                                         : "\(line.loggedSets)/\(line.plannedSets) sets")
                                         .font(.caption.bold())
                                         .foregroundStyle(line.skipped || line.loggedSets < line.plannedSets ? Color.secondary : TFColor.success)
                                 }

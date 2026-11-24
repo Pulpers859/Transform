@@ -19,6 +19,8 @@ struct WorkoutDayDetailView: View {
     /// seed (see `seedExpansionIfNeeded`) opens only the current lift so a finished or
     /// returning day lands collapsed and calm.
     @State private var expandedExerciseIDs: Set<PersistentIdentifier> = []
+    /// The exercise to scroll to once it has opened (`commitDisposition`).
+    @State private var scrollTarget: PersistentIdentifier?
     /// Guards the one-time default so re-appearing (returning from a pushed Progression
     /// view) never re-collapses cards the lifter opened by hand.
     @State private var didSeedExpansion = false
@@ -80,6 +82,7 @@ struct WorkoutDayDetailView: View {
 
     var body: some View {
         ScrollView {
+            ScrollViewReader { proxy in
             VStack(alignment: .leading, spacing: 20) {
                 dayHeader
                 sessionTimingBadge
@@ -96,6 +99,14 @@ struct WorkoutDayDetailView: View {
                     .id(resetRevision)
             }
             .padding()
+            // The lift that opened after the last one finished is brought into view (design
+            // review 2026-11-24: the card above shrinking could leave it half off screen).
+            .onChange(of: scrollTarget) { _, target in
+                guard let target else { return }
+                withAnimation(.easeInOut(duration: 0.25)) { proxy.scrollTo(target, anchor: .top) }
+                scrollTarget = nil
+            }
+            }
         }
         .scrollDismissesKeyboard(.interactively)
         // The default soft scroll edge leaves card text readable straight through the
@@ -479,13 +490,15 @@ struct WorkoutDayDetailView: View {
         // (`WorkoutEffortGovernance.signal(governingWeek:)`), so the line and the suggestions
         // cannot disagree (council review 2026-11-23: this line used to promise a hold that the
         // weight suggestions never applied).
-        // The last week of a block (the deload) is followed by a NEW program whose week 1 reads
-        // its own program's ratings only, so nothing would act on this week's: say nothing
-        // rather than promise a hold that will not happen.
-        guard let program = day.program, day.weekNumber < program.maxWeeks else { return nil }
+        // Only where next week is an ordinary training week (`cardLine(for:ratedWeek:blockWeeks:)`):
+        // not before the deload, and not in the block's last week, whose successor is a new
+        // program reading only its own ratings.
+        guard let program = day.program else { return nil }
         let rated = program.days.compactMap(\.ratedSessionFeedback)
         return WorkoutEffortGovernance.cardLine(
-            for: WorkoutEffortGovernance.signal(governingWeek: day.weekNumber + 1, rated: rated)
+            for: WorkoutEffortGovernance.signal(governingWeek: day.weekNumber + 1, rated: rated),
+            ratedWeek: day.weekNumber,
+            blockWeeks: program.maxWeeks
         )
     }
 
@@ -546,6 +559,7 @@ struct WorkoutDayDetailView: View {
                     onReplace: { exerciseForReplacement = exercise },
                     onClearStatus: { clearStatus(on: exercise) }
                 )
+                .id(exercise.persistentModelID)
             }
             let replaced = day.sortedExercises.filter { !$0.replacementName.isEmpty }
             if !replaced.isEmpty {
@@ -739,7 +753,7 @@ struct WorkoutDayDetailView: View {
             // exercise left every card closed, so each new lift began with a tap to open it).
             // The next unfinished lift after this one in day order, else the first unfinished
             // one. Not when the day just finished: that collapses everything below.
-            let order = day.sortedExercises
+            let order = day.activeExercises
             let after = order.drop(while: { $0.persistentModelID != exercise.persistentModelID }).dropFirst()
             let next = transition == .justFinished ? nil
                 : (after.first(where: { !$0.isCompleted }) ?? order.first(where: { !$0.isCompleted }))
@@ -747,6 +761,7 @@ struct WorkoutDayDetailView: View {
                 expandedExerciseIDs.remove(exercise.persistentModelID)
                 if let next { _ = expandedExerciseIDs.insert(next.persistentModelID) }
             }
+            if let next { scrollTarget = next.persistentModelID }
         }
 
         if transition == .justFinished {
@@ -866,9 +881,11 @@ struct WorkoutDayDetailView: View {
     /// session for that exercise (`PersonalBestCheck.isImprovement`): a first-ever session or a
     /// tie is not a new best. Not covered by a test (view code over `@Query` data).
     func sessionRecap(for day: WorkoutDay) -> [WorkoutSessionFeedbackSheet.RecapLine] {
-        let sessionDay = day.sessionEndedAt ?? day.sessionStartedAt ?? .now
+        // Start first: a best set before midnight in a session that ended after it is stamped
+        // with the start's day (follow-up review 2026-11-24).
+        let sessionDay = day.sessionStartedAt ?? day.sessionEndedAt ?? .now
         let calendar = Calendar.current
-        return day.sortedExercises.map { exercise in
+        return day.activeExercises.map { exercise in
             var newBest: String?
             if let entry = weightSummary(for: exercise), let bestDate = entry.bestLoggedAt,
                calendar.isDate(bestDate, inSameDayAs: sessionDay) {
@@ -1058,6 +1075,19 @@ struct ExerciseCard: View {
 
     var progressionAnalysis: WorkingSetAnalysis {
         WorkingSetAnalysis.analyze(progressionReferenceSets)
+    }
+
+    /// The session-ratings signal (RATE-001) for the session this card's cue is ABOUT. Before
+    /// today's sets the cue is for today, governed by last week's ratings; once today's sets are
+    /// logged it grades them for next time, governed by THIS week's ratings, as next-week
+    /// generation is (devil's advocate 2026-11-24: the card read the wrong week after logging).
+    /// Past the block's last week the next session is a new program, which holds nothing.
+    var sessionRatingsSignal: WorkoutEffortGovernance.Signal {
+        guard let day = exercise.day, let program = day.program else { return .neutral }
+        let target = day.weekNumber + (sessionSetLogs.isEmpty ? 0 : 1)
+        guard target <= program.maxWeeks else { return .neutral }
+        return WorkoutEffortGovernance.signal(governingWeek: target,
+                                              rated: program.days.compactMap(\.ratedSessionFeedback))
     }
 
     /// The prescription belonging to the session `progressionReferenceSets` chose.
@@ -1267,7 +1297,10 @@ struct ExerciseCard: View {
             incrementLbs: WorkoutProgressionEngine.incrementLbs(forExerciseName: exercise.exerciseName)
         ) else { return nil }
 
-        let newLoad = formatWeight(outcome.recommendedLoadLbs)
+        // A protected week (RATE-001) lets the translated load come down but not go up.
+        let recommended = WorkoutEffortGovernance.cappedTranslatedLoad(
+            outcome.recommendedLoadLbs, lastWorkingWeight: referenceLoad, sessionRatings: sessionRatingsSignal)
+        let newLoad = formatWeight(recommended)
         let oldLoad = formatWeight(referenceLoad)
         // Only state the old range when it was actually RECORDED. For a session that predates
         // the recording the range fell back to the current one, and printing that as history
@@ -1286,15 +1319,18 @@ struct ExerciseCard: View {
             )
         }
 
-        let direction = outcome.recommendedLoadLbs < referenceLoad
-            ? "needs less weight"
-            : (outcome.recommendedLoadLbs > referenceLoad ? "needs more weight" : "keeps the same weight")
+        let heldForRecovery = recommended < outcome.recommendedLoadLbs
+        let direction = heldForRecovery
+            ? "would take more weight, but your recent session ratings flagged pain or a tough week, so hold it"
+            : recommended < referenceLoad
+                ? "needs less weight"
+                : (recommended > referenceLoad ? "needs more weight" : "keeps the same weight")
         return ProgressionSuggestion(
-            icon: outcome.recommendedLoadLbs < referenceLoad ? "arrow.down.circle.fill" : "arrow.right.circle.fill",
+            icon: recommended < referenceLoad ? "arrow.down.circle.fill" : "arrow.right.circle.fill",
             text: "Start at \(newLoad) lb — last time was \(oldLoad) lb x \(freshest.reps)\(was), and this week's \(now) \(direction)",
             color: TFColor.info,
             compactText: "Suggested start: \(newLoad) lb · \(currentRange.low)–\(currentRange.high) reps",
-            suggestedLoad: outcome.recommendedLoadLbs
+            suggestedLoad: recommended
         )
     }
 
@@ -1323,7 +1359,8 @@ struct ExerciseCard: View {
             repFloor: repRange.low
         )
         guard let decision = AssistedProgression.evaluate(
-            sets: progressionReferenceSets, repRange: repRange, belowFloorStreak: streak
+            sets: progressionReferenceSets, repRange: repRange, belowFloorStreak: streak,
+            protectRecovery: sessionRatingsSignal == .protectRecovery
         ) else { return nil }
         // Same rule as the load cue: an unfinished session has not earned the next step.
         if decision.verdict == .lessAssistance, let prescribedSets,
@@ -1390,10 +1427,7 @@ struct ExerciseCard: View {
             exerciseName: exercise.exerciseName,
             performanceHistory: performanceHistory,
             currentWeek: exercise.day?.weekNumber,
-            sessionRatings: exercise.day.map { day in
-                WorkoutEffortGovernance.signal(governingWeek: day.weekNumber,
-                                               rated: (day.program?.days ?? []).compactMap(\.ratedSessionFeedback))
-            } ?? .neutral
+            sessionRatings: sessionRatingsSignal
         )
         // An exercise rotated back in after two or more blocks away: its last numbers are old,
         // so hold them rather than build on them. Heuristic threshold (two 4-week blocks); not
@@ -1587,7 +1621,10 @@ struct ExerciseCard: View {
         // open or closed when it fires.
         .task(id: newBestText) {
             guard newBestText != nil else { return }
-            try? await Task.sleep(for: .seconds(5))
+            // A cancelled wait returns early instead of falling through: the task restarts when
+            // the card opens or closes, and when a second best replaces the first, and clearing
+            // then would wipe the line the lifter is about to read (design review 2026-11-24).
+            do { try await Task.sleep(for: .seconds(5)) } catch { return }
             withAnimation { newBestText = nil }
         }
         // Green fill is earned by performed work, not by the day being settled. A lift skipped
@@ -1659,8 +1696,9 @@ struct ExerciseCard: View {
 
                 // A finished exercise has no rest left to run — hide the timer band. The
                 // last set now completes the exercise on its own, so the band disappears
-                // as that final rest would have started — which is correct: there is no
-                // next set to rest for.
+                // as that final rest would have started: there is no next set OF THIS
+                // EXERCISE. The rest before the next exercise is not timed automatically; the
+                // next card (opened on finish) starts with its own timer stopped.
                 if exercise.restSeconds > 0 && !exercise.isCompleted {
                     ExerciseRestTimerView(
                         exercise: exercise,
@@ -3984,16 +4022,26 @@ enum SetLoggingService {
     ) {
         let summaryDescriptor = FetchDescriptor<ExerciseWeightEntry>(predicate: #Predicate { $0.canonicalExerciseKey == key })
         guard let summary = (try? modelContext.fetch(summaryDescriptor))?.max(by: { $0.loggedAt < $1.loggedAt }) else { return }
+        let revised = session?.summaryCandidate
         let ownsBest = summary.bestLoggedAt == previousStamp
-        let ownsLast = summary.loggedAt == previousStamp && session?.summaryCandidate == nil
-        guard ownsBest || ownsLast else { return }
+        let ownsLast = summary.loggedAt == previousStamp && revised == nil
+
+        // A best set by something else can only be beaten. `applyLog` above raised it with the
+        // session's progression top; the RECORD set (`ExerciseBestRule.recordTop`, the heaviest
+        // set as lifted) can be heavier, e.g. a 100x3 top set before 70x10 back-offs.
+        if !ownsBest {
+            if let revised, ExerciseBestRule.isBetter(revised, than: summary.bestCandidate
+                ?? ExerciseBestCandidate(date: .distantPast, weightLbs: summary.bestWeightLbs, reps: summary.bestRepsCompleted)) {
+                summary.setBest(revised)
+            }
+            guard ownsLast else { return }
+        }
 
         let excluded = excludedID ?? session?.persistentModelID
         let logDescriptor = FetchDescriptor<ExercisePerformanceLog>(predicate: #Predicate { $0.canonicalExerciseKey == key })
         let others = ((try? modelContext.fetch(logDescriptor)) ?? [])
             .filter { $0.persistentModelID != excluded }
             .compactMap(\.summaryCandidate)
-        let revised = session?.summaryCandidate
 
         if ownsBest {
             let best = ExerciseBestRule.revisedBest(storedBest: summary.bestCandidate, sessionPreviousDate: previousStamp,
@@ -4004,7 +4052,9 @@ enum SetLoggingService {
                                                              notes: $0.date == summary.bestLoggedAt ? summary.bestNotes : $0.notes) })
         }
         if ownsLast {
-            if let latest = others.max(by: { $0.date < $1.date }) {
+            // The newest remaining session, else the stored best (a legacy record with no row)
+            // rather than leaving the cleared session's numbers behind as "Last".
+            if let latest = others.max(by: { $0.date < $1.date }) ?? (ownsBest ? nil : summary.bestCandidate) {
                 summary.loggedAt = latest.date
                 summary.weightLbs = latest.weightLbs
                 summary.repsCompleted = latest.reps
@@ -4013,7 +4063,7 @@ enum SetLoggingService {
         }
         // Nothing left that counts: the summary describes no work at all (the day reset and the
         // history screen remove it in the same case).
-        if others.isEmpty && ownsBest && ownsLast {
+        if others.isEmpty && ownsBest && ownsLast && summary.bestCandidate == nil {
             modelContext.delete(summary)
         }
     }

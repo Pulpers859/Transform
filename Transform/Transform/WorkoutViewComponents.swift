@@ -267,8 +267,11 @@ struct WorkoutTimingInsightsCard: View {
                 HStack(alignment: .bottom, spacing: 6) {
                     ForEach(hourBuckets, id: \.label) { bucket in
                         VStack(spacing: 4) {
+                            // A slot with too few sessions to compare is drawn faint, so a tall bar
+                            // from one good session does not read as a result.
                             RoundedRectangle(cornerRadius: 4)
-                                .fill(bucket.label == bestBucket?.label ? Color.orange : TFColor.accent.opacity(0.3))
+                                .fill(bucket.label == bestBucket?.label ? Color.orange
+                                      : TFColor.accent.opacity(bucket.sessionCount >= WorkoutTimingInsights.minimumSessions ? 0.3 : 0.1))
                                 .frame(height: max(8, CGFloat(min(bucket.score / WorkoutTimingInsights.maximumScore, 1)) * 60))
 
                             Text("\(bucket.sessionCount)")
@@ -297,7 +300,15 @@ struct WorkoutTimingInsightsCard: View {
                     }
                 }
 
-                if timedSessions.count < 10 {
+                if bestBucket == nil {
+                    // Say why there is no best, so the card never just sits there.
+                    let comparable = WorkoutTimingInsights.eligibleBuckets(hourBuckets).count
+                    Text(comparable >= 2 ? "No time of day stands out yet."
+                         : comparable == 1 ? "Most of your sessions fall in one time of day, so there is nothing to compare yet."
+                         : "Not enough sessions at any one time of day to compare yet.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                } else if timedSessions.count < 10 {
                     Text("More sessions make this more accurate.")
                         .font(.caption2)
                         .foregroundStyle(.tertiary)

@@ -647,10 +647,13 @@ nonisolated struct ExercisePerformanceLogSnapshot: Codable {
         let incomingBestWeight = bestWeightLbs ?? weightLbs
         let incomingBestDate = bestLoggedAt ?? loggedAt
         let incomingBestNotes = bestNotes ?? notes
-        let shouldReplaceBest = !entry.hasBestRecord
-            || incomingBestWeight > entry.bestWeightLbs + 0.001
-            || (abs(incomingBestWeight - entry.bestWeightLbs) <= 0.001
-                && (entry.bestLoggedAt ?? .distantPast) < incomingBestDate)
+        // The shared best ordering (`ExerciseBestRule`; follow-up review 2026-11-24): this used
+        // to rank equal loads by date alone and ignore reps. Not covered by a test (this file is
+        // outside the headless target); the ordering it calls is.
+        let shouldReplaceBest = !entry.hasBestRecord || ExerciseBestRule.isBetter(
+            ExerciseBestCandidate(date: incomingBestDate, weightLbs: incomingBestWeight, reps: bestRepsCompleted ?? repsCompleted),
+            than: ExerciseBestCandidate(date: entry.bestLoggedAt ?? .distantPast, weightLbs: entry.bestWeightLbs, reps: entry.bestRepsCompleted)
+        )
 
         if shouldReplaceBest {
             entry.bestWeightLbs = incomingBestWeight

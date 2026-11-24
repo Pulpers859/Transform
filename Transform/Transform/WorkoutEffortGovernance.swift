@@ -66,9 +66,21 @@ enum WorkoutEffortGovernance {
 
     /// The ratings signal that governs `targetWeek`'s weight suggestions: the previous week's
     /// rated sessions only, in day order (the same sessions the card line describes).
+    ///
+    /// Protect = 2 of the last 3 with joint pain >= 3 or a "Worse" performance. Effort is NOT a
+    /// trigger here (consult 2026-11-24, pick c): effort 5 is what week 3 asks for, and the
+    /// reps-based check already holds an exercise trained harder than prescribed. Effort still
+    /// reaches the AI through `signal(from:)` / `guidance(for:)`. Headroom is reported as
+    /// `signal(from:)` reports it; it changes no weight.
     static func signal(governingWeek targetWeek: Int,
                        rated: [(week: Int, dayNumber: Int, feedback: WorkoutSessionFeedbackSnapshot)]) -> Signal {
-        signal(from: rated.filter { $0.week == targetWeek - 1 }.sorted { $0.dayNumber < $1.dayNumber }.map(\.feedback))
+        let week = rated.filter { $0.week == targetWeek - 1 }.sorted { $0.dayNumber < $1.dayNumber }.map(\.feedback)
+        let recent = week.suffix(3)
+        let flags = recent.filter {
+            $0.jointPain >= 3 || $0.performanceRawValue.caseInsensitiveCompare("Worse") == .orderedSame
+        }.count
+        if recent.count >= 2 && flags >= 2 { return .protectRecovery }
+        return signal(from: week) == .progressionHeadroom ? .progressionHeadroom : .neutral
     }
 
     /// Either source protecting means protect. Neutral and headroom ratings change nothing: the
@@ -86,15 +98,19 @@ enum WorkoutEffortGovernance {
         return "recent sets were close to failure, so recover before adding"
     }
 
-    /// RED-TEST STUB (follow-up 2026-11-24): ignores the week.
+    /// The card line, only where the NEXT week is an ordinary training week (devil's advocate
+    /// 2026-11-24): the week before the deload would promise "weights hold steady" beside a
+    /// deload card saying go lighter, and the block's last week is followed by a new program
+    /// whose week 1 reads only its own ratings.
     static func cardLine(for signal: Signal, ratedWeek: Int, blockWeeks: Int) -> String? {
-        cardLine(for: signal)
+        guard ratedWeek + 1 < blockWeeks, !MesocyclePhase.isDeloadWeek(ratedWeek + 1) else { return nil }
+        return cardLine(for: signal)
     }
 
-    /// A rep-range or set-count change can translate the load. RED-TEST STUB (RATE-001
-    /// follow-up 2026-11-24): returns the translated load unchanged.
+    /// A rep-range or set-count change can translate the load. In a protected week it may come
+    /// down but not go up (consult 2026-11-24, RATE-001 follow-up).
     static func cappedTranslatedLoad(_ load: Double, lastWorkingWeight: Double, sessionRatings: Signal) -> Double {
-        load
+        sessionRatings == .protectRecovery ? min(load, lastWorkingWeight) : load
     }
 
     /// The line under a rated session describing what the ratings do to next week.

@@ -34,7 +34,10 @@ enum WeightTrendBuilder {
     static let maximumComparisonGapDays = 14
     static let minimumWindowWeighIns = 3
 
-    /// `now`: RED-TEST STUB parameter (follow-up review 2026-11-24), not yet used.
+    /// No weekly rate once the latest weigh-in is more than this many days old (scientist
+    /// consult 2026-11-24; heuristic): a rate from a month ago is not this week's.
+    static let maximumRateAgeDays = 7
+
     static func build(from input: [AnalysisLoggedWeightPoint], calendar: Calendar = .current, now: Date = Date()) -> WeightTrendSnapshot {
         let daily = Dictionary(grouping: input.filter { $0.weightLbs > 0 }) {
             calendar.startOfDay(for: $0.date)
@@ -88,7 +91,9 @@ enum WeightTrendBuilder {
                   weighIns(endingOn: current.date) >= minimumWindowWeighIns,
                   weighIns(endingOn: prior.date) >= minimumWindowWeighIns,
                   let gapDays = calendar.dateComponents([.day], from: prior.date, to: current.date).day,
-                  gapDays >= 7, gapDays <= maximumComparisonGapDays
+                  gapDays >= 7, gapDays <= maximumComparisonGapDays,
+                  let age = calendar.dateComponents([.day], from: current.date, to: calendar.startOfDay(for: now)).day,
+                  age <= maximumRateAgeDays
             else { return nil }
             return (current.trendWeightLbs - prior.trendWeightLbs) / Double(gapDays) * 7
         }()

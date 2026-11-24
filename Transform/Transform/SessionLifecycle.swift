@@ -128,29 +128,43 @@ enum SessionLifecycle {
                 let deletedDates = Set(removed.filter { $0.canonicalExerciseKey == summary.canonicalExerciseKey }.map(\.loggedAt))
                 guard !deletedDates.isEmpty else { continue }
                 // Assisted sets never shape the summary (`ExercisePerformanceLog.summarySetLogs`).
-                var records = remaining.filter {
+                let rows = remaining.filter {
                     $0.canonicalExerciseKey == summary.canonicalExerciseKey && $0.countsTowardSummary
-                }.map { log in
+                }
+                // "Last" keeps its working-set reading (the progression top).
+                var records = rows.map { log in
                     let top = WorkingSetAnalysis.summaryTop(from: log.summarySetLogs)
                     return ResetRecord(date: log.loggedAt, weight: top?.weightLbs ?? log.weightLbs,
                                        reps: top?.reps ?? log.repsCompleted, notes: log.notes)
                 }
+                // The best reads records through the shared rule (`summaryCandidate`,
+                // `ExerciseBestRule`), as the card, the bulk sheet and the history screen do.
+                var bestRecords = rows.compactMap { log -> ResetRecord? in
+                    guard let candidate = log.summaryCandidate else { return nil }
+                    return ResetRecord(date: candidate.date, weight: candidate.weightLbs,
+                                       reps: candidate.reps, notes: candidate.notes)
+                }
                 // Summaries may carry legacy history with no performance-log row. Preserve it.
                 if !deletedDates.contains(summary.loggedAt) {
-                    records.append(ResetRecord(date: summary.loggedAt, weight: summary.weightLbs, reps: summary.repsCompleted, notes: summary.notes))
+                    let legacy = ResetRecord(date: summary.loggedAt, weight: summary.weightLbs, reps: summary.repsCompleted, notes: summary.notes)
+                    records.append(legacy)
+                    bestRecords.append(legacy)
                 }
                 if let date = summary.bestLoggedAt, !deletedDates.contains(date) {
-                    records.append(ResetRecord(date: date, weight: summary.bestWeightLbs, reps: summary.bestRepsCompleted, notes: summary.bestNotes))
+                    let legacyBest = ResetRecord(date: date, weight: summary.bestWeightLbs, reps: summary.bestRepsCompleted, notes: summary.bestNotes)
+                    records.append(legacyBest)
+                    bestRecords.append(legacyBest)
                 }
-                guard let latest = records.max(by: { $0.date < $1.date }) else {
+                guard let latest = records.max(by: { $0.date < $1.date }), let firstBest = bestRecords.first else {
                     context.delete(summary)
                     continue
                 }
-                let best = records.max {
-                    if abs($0.weight - $1.weight) > 0.001 { return $0.weight < $1.weight }
-                    if ($0.reps ?? 0) != ($1.reps ?? 0) { return ($0.reps ?? 0) < ($1.reps ?? 0) }
-                    return $0.date < $1.date
-                }!
+                let best = bestRecords.dropFirst().reduce(firstBest) { kept, record in
+                    ExerciseBestRule.isBetter(
+                        ExerciseBestCandidate(date: record.date, weightLbs: record.weight, reps: record.reps),
+                        than: ExerciseBestCandidate(date: kept.date, weightLbs: kept.weight, reps: kept.reps)
+                    ) ? record : kept
+                }
                 if deletedDates.contains(summary.loggedAt) {
                     summary.loggedAt = latest.date
                     summary.weightLbs = latest.weight
