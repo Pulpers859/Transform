@@ -81,8 +81,22 @@ struct WorkoutDayDetailView: View {
     }
 
     var body: some View {
-        // The reader wraps the scroll view (its proxy scrolls the views it contains).
+        // The reader wraps the screen (its proxy scrolls the views it contains). The screen is
+        // its own property: one expression holding the reader AND the screen's long modifier
+        // chain overflowed the compiler's type-check time limit (CI build, 2026-11-24).
         ScrollViewReader { proxy in
+            dayScreen
+                // The lift that opened after the last one finished is brought into view (design
+                // review 2026-11-24: the card above shrinking could leave it half off screen).
+                .onChange(of: scrollTarget) { _, target in
+                    guard let target else { return }
+                    withAnimation(.easeInOut(duration: 0.25)) { proxy.scrollTo(target, anchor: .top) }
+                    scrollTarget = nil
+                }
+        }
+    }
+
+    private var dayScreen: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 dayHeader
@@ -100,13 +114,6 @@ struct WorkoutDayDetailView: View {
                     .id(resetRevision)
             }
             .padding()
-        }
-        // The lift that opened after the last one finished is brought into view (design
-        // review 2026-11-24: the card above shrinking could leave it half off screen).
-        .onChange(of: scrollTarget) { _, target in
-            guard let target else { return }
-            withAnimation(.easeInOut(duration: 0.25)) { proxy.scrollTo(target, anchor: .top) }
-            scrollTarget = nil
         }
         .scrollDismissesKeyboard(.interactively)
         // The default soft scroll edge leaves card text readable straight through the
@@ -193,7 +200,6 @@ struct WorkoutDayDetailView: View {
             }
         } message: {
             Text(completionPromptMessage)
-        }
         }
     }
 
